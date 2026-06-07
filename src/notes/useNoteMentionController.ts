@@ -199,6 +199,7 @@ export function useNoteMentionController({
   const [searchMachine, setSearchMachine] = useState<NoteMentionSearchMachineState>(() =>
     createNoteMentionSearchMachineState(),
   )
+  const [keyboardFocusVisible, setKeyboardFocusVisible] = useState(false)
   const searchMachineRef = useRef<NoteMentionSearchMachineState>(searchMachine)
   const menuRef = useRef<NoteMentionMenuState | null>(null)
   const dismissedQueryRef = useRef<NoteMentionQuery | null>(null)
@@ -221,6 +222,7 @@ export function useNoteMentionController({
 
   const resetSearchMachine = useCallback(() => {
     pendingNavigatorCopyTargetRef.current = null
+    setKeyboardFocusVisible(false)
     applySearchMachineState(createNoteMentionSearchMachineState())
   }, [applySearchMachineState])
 
@@ -573,6 +575,11 @@ export function useNoteMentionController({
       const isPreviewShortcut = !searchMode && event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey
       const isNavigatorHorizontalKey = !searchMode && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
       const isSearchHorizontalKey = searchMode && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+      const isArrowKey =
+        event.key === 'ArrowUp' ||
+        event.key === 'ArrowDown' ||
+        event.key === 'ArrowLeft' ||
+        event.key === 'ArrowRight'
       const isHandledKey =
         event.key === 'Escape' ||
         event.key === 'ArrowUp' ||
@@ -586,6 +593,7 @@ export function useNoteMentionController({
       if (!isHandledKey || event.altKey || ((event.metaKey || event.ctrlKey) && !searchMode && !isPreviewShortcut) || (event.shiftKey && event.key !== 'Tab')) return
       event.preventDefault()
       event.stopPropagation()
+      if (isArrowKey) setKeyboardFocusVisible(true)
 
       if (event.key === 'Escape') {
         if (searchMode) {
@@ -790,6 +798,7 @@ export function useNoteMentionController({
     searchAisleItems,
     selectedSearchAisleId,
     searchFocusStage: searchMachine.stage,
+    keyboardFocusVisible,
     focusedAisleIndex: Math.max(0, Math.min(Math.max(0, searchAisleItems.length - 1), searchMachine.focusedAisleIndex)),
     focusedActionIndex: searchMachine.focusedActionIndex,
     focusedConfirmIndex: searchMachine.focusedConfirmIndex,

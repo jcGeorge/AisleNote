@@ -79,6 +79,18 @@ describe('menu font scaling styles', () => {
     expect(shellRule).toContain('flex: 0 0 auto;')
   })
 
+  it('keeps note reference start controls on one row', () => {
+    const css = readStyle('overlays.css')
+    const primaryRule = extractRule(css, '.note-reference-heading-primary')
+    const labelRule = extractRule(css, '.note-reference-heading-label')
+    const buttonsRule = extractRule(css, '.note-reference-heading-start-buttons')
+
+    expect(primaryRule).toContain('grid-template-columns: max-content minmax(0, 1fr);')
+    expect(primaryRule).toContain('align-items: center;')
+    expect(labelRule).toContain('white-space: nowrap;')
+    expect(buttonsRule).toContain('grid-template-columns: repeat(2, minmax(0, 1fr));')
+  })
+
   it('uses a custom note aisle horizontal scrollbar instead of native scrollbar chrome', () => {
     const css = readStyle('editor-shell.css')
     const nativeScrollRule = extractRule(css, '.note-aisle-scroll')
@@ -862,6 +874,10 @@ describe('compact scope tab scaling styles', () => {
     const resultContextRule = extractRule(editorShellCss, '.note-mention-result-context')
     const resultContextChipRule = extractRule(editorShellCss, '.note-mention-result-context-chip')
     const resultSubtabChipRule = extractRule(editorShellCss, '.note-mention-result-context-chip.is-subtab')
+    const focusedRule = extractRule(
+      editorShellCss,
+      '.note-mention-nav-chip[data-focused="true"]::after,\n.note-mention-result-card[data-focused="true"]::after,\n.note-mention-action-btn[data-focused="true"]::after',
+    )
 
     const expectRailVariables = (selector: string, rail: string) => {
       const rule = extractRule(editorShellCss, selector)
@@ -883,12 +899,18 @@ describe('compact scope tab scaling styles', () => {
     expectRailVariables('.note-mention-nav-row.is-space-row', 'space')
     expectRailVariables('.note-mention-nav-row.is-tab-row', 'parent')
     expectRailVariables('.note-mention-nav-row.is-note-row', 'subtab')
-    expectRailVariables('.note-mention-nav-row.is-aisle-row', 'subtab')
+    expectRailVariables('.note-mention-nav-row.is-aisle-row', 'domain')
     expect(chipRule).toContain('--rail-control-max-width: 11rem;')
     expect(chipRule).toContain('--rail-control-min-width: 0;')
+    expect(chipRule).toContain('position: relative;')
     expect(chipRule).not.toContain('--rail-control-font-size')
     expect(chipRule).not.toContain('--rail-control-height')
     expect(chipRule).not.toContain('--rail-control-padding')
+    expect(editorShellCss).toContain('@keyframes note-mention-focus-underline')
+    expect(focusedRule).toContain('position: absolute;')
+    expect(focusedRule).toContain('animation: note-mention-focus-underline')
+    expect(focusedRule).not.toContain('outline')
+    expect(editorShellCss).toContain('@media (prefers-reduced-motion: reduce)')
     expect(searchMenuRule).toContain('width: min(45.6rem, calc(100vw - 1rem));')
     expect(resultTitleRule).toContain('font-weight: 400;')
     expect(resultContextRule).toContain('justify-content: flex-end;')

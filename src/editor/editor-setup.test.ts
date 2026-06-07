@@ -86,7 +86,7 @@ describe('imperative editor toolbar tooltips', () => {
   })
 
   it('enables native spellcheck on editable Toast UI ProseMirror roots', () => {
-    const editableRoot = { setAttribute: vi.fn() }
+    const editableRoot = { setAttribute: vi.fn(), spellcheck: false }
     const root = {
       querySelectorAll: vi.fn((selector: string) => {
         expect(selector).toBe(EDITOR_SPELLCHECK_ROOT_SELECTOR)
@@ -97,6 +97,7 @@ describe('imperative editor toolbar tooltips', () => {
     const cleanup = installEditorSpellcheck(root)
 
     expect(editableRoot.setAttribute).toHaveBeenCalledWith('spellcheck', 'true')
+    expect(editableRoot.spellcheck).toBe(true)
     cleanup()
   })
 
@@ -222,7 +223,7 @@ describe('paragraph space shortcuts', () => {
     expect(nextState.selection.from).toBe(1)
   })
 
-  it('deletes the terminal preview before a run of blank paragraphs on forward Delete', () => {
+  it('keeps a terminal preview when forward Delete runs from a separated blank paragraph', () => {
     const bindings = getParagraphSpaceBindings()
     const preview = paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('![Linked](Linked--123abc)'))
     const firstEmpty = paragraphShortcutSchema.nodes.paragraph.create()
@@ -240,10 +241,9 @@ describe('paragraph space shortcuts', () => {
     })).toBe(true)
 
     expect(nextState.doc.childCount).toBe(3)
-    expect(nextState.doc.child(0).textContent).toBe('')
+    expect(nextState.doc.child(0).textContent).toBe('![Linked](Linked--123abc)')
     expect(nextState.doc.child(1).textContent).toBe('')
     expect(nextState.doc.child(2).textContent).toBe('After')
-    expect(nextState.selection.from).toBe(firstEmpty.nodeSize + 1)
   })
 
   it('deletes a terminal code block from Backspace at the start of following text', () => {

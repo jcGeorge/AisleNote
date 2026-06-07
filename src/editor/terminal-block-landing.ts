@@ -251,15 +251,9 @@ function getCollapsedSelectionTextBlockContext(state: any): (TerminalBlockContex
   }
 }
 
-function getDeletableTerminalBeforeBlankRun(doc: any, context: TerminalBlockContext): TerminalBlockContext | null {
-  let index = context.index - 1
-  while (index >= 0) {
-    const candidate = getTopLevelNodeContextByIndex(doc, index)
-    if (isDeletableTerminalBlockContext(candidate)) return candidate
-    if (!candidate || !isEmptyTextBlockNode(candidate.node)) return null
-    index -= 1
-  }
-  return null
+function getAdjacentDeletableTerminalBeforeContext(doc: any, context: TerminalBlockContext): TerminalBlockContext | null {
+  const candidate = getTopLevelNodeContextByIndex(doc, context.index - 1)
+  return isDeletableTerminalBlockContext(candidate) ? candidate : null
 }
 
 export function deleteTerminalBlockBeforeCaret(
@@ -276,7 +270,7 @@ export function deleteTerminalBlockBeforeCaret(
   const atEnd = context.parentOffset === contentSize
   if (direction === 'backward' ? !atStart && !currentIsEmpty : !currentIsEmpty || (!atStart && !atEnd)) return false
 
-  const terminal = getDeletableTerminalBeforeBlankRun(state.doc, context)
+  const terminal = getAdjacentDeletableTerminalBeforeContext(state.doc, context)
   if (!terminal) return false
   if (!dispatch) return true
 

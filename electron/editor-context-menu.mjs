@@ -28,11 +28,63 @@ function pointsAreNear(left, right) {
 }
 
 function contextMatchesRequest(context, requestPoint, ageMs) {
-  return pointsAreNear(context, requestPoint) || ageMs <= SPELLCHECK_CONTEXT_FRESH_FALLBACK_MS
+  if (pointsAreNear(context, requestPoint)) return true
+  return (
+    (requestPoint.x === null || requestPoint.y === null) &&
+    ageMs <= SPELLCHECK_CONTEXT_FRESH_FALLBACK_MS
+  )
 }
 
 function getWebContentsId(webContents) {
   return Number.isInteger(webContents?.id) ? webContents.id : null
+}
+
+function normalizeLanguageCode(value) {
+  return normalizeString(value).trim().replace(/_/g, '-')
+}
+
+export function getPreferredSpellCheckerLanguages({
+  app,
+  session,
+  platform = process.platform,
+} = {}) {
+  if (platform === 'darwin') return []
+  if (!session || typeof session.setSpellCheckerLanguages !== 'function') return []
+  const available = Array.isArray(session.availableSpellCheckerLanguages)
+    ? new Set(session.availableSpellCheckerLanguages.map(normalizeLanguageCode).filter(Boolean))
+    : null
+  const preferredLanguages =
+    typeof app?.getPreferredSystemLanguages === 'function'
+      ? app.getPreferredSystemLanguages()
+      : []
+  const fallbackLocale = typeof app?.getLocale === 'function' ? app.getLocale() : ''
+  const candidates = [
+    ...(Array.isArray(preferredLanguages) ? preferredLanguages : []),
+    fallbackLocale,
+    'en-US',
+  ]
+  const languages = []
+  const seen = new Set()
+  for (const candidate of candidates) {
+    const language = normalizeLanguageCode(candidate)
+    if (!language || seen.has(language)) continue
+    if (available && !available.has(language)) continue
+    seen.add(language)
+    languages.push(language)
+  }
+  return languages
+}
+
+export function configureEditorSpellcheckerForWindow(window, {
+  app,
+  platform = process.platform,
+} = {}) {
+  const session = window?.webContents?.session
+  const languages = getPreferredSpellCheckerLanguages({ app, session, platform })
+  if (languages.length > 0) {
+    session.setSpellCheckerLanguages(languages)
+  }
+  return languages
 }
 
 export function normalizeEditorSpellcheckContext(params, platform = process.platform, createdAt = Date.now()) {

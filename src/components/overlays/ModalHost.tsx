@@ -621,8 +621,53 @@ export function ModalHost({
     if (!isPreviewReference) {
       return (
         <div className="note-reference-heading-picker" role="group" aria-label="Link start">
-          <span className="note-reference-heading-label">link starts at</span>
-          <div className="note-reference-heading-list">
+          <div className="note-reference-heading-primary">
+            <span className="note-reference-heading-label">link starts at</span>
+            <div className="note-reference-heading-start-buttons">
+              <button
+                type="button"
+                className={`note-reference-heading-btn ${
+                  !resolved.target.heading && resolved.target.previewStart !== 'last-position' ? 'is-active' : ''
+                }`}
+                onClick={() => setNoteReferenceStart('top')}
+              >
+                at the top
+              </button>
+              <button
+                type="button"
+                className={`note-reference-heading-btn ${resolved.target.previewStart === 'last-position' ? 'is-active' : ''}`}
+                onClick={() => setNoteReferenceStart('last-position')}
+              >
+                last position
+              </button>
+            </div>
+          </div>
+          {resolved.headings.length > 0 && (
+            <div className="note-reference-heading-list">
+              <span className="note-reference-heading-separator" aria-hidden="true" />
+              {resolved.headings.map((heading) => (
+                <button
+                  key={heading.key}
+                  type="button"
+                  className={`note-reference-heading-btn ${
+                    resolved.target.heading?.headingKey === heading.key ? 'is-active' : ''
+                  }`}
+                  style={{ '--note-reference-heading-indent': `${Math.max(0, heading.level - 1) * 0.78}rem` } as CSSProperties}
+                  onClick={() => setNoteReferenceHeading(heading.key)}
+                >
+                  {heading.text || `heading ${heading.level}`}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )
+    }
+    return (
+      <div className="note-reference-heading-picker" role="group" aria-label="Preview start">
+        <div className="note-reference-heading-primary">
+          <span className="note-reference-heading-label">preview starts at</span>
+          <div className="note-reference-heading-start-buttons">
             <button
               type="button"
               className={`note-reference-heading-btn ${
@@ -639,7 +684,11 @@ export function ModalHost({
             >
               last position
             </button>
-            {resolved.headings.length > 0 && <span className="note-reference-heading-separator" aria-hidden="true" />}
+          </div>
+        </div>
+        {resolved.headings.length > 0 && (
+          <div className="note-reference-heading-list">
+            <span className="note-reference-heading-separator" aria-hidden="true" />
             {resolved.headings.map((heading) => (
               <button
                 key={heading.key}
@@ -654,44 +703,7 @@ export function ModalHost({
               </button>
             ))}
           </div>
-        </div>
-      )
-    }
-    return (
-      <div className="note-reference-heading-picker" role="group" aria-label="Preview start">
-        <span className="note-reference-heading-label">preview starts at</span>
-        <div className="note-reference-heading-list">
-          <button
-            type="button"
-            className={`note-reference-heading-btn ${
-              !resolved.target.heading && resolved.target.previewStart !== 'last-position' ? 'is-active' : ''
-            }`}
-            onClick={() => setNoteReferenceStart('top')}
-          >
-            at the top
-          </button>
-          <button
-            type="button"
-            className={`note-reference-heading-btn ${resolved.target.previewStart === 'last-position' ? 'is-active' : ''}`}
-            onClick={() => setNoteReferenceStart('last-position')}
-          >
-            last position
-          </button>
-          {resolved.headings.length > 0 && <span className="note-reference-heading-separator" aria-hidden="true" />}
-          {resolved.headings.map((heading) => (
-            <button
-              key={heading.key}
-              type="button"
-              className={`note-reference-heading-btn ${
-                resolved.target.heading?.headingKey === heading.key ? 'is-active' : ''
-              }`}
-              style={{ '--note-reference-heading-indent': `${Math.max(0, heading.level - 1) * 0.78}rem` } as CSSProperties}
-              onClick={() => setNoteReferenceHeading(heading.key)}
-            >
-              {heading.text || `heading ${heading.level}`}
-            </button>
-          ))}
-        </div>
+        )}
       </div>
     )
   }

@@ -659,8 +659,13 @@
 
 .note-reference-heading-picker {
   display: grid;
-  grid-template-columns: 7.5rem minmax(0, 1fr);
-  align-items: start;
+  gap: 0.4rem;
+}
+
+.note-reference-heading-primary {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
   gap: 0.75rem;
 }
 
@@ -669,7 +674,14 @@
   font-size: 0.78em;
   font-weight: 600;
   text-transform: lowercase;
-  padding-top: 0.28rem;
+  white-space: nowrap;
+}
+
+.note-reference-heading-start-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem;
+  min-width: 0;
 }
 
 .note-reference-heading-list {

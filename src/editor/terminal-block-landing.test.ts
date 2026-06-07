@@ -358,23 +358,35 @@ describe('terminal block delete behavior', () => {
     { label: 'table', node: terminalDeleteTable },
     { label: 'note preview', node: terminalDeletePreview },
     { label: 'media player', node: terminalDeleteMedia },
-  ])('deletes a $label before an empty blank run', ({ node }) => {
+  ])('deletes a $label from the first empty spacer after it', ({ node }) => {
     const terminal = node()
-    const firstEmpty = terminalDeleteParagraph()
-    const secondEmpty = terminalDeleteParagraph()
-    const selectionPosition = terminal.nodeSize + firstEmpty.nodeSize + 1
+    const empty = terminalDeleteParagraph()
+    const selectionPosition = terminal.nodeSize + 1
     const state = createTerminalDeleteState(
-      [terminal, firstEmpty, secondEmpty, terminalDeleteParagraph('after')],
+      [terminal, empty, terminalDeleteParagraph('after')],
       selectionPosition,
     )
     const result = applyTerminalDelete(state, 'backward')
 
     expect(result.handled).toBe(true)
-    expect(result.state.doc.childCount).toBe(3)
+    expect(result.state.doc.childCount).toBe(2)
     expect(result.state.doc.child(0).textContent).toBe('')
-    expect(result.state.doc.child(1).textContent).toBe('')
-    expect(result.state.doc.child(2).textContent).toBe('after')
-    expect(result.state.selection.from).toBe(firstEmpty.nodeSize + 1)
+    expect(result.state.doc.child(1).textContent).toBe('after')
+    expect(result.state.selection.from).toBe(1)
+  })
+
+  it('does not delete a table while blank spacer paragraphs remain between the caret and table', () => {
+    const table = terminalDeleteTable()
+    const firstEmpty = terminalDeleteParagraph()
+    const secondEmpty = terminalDeleteParagraph()
+    const state = createTerminalDeleteState(
+      [table, firstEmpty, secondEmpty, terminalDeleteParagraph('after')],
+      table.nodeSize + firstEmpty.nodeSize + 1,
+    )
+    const dispatch = vi.fn()
+
+    expect(deleteTerminalBlockBeforeCaret(state, 'backward', dispatch)).toBe(false)
+    expect(dispatch).not.toHaveBeenCalled()
   })
 
   it('does not delete image-only paragraphs through terminal block deletion', () => {

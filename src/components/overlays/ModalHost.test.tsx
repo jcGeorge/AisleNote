@@ -547,6 +547,8 @@ describe('link modal rendering', () => {
     expect(html).toContain('>aisle 2</button>')
     expect(html).toContain('aria-label="Link start"')
     expect(html).toContain('>link starts at</span>')
+    expect(html).toContain('note-reference-heading-primary')
+    expect(html).toContain('note-reference-heading-start-buttons')
     expect(html).toMatch(/note-reference-heading-btn is-active"[^>]*>at the top<\/button>[\s\S]*>last position<\/button>/)
     expect(html).toContain('>last position</button>')
     expect(html).toMatch(/>last position<\/button>[\s\S]*note-reference-heading-separator[\s\S]*>Alpha<\/button>/)
@@ -573,6 +575,8 @@ describe('link modal rendering', () => {
 
     expect(html).toContain('aria-label="Preview start"')
     expect(html).toContain('>preview starts at</span>')
+    expect(html).toContain('note-reference-heading-primary')
+    expect(html).toContain('note-reference-heading-start-buttons')
     expect(html).toMatch(/note-reference-heading-btn is-active"[^>]*>at the top<\/button>[\s\S]*>last position<\/button>/)
     expect(html).toMatch(/>last position<\/button>[\s\S]*note-reference-heading-separator[\s\S]*>Alpha<\/button>/)
     expect(html).toContain('>Beta</button>')

@@ -162,6 +162,10 @@ function hasEditorDictionaryContext(context: EditorDictionaryContext | null | un
   )
 }
 
+function hasEditorSpellingContext(context: EditorDictionaryContext | null | undefined): context is EditorDictionaryContext {
+  return Boolean(context && (context.suggestions.length > 0 || context.misspelledWord))
+}
+
 export async function getEditorDictionaryContextForMenu(
   x: number,
   y: number,
@@ -170,14 +174,16 @@ export async function getEditorDictionaryContextForMenu(
   const getSpellcheckContext = window.electronAPI?.getEditorSpellcheckContext
   if (typeof getSpellcheckContext !== 'function') return undefined
   const maxAttempts = Math.max(1, Math.ceil(EDITOR_SPELLCHECK_CONTEXT_RETRY_WINDOW_MS / EDITOR_SPELLCHECK_CONTEXT_POLL_MS))
+  let lookupOnlyContext: EditorDictionaryContext | undefined
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const { context, timedOut } = await getEditorSpellcheckContextAttempt(getSpellcheckContext, x, y)
-    if (hasEditorDictionaryContext(context)) return context
+    if (hasEditorSpellingContext(context)) return context
+    if (hasEditorDictionaryContext(context) && !lookupOnlyContext) lookupOnlyContext = context
     if (attempt < maxAttempts - 1 && !timedOut) {
       await waitForEditorSpellcheckPoll()
     }
   }
-  return undefined
+  return lookupOnlyContext
 }
 
 async function getEditorSpellcheckContextAttempt(
@@ -418,6 +424,10 @@ export function isEditorPointerChromeTarget(target: Element | null): boolean {
       ].join(', '),
     ),
   )
+}
+
+export function isNotePreviewTitleContextMenuTarget(target: Element | null): boolean {
+  return Boolean(target?.closest('.note-context-widget .context-bar-title'))
 }
 
 export type MediaPlayerPointerAction =
@@ -1070,6 +1080,7 @@ export function useEditorDomEvents({
       const contextMenuRequestId = ++editorContextMenuRequestId
       const target = getElementFromEventTarget(mouseEvent.target)
       if (!target) return
+      if (isNotePreviewTitleContextMenuTarget(target)) return
       const mediaContextMenu = getMediaRevealContextMenuDetailFromTarget(target, mouseEvent.clientX, mouseEvent.clientY)
       if (mediaContextMenu) {
         mouseEvent.preventDefault()

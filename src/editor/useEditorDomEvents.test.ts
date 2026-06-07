@@ -23,6 +23,7 @@ import {
   isActiveWysiwygEditorContentTarget,
   isEditorToolbarInteractionTarget,
   isEditorPointerChromeTarget,
+  isNotePreviewTitleContextMenuTarget,
   isUrlLinkShortcut,
   mergeEditorDictionaryContextMenu,
   moveSelectionHeadToDocumentBoundary,
@@ -206,6 +207,17 @@ describe('editor DOM events', () => {
     expect(isEditorPointerChromeTarget(fakeTarget('.link-prompt'))).toBe(true)
     expect(isEditorPointerChromeTarget(fakeTarget('.aisle-toc-panel'))).toBe(true)
     expect(isEditorPointerChromeTarget(fakeTarget(null))).toBe(false)
+  })
+
+  it('lets note preview title context menus reach the preview-specific link menu handler', () => {
+    expect(isNotePreviewTitleContextMenuTarget(fakeTarget('.note-context-widget .context-bar-title'))).toBe(true)
+    expect(isNotePreviewTitleContextMenuTarget(fakeTarget('.context-bar-actions'))).toBe(false)
+
+    const source = readUseEditorDomEventsSource()
+    expect(source).toContain('if (isNotePreviewTitleContextMenuTarget(target)) return')
+    expect(source.indexOf('if (isNotePreviewTitleContextMenuTarget(target)) return')).toBeLessThan(
+      source.indexOf('openEditorContextMenu('),
+    )
   })
 
   it('routes primary video player chrome clicks by target region', () => {
@@ -657,6 +669,45 @@ describe('editor DOM events', () => {
       canLookUpSelection: false,
     })
     expect(getEditorSpellcheckContext).toHaveBeenCalledTimes(3)
+  })
+
+  it('waits for spelling suggestions before falling back to lookup-only context', async () => {
+    vi.useFakeTimers()
+    let calls = 0
+    const getEditorSpellcheckContext = vi.fn(async () => {
+      calls += 1
+      if (calls === 1) {
+        return {
+          suggestions: [],
+          misspelledWord: '',
+          selectionText: 'recieve',
+          canLookUpSelection: true,
+        }
+      }
+      return {
+        suggestions: ['receive'],
+        misspelledWord: 'recieve',
+        selectionText: 'recieve',
+        canLookUpSelection: true,
+      }
+    })
+    vi.stubGlobal('window', {
+      ...(globalThis.window ?? {}),
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+      electronAPI: { getEditorSpellcheckContext },
+    })
+
+    const result = getEditorDictionaryContextForMenu(10, 20)
+    await vi.advanceTimersByTimeAsync(50)
+
+    await expect(result).resolves.toEqual({
+      suggestions: ['receive'],
+      misspelledWord: 'recieve',
+      selectionText: 'recieve',
+      canLookUpSelection: true,
+    })
+    expect(getEditorSpellcheckContext).toHaveBeenCalledTimes(2)
   })
 
   it('ignores empty editor dictionary context from Electron', async () => {

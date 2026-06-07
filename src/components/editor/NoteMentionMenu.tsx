@@ -31,6 +31,7 @@ type NoteMentionMenuProps = {
   searchAisleItems: NoteMentionNavigatorItem[]
   selectedSearchAisleId: string
   searchFocusStage: NoteMentionSearchFocusStage
+  keyboardFocusVisible: boolean
   focusedAisleIndex: number
   focusedActionIndex: number
   focusedConfirmIndex: number
@@ -76,6 +77,8 @@ function NoteMentionActions({
   focusedActionIndex,
   focusedConfirmIndex,
   pendingCopyAction,
+  actionFocusVisible,
+  confirmFocusVisible,
   onActionFocus,
   onActionChoose,
   onConfirmCopyAction,
@@ -85,6 +88,8 @@ function NoteMentionActions({
   focusedActionIndex: number
   focusedConfirmIndex: number
   pendingCopyAction: NoteMentionAction | null
+  actionFocusVisible: boolean
+  confirmFocusVisible: boolean
   onActionFocus: (index: number) => void
   onActionChoose: (action: NoteMentionAction) => void
   onConfirmCopyAction: () => void
@@ -97,7 +102,8 @@ function NoteMentionActions({
           <button
             key={action}
             type="button"
-            className={`note-mention-action-btn${index === focusedActionIndex ? ' is-focused' : ''}${pendingCopyAction === action ? ' is-pending-copy' : ''}`}
+            className={`note-mention-action-btn${index === focusedActionIndex && actionFocusVisible ? ' is-focused' : ''}${pendingCopyAction === action ? ' is-pending-copy' : ''}`}
+            data-focused={index === focusedActionIndex && actionFocusVisible ? 'true' : undefined}
             aria-current={index === focusedActionIndex ? 'true' : undefined}
             onMouseEnter={() => onActionFocus(index)}
             onClick={() => onActionChoose(action)}
@@ -111,7 +117,8 @@ function NoteMentionActions({
           <span className="note-mention-copy-confirm-text">this operation will replace this note</span>
           <button
             type="button"
-            className={`note-mention-action-btn is-primary${focusedConfirmIndex === 0 ? ' is-focused' : ''}`}
+            className={`note-mention-action-btn is-primary${focusedConfirmIndex === 0 && confirmFocusVisible ? ' is-focused' : ''}`}
+            data-focused={focusedConfirmIndex === 0 && confirmFocusVisible ? 'true' : undefined}
             aria-current={focusedConfirmIndex === 0 ? 'true' : undefined}
             onClick={onConfirmCopyAction}
           >
@@ -119,7 +126,8 @@ function NoteMentionActions({
           </button>
           <button
             type="button"
-            className={`note-mention-action-btn${focusedConfirmIndex === 1 ? ' is-focused' : ''}`}
+            className={`note-mention-action-btn${focusedConfirmIndex === 1 && confirmFocusVisible ? ' is-focused' : ''}`}
+            data-focused={focusedConfirmIndex === 1 && confirmFocusVisible ? 'true' : undefined}
             aria-current={focusedConfirmIndex === 1 ? 'true' : undefined}
             onClick={onCancelCopyAction}
           >
@@ -136,6 +144,10 @@ export function NoteMentionMenu(props: NoteMentionMenuProps) {
   const searchMode = trimmedQuery.length > 0
   const activeEntry = props.searchEntries[Math.max(0, Math.min(props.searchEntries.length - 1, props.activeSearchIndex))]
   const activeNavigatorTarget = getActiveNavigatorTarget(props.navigatorRows)
+  const showResultFocus = props.keyboardFocusVisible && props.searchFocusStage === 'results'
+  const showAisleFocus = props.keyboardFocusVisible && props.searchFocusStage === 'aisles'
+  const showActionFocus = props.keyboardFocusVisible && props.searchFocusStage === 'actions'
+  const showConfirmFocus = props.keyboardFocusVisible && props.searchFocusStage === 'copy-confirm'
 
   return (
     <div
@@ -166,6 +178,7 @@ export function NoteMentionMenu(props: NoteMentionMenuProps) {
                     key={`${entry.domainId}:${entry.spaceId}:${entry.tabId}:${entry.subTabId ?? 'home'}`}
                     type="button"
                     className={`note-mention-result-card${index === props.activeSearchIndex ? ' is-active' : ''}${index === props.selectedSearchIndex ? ' is-selected-search' : ''}`}
+                    data-focused={index === props.activeSearchIndex && showResultFocus ? 'true' : undefined}
                     role="menuitem"
                     aria-current={index === props.activeSearchIndex ? 'true' : undefined}
                     aria-selected={index === props.selectedSearchIndex ? 'true' : undefined}
@@ -199,7 +212,7 @@ export function NoteMentionMenu(props: NoteMentionMenuProps) {
                         key={item.id}
                         type="button"
                         className={`rail-control note-mention-nav-chip${item.id === props.selectedSearchAisleId ? ' is-selected' : ''}`}
-                        data-focused={index === props.focusedAisleIndex && props.searchFocusStage === 'aisles' ? 'true' : undefined}
+                        data-focused={index === props.focusedAisleIndex && showAisleFocus ? 'true' : undefined}
                         role="menuitem"
                         aria-current={item.id === props.selectedSearchAisleId ? 'true' : undefined}
                         onClick={(event) => {
@@ -231,6 +244,7 @@ export function NoteMentionMenu(props: NoteMentionMenuProps) {
                     key={item.id}
                     type="button"
                     className={`rail-control note-mention-nav-chip${item.id === row.selectedId ? ' is-selected' : ''}`}
+                    data-focused={props.keyboardFocusVisible && row.id === props.activeRow && item.id === row.selectedId ? 'true' : undefined}
                     role="menuitem"
                     aria-current={item.id === row.selectedId ? 'true' : undefined}
                     onMouseEnter={() => props.onActiveRowChange(row.id)}
@@ -249,6 +263,8 @@ export function NoteMentionMenu(props: NoteMentionMenuProps) {
         focusedActionIndex={props.focusedActionIndex}
         focusedConfirmIndex={props.focusedConfirmIndex}
         pendingCopyAction={props.pendingCopyAction}
+        actionFocusVisible={showActionFocus}
+        confirmFocusVisible={showConfirmFocus}
         onActionFocus={props.onFocusAction}
         onActionChoose={(action) => {
           if (searchMode && activeEntry) {

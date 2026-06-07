@@ -1476,6 +1476,7 @@ export function installEditorSpellcheck(root: HTMLElement): () => void {
   const enableSpellcheck = () => {
     root.querySelectorAll<HTMLElement>(EDITOR_SPELLCHECK_ROOT_SELECTOR).forEach((element) => {
       element.setAttribute('spellcheck', 'true')
+      element.spellcheck = true
     })
   }
 

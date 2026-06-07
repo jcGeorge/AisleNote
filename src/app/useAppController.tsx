@@ -6737,6 +6737,7 @@ export function useAppController(): AppController {
           searchAisleItems={noteMention.searchAisleItems}
           selectedSearchAisleId={noteMention.selectedSearchAisleId}
           searchFocusStage={noteMention.searchFocusStage}
+          keyboardFocusVisible={noteMention.keyboardFocusVisible}
           focusedAisleIndex={noteMention.focusedAisleIndex}
           focusedActionIndex={noteMention.focusedActionIndex}
           focusedConfirmIndex={noteMention.focusedConfirmIndex}

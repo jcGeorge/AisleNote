@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createEditorContextMenuIpc, normalizeEditorSpellcheckContext } from './editor-context-menu.mjs'
+import {
+  configureEditorSpellcheckerForWindow,
+  createEditorContextMenuIpc,
+  getPreferredSpellCheckerLanguages,
+  normalizeEditorSpellcheckContext,
+} from './editor-context-menu.mjs'
 
 function createIpcMain() {
   const handlers = new Map()
@@ -60,7 +65,7 @@ describe('editor context menu spellcheck bridge', () => {
     })
   })
 
-  it('returns stored spellcheck context for matching coordinates or a fresh native event', async () => {
+  it('returns stored spellcheck context for matching coordinates only when request coordinates are present', async () => {
     let now = 1000
     const ipcMain = createIpcMain()
     const webContents = createWebContents(7)
@@ -91,6 +96,9 @@ describe('editor context menu spellcheck bridge', () => {
     })
     await expect(
       ipcMain.handlers.get('get-editor-spellcheck-context')({ sender: webContents }, { x: 100, y: 60 }),
+    ).resolves.toBeNull()
+    await expect(
+      ipcMain.handlers.get('get-editor-spellcheck-context')({ sender: webContents }, {}),
     ).resolves.toEqual({
       suggestions: ['receive'],
       misspelledWord: 'recieve',
@@ -128,5 +136,39 @@ describe('editor context menu spellcheck bridge', () => {
       ok: true,
     })
     expect(webContents.showDefinitionForSelection).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses OS-preferred spellchecker languages on platforms that need Electron dictionaries', () => {
+    const session = {
+      availableSpellCheckerLanguages: ['en-US', 'fr', 'de-DE'],
+      setSpellCheckerLanguages: vi.fn(),
+    }
+    const app = {
+      getPreferredSystemLanguages: vi.fn(() => ['fr-CA', 'en-US', 'fr']),
+      getLocale: vi.fn(() => 'de-DE'),
+    }
+
+    expect(getPreferredSpellCheckerLanguages({ app, session, platform: 'win32' })).toEqual(['en-US', 'fr', 'de-DE'])
+    expect(configureEditorSpellcheckerForWindow({ webContents: { session } }, { app, platform: 'win32' })).toEqual([
+      'en-US',
+      'fr',
+      'de-DE',
+    ])
+    expect(session.setSpellCheckerLanguages).toHaveBeenCalledWith(['en-US', 'fr', 'de-DE'])
+  })
+
+  it('leaves macOS spellchecker language selection to the operating system', () => {
+    const session = {
+      availableSpellCheckerLanguages: ['en-US'],
+      setSpellCheckerLanguages: vi.fn(),
+    }
+    const app = {
+      getPreferredSystemLanguages: vi.fn(() => ['en-US']),
+      getLocale: vi.fn(() => 'en-US'),
+    }
+
+    expect(getPreferredSpellCheckerLanguages({ app, session, platform: 'darwin' })).toEqual([])
+    expect(configureEditorSpellcheckerForWindow({ webContents: { session } }, { app, platform: 'darwin' })).toEqual([])
+    expect(session.setSpellCheckerLanguages).not.toHaveBeenCalled()
   })
 })

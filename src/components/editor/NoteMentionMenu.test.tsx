@@ -26,6 +26,7 @@ const handlers = {
 
 const menuStateProps = {
   searchFocusStage: 'typing' as const,
+  keyboardFocusVisible: false,
   focusedAisleIndex: 0,
   focusedActionIndex: 0,
   focusedConfirmIndex: 0,
@@ -119,8 +120,38 @@ describe('NoteMentionMenu', () => {
     expect(html).toContain('note preview')
     expect(html).toContain('independent copy')
     expect(html).toContain('synced copy')
+    expect(html).not.toContain('data-focused="true"')
     expect(html).not.toContain('make independent copy')
     expect(html).not.toContain('tabIndex')
+  })
+
+  it('shows navigator chip focus only after keyboard focus is engaged', () => {
+    const baseProps = {
+      top: 10,
+      left: 12,
+      query: '',
+      activeRow: 'space' as const,
+      activeSearchIndex: 0,
+      selectedSearchIndex: null,
+      searchAisleItems: [],
+      selectedSearchAisleId: '',
+      searchEntries: [],
+      searchEntryDetails: [],
+      navigatorRows: [
+        { id: 'domain' as const, label: 'domains', selectedId: 'domain', items: [{ id: 'domain', label: 'Humble beginnings' }] },
+        { id: 'space' as const, label: 'spaces', selectedId: 'space', items: [{ id: 'space', label: 'mySpace' }] },
+      ],
+    }
+    const hiddenHtml = renderToStaticMarkup(
+      <NoteMentionMenu {...baseProps} {...menuStateProps} {...handlers} />,
+    )
+    const visibleHtml = renderToStaticMarkup(
+      <NoteMentionMenu {...baseProps} {...menuStateProps} keyboardFocusVisible {...handlers} />,
+    )
+
+    expect(hiddenHtml).not.toContain('data-focused="true"')
+    expect(visibleHtml).toMatch(/is-space-row is-active-row[\s\S]*data-focused="true"[\s\S]*>mySpace<\/button>/)
+    expect(visibleHtml).not.toMatch(/is-domain-row[\s\S]*data-focused="true"[\s\S]*>Humble beginnings<\/button>/)
   })
 
   it('renders compact one-line search results and empty state', () => {
@@ -157,6 +188,7 @@ describe('NoteMentionMenu', () => {
     expect(html).toContain('note preview')
     expect(html).toContain('independent copy')
     expect(html).toContain('synced copy')
+    expect(html).not.toContain('data-focused="true"')
     expect(html).not.toContain('make independent copy')
 
     const emptyHtml = renderToStaticMarkup(
@@ -249,6 +281,89 @@ describe('NoteMentionMenu', () => {
     expect(searchHtml).toContain('>aisle 2</button>')
   })
 
+  it('shows search result, aisle, and action focus only for the active keyboard stage', () => {
+    const resultHtml = renderToStaticMarkup(
+      <NoteMentionMenu
+        top={10}
+        left={12}
+        query="ref"
+        activeRow="space"
+        activeSearchIndex={0}
+        selectedSearchIndex={null}
+        searchAisleItems={[]}
+        selectedSearchAisleId=""
+        searchFocusStage="results"
+        keyboardFocusVisible
+        focusedAisleIndex={0}
+        focusedActionIndex={0}
+        focusedConfirmIndex={0}
+        pendingCopyAction={null}
+        navigatorRows={[]}
+        searchEntries={[searchEntry]}
+        searchEntryDetails={searchEntryDetails}
+        {...handlers}
+      />,
+    )
+
+    expect(resultHtml).toMatch(/note-mention-result-card is-active" data-focused="true"/)
+    expect(resultHtml).not.toContain('note-mention-action-btn is-focused')
+
+    const aisleHtml = renderToStaticMarkup(
+      <NoteMentionMenu
+        top={10}
+        left={12}
+        query="ref"
+        activeRow="space"
+        activeSearchIndex={0}
+        selectedSearchIndex={0}
+        searchAisleItems={[
+          { id: 'aisle-1', label: 'aisle 1', target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: 'sub', aisleIds: ['aisle-1'] } },
+          { id: 'aisle-2', label: 'aisle 2', target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: 'sub', aisleIds: ['aisle-2'] } },
+        ]}
+        selectedSearchAisleId="aisle-2"
+        searchFocusStage="aisles"
+        keyboardFocusVisible
+        focusedAisleIndex={1}
+        focusedActionIndex={0}
+        focusedConfirmIndex={0}
+        pendingCopyAction={null}
+        navigatorRows={[]}
+        searchEntries={[searchEntry]}
+        searchEntryDetails={searchEntryDetails}
+        {...handlers}
+      />,
+    )
+
+    expect(aisleHtml).toMatch(/data-focused="true"[\s\S]*>aisle 2<\/button>/)
+    expect(aisleHtml).not.toMatch(/data-focused="true"[\s\S]*>aisle 1<\/button>/)
+
+    const actionHtml = renderToStaticMarkup(
+      <NoteMentionMenu
+        top={10}
+        left={12}
+        query="ref"
+        activeRow="space"
+        activeSearchIndex={0}
+        selectedSearchIndex={0}
+        searchAisleItems={[]}
+        selectedSearchAisleId=""
+        searchFocusStage="actions"
+        keyboardFocusVisible
+        focusedAisleIndex={0}
+        focusedActionIndex={2}
+        focusedConfirmIndex={0}
+        pendingCopyAction={null}
+        navigatorRows={[]}
+        searchEntries={[searchEntry]}
+        searchEntryDetails={searchEntryDetails}
+        {...handlers}
+      />,
+    )
+
+    expect(actionHtml).toMatch(/data-focused="true"[\s\S]*>independent copy<\/button>/)
+    expect(actionHtml).not.toMatch(/data-focused="true"[\s\S]*>note link<\/button>/)
+  })
+
   it('renders copy confirmation controls inside typed search actions', () => {
     const html = renderToStaticMarkup(
       <NoteMentionMenu
@@ -261,6 +376,7 @@ describe('NoteMentionMenu', () => {
         searchAisleItems={[]}
         selectedSearchAisleId=""
         searchFocusStage="copy-confirm"
+        keyboardFocusVisible
         focusedAisleIndex={0}
         focusedActionIndex={2}
         focusedConfirmIndex={1}
@@ -276,6 +392,7 @@ describe('NoteMentionMenu', () => {
     expect(html).toContain('>proceed</button>')
     expect(html).toContain('>nevermind</button>')
     expect(html).toContain('is-pending-copy')
+    expect(html).toMatch(/data-focused="true"[\s\S]*>nevermind<\/button>/)
   })
 
   it('inserts search result links only on double click', () => {

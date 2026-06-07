@@ -7,7 +7,7 @@ import { registerFileIpc } from './ipc-files.mjs'
 import { registerStorageIpc } from './ipc-storage.mjs'
 import { registerUpdateIpc } from './ipc-updates.mjs'
 import { registerDiagnosticIpc } from './ipc-diagnostics.mjs'
-import { createEditorContextMenuIpc } from './editor-context-menu.mjs'
+import { configureEditorSpellcheckerForWindow, createEditorContextMenuIpc } from './editor-context-menu.mjs'
 import { finishCloseAfterFlush } from './quit-flow.mjs'
 import { createNoopUpdateService } from './update-service.mjs'
 
@@ -218,6 +218,7 @@ function createWindow(storageSession) {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
+      spellcheck: true,
     },
   })
   let allowImmediateClose = false
@@ -236,6 +237,7 @@ function createWindow(storageSession) {
     sendMultilineShortcutToWindow(window, direction)
   })
   editorContextMenuIpc?.attachToWindow(window)
+  configureEditorSpellcheckerForWindow(window, { app })
 
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (isExternalWebUrl(url)) {
