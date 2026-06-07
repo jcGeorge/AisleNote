@@ -40,6 +40,7 @@ npm run dev
 npm run electron:dev
 npm run start:mac
 npm run start:windows
+npm run package:win
 npm run lint
 npx tsc -b --pretty false --noEmit
 npm test
@@ -47,6 +48,19 @@ npm run build
 ```
 
 `npm run start:mac` and `npm run start:windows` both build the app and launch Electron through the cross-platform Node launcher in `scripts/start-electron.mjs`.
+
+## Windows Portable Build
+
+For MVP testing on a Windows x64 computer, build an unsigned portable executable from a fresh install:
+
+```sh
+npm ci
+npm run package:win
+```
+
+The expected output is `release/Tabs-0.0.0-x64-portable.exe`. Electron Builder also creates an unpacked app folder under `release/win-unpacked/`; smoke test both `release/win-unpacked/Tabs.exe` and the portable `.exe`.
+
+The MVP smoke test is: open the app, create the default notebook, save a note, close and reopen with the data still present, verify file/image dialogs, export a notebook, and confirm external links open in the browser. The executable is unsigned, so Windows SmartScreen warnings are expected.
 
 `npm run lint` is expected to exit successfully. Existing `react-hooks/exhaustive-deps` warnings mark known ref-heavy areas that should be retired as those controllers are split.
 

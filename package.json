@@ -20,6 +20,7 @@
     "build:electron": "npm run build && npm run electron",
     "build:electron:mac": "npm run build && npm run electron:mac",
     "build:electron:windows": "npm run build && npm run electron:windows",
+    "package:win": "npm run build && electron-builder --win portable --x64",
     "start:mac": "npm run build:electron:mac",
     "start:windows": "npm run build:electron:windows",
     "dev:electron": "npm run electron:dev",
@@ -30,6 +31,37 @@
     "cap:sync": "npm run build && npx cap sync",
     "cap:open:ios": "npx cap open ios",
     "cap:open:android": "npx cap open android"
+  },
+  "build": {
+    "productName": "Tabs",
+    "appId": "com.josephgeorge.tabs",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*.mjs",
+      "electron/preload.cjs",
+      "src/markdown/*.js",
+      "src/storage/*.js",
+      "src/settings/*.js",
+      "src/tags/*.js",
+      "package.json",
+      "!**/*.test.*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-${arch}-portable.${ext}"
+    }
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",
@@ -56,6 +88,7 @@
     "@vitejs/plugin-react": "^6.0.1",
     "concurrently": "^9.2.1",
     "electron": "^38.7.1",
+    "electron-builder": "^26.15.0",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
