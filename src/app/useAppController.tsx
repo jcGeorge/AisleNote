@@ -171,6 +171,7 @@ import { useEditorPersistence } from '../editor/useEditorPersistence'
 import { useEditorToolbarLayer } from '../editor/useEditorToolbarLayer'
 import { useEditorToolbarState } from '../editor/useEditorToolbarState'
 import { readClipboardMarkdown } from '../editor/clipboard-paste-markdown'
+import { insertVisualClipboardMarkdownIntoView, insertVisualClipboardTextIntoView } from '../editor/visual-clipboard'
 import { DEFAULT_TOOLBAR_LAYOUT_ID, resolveToolbarLayout } from '../editor/toolbar-layouts'
 import { useImageTools } from '../editor/useImageTools'
 import { useMediaTools } from '../editor/useMediaTools'
@@ -3714,7 +3715,48 @@ export function useAppController(): AppController {
         pushToast('Clipboard copy command is invalid.', 'warning')
         return
       }
+      const view = getWysiwygView(currentEditor)
+      if (insertVisualClipboardTextIntoView(view, text)) {
+        commitActiveEditorMarkdownNow(currentEditor)
+        syncToolbarFormatState()
+        return
+      }
       insertEditorTextOperation(editorOperationRuntime, text)
+    }
+
+    const pasteMarkdownHere = async (mode: 'rich' | 'plainText') => {
+      const payload = await readCopyAsPayloadFromClipboard().catch(() => null)
+      if (payload) {
+        pasteCopyAsPayload(payload)
+        return
+      }
+
+      const result = await readClipboardMarkdown({
+        mode,
+        importImageBlobAsAssetUrl,
+        importBlobAsAssetUrl,
+      })
+      if (!result.ok) {
+        if (result.reason === 'unavailable') {
+          pushToast('Clipboard paste is unavailable here.', 'warning')
+        }
+        return
+      }
+      if (result.text && isCopyAsClipboardTextMarker(result.text)) {
+        pushToast('Clipboard copy command is invalid.', 'warning')
+        return
+      }
+      if (result.source === 'plain-text') {
+        pasteText(result.markdown)
+        return
+      }
+      const view = getWysiwygView(currentEditor)
+      if (insertVisualClipboardMarkdownIntoView(view, result.markdown)) {
+        commitActiveEditorMarkdownNow(currentEditor)
+        syncToolbarFormatState()
+        return
+      }
+      pasteText(result.markdown)
     }
 
     if (destination !== 'here') {
@@ -3729,34 +3771,11 @@ export function useAppController(): AppController {
     }
 
     if (action === 'paste') {
-      void readCopyAsPayloadFromClipboard()
-        .then((payload) => {
-          if (payload && pasteCopyAsPayload(payload)) return
-          const nativeHandled = document.execCommand('paste')
-          if (nativeHandled) {
-            window.setTimeout(() => commitActiveEditorMarkdownNow(currentEditor), 0)
-            return
-          }
-          void navigator.clipboard?.readText?.()
-            .then(pasteText)
-            .catch(() => pushToast('Clipboard paste is unavailable here.', 'warning'))
-        })
-        .catch(() => {
-          const nativeHandled = document.execCommand('paste')
-          if (nativeHandled) {
-            window.setTimeout(() => commitActiveEditorMarkdownNow(currentEditor), 0)
-            return
-          }
-          void navigator.clipboard?.readText?.()
-            .then(pasteText)
-            .catch(() => pushToast('Clipboard paste is unavailable here.', 'warning'))
-        })
+      void pasteMarkdownHere('rich').catch(() => pushToast('Clipboard paste is unavailable here.', 'warning'))
       return
     }
 
-    void navigator.clipboard?.readText?.()
-      .then(pasteText)
-      .catch(() => pushToast('Clipboard paste is unavailable here.', 'warning'))
+    void pasteMarkdownHere('plainText').catch(() => pushToast('Clipboard paste is unavailable here.', 'warning'))
   }
 
   const openEditorContextLinkModal = (mode: LinkInsertMode | null) => {

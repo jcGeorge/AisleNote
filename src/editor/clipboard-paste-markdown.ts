@@ -5,10 +5,14 @@ import {
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { importMediaFilesAsMarkdown, type ImportAssetBlob } from './media-file-insertion'
 import { withDefaultInsertedImageDisplayWidth } from './image-insertion'
-import type { TransientToastEditor } from './transient-toast-editor'
+import {
+  convertClipboardHtmlToVisualMarkdown,
+  normalizeVisualClipboardText,
+  TABS_MARKDOWN_CLIPBOARD_MIME,
+} from './visual-clipboard'
 
 export type ClipboardPasteMode = 'rich' | 'plainText'
-export type ClipboardMarkdownSource = 'html' | 'plain-text' | 'image' | 'media'
+export type ClipboardMarkdownSource = 'tabs-markdown' | 'html' | 'plain-text' | 'image' | 'media'
 
 export type ClipboardMarkdownReadResult =
   | { ok: true; markdown: string; source: ClipboardMarkdownSource; text?: string }
@@ -45,20 +49,12 @@ function toResult(
     : { ok: true, markdown: normalized, source, text }
 }
 
-async function withTransientToastEditor(run: (editor: TransientToastEditor) => void): Promise<string> {
-  const { runWithTransientToastEditor } = await import('./transient-toast-editor')
-  return runWithTransientToastEditor(run)
-}
-
 export async function convertClipboardHtmlToMarkdown(html: string): Promise<string> {
-  return withTransientToastEditor((editor) => editor.setHTML(html, true))
+  return convertClipboardHtmlToVisualMarkdown(html)
 }
 
 export async function convertClipboardPlainTextToMarkdown(text: string): Promise<string> {
-  return withTransientToastEditor((editor) => {
-    editor.focus?.()
-    editor.insertText(text)
-  })
+  return normalizeVisualClipboardText(text)
 }
 
 async function getItemText(item: ClipboardItemLike, type: string): Promise<string | null> {
@@ -190,7 +186,15 @@ export async function readClipboardMarkdown({
   if (clipboard.read) {
     try {
       const items = await clipboard.read()
+      const tabsMarkdown = await getFirstItemText(items, TABS_MARKDOWN_CLIPBOARD_MIME)
+      if (tabsMarkdown && tabsMarkdown.length > 0) {
+        const normalized = normalizeMarkdownForPersistence(normalizeVisualClipboardText(tabsMarkdown))
+        return normalized.trim().length > 0
+          ? { ok: true, markdown: normalized, source: 'tabs-markdown', text: normalized }
+          : { ok: false, reason: 'empty' }
+      }
       const html = await getFirstItemText(items, HTML_MIME)
+      const plainText = await getFirstItemText(items, PLAIN_TEXT_MIME)
       if (html && html.trim().length > 0) {
         try {
           const converted = toResult(await convertHtmlToMarkdown(html), 'html')
@@ -200,7 +204,7 @@ export async function readClipboardMarkdown({
         }
       }
 
-      const textResult = await convertTextResult(await getFirstItemText(items, PLAIN_TEXT_MIME), convertPlainTextToMarkdown)
+      const textResult = await convertTextResult(plainText, convertPlainTextToMarkdown)
       if (textResult) return textResult
 
       const imageMarkdowns = await getImageMarkdowns(items, importImageBlobAsAssetUrl)

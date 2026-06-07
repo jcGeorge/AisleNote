@@ -77,6 +77,11 @@ import {
 } from './media-link-plugin'
 import { insertPastedListIntoView } from './list-paste'
 import {
+  insertClipboardDataIntoView,
+  serializeProseMirrorSelectionForClipboard,
+  writeEditorClipboardData,
+} from './visual-clipboard'
+import {
   getActiveTableContext,
   getActiveTableRange,
   isBlankTableSideSelectionTarget,
@@ -1186,34 +1191,55 @@ export function useEditorDomEvents({
       const pasteEvent = event as ClipboardEvent
       if (isInsideTerminalBlockLandingZone(getElementFromEventTarget(pasteEvent.target))) return
       activateEditorFromEventTarget(pasteEvent.target)
-      const copyAsPayload = readCopyAsPayloadFromDataTransfer(pasteEvent.clipboardData)
-      if (copyAsPayload && onPasteCopyAsPayload(copyAsPayload)) {
+      const currentEditor = editorRef.current
+      const view = getWysiwygView(currentEditor)
+      const preventPasteDefault = () => {
         pasteEvent.preventDefault()
         pasteEvent.stopPropagation()
         pasteEvent.stopImmediatePropagation?.()
+      }
+      const copyAsPayload = readCopyAsPayloadFromDataTransfer(pasteEvent.clipboardData)
+      if (copyAsPayload && onPasteCopyAsPayload(copyAsPayload)) {
+        preventPasteDefault()
         return
       }
       const rawText = pasteEvent.clipboardData?.getData('text/plain') ?? ''
       if (isCopyAsClipboardTextMarker(rawText) && onPasteInvalidCopyAsPayload()) {
-        pasteEvent.preventDefault()
-        pasteEvent.stopPropagation()
-        pasteEvent.stopImmediatePropagation?.()
+        preventPasteDefault()
         return
       }
       if (handleMediaPaste(pasteEvent)) return
       if (multiLineEditRef.current) {
         if (rawText.length > 0 && tryApplyMultiLineEditInput({ type: 'insert-text', text: rawText })) {
-          pasteEvent.preventDefault()
+          preventPasteDefault()
           return
         }
       }
       const link = getPastedUrlLink(rawText)
-      if (!link) return
-      if (!insertPastedUrlAsLink(link.label, link.url)) return
+      if (link) {
+        if (!insertPastedUrlAsLink(link.label, link.url)) return
 
-      pasteEvent.preventDefault()
-      closeLinkPrompt()
-      pasteEvent.stopPropagation()
+        preventPasteDefault()
+        closeLinkPrompt()
+        return
+      }
+      if (rawText && !isLikelyUrl(rawText.trim()) && insertPastedListIntoView(view, rawText)) {
+        preventPasteDefault()
+        if (currentEditor) commitActiveEditorMarkdownNow(currentEditor)
+        closeLinkPrompt()
+        window.setTimeout(syncToolbarFormatState, 0)
+        onEditorSelectionChange()
+        onEditorMentionQueryChange()
+        return
+      }
+      if (currentEditor && insertClipboardDataIntoView(view, pasteEvent.clipboardData)) {
+        preventPasteDefault()
+        commitActiveEditorMarkdownNow(currentEditor)
+        closeLinkPrompt()
+        window.setTimeout(syncToolbarFormatState, 0)
+        onEditorSelectionChange()
+        onEditorMentionQueryChange()
+      }
     }
 
     const handlePastedList = (event: Event) => {
@@ -1233,6 +1259,16 @@ export function useEditorDomEvents({
         clipboardEvent.preventDefault()
         return
       }
+      const view = getWysiwygView(editorRef.current)
+      const target = getElementFromEventTarget(clipboardEvent.target)
+      if (isActiveWysiwygEditorContentTarget(target, view)) {
+        const serialization = serializeProseMirrorSelectionForClipboard(view)
+        if (serialization && writeEditorClipboardData(clipboardEvent.clipboardData, serialization)) {
+          clipboardEvent.preventDefault()
+          clipboardEvent.stopPropagation()
+          return
+        }
+      }
       const selection = window.getSelection()
       const hasTextSelection = Boolean(selection && selection.toString().trim().length > 0)
       if (!activeImageRef.current || hasTextSelection) return
@@ -1243,7 +1279,22 @@ export function useEditorDomEvents({
     const handleCut = (event: Event) => {
       const clipboardEvent = event as ClipboardEvent
       activateEditorFromEventTarget(clipboardEvent.target)
-      if (!cutMultiLineSelectionToClipboard(clipboardEvent.clipboardData)) return
+      if (cutMultiLineSelectionToClipboard(clipboardEvent.clipboardData)) {
+        clipboardEvent.preventDefault()
+        clipboardEvent.stopPropagation()
+        return
+      }
+      const view = getWysiwygView(editorRef.current)
+      const target = getElementFromEventTarget(clipboardEvent.target)
+      if (!isActiveWysiwygEditorContentTarget(target, view)) return
+      const serialization = serializeProseMirrorSelectionForClipboard(view)
+      if (!serialization || !writeEditorClipboardData(clipboardEvent.clipboardData, serialization)) return
+      try {
+        view.dispatch(view.state.tr.deleteSelection().scrollIntoView())
+        if (editorRef.current) commitActiveEditorMarkdownNow(editorRef.current)
+      } catch {
+        return
+      }
       clipboardEvent.preventDefault()
       clipboardEvent.stopPropagation()
     }
