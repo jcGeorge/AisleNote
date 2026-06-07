@@ -402,7 +402,7 @@ describe('ContextMenuHost copy actions', () => {
   })
 
   it('shows contextual link actions inside the editor menu', () => {
-    const html = renderContextMenu({
+    const externalHtml = renderContextMenu({
       type: 'editor',
       x: 0,
       y: 0,
@@ -414,9 +414,29 @@ describe('ContextMenuHost copy actions', () => {
       },
     })
 
-    expect(html).toContain('open link')
-    expect(html).toContain('edit link')
-    expect(html).toContain('find &amp; replace')
+    expect(externalHtml).toContain('open link')
+    expect(externalHtml).toContain('edit link')
+    expect(externalHtml).toContain('find &amp; replace')
+
+    const internalHtml = renderContextMenu({
+      type: 'editor',
+      x: 0,
+      y: 0,
+      link: {
+        type: 'internal',
+        label: 'Linked note',
+        href: 'Linked%20note--123abc',
+        target: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
+        from: 1,
+        to: 12,
+        occurrence: 0,
+        range: null,
+      },
+    })
+
+    expect(internalHtml).toContain('open linked note')
+    expect(internalHtml).toContain('edit link')
+    expect(internalHtml).toContain('find &amp; replace')
   })
 
   it('shows restore and permanent delete actions for trash items', () => {

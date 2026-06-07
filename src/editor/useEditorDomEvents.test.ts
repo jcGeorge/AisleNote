@@ -13,7 +13,6 @@ import {
   getPastedUrlLink,
   getEditorPageMovementForEvent,
   getMultiLineDeleteInputForBeforeInputType,
-  getInternalNoteLinkWidgetHitFromTarget,
   getMediaLinkDeleteDirectionForBeforeInput,
   getMediaLinkDeleteDirectionForKeyEvent,
   getMediaPlayerPointerAction,
@@ -80,21 +79,6 @@ function fakeTarget(matchedSelector: string | null): Element {
   return {
     closest: (selector: string) => (matchedSelector && selector.includes(matchedSelector) ? {} : null),
   } as Element
-}
-
-function fakeInternalLinkTarget(): Element {
-  const attrs = new Map([
-    ['data-internal-note-link-syntax', '[[Linked--123abc]]'],
-    ['data-internal-note-link-from', '8'],
-    ['data-internal-note-link-to', '26'],
-    ['data-internal-note-link-occurrence', '0'],
-  ])
-  const anchor = {
-    getAttribute: (name: string) => attrs.get(name) ?? null,
-  }
-  return {
-    closest: (selector: string) => selector === 'a[data-internal-note-link="true"]' ? anchor : null,
-  } as unknown as Element
 }
 
 function fakeMediaTarget(
@@ -212,38 +196,6 @@ describe('editor DOM events', () => {
     expect(source).toContain('isUrlLinkShortcut(keyboardEvent, isMacPlatform)')
     expect(source).toContain('isActiveWysiwygEditorContentTarget(targetElement, view)')
     expect(source).toContain('onOpenUrlLinkShortcut()')
-  })
-
-  it('resolves internal note link hits only from the rendered link widget', () => {
-    const resolve = vi.fn(() => ({
-      token: '[[Linked--123abc]]',
-      parsed: {
-        token: '[[Linked--123abc]]',
-        embed: false,
-        target: 'Linked--123abc',
-        noteHandle: 'Linked--123abc',
-        suffixHandle: '',
-        alias: '',
-      },
-      payload: {
-        id: 'wiki-link:Linked--123abc',
-        target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
-      },
-      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
-      label: 'Linked',
-      canonicalTarget: 'Linked--123abc',
-      canonicalToken: '[[Linked--123abc]]',
-    }))
-
-    expect(getInternalNoteLinkWidgetHitFromTarget(fakeTarget(null), resolve)).toBeNull()
-    expect(getInternalNoteLinkWidgetHitFromTarget(fakeInternalLinkTarget(), resolve)).toMatchObject({
-      label: 'Linked',
-      href: '[[Linked--123abc]]',
-      from: 8,
-      to: 26,
-      occurrence: 0,
-      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
-    })
   })
 
   it('treats editor chrome as special pointer targets outside normal text selection', () => {
@@ -479,7 +431,7 @@ describe('editor DOM events', () => {
   })
 
   it('routes beforeinput forward delete through terminal utility deletion when not multiline editing', () => {
-    const preview = previewDeleteSchema.nodes.paragraph.create(null, previewDeleteSchema.text('![[Linked--123abc]]'))
+    const preview = previewDeleteSchema.nodes.paragraph.create(null, previewDeleteSchema.text('![Linked](Linked--123abc)'))
     const empty = previewDeleteSchema.nodes.paragraph.create()
     const heading = previewDeleteSchema.nodes.heading.create({ level: 2 }, previewDeleteSchema.text('After'))
     const doc = previewDeleteSchema.nodes.doc.create(null, [preview, empty, heading])
@@ -757,6 +709,13 @@ describe('editor DOM events', () => {
     expect(source).toContain('mergeEditorDictionaryContextMenu(current, menu, dictionary)')
     expect(source).toContain('if (!dictionary || requestId !== editorContextMenuRequestId) return')
     expect(source).toContain('prepareEditorContextMenuEvent(mouseEvent)')
+  })
+
+  it('opens anchors from click instead of pointerdown so native caret setup can run first', () => {
+    const source = readUseEditorDomEventsSource()
+    expect(source).toContain("if (event.type !== 'click') return false")
+    expect(source).toContain("root.addEventListener('pointerdown', handlePointerDown, true)")
+    expect(source).toContain("root.addEventListener('click', handleClick, true)")
   })
 
   it('allows Electron editor context menus to reach native spellcheck metadata', () => {

@@ -620,6 +620,11 @@ function readJsonFileIfExists(filePath, issues = null, issueOptions = {}) {
 
 function writeTextFileAtomic(rootPath, relativeFile, contents) {
   const absolutePath = path.join(rootPath, relativeFile)
+  try {
+    if (readFileSync(absolutePath, 'utf8') === contents) return
+  } catch {
+    // Missing or unreadable files are rewritten below.
+  }
   mkdirSync(path.dirname(absolutePath), { recursive: true })
   const tempPath = path.join(
     path.dirname(absolutePath),
@@ -631,6 +636,12 @@ function writeTextFileAtomic(rootPath, relativeFile, contents) {
 
 function writeBinaryFileAtomic(rootPath, relativeFile, contents) {
   const absolutePath = path.join(rootPath, relativeFile)
+  try {
+    const existing = readFileSync(absolutePath)
+    if (existing.length === contents.length && existing.equals(Buffer.from(contents))) return
+  } catch {
+    // Missing or unreadable files are rewritten below.
+  }
   mkdirSync(path.dirname(absolutePath), { recursive: true })
   const tempPath = path.join(
     path.dirname(absolutePath),
@@ -1349,6 +1360,9 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   const rootManifest = fileMap.get('manifest.json')
   writeTextFileAtomic(tempRoot, 'manifest.json', rootManifest.contents)
   const expectedFiles = new Set(fileMap.keys())
+  if (typeof options.userSettingsRoot === 'string' && path.resolve(options.userSettingsRoot) === path.resolve(tempRoot)) {
+    expectedFiles.add(USER_SETTINGS_FILE_PATH)
+  }
   pruneStorageRoot(tempRoot, expectedFiles)
   if (typeof options.userSettingsRoot === 'string') {
     writeAppSettingsForState(options.userSettingsRoot, serializedState)

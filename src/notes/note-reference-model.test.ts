@@ -94,19 +94,19 @@ describe('note reference model', () => {
     subTabId: 'sub-a',
   }
 
-  it('uses default labels and wiki syntax for local, same-space, and cross-space note links', () => {
+  it('uses default labels and markdown syntax for local, same-space, and cross-space note links', () => {
     const state = createReferenceState()
     const sameTab = getNoteReferenceLinkSpec(state, source, { ...source, subTabId: 'sub-b' })
     const sameSpace = getNoteReferenceLinkSpec(state, source, { domainId: 'domain-a', spaceId: 'space-a', tabId: 'tab-b', subTabId: null })
     const crossSpace = getNoteReferenceLinkSpec(state, source, { domainId: 'domain-b', spaceId: 'space-c', tabId: 'tab-d', subTabId: null })
 
     expect(sameTab).toMatchObject({ ok: true, label: 'Beta sub' })
-    expect(sameSpace).toMatchObject({ ok: true, label: 'Beta prime > home' })
-    expect(crossSpace).toMatchObject({ ok: true, label: 'Gamma space > Elsewhere > home' })
+    expect(sameSpace).toMatchObject({ ok: true, label: 'Beta prime' })
+    expect(crossSpace).toMatchObject({ ok: true, label: 'Elsewhere' })
     if (!sameTab.ok || !sameSpace.ok || !crossSpace.ok) throw new Error('expected valid link specs')
-    expect(sameTab.href).toMatch(/^\[\[Beta sub--[0-9a-f]{6}\]\]$/)
-    expect(sameSpace.href).toMatch(/^\[\[Beta prime--[0-9a-f]{6}\]\]$/)
-    expect(crossSpace.href).toMatch(/^\[\[Elsewhere--[0-9a-f]{6}\]\]$/)
+    expect(sameTab.syntax).toMatch(/^\[Beta sub\]\(<Beta sub--[0-9a-f]{6}>\)$/)
+    expect(sameSpace.syntax).toMatch(/^\[Beta prime\]\(<Beta prime--[0-9a-f]{6}>\)$/)
+    expect(crossSpace.syntax).toMatch(/^\[Elsewhere\]\(Elsewhere--[0-9a-f]{6}\)$/)
     expect(sameSpace.href).not.toContain('#')
     expect(sameSpace.target.startAt).toBe('top')
   })
@@ -137,7 +137,7 @@ describe('note reference model', () => {
     )
     expect(anchored.ok).toBe(true)
     if (!anchored.ok) throw new Error('expected valid anchored link')
-    expect(anchored.href).toMatch(/^\[\[Beta prime--[0-9a-f]{6}#Details--[0-9a-f]{6}\]\]$/)
+    expect(anchored.href).toMatch(/^Beta%20prime--[0-9a-f]{6}#Details--[0-9a-f]{6}$/)
 
     const lastPosition = getNoteReferenceLinkSpec(
       state,
@@ -152,7 +152,7 @@ describe('note reference model', () => {
     )
     expect(lastPosition.ok).toBe(true)
     if (!lastPosition.ok) throw new Error('expected valid last-position link')
-    expect(lastPosition.href).toMatch(/^\[\[Beta prime--[0-9a-f]{6}#last position\]\]$/)
+    expect(lastPosition.href).toMatch(/^Beta%20prime--[0-9a-f]{6}#last%20position$/)
     expect(lastPosition.target.startAt).toBe('last-position')
   })
 
@@ -183,6 +183,36 @@ describe('note reference model', () => {
       modeLocked: true,
       noteLabel: 'Linked',
       noteLabelTouched: true,
+    })
+
+    const previewDraft = buildInternalNoteLinkEditDraft(state, source, {
+      label: 'Linked preview',
+      href: 'Beta%20prime--123abc',
+      target: { domainId: 'domain-a', spaceId: 'space-a', tabId: 'tab-b', subTabId: null },
+      from: 0,
+      to: 0,
+      occurrence: 0,
+      previewEdit: {
+        label: 'Linked preview',
+        href: 'Beta prime--123abc',
+        target: { domainId: 'domain-a', spaceId: 'space-a', tabId: 'tab-b', subTabId: null },
+        previewStart: 'last-position',
+        sourceRange: { from: 4, to: 5 },
+        tokenId: 'markdown-preview:Beta prime--123abc',
+      },
+    })
+    expect(previewDraft).toMatchObject({
+      mode: 'note',
+      modeLocked: true,
+      insertAs: 'preview',
+      noteLabel: 'Linked preview',
+      noteLabelTouched: true,
+      internalEdit: null,
+      editingTokenId: 'markdown-preview:Beta prime--123abc',
+    })
+    expect(previewDraft.previewEdit).toMatchObject({
+      label: 'Linked preview',
+      sourceRange: { from: 4, to: 5 },
     })
   })
 
@@ -259,7 +289,7 @@ describe('note reference model', () => {
     })
   })
 
-  it('validates preview insertion and serializes wiki embed tokens', () => {
+  it('validates preview insertion and serializes markdown image note references', () => {
     const state = createReferenceState()
     const preview = getNoteReferencePreviewSpec(
       state,
@@ -269,7 +299,7 @@ describe('note reference model', () => {
     )
     expect(preview.ok).toBe(true)
     if (!preview.ok) throw new Error('expected valid preview')
-    expect(preview.token).toMatch(/^!\[\[Beta prime--[0-9a-f]{6}\]\]$/)
+    expect(preview.token).toMatch(/^!\[Beta prime\]\(<Beta prime--[0-9a-f]{6}>\)$/)
     expect(parsePreviewToken(preview.token, state)).toMatchObject({
       target: preview.payload.target,
     })
@@ -282,7 +312,7 @@ describe('note reference model', () => {
     )
     expect(lastPositionPreview.ok).toBe(true)
     if (!lastPositionPreview.ok) throw new Error('expected valid last-position preview')
-    expect(lastPositionPreview.token).toMatch(/^!\[\[Beta prime--[0-9a-f]{6}#last position\]\]$/)
+    expect(lastPositionPreview.token).toMatch(/^!\[Beta prime\]\(<Beta prime--[0-9a-f]{6}#last position>\)$/)
     expect(parsePreviewToken(lastPositionPreview.token, state)).toMatchObject({
       previewStart: 'last-position',
     })

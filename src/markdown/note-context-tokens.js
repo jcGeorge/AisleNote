@@ -1,10 +1,13 @@
 import { buildStoragePathSegment, createStoragePathAllocator, createStoragePathShortId, sanitizeStoragePathName } from '../storage/storage-path-segments.js'
 
 export const WIKI_NOTE_REFERENCE_RE = /!?\[\[[^\]\n|]+(?:\|[^\]\n]+)?\]\]/g
-export const NOTE_CONTEXT_REFERENCE_RE = /!\[\[[^\]\n|]+(?:\|[^\]\n]+)?\]\]/g
+export const MARKDOWN_NOTE_REFERENCE_RE = /!?\[((?:\\.|[^\]\\])*)\]\((<[^>\n]*>|[^)\n]+)\)/g
+export const NOTE_CONTEXT_REFERENCE_RE = MARKDOWN_NOTE_REFERENCE_RE
 export const NOTE_PREVIEW_REFERENCE_RE = NOTE_CONTEXT_REFERENCE_RE
 
 const WIKI_NOTE_REFERENCE_TOKEN_RE = /^(!?)\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]$/
+const MARKDOWN_NOTE_REFERENCE_TOKEN_RE = /^(!?)\[((?:\\.|[^\]\\])*)\]\((<[^>\n]*>|[^)\n]+)\)$/
+const ESCAPED_MARKDOWN_NOTE_REFERENCE_RE = /(!?)\\?\[((?:\\.|[^\]\\])*)\\?\]\\\(((?:\\[^)]|[^)\n])*)\\\)/g
 const SHORT_HASH_RE = /--([0-9a-f]{6})(?:-\d+)?$/i
 const FENCE_BOUNDARY_RE = /^\s*(`{3,}|~{3,})/
 const MARKDOWN_HEADING_RE = /^ {0,3}(#{1,6})(?:[ \t]+(.*)|[ \t]*)$/
@@ -143,6 +146,91 @@ function extractHandleShortId(handle) {
 
 function normalizeSyntheticSuffixHandle(handle) {
   return String(handle ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+function stripHandleShortId(handle) {
+  return String(handle ?? '').replace(SHORT_HASH_RE, '').trim()
+}
+
+function sanitizeMarkdownLinkLabel(value, fallback = 'linked note') {
+  return String(value ?? '')
+    .replace(/[\r\n]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || fallback
+}
+
+export function escapeMarkdownReferenceLabel(label) {
+  return sanitizeMarkdownLinkLabel(label)
+    .replace(/\\/g, '\\\\')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]')
+}
+
+export function unescapeMarkdownReferenceLabel(label) {
+  return String(label ?? '').replace(/\\([\\[\]])/g, '$1').trim()
+}
+
+export function formatMarkdownNoteReferenceDestination(target) {
+  const normalized = String(target ?? '').trim()
+  if (!normalized) return ''
+  const escaped = normalized.replace(/>/g, '\\>')
+  return /[\s()<>]/.test(normalized) ? `<${escaped}>` : normalized
+}
+
+export function parseMarkdownNoteReferenceDestination(destination) {
+  const normalized = String(destination ?? '').trim()
+  if (!normalized) return ''
+  const unwrap = (value) => value.startsWith('<') && value.endsWith('>')
+    ? value.slice(1, -1).replace(/\\>/g, '>').trim()
+    : value
+  const unwrapped = unwrap(normalized)
+  try {
+    return decodeURIComponent(unwrapped)
+  } catch {
+    return unwrapped
+  }
+}
+
+function unescapeSerializedMarkdownReferencePart(value) {
+  return String(value ?? '').replace(/\\([\\[\]()<>#\-])/g, '$1').trim()
+}
+
+export function formatEditorMarkdownNoteReferenceHref(target) {
+  const normalized = String(target ?? '').trim()
+  if (!normalized) return ''
+  try {
+    return encodeURI(normalized)
+  } catch {
+    return normalized.replace(/\s/g, '%20')
+  }
+}
+
+function splitMarkdownNoteReferenceTarget(destination) {
+  const targetSource = parseMarkdownNoteReferenceDestination(destination)
+  if (!targetSource) return null
+  const hashIndex = targetSource.indexOf('#')
+  const noteHandle = (hashIndex >= 0 ? targetSource.slice(0, hashIndex) : targetSource).trim()
+  const suffixHandle = hashIndex >= 0 ? targetSource.slice(hashIndex + 1).trim() : ''
+  if (!noteHandle) return null
+  return { target: targetSource, noteHandle, suffixHandle }
+}
+
+function getDefaultMarkdownReferenceLabel({ note, suffix, suffixHandle }) {
+  if (normalizeSyntheticSuffixHandle(suffixHandle) === PREVIEW_LAST_POSITION_SUFFIX_HANDLE) {
+    return stripHandleShortId(note?.handle) || note?.displayName || 'note'
+  }
+  if (suffix?.label) return suffix.label
+  if (suffixHandle) return stripHandleShortId(suffixHandle) || suffixHandle
+  return note?.displayName || stripHandleShortId(note?.handle) || 'note'
+}
+
+function getParsedMarkdownReferenceDefaultLabel(parsed) {
+  if (!parsed) return ''
+  if (normalizeSyntheticSuffixHandle(parsed.suffixHandle) === PREVIEW_LAST_POSITION_SUFFIX_HANDLE) {
+    return stripHandleShortId(parsed.noteHandle) || parsed.noteHandle
+  }
+  const source = parsed.suffixHandle || parsed.noteHandle
+  return stripHandleShortId(source) || source
 }
 
 function setShortIdIndex(index, shortId, entry) {
@@ -305,9 +393,28 @@ export function parseWikiReferenceToken(token) {
   }
 }
 
+export function parseMarkdownNoteReferenceToken(token) {
+  const match = String(token ?? '').trim().match(MARKDOWN_NOTE_REFERENCE_TOKEN_RE)
+  if (!match) return null
+  const targetParts = splitMarkdownNoteReferenceTarget(match[3])
+  if (!targetParts) return null
+  return {
+    token: match[0],
+    embed: match[1] === '!',
+    label: unescapeMarkdownReferenceLabel(match[2]),
+    destination: match[3],
+    ...targetParts,
+  }
+}
+
 function buildWikiReferenceId(parsed) {
   const target = `${parsed.noteHandle}${parsed.suffixHandle ? `#${parsed.suffixHandle}` : ''}`
   return `${parsed.embed ? 'wiki-preview' : 'wiki-link'}:${target}`
+}
+
+function buildMarkdownReferenceId(parsed) {
+  const target = `${parsed.noteHandle}${parsed.suffixHandle ? `#${parsed.suffixHandle}` : ''}`
+  return `${parsed.embed ? 'markdown-preview' : 'markdown-link'}:${target}`
 }
 
 export function getWikiReferenceDisplayText(token) {
@@ -365,10 +472,67 @@ export function resolveWikiReferenceToken(appState, token) {
   }
 }
 
+export function resolveMarkdownNoteReferenceToken(appState, token) {
+  const parsed = parseMarkdownNoteReferenceToken(token)
+  if (!parsed) return null
+  const index = buildWikiReferenceIndex(appState)
+  const note = resolveIndexedHandle(index.noteIndexes, parsed.noteHandle)
+  if (!note) return null
+
+  const isLastPositionReference = normalizeSyntheticSuffixHandle(parsed.suffixHandle) === PREVIEW_LAST_POSITION_SUFFIX_HANDLE
+  const suffix = parsed.suffixHandle && !isLastPositionReference ? resolveIndexedHandle(note.suffixIndexes, parsed.suffixHandle) : null
+  if (parsed.suffixHandle && !suffix && !isLastPositionReference) return null
+
+  const payload = {
+    id: buildMarkdownReferenceId(parsed),
+    target: { ...note.target },
+    ...(suffix?.aisleIds?.length ? { aisleIds: [...suffix.aisleIds] } : {}),
+    ...(suffix?.heading ? { heading: { ...suffix.heading } } : {}),
+    ...(parsed.embed && isLastPositionReference ? { previewStart: 'last-position' } : {}),
+  }
+  const navigationTarget = {
+    ...note.target,
+    ...(suffix?.type === 'aisle' && suffix?.aisleId ? { aisleId: suffix.aisleId } : {}),
+    ...(suffix?.heading ? { heading: { ...suffix.heading } } : {}),
+    ...(!parsed.embed && !suffix ? { startAt: isLastPositionReference ? 'last-position' : 'top' } : {}),
+    ...(!parsed.embed && suffix && !suffix.heading ? { startAt: 'top' } : {}),
+  }
+  const canonicalTarget = `${note.handle}${isLastPositionReference ? `#${PREVIEW_LAST_POSITION_SUFFIX_HANDLE}` : suffix ? `#${suffix.handle}` : ''}`
+  const label = parsed.label || getDefaultMarkdownReferenceLabel({ note, suffix, suffixHandle: parsed.suffixHandle })
+  return {
+    token: parsed.token,
+    parsed,
+    note,
+    suffix,
+    payload,
+    target: navigationTarget,
+    label,
+    canonicalTarget,
+    canonicalToken: buildMarkdownNoteReferenceToken({
+      embed: parsed.embed,
+      target: canonicalTarget,
+      label,
+    }),
+  }
+}
+
+export function resolveMarkdownNoteReferenceDestination(appState, destination, label = '', embed = false) {
+  const target = parseMarkdownNoteReferenceDestination(destination)
+  if (!target) return null
+  return resolveMarkdownNoteReferenceToken(
+    appState,
+    buildMarkdownNoteReferenceToken({
+      embed,
+      target,
+      label: label || 'linked note',
+    }),
+  )
+}
+
 export function parseContextToken(token, appState) {
-  const parsed = parseWikiReferenceToken(token)
+  const parsed = parseMarkdownNoteReferenceToken(token)
   if (!parsed?.embed) return null
-  return resolveWikiReferenceToken(appState, token)?.payload ?? null
+  return resolveMarkdownNoteReferenceToken(appState, token)?.payload ?? null
 }
 
 export const parsePreviewToken = parseContextToken
@@ -395,8 +559,10 @@ export function replaceContextReferences(markdown, appState, replacer) {
 export const replacePreviewReferences = replaceContextReferences
 
 export function getContextReferenceTokenLengthAt(text, offset) {
-  const match = String(text ?? '').slice(offset).match(/^!\[\[[^\]\n|]+(?:\|[^\]\n]+)?\]\]/)
-  return match && parseWikiReferenceToken(match[0])?.embed ? match[0].length : 0
+  const source = String(text ?? '').slice(offset)
+  const match = source.match(/^!\[((?:\\.|[^\]\\])*)\]\((<[^>\n]*>|[^)\n]+)\)/)
+  const parsed = match ? parseMarkdownNoteReferenceToken(match[0]) : null
+  return parsed?.embed && extractHandleShortId(parsed.noteHandle) ? match[0].length : 0
 }
 
 export const getPreviewReferenceTokenLengthAt = getContextReferenceTokenLengthAt
@@ -413,6 +579,14 @@ export function buildWikiReferenceToken({ embed = false, target, alias = '' }) {
   if (!normalizedTarget) return ''
   const normalizedAlias = embed ? '' : sanitizeWikiAlias(alias)
   return `${embed ? '!' : ''}[[${normalizedTarget}${normalizedAlias ? `|${normalizedAlias}` : ''}]]`
+}
+
+export function buildMarkdownNoteReferenceToken({ embed = false, target, label = '' }) {
+  const normalizedTarget = String(target ?? '').trim()
+  if (!normalizedTarget) return ''
+  const normalizedLabel = escapeMarkdownReferenceLabel(label || stripHandleShortId(normalizedTarget) || 'linked note')
+  const destination = formatMarkdownNoteReferenceDestination(normalizedTarget)
+  return `${embed ? '!' : ''}[${normalizedLabel}](${destination})`
 }
 
 export function getCanonicalWikiTargetForPayload(appState, payload) {
@@ -442,7 +616,17 @@ export function getCanonicalWikiTargetForPayload(appState, payload) {
 
 export function buildContextToken(appState, payload) {
   const canonical = getCanonicalWikiTargetForPayload(appState, payload)
-  return canonical ? buildWikiReferenceToken({ embed: true, target: canonical.target }) : ''
+  return canonical
+    ? buildMarkdownNoteReferenceToken({
+        embed: true,
+        target: canonical.target,
+        label: getDefaultMarkdownReferenceLabel({
+          note: canonical.note,
+          suffix: canonical.suffix,
+          suffixHandle: canonical.target.split('#')[1] ?? '',
+        }),
+      })
+    : ''
 }
 
 export const buildPreviewToken = buildContextToken
@@ -450,28 +634,64 @@ export const buildPreviewToken = buildContextToken
 export function buildInternalNoteLinkToken(appState, target, alias = '') {
   const canonical = getCanonicalWikiTargetForPayload(appState, target)
   if (!canonical) return ''
-  const normalizedAlias = sanitizeWikiAlias(alias)
-  const shouldUseAlias = normalizedAlias && normalizedAlias !== canonical.note.displayName
-  return buildWikiReferenceToken({
+  const normalizedAlias = sanitizeMarkdownLinkLabel(alias, '')
+  return buildMarkdownNoteReferenceToken({
     embed: false,
     target: canonical.target,
-    alias: shouldUseAlias ? normalizedAlias : '',
+    label: normalizedAlias || getDefaultMarkdownReferenceLabel({
+      note: canonical.note,
+      suffix: canonical.suffix,
+      suffixHandle: canonical.target.split('#')[1] ?? '',
+    }),
   })
 }
 
 export function normalizeContextReferenceTokensForMarkdown(markdown, appState) {
-  return String(markdown ?? '').replace(WIKI_NOTE_REFERENCE_RE, (token) => {
-    const resolved = resolveWikiReferenceToken(appState, token)
+  const normalizeToken = (token) => {
+    const resolved = resolveMarkdownNoteReferenceToken(appState, token)
     if (!resolved) return token
-    const alias = resolved.parsed.embed
-      ? ''
-      : resolved.parsed.alias && resolved.parsed.alias !== resolved.note.displayName
-        ? resolved.parsed.alias
-        : ''
-    return buildWikiReferenceToken({
+    const parsedDefaultLabel = getParsedMarkdownReferenceDefaultLabel(resolved.parsed)
+    const currentDefaultLabel = getDefaultMarkdownReferenceLabel({
+      note: resolved.note,
+      suffix: resolved.suffix,
+      suffixHandle: resolved.canonicalTarget.split('#')[1] ?? '',
+    })
+    const label = resolved.parsed.label && resolved.parsed.label !== parsedDefaultLabel
+      ? resolved.parsed.label
+      : currentDefaultLabel
+    return buildMarkdownNoteReferenceToken({
       embed: resolved.parsed.embed,
       target: resolved.canonicalTarget,
-      alias,
+      label,
+    })
+  }
+
+  const repairedEscapedTokens = String(markdown ?? '').replace(
+    ESCAPED_MARKDOWN_NOTE_REFERENCE_RE,
+    (source, embedMarker, label, destination) => {
+      const token = buildMarkdownNoteReferenceToken({
+        embed: embedMarker === '!',
+        target: parseMarkdownNoteReferenceDestination(unescapeSerializedMarkdownReferencePart(destination)),
+        label: unescapeMarkdownReferenceLabel(label),
+      })
+      if (!token || !resolveMarkdownNoteReferenceToken(appState, token)) return source
+      return normalizeToken(token)
+    },
+  )
+
+  return repairedEscapedTokens.replace(MARKDOWN_NOTE_REFERENCE_RE, (token) => {
+    return normalizeToken(token)
+  })
+}
+
+export function prepareMarkdownNoteReferencesForEditor(markdown, appState) {
+  return normalizeContextReferenceTokensForMarkdown(markdown, appState).replace(MARKDOWN_NOTE_REFERENCE_RE, (token) => {
+    const resolved = resolveMarkdownNoteReferenceToken(appState, token)
+    if (!resolved || resolved.parsed.embed) return token
+    return buildMarkdownNoteReferenceToken({
+      embed: false,
+      target: formatEditorMarkdownNoteReferenceHref(resolved.canonicalTarget),
+      label: resolved.label,
     })
   })
 }

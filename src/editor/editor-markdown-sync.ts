@@ -1,0 +1,60 @@
+export type EditorMarkdownSyncSnapshot = {
+  canonicalMarkdown: string
+  displayMarkdown: string
+}
+
+export type EditorMarkdownSyncOptions = {
+  normalizeForPersistence: (markdown: string) => string
+  normalizeForDisplay: (markdown: string) => string
+}
+
+export type EditorDisplayRewriteDiagnosticInput = {
+  aisleId: string
+  reason: string
+  currentCanonicalMarkdown: string
+  expectedCanonicalMarkdown: string
+  expectedDisplayMarkdown: string
+}
+
+function getStableMarkdownLength(markdown: string): number {
+  return String(markdown ?? '').length
+}
+
+export function getEditorMarkdownSyncSnapshot(
+  markdown: string,
+  { normalizeForPersistence, normalizeForDisplay }: EditorMarkdownSyncOptions,
+): EditorMarkdownSyncSnapshot {
+  const canonicalMarkdown = normalizeForPersistence(markdown)
+  return {
+    canonicalMarkdown,
+    displayMarkdown: normalizeForDisplay(canonicalMarkdown),
+  }
+}
+
+export function shouldApplyEditorDisplayRewrite({
+  currentCanonicalMarkdown,
+  expectedCanonicalMarkdown,
+}: {
+  currentCanonicalMarkdown: string
+  expectedCanonicalMarkdown: string
+}): boolean {
+  return currentCanonicalMarkdown !== expectedCanonicalMarkdown
+}
+
+export function getEditorDisplayRewriteDiagnosticDetails({
+  aisleId,
+  reason,
+  currentCanonicalMarkdown,
+  expectedCanonicalMarkdown,
+  expectedDisplayMarkdown,
+}: EditorDisplayRewriteDiagnosticInput) {
+  return {
+    aisleId,
+    reason,
+    currentCanonicalLength: getStableMarkdownLength(currentCanonicalMarkdown),
+    expectedCanonicalLength: getStableMarkdownLength(expectedCanonicalMarkdown),
+    expectedDisplayLength: getStableMarkdownLength(expectedDisplayMarkdown),
+    canonicalMismatch: currentCanonicalMarkdown !== expectedCanonicalMarkdown,
+    displayDiffersFromCanonical: expectedDisplayMarkdown !== expectedCanonicalMarkdown,
+  }
+}

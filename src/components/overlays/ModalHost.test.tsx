@@ -429,9 +429,8 @@ describe('link modal rendering', () => {
     expect(html).toContain('>url</button>')
     expect(html).toContain('>link</button>')
     expect(html).toContain('>preview</button>')
-    expect(html).toMatch(
-      /class="note-reference-option-strip note-reference-link-option-strip"[\s\S]*aria-label="Link type"[\s\S]*aria-label="Note reference type"/,
-    )
+    expect(html).toMatch(/class="note-reference-option-strip note-reference-link-option-strip"[\s\S]*aria-label="Link type"/)
+    expect(html).toContain('aria-label="Note reference type"')
     expect(html).toContain('class="note-reference-picker-divider" aria-hidden="true"')
     expect(html).toContain('note-location-picker-row')
     expect(html).not.toContain('note-location-picker-row-label')
@@ -493,9 +492,40 @@ describe('link modal rendering', () => {
     expect(html).toContain('note-location-picker-chip rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab is-selected')
     expect(html).toContain('value="Existing"')
     expect(html).not.toContain('aria-label="Link type"')
-    expect(html).not.toContain('aria-label="Note reference type"')
+    expect(html).toContain('aria-label="Note reference type"')
+    expect(html).toContain('>link</button>')
+    expect(html).toContain('>preview</button>')
     expect(html).not.toContain('>url</button>')
-    expect(html).not.toContain('>preview</button>')
+  })
+
+  it('renders link and preview choices when editing an existing note preview', () => {
+    const html = renderModal({
+      type: 'insert-note-reference',
+      mode: 'note',
+      modeLocked: true,
+      insertAs: 'preview',
+      source,
+      target: source,
+      noteLabel: 'Existing preview',
+      url: '',
+      urlLabel: '',
+      previewEdit: {
+        label: 'Existing preview',
+        href: 'Tab--123abc',
+        target: source,
+        previewStart: 'last-position',
+        sourceRange: { from: 4, to: 5 },
+        tokenId: 'markdown-preview:Tab--123abc',
+      },
+    })
+
+    expect(html).toContain('edit link')
+    expect(html).toContain('value="Existing preview"')
+    expect(html).not.toContain('aria-label="Link type"')
+    expect(html).toContain('aria-label="Note reference type"')
+    expect(html).toContain('>link</button>')
+    expect(html).toContain('>preview</button>')
+    expect(html).toContain('aria-label="Preview start"')
   })
 
   it('renders single-aisle choices and indented headings for multi-aisle note links', () => {

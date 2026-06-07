@@ -127,7 +127,7 @@ describe('note reference commands', () => {
     expect(command).toMatchObject({ ok: true })
     expect(copyAs).toMatchObject({ status: 'reference' })
     if (!command.ok || copyAs.status !== 'reference') throw new Error('expected link command results')
-    expect(command.insertText).toMatch(/^\[\[Source--[0-9a-f]{6}\]\]$/)
+    expect(command.insertText).toMatch(/^\[Source\]\(Source--[0-9a-f]{6}\)$/)
     expect(copyAs.text).toBe(command.insertText)
   })
 
@@ -163,8 +163,8 @@ describe('note reference commands', () => {
     if (link.status !== 'reference' || preview.status !== 'reference') {
       throw new Error('expected reference command results')
     }
-    expect(link.text).toMatch(/^\[\[Source--[0-9a-f]{6}#aisle 2--[0-9a-f]{6}\|aisle 2\]\]$/)
-    expect(preview.text).toMatch(/^\n\n!\[\[Source--[0-9a-f]{6}#aisle 2--[0-9a-f]{6}\]\]\n\n$/)
+    expect(link.text).toMatch(/^\[aisle 2\]\(<Source--[0-9a-f]{6}#aisle 2--[0-9a-f]{6}>\)$/)
+    expect(preview.text).toMatch(/^\n\n!\[aisle 2\]\(<Source--[0-9a-f]{6}#aisle 2--[0-9a-f]{6}>\)\n\n$/)
   })
 
   it('normalizes top, last-position, and heading targets from one command path', () => {
@@ -199,9 +199,25 @@ describe('note reference commands', () => {
     expect(lastPosition).toMatchObject({ ok: true })
     expect(anchored).toMatchObject({ ok: true })
     if (!top.ok || !lastPosition.ok || !anchored.ok) throw new Error('expected target command results')
-    expect(top.syntax).toMatch(/^\[\[Source--[0-9a-f]{6}\]\]$/)
-    expect(lastPosition.syntax).toMatch(/^\[\[Source--[0-9a-f]{6}#last position\]\]$/)
-    expect(anchored.syntax).toMatch(/^!\[\[Source--[0-9a-f]{6}#Details--[0-9a-f]{6}\]\]$/)
+    expect(top.syntax).toMatch(/^\[Source\]\(Source--[0-9a-f]{6}\)$/)
+    expect(lastPosition.syntax).toMatch(/^\[Source\]\(<Source--[0-9a-f]{6}#last position>\)$/)
+    expect(anchored.syntax).toMatch(/^!\[Details\]\(Source--[0-9a-f]{6}#Details--[0-9a-f]{6}\)$/)
+  })
+
+  it('preserves custom labels for markdown note previews', () => {
+    const state = createCommandState()
+    const command = buildNoteReferenceCommand({
+      appState: state,
+      source: targetLocation,
+      target: sourceLocation,
+      action: 'preview',
+      activeNoteBodyId: 'body-target',
+      labelOverride: 'Custom source',
+    })
+
+    expect(command).toMatchObject({ ok: true })
+    if (!command.ok) throw new Error('expected preview command result')
+    expect(command.syntax).toMatch(/^!\[Custom source\]\(Source--[0-9a-f]{6}\)$/)
   })
 
   it('blocks stale, recursive, self, duplicate, and invalid whole-note preview commands', () => {

@@ -735,6 +735,20 @@ export type InternalNoteLinkEdit = {
   range?: LinkEditRange | null
 }
 
+export type NotePreviewEdit = {
+  label: string
+  href: string
+  target: NoteLocation
+  aisleIds?: string[]
+  heading?: NoteHeadingAnchor
+  previewStart?: NotePreviewStart
+  sourceRange?: {
+    from: number
+    to: number
+  }
+  tokenId?: string
+}
+
 export type MultiLineEditState = {
   anchorBlockIndex: number
   headBlockIndex: number
@@ -775,7 +789,7 @@ export type ContextMenuState =
       dictionary?: EditorDictionaryContext
       link?:
         | { type: 'external'; label: string; href: string; range: LinkEditRange | null }
-        | (InternalNoteLinkEdit & { type: 'internal'; range?: LinkEditRange | null })
+        | (InternalNoteLinkEdit & { type: 'internal'; range?: LinkEditRange | null; previewEdit?: NotePreviewEdit | null })
     }
   | {
       x: number
@@ -790,6 +804,7 @@ export type ContextMenuState =
       from: number
       to: number
       occurrence: number
+      range?: LinkEditRange | null
     }
   | {
       x: number
@@ -935,6 +950,7 @@ export type ModalState =
       urlInitialFocus?: 'url' | 'label'
       urlEditRange?: LinkEditRange | null
       internalEdit?: InternalNoteLinkEdit | null
+      previewEdit?: NotePreviewEdit | null
       editingTokenId?: string
     }
   | {

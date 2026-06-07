@@ -256,6 +256,11 @@ import {
   writeCopyAsClipboardData,
 } from '../notes/copy-as-clipboard'
 import { buildCopyAsPasteCommand, getNoteBodyPreviewMarkdowns } from '../notes/note-reference-commands'
+import {
+  normalizeMarkdownNoteReferencesForEditor,
+  prepareMarkdownNoteReferencesForEditor,
+  type NotePreviewDeleteRequest,
+} from '../notes/note-references'
 import { useNoteMentionController } from '../notes/useNoteMentionController'
 import {
   applyIndependentCopyToScratchpad,
@@ -415,6 +420,7 @@ import type {
   NoteCopyMode,
   NoteLocation,
   NoteNavigationTarget,
+  NotePreviewEdit,
   PendingCreatedEdit,
   ResolvedNoteAisle,
   TabSortMode,
@@ -641,7 +647,7 @@ export function useAppController(): AppController {
   const editorEventRootRef = useRef<HTMLElement | null>(null)
   const closeShortcutMenuRef = useRef<(options?: { restoreEditorFocus?: boolean }) => void>(() => {})
   const runShortcutOperationFromMenuRef = useRef<(operation: NewlineOperationId) => void>(() => {})
-  const deleteNotePreviewRef = useRef<(tokenId: string) => void>(() => {})
+  const deleteNotePreviewRef = useRef<(request: NotePreviewDeleteRequest) => void>(() => {})
   const pendingCreatedEditRef = useRef<PendingCreatedEdit | null>(null)
   const editingRef = useRef<{ type: EditableEntityType; id: string } | null>(null)
   const renameDraftRef = useRef<RenameDraft | null>(null)
@@ -1503,7 +1509,13 @@ export function useAppController(): AppController {
     )
   }, [selectedTrashDomain, selectedTrashSpace, selectedTrashTab, trashDomains, trashParentTabs, trashSelection, trashSpaces])
 
-  const displayContent = activeContent
+  const normalizeEditorMarkdownForPersistence = (markdown: string) =>
+    normalizeMarkdownNoteReferencesForEditor(markdown, stateRef.current)
+
+  const normalizeEditorMarkdownForDisplay = (markdown: string) =>
+    prepareMarkdownNoteReferencesForEditor(markdown, stateRef.current)
+
+  const displayContent = normalizeEditorMarkdownForDisplay(activeContent)
 
   activeDomainIdRef.current = state.activeDomainId
   activeSpaceIdRef.current = scratchpadWorkspaceActive ? SCRATCHPAD_CONTENT_TARGET_ID : activeSpace.id
@@ -1542,7 +1554,9 @@ export function useAppController(): AppController {
   const getCurrentNoteLocation = (): NoteLocation => activeNoteLocation
 
   const getNormalizedEditorMarkdown = (editor: Editor) =>
-    measureSlowOperation('editor markdown normalization', () => getEditorMarkdownForPersistence(editor))
+    measureSlowOperation('editor markdown normalization', () =>
+      normalizeEditorMarkdownForPersistence(getEditorMarkdownForPersistence(editor)),
+    )
 
   const cursorPersistence = useNoteCursorPersistence({
     setState,
@@ -2723,6 +2737,7 @@ export function useAppController(): AppController {
   const insertLinkIntoActiveEditor = noteReferenceActions.insertLinkIntoActiveEditor
   const insertNoteReference = noteReferenceActions.insertNoteReference
   const deleteNotePreview = noteReferenceActions.deleteNotePreview
+  const openNotePreviewContextMenu = noteReferenceActions.openNotePreviewContextMenu
   const openInternalNoteLinkFromContext = noteReferenceActions.openInternalNoteLinkFromContext
   const renameInternalNoteLinkFromContext = noteReferenceActions.renameInternalNoteLinkFromContext
   const replaceCurrentNoteFromMention = ({
@@ -2878,6 +2893,8 @@ export function useAppController(): AppController {
     flushPendingContent,
     clearMultiLineEdit,
     getNormalizedEditorMarkdown,
+    normalizeEditorMarkdownForPersistence,
+    normalizeEditorMarkdownForDisplay,
     scheduleContentCommit,
     registerMountedEditorSnapshotProvider,
     commitCurrentEditorContent,
@@ -2893,7 +2910,8 @@ export function useAppController(): AppController {
     resolvePreviewToken,
     resolveInternalNoteReferenceToken,
     navigateToNoteLocation,
-    deleteNotePreview: (tokenId) => deleteNotePreviewRef.current(tokenId),
+    deleteNotePreview: (request) => deleteNotePreviewRef.current(request),
+    openNotePreviewContextMenu,
   })
   const activateAisleEditor = aisleEditors.activateAisleEditor
   const activateEditorFromEventTarget = aisleEditors.activateEditorFromEventTarget
@@ -3080,7 +3098,7 @@ export function useAppController(): AppController {
     setModal(buildExternalLinkEditDraft(stateRef.current, getCurrentNoteLocation(), href, label, range))
   }
 
-  const openInternalNoteLinkEditModal = (edit: InternalNoteLinkEdit) => {
+  const openInternalNoteLinkEditModal = (edit: InternalNoteLinkEdit & { previewEdit?: NotePreviewEdit | null }) => {
     closeEditorEphemeraRef.current()
     saveActiveCursorBeforeNavigation()
     setModal(buildInternalNoteLinkEditDraft(stateRef.current, getCurrentNoteLocation(), edit))
@@ -3864,6 +3882,7 @@ export function useAppController(): AppController {
         to: link.to,
         occurrence: link.occurrence,
         range: link.range,
+        previewEdit: link.previewEdit,
       })
       return
     }

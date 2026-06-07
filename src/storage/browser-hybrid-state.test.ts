@@ -1474,7 +1474,7 @@ describe('browser hybrid storage', () => {
 
     expect(markdownEntry?.kind).toBe('text')
     const markdownText = markdownEntry?.kind === 'text' ? markdownEntry.text : ''
-    expect(markdownText).toMatch(/!\[\[Tab--[0-9a-f]{6}\]\]/)
+    expect(markdownText).toMatch(/!\[Tab\]\(Tab--[0-9a-f]{6}\)/)
     expect(markdownText).not.toContain('{{tabs-preview')
     expect(markdownText).toContain('#tabs-image=width=88,rotate=90')
     expect(getFirstAisleBodyMarkdown(roundTripped)).toContain('#tabs-image=width=88,rotate=90')

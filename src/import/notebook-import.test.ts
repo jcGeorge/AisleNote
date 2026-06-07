@@ -3,10 +3,10 @@ import { getHeadingOutlineFromMarkdown } from '../editor/heading-outline'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from '../hotkeys/shortcuts'
 import {
-  WIKI_NOTE_REFERENCE_RE,
+  MARKDOWN_NOTE_REFERENCE_RE,
   buildInternalNoteLinkToken,
   buildPreviewToken,
-  resolveWikiReferenceToken,
+  resolveMarkdownNoteReferenceToken,
 } from '../notes/note-references'
 import { DEFAULT_UI_SETTINGS } from '../settings/defaults'
 import type { AppState, FrontmatterSettings, NoteLocation } from '../types/app'
@@ -188,7 +188,7 @@ describe('mergeImportedNotebookState', () => {
     })
   })
 
-  it('rewrites imported wiki links, previews, aisle anchors, heading anchors, and aliases to remapped targets', () => {
+  it('rewrites imported markdown note links, previews, aisle anchors, heading anchors, and labels to remapped targets', () => {
     const imported = createNotebookState()
     const heading = getHeadingOutlineFromMarkdown('aisle-target', '# Intro\n\nTarget body')[0]
     const target = noteLocation('target')
@@ -215,28 +215,28 @@ describe('mergeImportedNotebookState', () => {
     const importedSourceBody = merged.noteBodies.find((body) => body.id === importedSource?.noteBodyId)
     const importedSourceMarkdown =
       merged.noteAisleBodies?.find((body) => body.id === importedSourceBody?.aisles[0]?.aisleBodyId)?.markdown ?? ''
-    const tokens = [...importedSourceMarkdown.matchAll(WIKI_NOTE_REFERENCE_RE)].map((match) => match[0])
+    const tokens = [...importedSourceMarkdown.matchAll(MARKDOWN_NOTE_REFERENCE_RE)].map((match) => match[0])
 
-    expect(tokens).toHaveLength(5)
-    expect(tokens[0]).toContain('|Target alias')
+    expect(tokens).toHaveLength(4)
+    expect(tokens[0]).toContain('[Target alias]')
     expect(tokens[1].startsWith('!')).toBe(true)
-    expect(tokens[2]).toContain('|Aisle alias')
-    expect(tokens[3]).toContain('|Heading alias')
-    expect(tokens[4]).toBe('[[Missing--abcdef]]')
-    tokens.slice(0, 4).forEach((token) => {
-      const resolved = resolveWikiReferenceToken(merged, token)
+    expect(tokens[2]).toContain('[Aisle alias]')
+    expect(tokens[3]).toContain('[Heading alias]')
+    expect(importedSourceMarkdown).toContain('[[Missing--abcdef]]')
+    tokens.forEach((token) => {
+      const resolved = resolveMarkdownNoteReferenceToken(merged, token)
       expect(resolved?.payload.target.domainId).toBe(importedDomain.id)
       expect(resolved?.payload.target.spaceId).toBe(importedSpace.id)
       expect(resolved?.payload.target.tabId).toBe(importedSpace.data.tabs.find((tab) => tab.title === 'Target')?.id)
     })
-    expect(resolveWikiReferenceToken(merged, tokens[2])?.payload.aisleIds).toEqual([
+    expect(resolveMarkdownNoteReferenceToken(merged, tokens[2])?.payload.aisleIds).toEqual([
       merged.noteBodies.find((body) => body.id === importedSpace.data.tabs.find((tab) => tab.title === 'Target')?.noteBodyId)
         ?.aisles[0].id,
     ])
-    expect(resolveWikiReferenceToken(merged, tokens[3])?.payload.heading?.aisleId).toBe(
+    expect(resolveMarkdownNoteReferenceToken(merged, tokens[3])?.payload.heading?.aisleId).toBe(
       merged.noteBodies.find((body) => body.id === importedSpace.data.tabs.find((tab) => tab.title === 'Target')?.noteBodyId)
         ?.aisles[0].id,
     )
-    expect(summary.unresolvedReferences).toBe(1)
+    expect(summary.unresolvedReferences).toBe(0)
   })
 })

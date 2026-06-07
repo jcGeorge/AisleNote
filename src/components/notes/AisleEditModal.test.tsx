@@ -129,14 +129,14 @@ describe('AisleEditModal', () => {
   })
 
   it('renders note preview tokens as compact placeholders instead of raw storage tokens', () => {
-    const token = '![[Child note--123abc]]'
+    const token = '![Child note](<Child note--123abc>)'
     const html = renderModal([aisle('a', `${token}\n\nregular text`)])
 
     expect(html).toContain('aisle-edit-context-preview')
     expect(html).toContain('note preview')
     expect(html).toContain('Child note')
     expect(html).toContain('regular text')
-    expect(html).not.toContain('![[Child note--123abc]]')
+    expect(html).not.toContain('![Child note](&lt;Child note--123abc&gt;)')
   })
 
   it('shows linked status and de-couple only for linked aisle cards', () => {

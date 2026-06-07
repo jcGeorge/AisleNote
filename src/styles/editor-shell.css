@@ -142,6 +142,10 @@
   display: none !important;
 }
 
+.note-context-node-hidden {
+  display: none !important;
+}
+
 .note-context-widget {
   display: block;
   margin: 0.65rem 0;

@@ -15,6 +15,11 @@ import {
   type AisleActivationSource,
 } from './aisle-activation'
 import { createCodeBlockControlsPlugin } from './code-block-controls'
+import {
+  getEditorDisplayRewriteDiagnosticDetails,
+  getEditorMarkdownSyncSnapshot,
+  shouldApplyEditorDisplayRewrite,
+} from './editor-markdown-sync'
 import { headingCollapsePlugin } from './heading-collapse-plugin'
 import { getCollapsedHeadingKeysForAisle } from './heading-collapse-state'
 import { getHeadingOutlineFromDoc, getHeadingOutlineFromMarkdown, type HeadingOutlineItem } from './heading-outline'
@@ -69,7 +74,7 @@ import {
   updateRecentAisleIds,
 } from './aisle-editor-retention'
 import type { HeadingCollapseState, NoteNavigationTarget, ResolvedNoteAisle, ToastTone, ViewMode } from '../types/app'
-import type { NotePreviewReferencePayload, ResolvedWikiNoteReference } from '../notes/note-references'
+import type { NotePreviewDeleteRequest, NotePreviewReferencePayload, ResolvedMarkdownNoteReference } from '../notes/note-references'
 import { getAisleBodyId } from '../notes/aisle-body-state'
 import type { PendingCursorRestore } from './useNoteCursorPersistence'
 import {
@@ -116,6 +121,8 @@ type UseAisleEditorsOptions = {
   flushPendingContent: () => void
   clearMultiLineEdit: (collapseToHead?: boolean) => void
   getNormalizedEditorMarkdown: (editor: Editor) => string
+  normalizeEditorMarkdownForPersistence: (markdown: string) => string
+  normalizeEditorMarkdownForDisplay: (markdown: string) => string
   scheduleContentCommit: (
     markdown: string,
     spaceId: string,
@@ -136,9 +143,16 @@ type UseAisleEditorsOptions = {
   onExpandHeadingCollapse: (aisleId: string, headingKey: string) => void
   getNotePreviewData: (payload: NotePreviewReferencePayload, sourceNoteBodyId: string) => NotePreviewData
   resolvePreviewToken: (token: string) => NotePreviewReferencePayload | null
-  resolveInternalNoteReferenceToken: (token: string) => ResolvedWikiNoteReference | null
+  resolveInternalNoteReferenceToken: (token: string) => ResolvedMarkdownNoteReference | null
   navigateToNoteLocation: (location: NoteNavigationTarget) => void
-  deleteNotePreview: (tokenId: string) => void
+  deleteNotePreview: (request: NotePreviewDeleteRequest) => void
+  openNotePreviewContextMenu?: (request: {
+    x: number
+    y: number
+    payload: NotePreviewReferencePayload
+    label: string
+    sourceRange?: { from: number; to: number }
+  }) => void
 }
 
 type PendingHeadingScroll = {
@@ -181,6 +195,8 @@ export function useAisleEditors({
   flushPendingContent,
   clearMultiLineEdit,
   getNormalizedEditorMarkdown,
+  normalizeEditorMarkdownForPersistence,
+  normalizeEditorMarkdownForDisplay,
   scheduleContentCommit,
   registerMountedEditorSnapshotProvider,
   commitCurrentEditorContent,
@@ -197,6 +213,7 @@ export function useAisleEditors({
   resolveInternalNoteReferenceToken,
   navigateToNoteLocation,
   deleteNotePreview,
+  openNotePreviewContextMenu,
 }: UseAisleEditorsOptions) {
   const aisleEditorRootsRef = useRef<Map<string, HTMLElement>>(new Map())
   const aislePaneRootsRef = useRef<Map<string, HTMLElement>>(new Map())
@@ -322,21 +339,65 @@ export function useAisleEditors({
     return pending.aisleBodyId === aisleBodyId || pending.aisleId === aisle.id ? pending : null
   }
 
+  const getMarkdownSyncSnapshot = (markdown: string) =>
+    getEditorMarkdownSyncSnapshot(markdown, {
+      normalizeForPersistence: normalizeEditorMarkdownForPersistence,
+      normalizeForDisplay: normalizeEditorMarkdownForDisplay,
+    })
+
+  const applyEditorDisplayRewrite = ({
+    meta,
+    reason,
+    currentCanonicalMarkdown,
+    expectedCanonicalMarkdown,
+    expectedDisplayMarkdown,
+  }: {
+    meta: AisleEditorMeta
+    reason: string
+    currentCanonicalMarkdown: string
+    expectedCanonicalMarkdown: string
+    expectedDisplayMarkdown: string
+  }) => {
+    recordDiagnosticEvent('editor', 'display-rewrite', {
+      details: getEditorDisplayRewriteDiagnosticDetails({
+        aisleId: meta.aisleId,
+        reason,
+        currentCanonicalMarkdown,
+        expectedCanonicalMarkdown,
+        expectedDisplayMarkdown,
+      }),
+    })
+    cacheMarkdownForAisleBody(meta.aisleId, expectedCanonicalMarkdown)
+    if (activeAisleIdRef.current === meta.aisleId) {
+      lastEditorMarkdownRef.current = expectedCanonicalMarkdown
+    }
+    normalizingAisleIdsRef.current.add(meta.aisleId)
+    setEditorMarkdownForDisplay(meta.editor, expectedDisplayMarkdown)
+  }
+
   const getLatestMarkdownForAisle = (aisle: ResolvedNoteAisle) => {
     const pending = getPendingContentForAisle(aisle)
-    if (pending) return pending.markdown
-    return getCachedMarkdownForAisle(aisle.id) ?? normalizeMarkdownForPersistence(aisle.markdown)
+    return getMarkdownSyncSnapshot(pending?.markdown ?? getCachedMarkdownForAisle(aisle.id) ?? aisle.markdown)
   }
 
   const syncMountedLinkedAisleEditors = (sourceAisleId: string, markdown: string) => {
     const sourceAisleBodyId = getAisleBodyIdForAisleId(sourceAisleId)
+    const expected = getMarkdownSyncSnapshot(markdown)
     aisleEditorMetaRef.current.forEach((meta) => {
       if (meta.aisleId === sourceAisleId) return
       if (getAisleBodyIdForAisleId(meta.aisleId) !== sourceAisleBodyId) return
       const currentMarkdown = getNormalizedEditorMarkdown(meta.editor)
-      if (currentMarkdown === markdown) return
-      normalizingAisleIdsRef.current.add(meta.aisleId)
-      setEditorMarkdownForDisplay(meta.editor, markdown)
+      if (!shouldApplyEditorDisplayRewrite({
+        currentCanonicalMarkdown: currentMarkdown,
+        expectedCanonicalMarkdown: expected.canonicalMarkdown,
+      })) return
+      applyEditorDisplayRewrite({
+        meta,
+        reason: 'linked-aisle-sync',
+        currentCanonicalMarkdown: currentMarkdown,
+        expectedCanonicalMarkdown: expected.canonicalMarkdown,
+        expectedDisplayMarkdown: expected.displayMarkdown,
+      })
     })
   }
 
@@ -494,7 +555,7 @@ export function useAisleEditors({
   }
 
   const getAisleMarkdownForOutline = (aisle: ResolvedNoteAisle) => {
-    return getLatestMarkdownForAisle(aisle)
+    return getLatestMarkdownForAisle(aisle).canonicalMarkdown
   }
 
   const getHeadingOutlineForAisle = (aisle: ResolvedNoteAisle): HeadingOutlineItem[] => {
@@ -867,7 +928,7 @@ export function useAisleEditors({
       let pluginKey: unknown = null
       const editor = new Editor({
         el: root,
-        initialValue: prepareMarkdownForEditorDisplay(initialMarkdown),
+        initialValue: prepareMarkdownForEditorDisplay(initialMarkdown.displayMarkdown),
         initialEditType: 'wysiwyg',
         previewStyle: 'tab',
         hideModeSwitch: true,
@@ -892,8 +953,10 @@ export function useAisleEditors({
               getCollapsedHeadingKeys: (targetAisleId) =>
                 getCollapsedHeadingKeysForAisle(headingCollapseStateRef.current, activeNoteBodyId, targetAisleId),
               getMarkdown: (targetAisleId) =>
-                getCachedMarkdownForAisle(targetAisleId) ??
-                normalizeMarkdownForPersistence(getAisleById(targetAisleId)?.markdown ?? aisle.markdown),
+                normalizeEditorMarkdownForDisplay(
+                  getCachedMarkdownForAisle(targetAisleId) ??
+                  normalizeMarkdownForPersistence(getAisleById(targetAisleId)?.markdown ?? aisle.markdown),
+                ),
               onToggleHeading: onToggleHeadingCollapse,
               onExpandHeading: onExpandHeadingCollapse,
             }),
@@ -905,9 +968,9 @@ export function useAisleEditors({
               sourceNoteBodyId: activeNoteBodyId,
               getNotePreviewData,
               resolvePreviewToken,
-              resolveInternalNoteReferenceToken,
               navigateToNoteLocation,
               deleteNotePreview,
+              openNotePreviewContextMenu,
             }),
           (context: any) =>
             multiLineSelectionShortcutPlugin({
@@ -994,9 +1057,9 @@ export function useAisleEditors({
           pendingFocusAfterMount: pendingFocusAfterMountAisleIdRef.current === aisle.id,
         },
       })
-      restoreEditorBlankParagraphs(editor, initialMarkdown)
+      restoreEditorBlankParagraphs(editor, initialMarkdown.displayMarkdown)
       markWysiwygLoadedUndoBoundary(editor)
-      cacheMarkdownForAisleBody(aisle.id, normalizeMarkdownForPersistence(initialMarkdown))
+      cacheMarkdownForAisleBody(aisle.id, initialMarkdown.canonicalMarkdown)
 
       if (pendingFocusAfterMountAisleIdRef.current === aisle.id) {
         pendingFocusAfterMountAisleIdRef.current = null
@@ -1035,15 +1098,19 @@ export function useAisleEditors({
       const pending = getPendingContentForAisle(aisle)
       const cachedMarkdown = getCachedMarkdownForAisle(aisle.id)
       const expectedMarkdown = pending?.markdown ?? cachedMarkdown ?? aisle.markdown
+      const expected = getMarkdownSyncSnapshot(expectedMarkdown)
       const currentMarkdown = getNormalizedEditorMarkdown(meta.editor)
-      if (currentMarkdown !== expectedMarkdown) {
-        const normalizedExpectedMarkdown = normalizeMarkdownForPersistence(expectedMarkdown)
-        cacheMarkdownForAisleBody(aisle.id, normalizedExpectedMarkdown)
-        if (activeAisleIdRef.current === aisle.id) {
-          lastEditorMarkdownRef.current = normalizedExpectedMarkdown
-        }
-        normalizingAisleIdsRef.current.add(aisle.id)
-        setEditorMarkdownForDisplay(meta.editor, expectedMarkdown)
+      if (shouldApplyEditorDisplayRewrite({
+        currentCanonicalMarkdown: currentMarkdown,
+        expectedCanonicalMarkdown: expected.canonicalMarkdown,
+      })) {
+        applyEditorDisplayRewrite({
+          meta,
+          reason: 'mounted-aisle-sync',
+          currentCanonicalMarkdown: currentMarkdown,
+          expectedCanonicalMarkdown: expected.canonicalMarkdown,
+          expectedDisplayMarkdown: expected.displayMarkdown,
+        })
       }
     }
   }, [viewMode, activeNoteBodyId, activeNoteAisles])

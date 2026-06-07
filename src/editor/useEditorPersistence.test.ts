@@ -10,6 +10,8 @@ import {
   isEditorContentTargetCurrent,
   pendingContentMatchesTarget,
   resolveEditorFocusBoundaryFlushAction,
+  shouldCollectMountedEditorSnapshotsForFocusBoundary,
+  shouldPersistFocusBoundarySnapshot,
 } from './useEditorPersistence'
 
 function persistenceState(): AppState {
@@ -264,5 +266,47 @@ describe('editor persistence snapshot helpers', () => {
       trigger: 'editor-focus-boundary:pagehide',
       pendingEditorCount: 4,
     })
+  })
+
+  it('only collects mounted editor snapshots on focus boundaries when content is pending or the page is exiting', () => {
+    expect(shouldCollectMountedEditorSnapshotsForFocusBoundary('blur', 0)).toBe(false)
+    expect(shouldCollectMountedEditorSnapshotsForFocusBoundary('visibilitychange', 0)).toBe(false)
+    expect(shouldCollectMountedEditorSnapshotsForFocusBoundary('blur', 1)).toBe(true)
+    expect(shouldCollectMountedEditorSnapshotsForFocusBoundary('visibilitychange', 1)).toBe(true)
+    expect(shouldCollectMountedEditorSnapshotsForFocusBoundary('beforeunload', 0)).toBe(true)
+    expect(shouldCollectMountedEditorSnapshotsForFocusBoundary('pagehide', 0)).toBe(true)
+  })
+
+  it('skips no-op blur and visibility saves while keeping pending and exit saves conservative', () => {
+    expect(shouldPersistFocusBoundarySnapshot({
+      eventName: 'blur',
+      pendingEditorCount: 0,
+      stateChanged: false,
+    })).toBe(false)
+    expect(shouldPersistFocusBoundarySnapshot({
+      eventName: 'visibilitychange',
+      pendingEditorCount: 0,
+      stateChanged: false,
+    })).toBe(false)
+    expect(shouldPersistFocusBoundarySnapshot({
+      eventName: 'blur',
+      pendingEditorCount: 0,
+      stateChanged: true,
+    })).toBe(true)
+    expect(shouldPersistFocusBoundarySnapshot({
+      eventName: 'blur',
+      pendingEditorCount: 1,
+      stateChanged: false,
+    })).toBe(true)
+    expect(shouldPersistFocusBoundarySnapshot({
+      eventName: 'beforeunload',
+      pendingEditorCount: 0,
+      stateChanged: false,
+    })).toBe(true)
+    expect(shouldPersistFocusBoundarySnapshot({
+      eventName: 'pagehide',
+      pendingEditorCount: 0,
+      stateChanged: false,
+    })).toBe(true)
   })
 })

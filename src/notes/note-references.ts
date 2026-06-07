@@ -1,23 +1,34 @@
 import type { AppState, NoteHeadingAnchor, NoteLocation, NoteNavigationTarget, NotePreviewStart } from '../types/app'
 import {
+  MARKDOWN_NOTE_REFERENCE_RE,
   NOTE_PREVIEW_REFERENCE_RE,
   WIKI_NOTE_REFERENCE_RE,
   buildInternalNoteLinkToken as buildInternalNoteLinkTokenCore,
+  buildMarkdownNoteReferenceToken as buildMarkdownNoteReferenceTokenCore,
   buildPreviewToken as buildPreviewTokenCore,
+  escapeMarkdownReferenceLabel as escapeMarkdownReferenceLabelCore,
+  formatEditorMarkdownNoteReferenceHref as formatEditorMarkdownNoteReferenceHrefCore,
+  formatMarkdownNoteReferenceDestination as formatMarkdownNoteReferenceDestinationCore,
   getPreviewReferenceTokenLengthAt as getPreviewReferenceTokenLengthAtCore,
   getWikiReferenceDisplayText as getWikiReferenceDisplayTextCore,
   normalizePreviewReferenceTokensForMarkdown as normalizePreviewReferenceTokensForMarkdownCore,
+  prepareMarkdownNoteReferencesForEditor as prepareMarkdownNoteReferencesForEditorCore,
+  parseMarkdownNoteReferenceDestination as parseMarkdownNoteReferenceDestinationCore,
+  parseMarkdownNoteReferenceToken as parseMarkdownNoteReferenceTokenCore,
   parsePreviewToken as parsePreviewTokenCore,
   parsePreviewReferences as parsePreviewReferencesCore,
   parseWikiReferenceToken as parseWikiReferenceTokenCore,
+  resolveMarkdownNoteReferenceDestination as resolveMarkdownNoteReferenceDestinationCore,
+  resolveMarkdownNoteReferenceToken as resolveMarkdownNoteReferenceTokenCore,
   resolveWikiReferenceToken as resolveWikiReferenceTokenCore,
   replacePreviewReferences,
+  unescapeMarkdownReferenceLabel as unescapeMarkdownReferenceLabelCore,
 } from '../markdown/note-context-tokens.js'
 import { buildNoteLocationKey, getLocationInfo } from './note-locations'
 import { getAisleMarkdown } from './note-markdown'
 import { syncNoteBodyAislesInState } from './note-state'
 
-export { NOTE_PREVIEW_REFERENCE_RE, WIKI_NOTE_REFERENCE_RE }
+export { MARKDOWN_NOTE_REFERENCE_RE, NOTE_PREVIEW_REFERENCE_RE, WIKI_NOTE_REFERENCE_RE }
 
 export type NotePreviewReferencePayload = {
   id: string
@@ -25,6 +36,16 @@ export type NotePreviewReferencePayload = {
   aisleIds?: string[]
   heading?: NoteHeadingAnchor
   previewStart?: NotePreviewStart
+}
+
+export type NotePreviewSourceRange = {
+  from: number
+  to: number
+}
+
+export type NotePreviewDeleteRequest = {
+  payload: NotePreviewReferencePayload
+  sourceRange?: NotePreviewSourceRange
 }
 
 export type NoteContextReferencePayload = NotePreviewReferencePayload
@@ -43,6 +64,26 @@ export type ParsedWikiNoteReferenceToken = {
   noteHandle: string
   suffixHandle: string
   alias: string
+}
+
+export type ParsedMarkdownNoteReferenceToken = {
+  token: string
+  embed: boolean
+  label: string
+  destination: string
+  target: string
+  noteHandle: string
+  suffixHandle: string
+}
+
+export type ResolvedMarkdownNoteReference = {
+  token: string
+  parsed: ParsedMarkdownNoteReferenceToken
+  payload: NotePreviewReferencePayload
+  target: NoteNavigationTarget
+  label: string
+  canonicalTarget: string
+  canonicalToken: string
 }
 
 export type ResolvedWikiNoteReference = {
@@ -65,9 +106,10 @@ export type InternalNoteLinkHit = {
   from: number
   to: number
   occurrence: number
+  range?: { from: number; to: number; href: string } | null
 }
 
-export const INTERNAL_NOTE_LINK_MARKDOWN_RE = WIKI_NOTE_REFERENCE_RE
+export const INTERNAL_NOTE_LINK_MARKDOWN_RE = MARKDOWN_NOTE_REFERENCE_RE
 
 const MAX_PREVIEW_RENDER_DEPTH = 3
 
@@ -91,8 +133,40 @@ export function normalizePreviewReferenceTokensForMarkdown(markdown: string, app
   return normalizePreviewReferenceTokensForMarkdownCore(markdown, appState)
 }
 
+export function normalizeMarkdownNoteReferencesForEditor(markdown: string, appState: AppState): string {
+  return normalizePreviewReferenceTokensForMarkdown(markdown, appState)
+}
+
+export function prepareMarkdownNoteReferencesForEditor(markdown: string, appState: AppState): string {
+  return prepareMarkdownNoteReferencesForEditorCore(markdown, appState)
+}
+
 export function parseWikiReferenceToken(token: string): ParsedWikiNoteReferenceToken | null {
   return parseWikiReferenceTokenCore(token) as ParsedWikiNoteReferenceToken | null
+}
+
+export function parseMarkdownNoteReferenceToken(token: string): ParsedMarkdownNoteReferenceToken | null {
+  return parseMarkdownNoteReferenceTokenCore(token) as ParsedMarkdownNoteReferenceToken | null
+}
+
+export function parseMarkdownNoteReferenceDestination(destination: string): string {
+  return parseMarkdownNoteReferenceDestinationCore(destination)
+}
+
+export function formatMarkdownNoteReferenceDestination(destination: string): string {
+  return formatMarkdownNoteReferenceDestinationCore(destination)
+}
+
+export function formatEditorMarkdownNoteReferenceHref(destination: string): string {
+  return formatEditorMarkdownNoteReferenceHrefCore(destination)
+}
+
+export function escapeMarkdownReferenceLabel(label: string): string {
+  return escapeMarkdownReferenceLabelCore(label)
+}
+
+export function unescapeMarkdownReferenceLabel(label: string): string {
+  return unescapeMarkdownReferenceLabelCore(label)
 }
 
 export function getWikiReferenceDisplayText(token: string): string {
@@ -101,6 +175,31 @@ export function getWikiReferenceDisplayText(token: string): string {
 
 export function resolveWikiReferenceToken(appState: AppState, token: string): ResolvedWikiNoteReference | null {
   return resolveWikiReferenceTokenCore(appState, token) as ResolvedWikiNoteReference | null
+}
+
+export function resolveMarkdownNoteReferenceToken(appState: AppState, token: string): ResolvedMarkdownNoteReference | null {
+  return resolveMarkdownNoteReferenceTokenCore(appState, token) as ResolvedMarkdownNoteReference | null
+}
+
+export function resolveMarkdownNoteReferenceDestination(
+  appState: AppState,
+  destination: string,
+  label = '',
+  embed = false,
+): ResolvedMarkdownNoteReference | null {
+  return resolveMarkdownNoteReferenceDestinationCore(appState, destination, label, embed) as ResolvedMarkdownNoteReference | null
+}
+
+export function buildMarkdownNoteReferenceToken({
+  embed = false,
+  target,
+  label = '',
+}: {
+  embed?: boolean
+  target: string
+  label?: string
+}): string {
+  return buildMarkdownNoteReferenceTokenCore({ embed, target, label })
 }
 
 export function buildInternalNoteLinkToken(appState: AppState, target: NoteNavigationTarget, alias = ''): string {
@@ -117,6 +216,33 @@ export function removePreviewTokenById(markdown: string, appState: AppState, tok
   return replacePreviewReferences(markdown, appState, (token: string, payload: NotePreviewReferencePayload) =>
     payload.id === tokenId ? '' : token,
   )
+}
+
+export function removePreviewTokenByPayload(
+  markdown: string,
+  appState: AppState,
+  targetPayload: NotePreviewReferencePayload,
+): string {
+  const targetSignature = getPreviewReferenceSignature(appState, targetPayload)
+  return replacePreviewReferences(markdown, appState, (token: string, payload: NotePreviewReferencePayload) => {
+    const idMatches = Boolean(targetPayload.id && payload.id && payload.id === targetPayload.id)
+    const signatureMatches = getPreviewReferenceSignature(appState, payload) === targetSignature
+    return idMatches || signatureMatches ? '' : token
+  })
+}
+
+export function replacePreviewTokenByPayload(
+  markdown: string,
+  appState: AppState,
+  targetPayload: NotePreviewReferencePayload,
+  nextToken: string,
+): string {
+  const targetSignature = getPreviewReferenceSignature(appState, targetPayload)
+  return replacePreviewReferences(markdown, appState, (token: string, payload: NotePreviewReferencePayload) => {
+    const idMatches = Boolean(targetPayload.id && payload.id && payload.id === targetPayload.id)
+    const signatureMatches = getPreviewReferenceSignature(appState, payload) === targetSignature
+    return idMatches || signatureMatches ? nextToken : token
+  })
 }
 
 export function removePreviewReferencesForNoteLocationsFromMarkdown(
@@ -139,8 +265,8 @@ export function removeNoteReferencesForNoteLocationsFromMarkdown(
 ): string {
   if (deletedLocations.length === 0) return markdown
   const deletedLocationKeys = new Set(deletedLocations.map((location) => buildNoteLocationKey(location)))
-  return String(markdown ?? '').replace(WIKI_NOTE_REFERENCE_RE, (token) => {
-    const reference = resolveWikiReferenceToken(resolverState, token)
+  return String(markdown ?? '').replace(MARKDOWN_NOTE_REFERENCE_RE, (token) => {
+    const reference = resolveMarkdownNoteReferenceToken(resolverState, token)
     return reference && deletedLocationKeys.has(buildNoteLocationKey(reference.payload.target)) ? '' : token
   })
 }
@@ -211,9 +337,12 @@ export function escapeMarkdownLinkLabel(label: string): string {
 
 export function replaceInternalNoteLinkByOccurrence(markdown: string, hit: InternalNoteLinkHit, nextSyntax: string): string {
   let occurrence = 0
-  return markdown.replace(WIKI_NOTE_REFERENCE_RE, (source) => {
+  return markdown.replace(MARKDOWN_NOTE_REFERENCE_RE, (source) => {
     if (source.startsWith('!')) return source
-    const shouldReplace = occurrence === hit.occurrence && source === hit.href
+    const parsed = parseMarkdownNoteReferenceToken(source)
+    const shouldReplace =
+      occurrence === hit.occurrence &&
+      (source === hit.href || parsed?.target === hit.href || parsed?.destination === hit.href)
     occurrence += 1
     return shouldReplace ? nextSyntax : source
   })

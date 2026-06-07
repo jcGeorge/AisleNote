@@ -52,6 +52,33 @@ describe('Electron app state coordinator', () => {
     expect(coordinator.getLoadResult().revision).toBe(2)
   })
 
+  it('remembers canonical post-save state when disk normalization changes the renderer payload', () => {
+    let loadedSerializedState = '{"theme":"dawn"}'
+    const coordinator = createAppStateCoordinator({
+      userDataPath: '/tmp/tabs',
+      load: () => ({ ok: true, serializedState: loadedSerializedState, source: 'hybrid' }),
+      save: vi.fn((_profileRootPath, _serializedState) => {
+        loadedSerializedState = '{"theme":"light","normalized":true}'
+      }),
+      canonicalizeAfterSave: true,
+    })
+
+    expect(coordinator.saveRevisionedState({ serializedState: '{"theme":"light"}', baseRevision: 1 })).toEqual({
+      ok: true,
+      serializedState: '{"theme":"light"}',
+      revision: 2,
+    })
+
+    expect(coordinator.reloadProfileRoot('/tmp/tabs')).toEqual({
+      ok: true,
+      serializedState: '{"theme":"light","normalized":true}',
+      source: 'hybrid',
+      revision: 2,
+      unchanged: true,
+      externalEchoIgnored: true,
+    })
+  })
+
   it('rejects stale revision saves without persisting', () => {
     const save = vi.fn()
     const coordinator = createAppStateCoordinator({

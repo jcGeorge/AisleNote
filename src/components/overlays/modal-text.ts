@@ -142,7 +142,7 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
     return {
       title: modal.modeLocked ? 'edit link' : 'insert link',
       body: '',
-      action: modal.urlEditRange || modal.internalEdit ? 'done' : 'insert',
+      action: modal.urlEditRange || modal.internalEdit || modal.previewEdit ? 'done' : 'insert',
     }
   }
 

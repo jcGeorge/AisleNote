@@ -1,9 +1,9 @@
 import type { NoteNavigationTarget } from '../types/app'
 import { normalizeExternalWebUrl } from '../notes/external-links'
 import {
-  getWikiReferenceDisplayText,
-  WIKI_NOTE_REFERENCE_RE,
-  type ResolvedWikiNoteReference,
+  buildMarkdownNoteReferenceToken,
+  MARKDOWN_NOTE_REFERENCE_RE,
+  type ResolvedMarkdownNoteReference,
 } from '../notes/note-references'
 import { collectProseMirrorTextPositions } from './prosemirror-utils'
 
@@ -24,7 +24,7 @@ type PendingTableOfContentsLinkItem = Omit<TableOfContentsLinkItem, 'key'> & {
   order: number
 }
 
-type ResolveWikiReference = (token: string) => ResolvedWikiNoteReference | null
+type ResolveMarkdownNoteReference = (token: string) => ResolvedMarkdownNoteReference | null
 
 const MARKDOWN_LINK_RE = /!?\[([^\]\n]+)\]\(([^)\s]+)(?:\s+["'][^)]*["'])?\)/g
 const MARKDOWN_AUTOLINK_RE = /<((?:https?:\/\/)[^<>\s]+)>/g
@@ -63,19 +63,22 @@ function getLinkMarkHref(mark: any): string | null {
   return typeof href === 'string' && href.length > 0 ? href : null
 }
 
-function collectExternalDocLinkItems(aisleId: string, doc: any): PendingTableOfContentsLinkItem[] {
+function collectDocLinkItems(
+  aisleId: string,
+  doc: any,
+  resolveMarkdownNoteReference: ResolveMarkdownNoteReference,
+): PendingTableOfContentsLinkItem[] {
   const textNodes: Array<{ from: number; to: number; href: string; text: string }> = []
   doc?.descendants?.((node: any, position: number) => {
     if (!node?.isText || typeof node.text !== 'string') return true
     const href = Array.isArray(node.marks)
       ? node.marks.map(getLinkMarkHref).find((candidate: string | null): candidate is string => Boolean(candidate))
       : null
-    const normalizedHref = href ? normalizeExternalWebUrl(href) : null
-    if (!normalizedHref) return true
+    if (!href) return true
     textNodes.push({
       from: position,
       to: position + node.text.length,
-      href: normalizedHref,
+      href,
       text: node.text,
     })
     return true
@@ -95,11 +98,27 @@ function collectExternalDocLinkItems(aisleId: string, doc: any): PendingTableOfC
       last = textNodes[index]
       text += last.text
     }
+    const noteToken = buildMarkdownNoteReferenceToken({ target: first.href, label: text })
+    const noteReference = noteToken ? resolveMarkdownNoteReference(noteToken) : null
+    if (noteReference) {
+      items.push({
+        aisleId,
+        kind: 'note-link',
+        label: noteReference.label || normalizeLinkLabel(text, 'linked note'),
+        target: noteReference.target,
+        from: first.from,
+        to: last.to,
+        order: first.from,
+      })
+      continue
+    }
+    const normalizedHref = normalizeExternalWebUrl(first.href)
+    if (!normalizedHref) continue
     items.push({
       aisleId,
       kind: 'url-link',
-      label: normalizeLinkLabel(text, first.href),
-      href: first.href,
+      label: normalizeLinkLabel(text, normalizedHref),
+      href: normalizedHref,
       from: first.from,
       to: last.to,
       order: first.from,
@@ -108,16 +127,16 @@ function collectExternalDocLinkItems(aisleId: string, doc: any): PendingTableOfC
   return items
 }
 
-function collectWikiReferenceItemsFromText(
+function collectMarkdownNoteReferenceItemsFromText(
   aisleId: string,
   text: string,
-  resolveWikiReference: ResolveWikiReference,
+  resolveMarkdownNoteReference: ResolveMarkdownNoteReference,
   getPosition: (index: number) => number | undefined,
 ): PendingTableOfContentsLinkItem[] {
   const items: PendingTableOfContentsLinkItem[] = []
-  for (const match of text.matchAll(WIKI_NOTE_REFERENCE_RE)) {
+  for (const match of text.matchAll(MARKDOWN_NOTE_REFERENCE_RE)) {
     const token = match[0]
-    const reference = resolveWikiReference(token)
+    const reference = resolveMarkdownNoteReference(token)
     if (!reference) continue
     const startIndex = match.index ?? 0
     const endIndex = startIndex + token.length - 1
@@ -127,10 +146,7 @@ function collectWikiReferenceItemsFromText(
     items.push({
       aisleId,
       kind,
-      label:
-        kind === 'note-preview'
-          ? getWikiReferenceDisplayText(token) || reference.label || 'note preview'
-          : reference.label || getWikiReferenceDisplayText(token) || 'linked note',
+      label: reference.label || (kind === 'note-preview' ? 'note preview' : 'linked note'),
       target: reference.target,
       ...(typeof from === 'number' && from >= 0 ? { from } : {}),
       ...(typeof from === 'number' && typeof last === 'number' && from >= 0 && last >= from ? { to: last + 1 } : {}),
@@ -143,12 +159,12 @@ function collectWikiReferenceItemsFromText(
 export function getTableOfContentsLinksFromDoc(
   aisleId: string,
   doc: any,
-  resolveWikiReference: ResolveWikiReference,
+  resolveMarkdownNoteReference: ResolveMarkdownNoteReference,
 ): TableOfContentsLinkItem[] {
   const docText = collectProseMirrorTextPositions(doc)
   const items = [
-    ...collectWikiReferenceItemsFromText(aisleId, docText.text, resolveWikiReference, (index) => docText.positions[index]),
-    ...collectExternalDocLinkItems(aisleId, doc),
+    ...collectMarkdownNoteReferenceItemsFromText(aisleId, docText.text, resolveMarkdownNoteReference, (index) => docText.positions[index]),
+    ...collectDocLinkItems(aisleId, doc, resolveMarkdownNoteReference),
   ]
   return finalizeLinkItems(aisleId, items)
 }
@@ -190,12 +206,12 @@ function forEachMarkdownSegmentOutsideFences(markdown: string, callback: (segmen
 export function getTableOfContentsLinksFromMarkdown(
   aisleId: string,
   markdown: string,
-  resolveWikiReference: ResolveWikiReference,
+  resolveMarkdownNoteReference: ResolveMarkdownNoteReference,
 ): TableOfContentsLinkItem[] {
   const items: PendingTableOfContentsLinkItem[] = []
   forEachMarkdownSegmentOutsideFences(markdown, (segment, segmentStart) => {
     items.push(
-      ...collectWikiReferenceItemsFromText(aisleId, segment, resolveWikiReference, (index) => segmentStart + index),
+      ...collectMarkdownNoteReferenceItemsFromText(aisleId, segment, resolveMarkdownNoteReference, (index) => segmentStart + index),
     )
 
     for (const match of segment.matchAll(MARKDOWN_LINK_RE)) {

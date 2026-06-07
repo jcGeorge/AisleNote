@@ -2,7 +2,7 @@ import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { syncNoteAisleBodyMarkdownInState } from './aisle-body-state'
 import { getAisleBodyId, getAisleMarkdown } from './note-markdown'
 import { getLocationInfo, getNoteLocationBreadcrumbLabel, listSearchableNoteLocations } from './note-locations'
-import { getPreviewReferenceTokenLengthAt, getWikiReferenceDisplayText, parseWikiReferenceToken } from './note-references'
+import { getPreviewReferenceTokenLengthAt } from './note-references'
 import { SCRATCHPAD_CONTENT_TARGET_ID, getScratchpadNoteBody, normalizeScratchpadState } from '../state/scratchpad'
 import type { AppState, FindReplaceScope, NoteLocation } from '../types/app'
 export type { FindReplaceScope } from '../types/app'
@@ -112,22 +112,6 @@ function appendVisibleText(index: VisibleMarkdownIndex, text: string, startPosit
   }
 }
 
-function appendWikiLinkVisibleText(index: VisibleMarkdownIndex, token: string, lineStart: number, tokenOffset: number) {
-  const parsed = parseWikiReferenceToken(token)
-  if (!parsed || parsed.embed) return
-  if (parsed.alias) {
-    const aliasStart = token.indexOf('|') + 1
-    appendVisibleText(index, parsed.alias, lineStart + tokenOffset + aliasStart)
-    return
-  }
-  const displayText = getWikiReferenceDisplayText(token)
-  const noteHandleStart = token.indexOf('[[') + 2
-  const sourceTitle = parsed.noteHandle.replace(/--[0-9a-f]{6}(?:-\d+)?$/i, '').trim()
-  const sourceTitleStart = sourceTitle ? parsed.noteHandle.indexOf(sourceTitle) : 0
-  const displayStart = Math.max(0, noteHandleStart + sourceTitleStart)
-  appendVisibleText(index, displayText, lineStart + tokenOffset + displayStart)
-}
-
 function appendHiddenContextTokenBoundary(index: VisibleMarkdownIndex) {
   appendVisibleChar(index, ' ', -1)
 }
@@ -162,17 +146,13 @@ function appendInlineVisibleMarkdown(index: VisibleMarkdownIndex, line: string, 
       continue
     }
 
-    const wikiReference = rest.match(/^!?\[\[[^\]\n|]+(?:\|[^\]\n]+)?\]\]/)
-    if (wikiReference) {
-      const parsed = parseWikiReferenceToken(wikiReference[0])
-      if (parsed?.embed) appendHiddenContextTokenBoundary(index)
-      else appendWikiLinkVisibleText(index, wikiReference[0], lineStart, offset)
-      offset += wikiReference[0].length
-      continue
-    }
-
     const imageOrLink = rest.match(/^(!?)\[([^\]]*)\]\(([^)]*)\)/)
     if (imageOrLink) {
+      if (imageOrLink[1] === '!' && contextTokenLength > 0) {
+        appendHiddenContextTokenBoundary(index)
+        offset += imageOrLink[0].length
+        continue
+      }
       const labelStart = offset + imageOrLink[1].length + 1
       appendVisibleText(index, imageOrLink[2], lineStart + labelStart)
       offset += imageOrLink[0].length

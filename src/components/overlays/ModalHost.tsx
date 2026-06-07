@@ -14,7 +14,8 @@ import {
   isFrontmatterComputedValueCompatibleWithFieldType,
 } from '../../frontmatter/frontmatter'
 import { buildFrontmatterModalDraftForAisle, buildFrontmatterRowsForAisle } from '../../frontmatter/frontmatter-state'
-import { getDefaultNoteLinkLabel, listNoteLocationsForBody } from '../../notes/note-locations'
+import { listNoteLocationsForBody } from '../../notes/note-locations'
+import { getDefaultMarkdownNoteReferenceLabel } from '../../notes/note-reference-model'
 import { getAisleBodyId } from '../../notes/note-markdown'
 import { listLinkedAisleSlotsForAisleBody } from '../../notes/aisle-links'
 import { normalizeNoteReferenceTarget, resolveNoteReferenceTarget } from '../../notes/note-reference-targets'
@@ -374,7 +375,7 @@ export function ModalHost({
       noteLabel:
         modal.internalEdit || modal.noteLabelTouched || modal.insertAs !== 'link'
           ? modal.noteLabel
-          : getDefaultNoteLinkLabel(state, modal.source, normalizedTarget),
+          : getDefaultMarkdownNoteReferenceLabel(state, normalizedTarget),
     })
   }
 
@@ -926,44 +927,24 @@ export function ModalHost({
         )}
         {modal.type === 'insert-note-reference' && (
           <div className="note-reference-modal">
-            {(!modal.modeLocked || (modal.mode === 'note' && !modal.internalEdit && !modal.editingTokenId)) && (
+            {!modal.modeLocked && (
               <div className="note-reference-option-strip note-reference-link-option-strip">
-                {!modal.modeLocked && (
-                  <div className="note-reference-mode" role="group" aria-label="Link type">
-                    <button
-                      type="button"
-                      className={`note-reference-mode-btn ${modal.mode === 'note' ? 'is-active' : ''}`}
-                      onClick={() => setLinkModalMode('note')}
-                    >
-                      note
-                    </button>
-                    <button
-                      type="button"
-                      className={`note-reference-mode-btn ${modal.mode === 'url' ? 'is-active' : ''}`}
-                      onClick={() => setLinkModalMode('url')}
-                    >
-                      url
-                    </button>
-                  </div>
-                )}
-                {modal.mode === 'note' && !modal.internalEdit && !modal.editingTokenId && (
-                  <div className="note-reference-mode" role="group" aria-label="Note reference type">
-                    <button
-                      type="button"
-                      className={`note-reference-mode-btn ${modal.insertAs === 'link' ? 'is-active' : ''}`}
-                      onClick={() => setNoteReferenceInsertKind('link')}
-                    >
-                      link
-                    </button>
-                    <button
-                      type="button"
-                      className={`note-reference-mode-btn ${modal.insertAs === 'preview' ? 'is-active' : ''}`}
-                      onClick={() => setNoteReferenceInsertKind('preview')}
-                    >
-                      preview
-                    </button>
-                  </div>
-                )}
+                <div className="note-reference-mode" role="group" aria-label="Link type">
+                  <button
+                    type="button"
+                    className={`note-reference-mode-btn ${modal.mode === 'note' ? 'is-active' : ''}`}
+                    onClick={() => setLinkModalMode('note')}
+                  >
+                    note
+                  </button>
+                  <button
+                    type="button"
+                    className={`note-reference-mode-btn ${modal.mode === 'url' ? 'is-active' : ''}`}
+                    onClick={() => setLinkModalMode('url')}
+                  >
+                    url
+                  </button>
+                </div>
               </div>
             )}
             {modal.mode === 'note' && (
@@ -979,24 +960,38 @@ export function ModalHost({
                   aisleSelectionMode="single"
                   onChange={updateLinkModalTarget}
                 />
+                <label className="settings-modal-field">
+                  <span>label</span>
+                  <input
+                    type="text"
+                    className="settings-text-input"
+                    value={modal.noteLabel}
+                    onChange={(event) =>
+                      onModalChange({
+                        ...modal,
+                        noteLabel: event.target.value,
+                        noteLabelTouched: true,
+                      })
+                    }
+                  />
+                </label>
+                <div className="note-reference-mode" role="group" aria-label="Note reference type">
+                  <button
+                    type="button"
+                    className={`note-reference-mode-btn ${modal.insertAs === 'link' ? 'is-active' : ''}`}
+                    onClick={() => setNoteReferenceInsertKind('link')}
+                  >
+                    link
+                  </button>
+                  <button
+                    type="button"
+                    className={`note-reference-mode-btn ${modal.insertAs === 'preview' ? 'is-active' : ''}`}
+                    onClick={() => setNoteReferenceInsertKind('preview')}
+                  >
+                    preview
+                  </button>
+                </div>
                 {renderNoteReferenceHeadings()}
-                {modal.insertAs === 'link' && (
-                  <label className="settings-modal-field">
-                    <span>label</span>
-                    <input
-                      type="text"
-                      className="settings-text-input"
-                      value={modal.noteLabel}
-                      onChange={(event) =>
-                        onModalChange({
-                          ...modal,
-                          noteLabel: event.target.value,
-                          noteLabelTouched: true,
-                        })
-                      }
-                    />
-                  </label>
-                )}
               </>
             )}
             {modal.mode === 'url' && (

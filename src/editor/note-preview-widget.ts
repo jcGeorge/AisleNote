@@ -11,7 +11,7 @@ import {
 } from './editor-setup'
 import { createMediaLinkPlugin } from './media-link-plugin'
 import { NOTE_PREVIEW_EDITOR_HOST_CLASS } from './note-preview-dom'
-import { collectProseMirrorTextPositions, getWysiwygView, restoreEditorCursorSelection } from './prosemirror-utils'
+import { getWysiwygView, restoreEditorCursorSelection } from './prosemirror-utils'
 import {
   prepareMarkdownForEditorDisplay,
   restoreEditorBlankParagraphs,
@@ -19,11 +19,11 @@ import {
 } from './editor-markdown-display'
 import { getHeadingOutlineFromDoc } from './heading-outline'
 import {
-  getMarkdownLinkLabel,
-  INTERNAL_NOTE_LINK_MARKDOWN_RE,
+  buildMarkdownNoteReferenceToken,
   NOTE_PREVIEW_REFERENCE_RE,
+  type NotePreviewDeleteRequest,
   type NotePreviewReferencePayload,
-  type ResolvedWikiNoteReference,
+  type NotePreviewSourceRange,
 } from '../notes/note-references'
 import { MEDIA_PLAYER_SELECTOR } from '../media/media-utils'
 import type { NotePreviewData } from '../notes/note-preview-data'
@@ -45,9 +45,15 @@ export type NotePreviewWidgetOptions = {
   sourceNoteBodyId: string
   getNotePreviewData: (payload: NotePreviewReferencePayload, sourceNoteBodyId: string) => NotePreviewData
   resolvePreviewToken?: (token: string) => NotePreviewReferencePayload | null
-  resolveInternalNoteReferenceToken?: (token: string) => ResolvedWikiNoteReference | null
   navigateToNoteLocation: (target: NoteNavigationTarget) => void
-  deleteNotePreview: (tokenId: string) => void
+  deleteNotePreview: (request: NotePreviewDeleteRequest) => void
+  openNotePreviewContextMenu?: (request: {
+    x: number
+    y: number
+    payload: NotePreviewReferencePayload
+    label: string
+    sourceRange?: NotePreviewSourceRange
+  }) => void
 }
 
 type PreviewHeightFitController = {
@@ -558,11 +564,29 @@ export function createReadonlyNotePreviewWidgetElement(
 
 function createReadonlyPreviewReferencePlugin(context: any, options: NotePreviewWidgetOptions) {
   const resolvePreviewToken = options.resolvePreviewToken
-  const resolveInternalNoteReferenceToken = options.resolveInternalNoteReferenceToken
-  if (!resolvePreviewToken || !resolveInternalNoteReferenceToken) return null
+  if (!resolvePreviewToken) return null
 
   const { Plugin } = context.pmState
   const { Decoration, DecorationSet } = context.pmView
+
+  const resolvePreviewImageNode = (node: any): NotePreviewReferencePayload | null => {
+    if (node?.isText || String(node?.type?.name ?? '').toLowerCase() !== 'image') return null
+    const attrs = node?.attrs ?? {}
+    const source = typeof attrs.imageUrl === 'string'
+      ? attrs.imageUrl.trim()
+      : typeof attrs.src === 'string'
+        ? attrs.src.trim()
+        : ''
+    if (!source) return null
+    const label = typeof attrs.altText === 'string'
+      ? attrs.altText.trim()
+      : typeof attrs.alt === 'string'
+        ? attrs.alt.trim()
+        : ''
+    const token = buildMarkdownNoteReferenceToken({ embed: true, target: source, label })
+    return token ? resolvePreviewToken(token) : null
+  }
+
   return {
     wysiwygPlugins: [
       () =>
@@ -570,8 +594,21 @@ function createReadonlyPreviewReferencePlugin(context: any, options: NotePreview
           props: {
             decorations: (editorState: any) => {
               const decorations: unknown[] = []
-              const docText = collectProseMirrorTextPositions(editorState.doc)
               editorState.doc.descendants((node: any, pos: number) => {
+                const imagePayload = resolvePreviewImageNode(node)
+                if (imagePayload) {
+                  const from = pos
+                  const to = pos + Math.max(1, Number(node?.nodeSize) || 1)
+                  decorations.push(
+                    Decoration.widget(from, () => createReadonlyNotePreviewWidgetElement(imagePayload, options), {
+                      key: `readonly-note-preview-image-${from}-${to}-${imagePayload.id}`,
+                      side: -1,
+                      destroy: (node: HTMLElement & { destroyReadonlyPreview?: () => void }) => node.destroyReadonlyPreview?.(),
+                    }),
+                  )
+                  decorations.push(Decoration.node(from, to, { class: 'note-context-node-hidden' }))
+                  return false
+                }
                 if (!node.isText || typeof node.text !== 'string') return
                 for (const match of node.text.matchAll(NOTE_PREVIEW_REFERENCE_RE)) {
                   const payload = resolvePreviewToken(match[0])
@@ -588,49 +625,6 @@ function createReadonlyPreviewReferencePlugin(context: any, options: NotePreview
                   decorations.push(Decoration.inline(from, to, { class: 'note-context-token-hidden' }))
                 }
               })
-
-              let internalLinkOccurrence = 0
-              for (const match of docText.text.matchAll(INTERNAL_NOTE_LINK_MARKDOWN_RE)) {
-                if (match[0].startsWith('!')) continue
-                const occurrence = internalLinkOccurrence
-                internalLinkOccurrence += 1
-                const reference = resolveInternalNoteReferenceToken(match[0])
-                if (!reference) continue
-
-                const startIndex = match.index ?? 0
-                const endIndex = startIndex + match[0].length - 1
-                const from = docText.positions[startIndex]
-                const last = docText.positions[endIndex]
-                const rangePositions = docText.positions.slice(startIndex, endIndex + 1)
-                if (
-                  from === undefined ||
-                  last === undefined ||
-                  from < 0 ||
-                  last < from ||
-                  rangePositions.some((position) => position < 0)
-                ) {
-                  continue
-                }
-
-                decorations.push(
-                  Decoration.widget(
-                    from,
-                    () =>
-                      createInternalNoteLinkWidgetElement(
-                        reference.label,
-                        reference.target,
-                        match[0],
-                        options.navigateToNoteLocation,
-                        { from, to: last + 1, occurrence },
-                      ),
-                    {
-                      key: `readonly-internal-note-link-${from}-${last}-${match[0]}`,
-                      side: -1,
-                    },
-                  ),
-                )
-                decorations.push(Decoration.inline(from, last + 1, { class: 'internal-note-link-source-hidden' }))
-              }
               return DecorationSet.create(editorState.doc, decorations)
             },
           },
@@ -642,6 +636,8 @@ function createReadonlyPreviewReferencePlugin(context: any, options: NotePreview
 export function createNotePreviewWidgetElement(
   payload: NotePreviewReferencePayload,
   options: NotePreviewWidgetOptions,
+  sourceRange?: NotePreviewSourceRange,
+  previewLabel = '',
 ) {
   const wrapper = document.createElement('span')
   wrapper.className = 'context-bar note-context-widget'
@@ -725,6 +721,23 @@ export function createNotePreviewWidgetElement(
     if (data.status === 'ready' || data.status === 'empty') options.navigateToNoteLocation({ ...payload.target, heading: payload.heading })
   }
 
+  const openPreviewContextMenu = (event: Event) => {
+    if (typeof options.openNotePreviewContextMenu !== 'function') return
+    const pointerEvent = event as MouseEvent
+    stopWidgetEvent(event)
+    const data = options.getNotePreviewData(payload, options.sourceNoteBodyId)
+    const label = previewLabel.trim() || data.locationLabel
+    options.openNotePreviewContextMenu({
+      x: Number.isFinite(pointerEvent.clientX) ? pointerEvent.clientX : 0,
+      y: Number.isFinite(pointerEvent.clientY) ? pointerEvent.clientY : 0,
+      payload,
+      label,
+      ...(sourceRange ? { sourceRange } : {}),
+    })
+  }
+
+  titleGroup.addEventListener('contextmenu', openPreviewContextMenu)
+
   const renderTitleButtons = (data: NotePreviewData) => {
     titleGroup.replaceChildren()
     titleGroup.title = data.locationLabel
@@ -773,10 +786,7 @@ export function createNotePreviewWidgetElement(
     function readonlyPreviewReferencesPlugin(context: any) {
       return createReadonlyPreviewReferencePlugin(context, options)
     }
-    const referencePlugins =
-      options.resolvePreviewToken && options.resolveInternalNoteReferenceToken
-        ? [readonlyPreviewReferencesPlugin]
-        : []
+    const referencePlugins = options.resolvePreviewToken ? [readonlyPreviewReferencesPlugin] : []
     const editor = new Editor({
       el: editorHost,
       initialValue: prepareMarkdownForEditorDisplay(currentMarkdown),
@@ -948,7 +958,7 @@ export function createNotePreviewWidgetElement(
   deleteButton.addEventListener('mousedown', stopWidgetEvent)
   deleteButton.addEventListener('click', (event) => {
     stopWidgetEvent(event)
-    options.deleteNotePreview(payload.id)
+    options.deleteNotePreview({ payload, ...(sourceRange ? { sourceRange } : {}) })
   })
 
   sizeControl.append(shrinkButton, growButton)
@@ -967,46 +977,4 @@ export function createNotePreviewWidgetElement(
     }
   }
   return wrapper
-}
-
-export function createInternalNoteLinkWidgetElement(
-  label: string,
-  target: NoteNavigationTarget,
-  href: string,
-  navigateToNoteLocation: (target: NoteNavigationTarget) => void,
-  sourceRange?: { from: number; to: number; occurrence: number },
-) {
-  const link = document.createElement('a')
-  link.className = 'internal-note-link-widget'
-  link.href = '#'
-  link.setAttribute('data-internal-note-link-syntax', href)
-  if (sourceRange) {
-    link.setAttribute('data-internal-note-link-from', String(sourceRange.from))
-    link.setAttribute('data-internal-note-link-to', String(sourceRange.to))
-    link.setAttribute('data-internal-note-link-occurrence', String(sourceRange.occurrence))
-  }
-  link.textContent = getMarkdownLinkLabel(label)
-  link.title = 'Open linked note'
-  link.setAttribute('contenteditable', 'false')
-  link.setAttribute('data-internal-note-link', 'true')
-
-  const stopEditingEvent = (event: Event) => {
-    event.preventDefault()
-    event.stopPropagation()
-  }
-  const activate = (event: Event) => {
-    stopEditingEvent(event)
-    navigateToNoteLocation(target)
-  }
-
-  link.addEventListener('pointerdown', stopEditingEvent)
-  link.addEventListener('mousedown', stopEditingEvent)
-  link.addEventListener('click', activate)
-  link.addEventListener('keydown', (event) => {
-    const keyboardEvent = event as KeyboardEvent
-    if (keyboardEvent.key !== 'Enter' && keyboardEvent.key !== ' ') return
-    activate(keyboardEvent)
-  })
-
-  return link
 }

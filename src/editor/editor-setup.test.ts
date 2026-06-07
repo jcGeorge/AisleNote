@@ -202,7 +202,7 @@ describe('paragraph space shortcuts', () => {
 
   it('deletes a terminal preview before an empty paragraph on forward Delete', () => {
     const bindings = getParagraphSpaceBindings()
-    const preview = paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('![[Linked--123abc]]'))
+    const preview = paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('![Linked](Linked--123abc)'))
     const empty = paragraphShortcutSchema.nodes.paragraph.create()
     const heading = paragraphShortcutSchema.nodes.heading.create({ level: 2 }, paragraphShortcutSchema.text('After'))
     const doc = paragraphShortcutSchema.nodes.doc.create(null, [preview, empty, heading])
@@ -224,7 +224,7 @@ describe('paragraph space shortcuts', () => {
 
   it('deletes the terminal preview before a run of blank paragraphs on forward Delete', () => {
     const bindings = getParagraphSpaceBindings()
-    const preview = paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('![[Linked--123abc]]'))
+    const preview = paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('![Linked](Linked--123abc)'))
     const firstEmpty = paragraphShortcutSchema.nodes.paragraph.create()
     const secondEmpty = paragraphShortcutSchema.nodes.paragraph.create()
     const heading = paragraphShortcutSchema.nodes.heading.create({ level: 2 }, paragraphShortcutSchema.text('After'))

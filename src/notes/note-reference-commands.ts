@@ -6,14 +6,17 @@ import {
   getCopyAsPasteSuccessMessage,
   type CopyAsClipboardPayload,
 } from './copy-as-clipboard'
-import { getDefaultNoteLinkLabel, getLocationInfo } from './note-locations'
+import { getLocationInfo } from './note-locations'
 import { getAisleMarkdown } from './note-markdown'
 import {
   buildInternalNoteLinkToken,
+  buildMarkdownNoteReferenceToken,
+  formatEditorMarkdownNoteReferenceHref,
   buildPreviewToken,
   getPreviewReferenceSignature,
   parsePreviewReferences,
   removeNoteReferencesForNoteLocationsFromAppState,
+  resolveMarkdownNoteReferenceToken,
   type NotePreviewReferencePayload,
   wouldCreatePreviewCycle,
 } from './note-references'
@@ -34,6 +37,7 @@ export type NoteReferenceCommandResult =
       insertText: string
       payload?: NotePreviewReferencePayload
       label?: string
+      href?: string
       target: NoteNavigationTarget
       noteBodyId: string
       toast?: NoteReferenceCommandToast
@@ -127,6 +131,7 @@ export function buildNoteReferenceCommand({
   previewMarkdowns?: readonly string[]
   insertPlacement?: 'inline' | 'block'
 }): NoteReferenceCommandResult {
+  void source
   const normalizedTarget = normalizeNoteReferenceTarget(appState, target)
   const targetInfo = getLocationInfo(appState, normalizedTarget)
   if (!targetInfo.domain || !targetInfo.space || !targetInfo.tab || !targetInfo.noteBodyId) {
@@ -146,12 +151,16 @@ export function buildNoteReferenceCommand({
     }
     const syntax = buildInternalNoteLinkToken(appState, syntaxTarget, labelOverride)
     if (!syntax) return { ok: false, message: 'Choose an existing note.' }
+    const resolvedSyntax = resolveMarkdownNoteReferenceToken(appState, syntax)
     return {
       ok: true,
       action,
       syntax,
       insertText: syntax,
-      label: labelOverride.trim() || getDefaultNoteLinkLabel(appState, source, normalizedTarget),
+      label: resolvedSyntax?.label || labelOverride.trim() || targetInfo.title,
+      href: resolvedSyntax?.canonicalTarget
+        ? formatEditorMarkdownNoteReferenceHref(resolvedSyntax.canonicalTarget)
+        : undefined,
       target: {
         ...normalizedTarget,
         startAt: syntaxTarget.startAt,
@@ -177,7 +186,17 @@ export function buildNoteReferenceCommand({
     previewStart: normalizedTarget.heading ? undefined : normalizedTarget.previewStart,
   }
   const payload = toPreviewPayload(syntaxTarget, editingTokenId)
-  const syntax = buildPreviewToken(appState, payload)
+  const defaultSyntax = buildPreviewToken(appState, payload)
+  const defaultResolved = defaultSyntax ? resolveMarkdownNoteReferenceToken(appState, defaultSyntax) : null
+  const normalizedLabel = labelOverride.trim()
+  const syntax =
+    normalizedLabel && defaultResolved?.canonicalTarget
+      ? buildMarkdownNoteReferenceToken({
+          embed: true,
+          target: defaultResolved.canonicalTarget,
+          label: normalizedLabel,
+        })
+      : defaultSyntax
   if (!syntax) return { ok: false, message: 'Choose an existing note.' }
   const resolvedPayload = { ...payload, id: editingTokenId || syntax }
   if (

@@ -704,36 +704,22 @@
   color: inherit !important;
 }
 
-.internal-note-link-source-hidden {
-  display: none !important;
-}
-
-.toastui-editor .ProseMirror .internal-note-link-widget,
-.toastui-editor-contents .internal-note-link-widget {
-  display: inline;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: var(--editor-link-text) !important;
-  font: inherit;
-  text-decoration: underline;
-  text-underline-offset: 0.16em;
-  cursor: pointer;
-}
-
-.toastui-editor .ProseMirror .internal-note-link-widget *,
-.toastui-editor-contents .internal-note-link-widget *,
-.toastui-editor .ProseMirror .toastui-editor-md-link,
-.toastui-editor-contents .toastui-editor-md-link,
 .toastui-editor .ProseMirror a,
 .toastui-editor-contents a {
+  color: var(--editor-link-text) !important;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
+.toastui-editor .ProseMirror .toastui-editor-md-link,
+.toastui-editor-contents .toastui-editor-md-link {
   cursor: pointer !important;
 }
 
-.toastui-editor .ProseMirror .internal-note-link-widget:hover,
-.toastui-editor .ProseMirror .internal-note-link-widget:focus-visible,
-.toastui-editor-contents .internal-note-link-widget:hover,
-.toastui-editor-contents .internal-note-link-widget:focus-visible {
+.toastui-editor .ProseMirror a:hover,
+.toastui-editor .ProseMirror a:focus-visible,
+.toastui-editor-contents a:hover,
+.toastui-editor-contents a:focus-visible {
   color: var(--editor-link-hover-text) !important;
 }
 

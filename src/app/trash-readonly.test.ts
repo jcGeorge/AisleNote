@@ -7,7 +7,7 @@ const appControllerSource = readFileSync(join(dirname(fileURLToPath(import.meta.
 
 describe('trash read-only note display', () => {
   it('keeps trash markdown out of editor persistence state', () => {
-    expect(appControllerSource).toContain('const displayContent = activeContent')
+    expect(appControllerSource).toContain('const displayContent = normalizeEditorMarkdownForDisplay(activeContent)')
     expect(appControllerSource).toContain("const isEditorView = viewMode === 'main'")
     expect(appControllerSource).not.toContain("viewMode === 'trash' ? trashDisplay.markdown : activeContent")
     expect(appControllerSource).not.toContain("viewMode === 'main' || (viewMode === 'trash'")

@@ -75,7 +75,7 @@ function pmDoc(children: Array<ReturnType<typeof pmNode>>) {
 }
 
 function contextToken(id = 'preview-token') {
-  return `![[Preview ${id}--123abc]]`
+  return `![Preview ${id}](<Preview ${id}--123abc>)`
 }
 
 function mediaTextNode(text = 'Song', href = 'tabs-asset:///assets/song.mp3') {

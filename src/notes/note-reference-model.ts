@@ -5,11 +5,12 @@ import type {
   LinkInsertMode,
   ModalState,
   NoteLocation,
+  NotePreviewEdit,
   NoteNavigationTarget,
   ToastTone,
 } from '../types/app'
 import { normalizeExternalWebUrl } from './external-links'
-import { getDefaultNoteLinkLabel, getDefaultNoteReferenceTarget } from './note-locations'
+import { getDefaultNoteReferenceTarget, getLocationInfo } from './note-locations'
 import type { NotePreviewReferencePayload } from './note-references'
 import { buildNoteReferenceCommand, type NoteReferenceCommandAction } from './note-reference-commands'
 import { normalizeNoteReferenceTarget } from './note-reference-targets'
@@ -27,6 +28,10 @@ export type NoteReferenceEditorCommandResult = {
     message: string
     tone?: ToastTone
   }
+}
+
+export function getDefaultMarkdownNoteReferenceLabel(appState: AppState, target: NoteLocation): string {
+  return getLocationInfo(appState, target).title || 'note'
 }
 
 export type NoteReferenceLinkSpec =
@@ -70,7 +75,7 @@ export function buildDefaultNoteReferenceDraft(
     insertAs: 'link',
     source,
     target: normalizedTarget,
-    noteLabel: getDefaultNoteLinkLabel(appState, source, normalizedTarget),
+    noteLabel: getDefaultMarkdownNoteReferenceLabel(appState, normalizedTarget),
     url: '',
     urlLabel: selectedText,
   }
@@ -111,22 +116,25 @@ export function buildUrlLinkShortcutDraft(
 export function buildInternalNoteLinkEditDraft(
   appState: AppState,
   source: NoteLocation,
-  edit: InternalNoteLinkEdit,
+  edit: InternalNoteLinkEdit & { previewEdit?: NotePreviewEdit | null },
 ): NoteReferenceDraft {
+  const previewEdit = edit.previewEdit ?? null
   const target = normalizeNoteReferenceTarget(appState, {
-    ...edit.target,
-    aisleIds: edit.aisleIds,
-    heading: edit.heading,
-    previewStart: edit.startAt === 'last-position' ? 'last-position' : undefined,
+    ...(previewEdit?.target ?? edit.target),
+    aisleIds: previewEdit?.aisleIds ?? edit.aisleIds,
+    heading: previewEdit?.heading ?? edit.heading,
+    previewStart: previewEdit?.previewStart ?? (edit.startAt === 'last-position' ? 'last-position' : undefined),
   })
   return {
     ...buildDefaultNoteReferenceDraft(appState, source, 'note', '', 'context-menu'),
     modeLocked: true,
-    insertAs: 'link',
+    insertAs: previewEdit ? 'preview' : 'link',
     target,
-    noteLabel: edit.label,
+    noteLabel: previewEdit?.label || edit.label,
     noteLabelTouched: true,
-    internalEdit: edit,
+    internalEdit: previewEdit ? null : edit,
+    previewEdit,
+    editingTokenId: previewEdit?.tokenId,
   }
 }
 
@@ -150,7 +158,7 @@ export function getNoteReferenceLinkSpec(
   if (!command.ok) return { ok: false, message: command.message }
   return {
     ok: true,
-    href: command.syntax,
+    href: command.href ?? command.syntax,
     syntax: command.syntax,
     label: command.label ?? '',
     target: command.target,

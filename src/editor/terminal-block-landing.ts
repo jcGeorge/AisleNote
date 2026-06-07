@@ -1,4 +1,4 @@
-import { NOTE_PREVIEW_REFERENCE_RE, parseWikiReferenceToken } from '../notes/note-references'
+import { NOTE_PREVIEW_REFERENCE_RE, getPreviewReferenceTokenLengthAt, parseMarkdownNoteReferenceToken } from '../notes/note-references'
 import { getMediaKindFromUrl, MEDIA_PLAYER_SELECTOR } from '../media/media-utils'
 import { TextSelection } from 'prosemirror-state'
 
@@ -34,7 +34,7 @@ export function isNotePreviewOnlyParagraphText(text: string): boolean {
 
   let hasValidToken = false
   const remaining = normalized.replace(NOTE_PREVIEW_REFERENCE_RE, (token) => {
-    if (!parseWikiReferenceToken(token)?.embed) return token
+    if (!parseMarkdownNoteReferenceToken(token)?.embed || getPreviewReferenceTokenLengthAt(token, 0) !== token.length) return token
     hasValidToken = true
     return ''
   })

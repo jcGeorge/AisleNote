@@ -2,9 +2,10 @@ import type { Editor } from '@toast-ui/editor'
 import { redo, undo } from 'prosemirror-history'
 import { Selection, TextSelection } from 'prosemirror-state'
 import {
+  buildMarkdownNoteReferenceToken,
   INTERNAL_NOTE_LINK_MARKDOWN_RE,
   type InternalNoteLinkHit,
-  type ResolvedWikiNoteReference,
+  type ResolvedMarkdownNoteReference,
 } from '../notes/note-references'
 import {
   getLogicalEndpointForPosition,
@@ -295,7 +296,7 @@ export function collectProseMirrorTextPositions(doc: any): ProseMirrorTextPositi
 export function getInternalNoteLinkHitAtDocPosition(
   doc: any,
   docPosition: number,
-  resolveInternalNoteReference?: (token: string) => ResolvedWikiNoteReference | null,
+  resolveInternalNoteReference?: (token: string) => ResolvedMarkdownNoteReference | null,
 ): InternalNoteLinkHit | null {
   const docText = collectProseMirrorTextPositions(doc)
   let occurrence = 0
@@ -477,5 +478,49 @@ export function getExternalLinkRangeAtDocPosition(
     from: linkTextNodes[firstIndex].from,
     to: linkTextNodes[lastIndex].to,
     href,
+  }
+}
+
+function getInternalNoteLinkRangeAtSelection(
+  view: any | null,
+  resolveInternalNoteReference: (token: string) => ResolvedMarkdownNoteReference | null,
+): ExternalLinkRange | null {
+  const selection = view?.state?.selection
+  const doc = view?.state?.doc
+  if (!selection?.empty || !doc) return null
+  const position = selection.from
+  if (typeof position !== 'number' || !Number.isFinite(position)) return null
+
+  const range =
+    getExternalLinkRangeAtDocPosition(doc, position) ??
+    getExternalLinkRangeAtDocPosition(doc, position - 1)
+  if (!range || position <= range.from || position >= range.to) return null
+
+  const label = String(doc.textBetween?.(range.from, range.to, '', '') ?? '').trim()
+  const token = buildMarkdownNoteReferenceToken({ target: range.href, label })
+  return token && resolveInternalNoteReference(token) ? range : null
+}
+
+export function insertParagraphAfterInternalNoteLink(
+  view: any | null,
+  resolveInternalNoteReference: (token: string) => ResolvedMarkdownNoteReference | null,
+): boolean {
+  if (!view?.state?.doc || typeof view.dispatch !== 'function') return false
+  const range = getInternalNoteLinkRangeAtSelection(view, resolveInternalNoteReference)
+  if (!range) return false
+
+  try {
+    const insertAt = range.to
+    let transaction = view.state.tr.split(insertAt)
+    const selectionPosition = Math.max(0, Math.min(transaction.doc.content.size, insertAt + 1))
+    transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(selectionPosition), 1))
+    if (typeof transaction.setStoredMarks === 'function') {
+      transaction = transaction.setStoredMarks([])
+    }
+    view.dispatch(transaction.scrollIntoView())
+    view.focus?.()
+    return true
+  } catch {
+    return false
   }
 }

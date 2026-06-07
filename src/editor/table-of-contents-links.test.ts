@@ -3,27 +3,28 @@ import {
   getTableOfContentsLinksFromDoc,
   getTableOfContentsLinksFromMarkdown,
 } from './table-of-contents-links'
-import type { ResolvedWikiNoteReference } from '../notes/note-references'
+import type { ResolvedMarkdownNoteReference } from '../notes/note-references'
 
-function wikiReference(token: string, embed = false): ResolvedWikiNoteReference {
+function markdownReference(token: string, embed = false): ResolvedMarkdownNoteReference {
   return {
     token,
     parsed: {
       token,
       embed,
+      label: 'Linked',
+      destination: 'Linked--abc123',
       target: 'Linked--abc123',
       noteHandle: 'Linked--abc123',
       suffixHandle: '',
-      alias: '',
     },
     payload: {
-      id: `${embed ? 'wiki-preview' : 'wiki-link'}:Linked--abc123`,
+      id: `${embed ? 'markdown-preview' : 'markdown-link'}:Linked--abc123`,
       target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
     },
     target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
     label: 'Linked',
     canonicalTarget: 'Linked--abc123',
-    canonicalToken: `${embed ? '!' : ''}[[Linked--abc123]]`,
+    canonicalToken: `${embed ? '!' : ''}[Linked](Linked--abc123)`,
   }
 }
 
@@ -46,10 +47,10 @@ function docWithTextNodes(nodes: Array<{ text: string; pos: number; href?: strin
 
 describe('table of contents link collection', () => {
   it('collects note links, url links, and note previews from markdown', () => {
-    const resolve = vi.fn((token: string) => wikiReference(token, token.startsWith('!')))
+    const resolve = vi.fn((token: string) => token.includes('Linked--abc123') ? markdownReference(token, token.startsWith('!')) : null)
     const links = getTableOfContentsLinksFromMarkdown(
       'aisle-a',
-      '[[Linked--abc123]] and [site](https://example.com/path) and ![[Linked--abc123]]',
+      '[Linked](Linked--abc123) and [site](https://example.com/path) and ![Linked](Linked--abc123)',
       resolve,
     )
 
@@ -66,10 +67,10 @@ describe('table of contents link collection', () => {
   })
 
   it('ignores headings-looking links inside fenced markdown code', () => {
-    const resolve = vi.fn((token: string) => wikiReference(token, token.startsWith('!')))
+    const resolve = vi.fn((token: string) => token.includes('Linked--abc123') ? markdownReference(token, token.startsWith('!')) : null)
     const links = getTableOfContentsLinksFromMarkdown(
       'aisle-a',
-      '```\n[[Linked--abc123]]\n[site](https://example.com)\n```\n\n<https://open.example>',
+      '```\n[Linked](Linked--abc123)\n[site](https://example.com)\n```\n\n<https://open.example>',
       resolve,
     )
 
@@ -78,22 +79,22 @@ describe('table of contents link collection', () => {
     ])
   })
 
-  it('collects hidden wiki source and external link marks from ProseMirror docs', () => {
-    const resolve = vi.fn((token: string) => wikiReference(token, token.startsWith('!')))
+  it('collects markdown note source and external link marks from ProseMirror docs', () => {
+    const resolve = vi.fn((token: string) => token.includes('Linked--abc123') ? markdownReference(token, token.startsWith('!')) : null)
     const links = getTableOfContentsLinksFromDoc(
       'aisle-a',
       docWithTextNodes([
-        { text: '[[Linked--abc123]]', pos: 1 },
+        { text: 'Linked', pos: 1, href: 'Linked--abc123' },
         { text: 'visible', pos: 25, href: 'https://example.com' },
-        { text: '![[Linked--abc123]]', pos: 40 },
+        { text: '![Linked](Linked--abc123)', pos: 40 },
       ]),
       resolve,
     )
 
     expect(links.map((link) => [link.kind, link.from, link.to])).toEqual([
-      ['note-link', 1, 19],
+      ['note-link', 1, 7],
       ['url-link', 25, 32],
-      ['note-preview', 40, 59],
+      ['note-preview', 40, 65],
     ])
   })
 })

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Schema } from 'prosemirror-model'
+import { EditorState, TextSelection } from 'prosemirror-state'
 import type { Editor } from '@toast-ui/editor'
 
 const historySpies = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ import {
   getLinkMarkAttrs,
   getNoteMentionQueryAtSelection,
   getTagAutocompleteQueryAtSelection,
+  insertParagraphAfterInternalNoteLink,
   isProseMirrorDocMeaningful,
   markWysiwygLoadedUndoBoundary,
   restoreEditorCursorSelection,
@@ -374,6 +376,22 @@ describe('cursor selection restore safety', () => {
 })
 
 describe('external link range detection', () => {
+  function createView(doc: any, position: number) {
+    let state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, position),
+    })
+    return {
+      get state() {
+        return state
+      },
+      dispatch: vi.fn((transaction) => {
+        state = state.apply(transaction)
+      }),
+      focus: vi.fn(),
+    }
+  }
+
   it('creates link marks with the schema-supported href attribute', () => {
     expect(getLinkMarkAttrs(linkUrlSchema.marks.link, 'https://example.com')).toEqual({
       linkUrl: 'https://example.com',
@@ -433,6 +451,66 @@ describe('external link range detection', () => {
     })
     expect(getExternalLinkRangeAtDocPosition(doc, 7)?.href).not.toMatch(/^file:/)
   })
+
+  it('moves bare Enter out of internal note links without changing their href', () => {
+    const href = 'Link%20that%20remains--14eeb9'
+    const link = schema.marks.link.create({ href })
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.paragraph.create(null, [
+        schema.text('before '),
+        schema.text('link that remains', [link]),
+        schema.text(' after'),
+      ]),
+    ])
+    const range = getExternalLinkRangeAtDocPosition(doc, 12, href)
+    if (!range) throw new Error('expected link range')
+    const view = createView(doc, range.from + 4)
+    const resolveInternal = vi.fn((token: string) =>
+      token === '[link that remains](Link%20that%20remains--14eeb9)'
+        ? ({ label: 'link that remains' }) as any
+        : null,
+    )
+
+    expect(insertParagraphAfterInternalNoteLink(view, resolveInternal)).toBe(true)
+    expect(view.state.doc.textBetween(0, view.state.doc.content.size, '\n', '\n')).toBe(
+      'before link that remains\n after',
+    )
+    expect(getExternalLinkRangeAtDocPosition(view.state.doc, range.from + 4, href)).toMatchObject({
+      href,
+      from: range.from,
+      to: range.to,
+    })
+    expect(view.dispatch).toHaveBeenCalledOnce()
+    expect(view.focus).toHaveBeenCalledOnce()
+  })
+
+  it('does not intercept Enter inside external web links', () => {
+    const href = 'https://example.com'
+    const link = schema.marks.link.create({ href })
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.paragraph.create(null, [schema.text('visit '), schema.text('example', [link])]),
+    ])
+    const range = getExternalLinkRangeAtDocPosition(doc, 9, href)
+    if (!range) throw new Error('expected link range')
+    const view = createView(doc, range.from + 2)
+
+    expect(insertParagraphAfterInternalNoteLink(view, () => null)).toBe(false)
+    expect(view.dispatch).not.toHaveBeenCalled()
+  })
+
+  it('does not intercept Enter at note-link edges', () => {
+    const href = 'Linked--123abc'
+    const link = schema.marks.link.create({ href })
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.paragraph.create(null, [schema.text('see '), schema.text('Linked', [link])]),
+    ])
+    const range = getExternalLinkRangeAtDocPosition(doc, 7, href)
+    if (!range) throw new Error('expected link range')
+    const resolveInternal = vi.fn(() => ({ label: 'Linked' }) as any)
+
+    expect(insertParagraphAfterInternalNoteLink(createView(doc, range.from), resolveInternal)).toBe(false)
+    expect(insertParagraphAfterInternalNoteLink(createView(doc, range.to), resolveInternal)).toBe(false)
+  })
 })
 
 describe('internal note link hit detection', () => {
@@ -450,33 +528,33 @@ describe('internal note link hit detection', () => {
     label: 'Linked',
   }
 
-  it('returns source range and occurrence metadata for resolved wiki links', () => {
+  it('returns source range and occurrence metadata for resolved markdown note links', () => {
     const hit = getInternalNoteLinkHitAtDocPosition(
-      createTextDoc('Before [[Linked--123abc]] after'),
+      createTextDoc('Before [Linked](Linked--123abc) after'),
       10,
       () => resolvedReference as any,
     )
 
     expect(hit).toMatchObject({
-      href: '[[Linked--123abc]]',
+      href: '[Linked](Linked--123abc)',
       from: 8,
-      to: 26,
+      to: 32,
       occurrence: 0,
       label: 'Linked',
     })
   })
 
-  it('counts unresolved wiki links when reporting occurrence metadata', () => {
+  it('counts unresolved markdown note links when reporting occurrence metadata', () => {
     const hit = getInternalNoteLinkHitAtDocPosition(
-      createTextDoc('[[Missing--999999]] then [[Linked--123abc]]'),
-      30,
-      (token) => (token === '[[Linked--123abc]]' ? resolvedReference as any : null),
+      createTextDoc('[Missing](Missing--999999) then [Linked](Linked--123abc)'),
+      40,
+      (token) => (token === '[Linked](Linked--123abc)' ? resolvedReference as any : null),
     )
 
     expect(hit).toMatchObject({
-      href: '[[Linked--123abc]]',
-      from: 26,
-      to: 44,
+      href: '[Linked](Linked--123abc)',
+      from: 33,
+      to: 57,
       occurrence: 1,
     })
   })

@@ -4,7 +4,7 @@ import { MARKDOWN_LINK_PATTERN } from '../markdown/image-asset-refs.js'
 import { splitImageResizeMetadataFromUrl, normalizeImageResizeMetadataFragment } from '../markdown/image-metadata'
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { getAisleBodyId } from '../notes/note-markdown'
-import { WIKI_NOTE_REFERENCE_RE, buildInternalNoteLinkToken, buildPreviewToken, parseWikiReferenceToken } from '../notes/note-references'
+import { buildInternalNoteLinkToken, buildPreviewToken, parseMarkdownNoteReferenceDestination } from '../notes/note-references'
 import { createDomainFromSpaces, projectActiveDomainState } from '../state/domains'
 import { createId, createNoteBodyContent, createSpace, createSubTab, createTab, createTimestamp } from '../state/workspace'
 import type { IdGenerator } from '../state/navigation-ids'
@@ -641,22 +641,10 @@ function rewriteImportedLinks(
     const source = importedNotes.find((record) => record.aisleBodyId === body.id)
     if (!source) return body
 
-    let markdown = String(body.markdown ?? '').replace(WIKI_NOTE_REFERENCE_RE, (token) => {
-      const parsed = parseWikiReferenceToken(token)
-      if (!parsed || parsed.suffixHandle) {
-        summary.unresolvedReferences += 1
-        return token
-      }
-      const matches = byTitle.get(normalizeName(parsed.noteHandle)) ?? []
-      if (matches.length !== 1) {
-        summary.unresolvedReferences += 1
-        return token
-      }
-      return buildInternalLink(state, matches[0], parsed.alias, parsed.embed) || token
-    })
+    let markdown = String(body.markdown ?? '')
 
     markdown = markdown.replace(MARKDOWN_LINK_PATTERN, (fullMatch, imageBang, label, sourceRaw) => {
-      const sourcePath = String(sourceRaw ?? '').trim()
+      const sourcePath = parseMarkdownNoteReferenceDestination(String(sourceRaw ?? '').trim())
       if (!isMarkdownSource(sourcePath) || isProtocolUrl(sourcePath)) return fullMatch
       const resolvedPath = resolveRelativeImportPath(source.sourceRelativePath, sourcePath)
       const target = byPath.get(normalizePathKey(resolvedPath))

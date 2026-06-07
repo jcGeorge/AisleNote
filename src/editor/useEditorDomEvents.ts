@@ -45,11 +45,16 @@ import {
   getElementFromEventTarget,
   getExternalLinkRangeAtDocPosition,
   getWysiwygView,
+  insertParagraphAfterInternalNoteLink,
   type ExternalLinkRange,
   type WysiwygHistoryDirection,
   type WysiwygHistoryResult,
 } from './prosemirror-utils'
-import { type InternalNoteLinkHit, type ResolvedWikiNoteReference } from '../notes/note-references'
+import {
+  buildMarkdownNoteReferenceToken,
+  type InternalNoteLinkHit,
+  type ResolvedMarkdownNoteReference,
+} from '../notes/note-references'
 import {
   isCopyAsClipboardTextMarker,
   readCopyAsPayloadFromDataTransfer,
@@ -111,7 +116,7 @@ type UseEditorDomEventsOptions = {
   setMenuOpen: Dispatch<SetStateAction<boolean>>
   setContextMenu: Dispatch<SetStateAction<ContextMenuState | null>>
   onDismissEditorEphemeraBeforeContextMenu?: () => void
-  resolveInternalNoteReferenceToken: (token: string) => ResolvedWikiNoteReference | null
+  resolveInternalNoteReferenceToken: (token: string) => ResolvedMarkdownNoteReference | null
   navigateToNoteLocation: (location: NoteNavigationTarget) => void
   openExternalLink: (url: string) => boolean
   insertPastedUrlAsLink: (label: string, url: string) => boolean
@@ -253,6 +258,17 @@ export function getPastedUrlLink(value: string): { label: string; url: string } 
 
 function isLikelyUrl(value: string) {
   return getPastedUrlLink(value) !== null
+}
+
+function isBareEnterKeyEvent(event: KeyboardEvent): boolean {
+  return (
+    (event.key === 'Enter' || event.code === 'Enter') &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    !event.isComposing
+  )
 }
 
 export function isUrlLinkShortcut(event: KeyboardEvent, isMacPlatform: boolean): boolean {
@@ -524,22 +540,19 @@ export function shouldSkipTableExitRepairTarget(target: Element | null): boolean
   )
 }
 
-export function getInternalNoteLinkWidgetHitFromTarget(
-  target: Element | null,
-  resolveInternalNoteReferenceToken: (token: string) => ResolvedWikiNoteReference | null,
+function getInternalNoteLinkHitFromAnchor(
+  anchor: HTMLAnchorElement,
+  range: ExternalLinkRange | null,
+  resolveInternalNoteReferenceToken: (token: string) => ResolvedMarkdownNoteReference | null,
 ): InternalNoteLinkHit | null {
-  const anchor = target?.closest?.('a[data-internal-note-link="true"]') ?? null
-  if (!anchor || typeof anchor.getAttribute !== 'function') return null
-  const syntax = anchor.getAttribute('data-internal-note-link-syntax') ?? ''
-  const reference = syntax ? resolveInternalNoteReferenceToken(syntax) : null
+  const href = anchor.getAttribute('href') || anchor.href
+  const label = anchor.textContent?.trim() || href
+  const token = buildMarkdownNoteReferenceToken({ target: href, label })
+  const reference = token ? resolveInternalNoteReferenceToken(token) : null
   if (!reference) return null
-  const from = Number(anchor.getAttribute('data-internal-note-link-from'))
-  const to = Number(anchor.getAttribute('data-internal-note-link-to'))
-  const occurrence = Number(anchor.getAttribute('data-internal-note-link-occurrence'))
-  if (!Number.isFinite(from) || !Number.isFinite(to) || !Number.isFinite(occurrence)) return null
   return {
     label: reference.label,
-    href: syntax,
+    href: reference.canonicalTarget,
     target: {
       domainId: reference.target.domainId,
       spaceId: reference.target.spaceId,
@@ -549,9 +562,10 @@ export function getInternalNoteLinkWidgetHitFromTarget(
     aisleIds: reference.payload?.aisleIds ? [...reference.payload.aisleIds] : undefined,
     heading: reference.target.heading,
     startAt: reference.target.startAt,
-    from,
-    to,
-    occurrence,
+    from: range?.from ?? 0,
+    to: range?.to ?? 0,
+    occurrence: 0,
+    range: range ? { ...range, href } : null,
   }
 }
 
@@ -703,39 +717,28 @@ export function useEditorDomEvents({
 
     const handleAnchorInteraction = (event: Event, target: Element) => {
       if (!isPrimaryMouseActivation(event)) return false
+      if (event.type !== 'click') return false
       const anchor = target.closest('a')
       if (!(anchor instanceof HTMLAnchorElement)) return false
 
-      if (anchor.dataset.internalNoteLink === 'true') return false
       const href = anchor.getAttribute('href') || anchor.href
+      const internalLinkHit = getInternalNoteLinkHitFromAnchor(anchor, null, resolveInternalNoteReferenceToken)
 
       event.preventDefault()
       event.stopPropagation()
-      linkHandledOnPointerDown = event.type === 'pointerdown'
+      if (internalLinkHit) {
+        navigateToNoteLocation({
+          ...internalLinkHit.target,
+          heading: internalLinkHit.heading,
+          aisleId: internalLinkHit.heading ? undefined : internalLinkHit.aisleIds?.[0],
+          startAt: internalLinkHit.startAt,
+        })
+        return true
+      }
       if (!openExternalLink(href)) {
         // Keep the click from editing the URL even if the shell cannot open it.
         return true
       }
-      return true
-    }
-
-    const getInternalLinkWidgetHit = (target: Element): InternalNoteLinkHit | null => {
-      return getInternalNoteLinkWidgetHitFromTarget(target, resolveInternalNoteReferenceToken)
-    }
-
-    const handleInternalLinkWidgetInteraction = (event: Event, target: Element) => {
-      if (!isPrimaryMouseActivation(event)) return false
-      const internalLinkHit = getInternalLinkWidgetHit(target)
-      if (!internalLinkHit) return false
-      event.preventDefault()
-      event.stopPropagation()
-      linkHandledOnPointerDown = event.type === 'pointerdown'
-      navigateToNoteLocation({
-        ...internalLinkHit.target,
-        heading: internalLinkHit.heading,
-        aisleId: internalLinkHit.heading ? undefined : internalLinkHit.aisleIds?.[0],
-        startAt: internalLinkHit.startAt,
-      })
       return true
     }
 
@@ -985,10 +988,6 @@ export function useEditorDomEvents({
         clearPendingTableExitRepair()
         return
       }
-      if (handleInternalLinkWidgetInteraction(event, target)) {
-        clearPendingTableExitRepair()
-        return
-      }
       if (
         isActiveWysiwygEditorContentTarget(target, view) &&
         handleTerminalBlankAreaClick(event, target, view, TextSelection)
@@ -1041,10 +1040,6 @@ export function useEditorDomEvents({
         return
       }
       if (handleAnchorInteraction(event, target)) {
-        clearPendingTableExitRepair()
-        return
-      }
-      if (handleInternalLinkWidgetInteraction(event, target)) {
         clearPendingTableExitRepair()
         return
       }
@@ -1115,20 +1110,19 @@ export function useEditorDomEvents({
         const href = anchor.getAttribute('href') || anchor.href
         const text = anchor.textContent ?? ''
         const range = getExternalLinkEditRange(mouseEvent, href)
+        const internalLinkHit = getInternalNoteLinkHitFromAnchor(anchor, range, resolveInternalNoteReferenceToken)
         prepareEditorContextMenuEvent(mouseEvent)
         onDismissEditorEphemeraBeforeContextMenu?.()
         closeLinkPrompt()
         setMenuOpen(false)
-        if (anchor.dataset.internalNoteLink === 'true') {
-          const markdownHit = getInternalLinkWidgetHit(anchor)
-          if (!markdownHit) return
+        if (internalLinkHit) {
           openEditorContextMenu(
             {
               type: 'editor',
               x: mouseEvent.clientX,
               y: mouseEvent.clientY,
               link: {
-                ...markdownHit,
+                ...internalLinkHit,
                 type: 'internal',
               },
             },
@@ -1268,6 +1262,20 @@ export function useEditorDomEvents({
       const isTextInputTarget = Boolean(targetElement?.closest('input, textarea, select, .link-prompt'))
       const currentEditor = editorRef.current
       const view = getWysiwygView(currentEditor)
+      if (
+        !isTextInputTarget &&
+        currentEditor &&
+        isBareEnterKeyEvent(keyboardEvent) &&
+        isActiveWysiwygEditorContentTarget(targetElement, view) &&
+        insertParagraphAfterInternalNoteLink(view, resolveInternalNoteReferenceToken)
+      ) {
+        keyboardEvent.preventDefault()
+        keyboardEvent.stopPropagation()
+        window.setTimeout(syncToolbarFormatState, 0)
+        onEditorSelectionChange()
+        onEditorMentionQueryChange()
+        return
+      }
       if (
         !isTextInputTarget &&
         currentEditor &&

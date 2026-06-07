@@ -1,9 +1,9 @@
 import { getHeadingOutlineFromMarkdown } from '../editor/heading-outline'
 import {
-  WIKI_NOTE_REFERENCE_RE,
+  MARKDOWN_NOTE_REFERENCE_RE,
   buildInternalNoteLinkToken,
   buildPreviewToken,
-  resolveWikiReferenceToken,
+  resolveMarkdownNoteReferenceToken,
 } from '../notes/note-references'
 import { projectActiveDomainState } from '../state/domains'
 import type { IdGenerator } from '../state/navigation-ids'
@@ -455,10 +455,9 @@ function rewriteImportedMarkdownReferences(
   headingKeyMaps: Map<string, Map<string, string>>,
   summary: ImportNotebookSummary,
 ): string {
-  return String(markdown ?? '').replace(WIKI_NOTE_REFERENCE_RE, (token) => {
-    const resolved = resolveWikiReferenceToken(imported, token)
+  return String(markdown ?? '').replace(MARKDOWN_NOTE_REFERENCE_RE, (token) => {
+    const resolved = resolveMarkdownNoteReferenceToken(imported, token)
     if (!resolved) {
-      summary.unresolvedReferences += 1
       return token
     }
     const target = translateLocation(resolved.payload.target, maps)
@@ -498,7 +497,7 @@ function rewriteImportedMarkdownReferences(
       ...(heading ? { heading } : {}),
       ...(resolved.target.startAt ? { startAt: resolved.target.startAt } : {}),
     }
-    const nextToken = buildInternalNoteLinkToken(merged, nextTarget, resolved.parsed.alias)
+    const nextToken = buildInternalNoteLinkToken(merged, nextTarget, resolved.parsed.label)
     if (!nextToken) summary.unresolvedReferences += 1
     return nextToken || token
   })

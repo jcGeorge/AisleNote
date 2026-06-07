@@ -4,7 +4,7 @@ import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from '../hotkeys/shortcuts'
 import { buildAssetUrl } from '../markdown/image-asset-refs.js'
 import { getAisleBodyId } from '../notes/note-markdown'
-import { WIKI_NOTE_REFERENCE_RE, resolveWikiReferenceToken } from '../notes/note-references'
+import { MARKDOWN_NOTE_REFERENCE_RE, resolveMarkdownNoteReferenceToken } from '../notes/note-references'
 import { DEFAULT_UI_SETTINGS } from '../settings/defaults'
 import type { AppState, Domain, Space, Tab } from '../types/app'
 import { mergeMarkdownFolderImport, parseMarkdownFolderZip } from './markdown-folder-import'
@@ -186,7 +186,7 @@ describe('mergeMarkdownFolderImport', () => {
     expect(summary.warnings[0]).toContain('matched more than once')
   })
 
-  it('copies relative assets and rewrites simple wiki and markdown note links to imported notes', async () => {
+  it('copies relative assets and rewrites local markdown note links to imported notes', async () => {
     const current = createState()
     const importedAssetUrl = buildAssetUrl('assets/copied.png')
     const { state, summary } = await mergeMarkdownFolderImport(
@@ -212,14 +212,17 @@ describe('mergeMarkdownFolderImport', () => {
     )
     const parent = state.domains[0].spaces[0].data.tabs.find((tab) => tab.title === 'Import')
     const markdown = parent ? markdownForTab(state, parent) : ''
-    const tokens = [...markdown.matchAll(WIKI_NOTE_REFERENCE_RE)].map((match) => match[0])
+    const tokens = [...markdown.matchAll(MARKDOWN_NOTE_REFERENCE_RE)]
+      .map((match) => match[0])
+      .filter((token) => resolveMarkdownNoteReferenceToken(state, token))
 
     expect(markdown).toContain(`![img](${importedAssetUrl})`)
+    expect(markdown).toContain('[[Target|see target]]')
     expect(summary.assetsImported).toBe(1)
     expect(summary.warnings.some((warning) => warning.includes('missing.png'))).toBe(true)
-    expect(tokens).toHaveLength(2)
+    expect(tokens).toHaveLength(1)
     tokens.forEach((token) => {
-      const resolved = resolveWikiReferenceToken(state, token)
+      const resolved = resolveMarkdownNoteReferenceToken(state, token)
       expect(resolved?.payload.target.tabId).toBe(parent?.id)
       expect(resolved?.payload.target.subTabId).toBe(parent?.subTabs[0]?.id)
     })
@@ -258,7 +261,8 @@ describe('mergeMarkdownFolderImport', () => {
     expect(markdown).toContain(`![img](${importedAssetUrl})`)
     expect(summary.notesImported).toBe(2)
     expect(summary.assetsImported).toBe(1)
-    expect([...markdown.matchAll(WIKI_NOTE_REFERENCE_RE)]).toHaveLength(2)
+    expect(markdown).toContain('[[Target|target]]')
+    expect([...markdown.matchAll(MARKDOWN_NOTE_REFERENCE_RE)].filter((match) => resolveMarkdownNoteReferenceToken(state, match[0]))).toHaveLength(1)
   })
 
   it('rejects unsafe Markdown ZIP paths', async () => {

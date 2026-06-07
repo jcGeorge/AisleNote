@@ -81,6 +81,26 @@ export function getEditorFocusBoundarySaveOptions(
   }
 }
 
+export function shouldCollectMountedEditorSnapshotsForFocusBoundary(
+  eventName: EditorFocusBoundaryEvent,
+  pendingEditorCount = 0,
+): boolean {
+  return eventName === 'beforeunload' || eventName === 'pagehide' || pendingEditorCount > 0
+}
+
+export function shouldPersistFocusBoundarySnapshot({
+  eventName,
+  pendingEditorCount,
+  stateChanged,
+}: {
+  eventName: EditorFocusBoundaryEvent
+  pendingEditorCount: number
+  stateChanged: boolean
+}): boolean {
+  if (eventName === 'beforeunload' || eventName === 'pagehide') return true
+  return stateChanged || pendingEditorCount > 0
+}
+
 export function pendingContentMatchesTarget(pending: PendingContent, target: EditorContentTarget): boolean {
   if (pending.noteBodyId && target.noteBodyId && pending.noteBodyId !== target.noteBodyId) return false
   return (
@@ -222,9 +242,9 @@ export const useEditorPersistence = ({
     return snapshots.length > 0 ? snapshots : getFallbackActiveEditorSnapshot()
   })
 
-  const buildLatestContentSnapshots = () => [
+  const buildLatestContentSnapshots = ({ includeMountedEditors = true } = {}) => [
     ...getPendingContentSnapshots(),
-    ...getMountedEditorSnapshots(),
+    ...(includeMountedEditors ? getMountedEditorSnapshots() : []),
   ]
 
   const applyContentSnapshots = (snapshots: EditorContentSnapshot[]) => {
@@ -232,8 +252,11 @@ export const useEditorPersistence = ({
     setState((previous) => applyEditorContentSnapshotsToState(previous, snapshots))
   }
 
-  const buildStateWithLatestEditorContent = () => {
-    const nextState = applyEditorContentSnapshotsToState(stateRef.current, buildLatestContentSnapshots())
+  const buildStateWithLatestEditorContent = ({ includeMountedEditors = true } = {}) => {
+    const nextState = applyEditorContentSnapshotsToState(
+      stateRef.current,
+      buildLatestContentSnapshots({ includeMountedEditors }),
+    )
     if (!isMainViewRef.current) return applyAutoPurgeToAppState(nextState)
     if (!editorRef.current) return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
     return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
@@ -270,9 +293,14 @@ export const useEditorPersistence = ({
   const flushAndPersistFocusBoundarySnapshot = (eventName: EditorFocusBoundaryEvent) => measureSlowOperation('editor focus-boundary persistence flush', () => {
     clearPendingSaveTimer()
     const pendingEditorCount = pendingContentRef.current.size
-    const latestState = buildStateWithLatestEditorContent()
+    const previousState = stateRef.current
+    const latestState = buildStateWithLatestEditorContent({
+      includeMountedEditors: shouldCollectMountedEditorSnapshotsForFocusBoundary(eventName, pendingEditorCount),
+    })
+    const stateChanged = latestState !== previousState
     pendingContentRef.current.clear()
-    setState(latestState)
+    if (stateChanged) setState(latestState)
+    if (!shouldPersistFocusBoundarySnapshot({ eventName, pendingEditorCount, stateChanged })) return
     persistStateSnapshot(latestState, getEditorFocusBoundarySaveOptions(eventName, pendingEditorCount))
   })
 
@@ -291,6 +319,7 @@ export const useEditorPersistence = ({
 
   const flushPendingContent = () => measureSlowOperation('editor pending content flush', () => {
     clearPendingSaveTimer()
+    if (pendingContentRef.current.size === 0) return
 
     const snapshots = buildLatestContentSnapshots()
     pendingContentRef.current.clear()

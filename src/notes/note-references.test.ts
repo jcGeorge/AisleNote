@@ -6,12 +6,15 @@ import {
   parsePreviewToken,
   parseWikiReferenceToken,
   normalizePreviewReferenceTokensForMarkdown,
+  normalizeMarkdownNoteReferencesForEditor,
+  prepareMarkdownNoteReferencesForEditor,
   removePreviewReferencesForNoteLocationsFromAppState,
   removePreviewReferencesForNoteLocationsFromMarkdown,
   removeNoteReferencesForNoteLocationsFromMarkdown,
   removeNoteReferencesForNoteLocationsFromAppState,
   removePreviewTokenById,
-  resolveWikiReferenceToken,
+  removePreviewTokenByPayload,
+  resolveMarkdownNoteReferenceToken,
 } from './note-references'
 import type { AppState, NoteLocation } from '../types/app'
 import type { NotePreviewReferencePayload } from './note-references'
@@ -98,7 +101,7 @@ function createReferenceState(markdownByBody: Record<string, string> = {}): AppS
 }
 
 describe('note preview references', () => {
-  it('builds and resolves wiki note links with optional heading anchors', () => {
+  it('builds and resolves markdown note links with optional heading anchors', () => {
     const state = createReferenceState({ 'body-sub': '# Intro\n\nBody' })
     const heading = getHeadingOutlineFromMarkdown('body-sub-aisle', '# Intro\n\nBody')[0]
     const target = {
@@ -107,17 +110,17 @@ describe('note preview references', () => {
     }
     const href = buildInternalNoteLinkToken(state, target)
 
-    expect(href).toMatch(/^\[\[Sub note--[0-9a-f]{6}#Intro--[0-9a-f]{6}\]\]$/)
-    expect(resolveWikiReferenceToken(state, href)?.target).toEqual(target)
+    expect(href).toMatch(/^\[Intro\]\(<Sub note--[0-9a-f]{6}#Intro--[0-9a-f]{6}>\)$/)
+    expect(resolveMarkdownNoteReferenceToken(state, href)?.target).toEqual(target)
     expect(parseWikiReferenceToken('[old](#tabs-note/body-1?domainId=domain&spaceId=space&tabId=parent)')).toBeNull()
   })
 
   it('builds aliases only for custom note link labels', () => {
     const state = createReferenceState()
 
-    expect(buildInternalNoteLinkToken(state, targetLocation('parent', 'sub'))).toMatch(/^\[\[Sub note--[0-9a-f]{6}\]\]$/)
+    expect(buildInternalNoteLinkToken(state, targetLocation('parent', 'sub'))).toMatch(/^\[Sub note\]\(<Sub note--[0-9a-f]{6}>\)$/)
     expect(buildInternalNoteLinkToken(state, targetLocation('parent', 'sub'), 'see me')).toMatch(
-      /^\[\[Sub note--[0-9a-f]{6}\|see me\]\]$/,
+      /^\[see me\]\(<Sub note--[0-9a-f]{6}>\)$/,
     )
   })
 
@@ -125,14 +128,14 @@ describe('note preview references', () => {
     const state = createReferenceState()
     const aisleId = 'body-sub-aisle'
     const href = buildInternalNoteLinkToken(state, { ...targetLocation('parent', 'sub'), aisleIds: [aisleId] }, 'aisle 1')
-    const resolved = resolveWikiReferenceToken(state, href)
+    const resolved = resolveMarkdownNoteReferenceToken(state, href)
 
-    expect(href).toMatch(/^\[\[Sub note--[0-9a-f]{6}#aisle 1--[0-9a-f]{6}\|aisle 1\]\]$/)
+    expect(href).toMatch(/^\[aisle 1\]\(<Sub note--[0-9a-f]{6}#aisle 1--[0-9a-f]{6}>\)$/)
     expect(resolved?.payload.aisleIds).toEqual([aisleId])
     expect(resolved?.target).toMatchObject({ ...targetLocation('parent', 'sub'), aisleId })
   })
 
-  it('normalizes stale wiki handle names by stable short hash suffixes', () => {
+  it('normalizes stale markdown handle names by stable short hash suffixes', () => {
     const state = createReferenceState()
     const currentLink = buildInternalNoteLinkToken(state, targetLocation('parent', 'sub'))
     const staleLink = currentLink.replace('Sub note--', 'Old sub name--')
@@ -142,10 +145,39 @@ describe('note preview references', () => {
     expect(normalizePreviewReferenceTokensForMarkdown(`${staleLink}\n${stalePreview}`, state)).toBe(
       `${currentLink}\n${currentPreview}`,
     )
-    expect(currentPreview).toMatch(/^!\[\[Parent tab--[0-9a-f]{6}\]\]$/)
+    expect(currentPreview).toMatch(/^!\[Parent tab\]\(<Parent tab--[0-9a-f]{6}>\)$/)
   })
 
-  it('round-trips wiki preview payload heading anchors', () => {
+  it('normalizes bare-space note reference destinations before editor reload', () => {
+    const state = createReferenceState()
+    const handle = resolveMarkdownNoteReferenceToken(state, buildInternalNoteLinkToken(state, targetLocation('parent', 'sub')))?.canonicalTarget ?? ''
+    const markdown = `[link th](${handle})\n![preview](${handle})\n[external](https://example.com/a path)`
+
+    expect(normalizeMarkdownNoteReferencesForEditor(markdown, state)).toBe(
+      `[link th](<${handle}>)\n![preview](<${handle}>)\n[external](https://example.com/a path)`,
+    )
+  })
+
+  it('prepares note hyperlinks with editor-safe hrefs while keeping previews canonical', () => {
+    const state = createReferenceState()
+    const handle = resolveMarkdownNoteReferenceToken(state, buildInternalNoteLinkToken(state, targetLocation('parent', 'sub')))?.canonicalTarget ?? ''
+    const markdown = `[link th](<${handle}>)\n![preview](<${handle}>)`
+
+    expect(prepareMarkdownNoteReferencesForEditor(markdown, state)).toBe(
+      `[link th](${encodeURI(handle)})\n![preview](<${handle}>)`,
+    )
+  })
+
+  it('repairs escaped note preview markdown emitted by wysiwyg serialization', () => {
+    const state = createReferenceState()
+    const handle = resolveMarkdownNoteReferenceToken(state, buildInternalNoteLinkToken(state, targetLocation('parent', 'sub')))?.canonicalTarget ?? ''
+    const escapedHandle = handle.replace(/-/g, '\\-')
+    const markdown = `![preview]\\(\\<${escapedHandle}\\>\\)`
+
+    expect(normalizeMarkdownNoteReferencesForEditor(markdown, state)).toBe(`![preview](<${handle}>)`)
+  })
+
+  it('round-trips markdown preview payload heading anchors', () => {
     const state = createReferenceState({ 'body-sub': '# Intro\n\nBody' })
     const heading = getHeadingOutlineFromMarkdown('body-sub-aisle', '# Intro\n\nBody')[0]
     const previewPayload = {
@@ -154,12 +186,12 @@ describe('note preview references', () => {
     }
     const token = buildPreviewToken(state, previewPayload)
 
-    expect(token).toMatch(/^!\[\[Sub note--[0-9a-f]{6}#Intro--[0-9a-f]{6}\]\]$/)
+    expect(token).toMatch(/^!\[Intro\]\(<Sub note--[0-9a-f]{6}#Intro--[0-9a-f]{6}>\)$/)
     expect(parsePreviewToken(token, state)?.heading).toEqual(heading ? { aisleId: heading.aisleId, headingKey: heading.key } : undefined)
     expect(parsePreviewReferences(token, state)[0]?.payload.heading).toEqual({ aisleId: heading.aisleId, headingKey: heading.key })
   })
 
-  it('round-trips wiki preview and note-link last-position starts', () => {
+  it('round-trips markdown preview and note-link last-position starts', () => {
     const state = createReferenceState()
     const previewPayload = {
       ...payload('last-position', targetLocation('parent', 'sub')),
@@ -169,19 +201,19 @@ describe('note preview references', () => {
     const link = buildInternalNoteLinkToken(state, { ...targetLocation('parent', 'sub'), startAt: 'last-position' })
     const staleToken = token.replace('#last position', '#LAST   POSITION')
 
-    expect(token).toMatch(/^!\[\[Sub note--[0-9a-f]{6}#last position\]\]$/)
-    expect(link).toMatch(/^\[\[Sub note--[0-9a-f]{6}#last position\]\]$/)
+    expect(token).toMatch(/^!\[Sub note\]\(<Sub note--[0-9a-f]{6}#last position>\)$/)
+    expect(link).toMatch(/^\[Sub note\]\(<Sub note--[0-9a-f]{6}#last position>\)$/)
     expect(parsePreviewToken(token, state)).toMatchObject({
       target: previewPayload.target,
       previewStart: 'last-position',
     })
-    expect(resolveWikiReferenceToken(state, link)?.target).toMatchObject({
+    expect(resolveMarkdownNoteReferenceToken(state, link)?.target).toMatchObject({
       ...targetLocation('parent', 'sub'),
       startAt: 'last-position',
     })
-    expect(resolveWikiReferenceToken(state, token)?.canonicalToken).toBe(token)
-    expect(resolveWikiReferenceToken(state, staleToken)?.canonicalToken).toBe(token)
-    expect(resolveWikiReferenceToken(state, token.slice(1))?.target.startAt).toBe('last-position')
+    expect(resolveMarkdownNoteReferenceToken(state, token)?.canonicalToken).toBe(token)
+    expect(resolveMarkdownNoteReferenceToken(state, staleToken)?.canonicalToken).toBe(token)
+    expect(resolveMarkdownNoteReferenceToken(state, token.slice(1))?.target.startAt).toBe('last-position')
   })
 
   it('does not parse old encoded or directive note preview tokens', () => {
@@ -199,6 +231,20 @@ describe('note preview references', () => {
     const markdown = `before\n${first}\nmiddle\n${second}\nafter`
 
     expect(removePreviewTokenById(markdown, state, firstId)).toBe(`before\n\nmiddle\n${second}\nafter`)
+  })
+
+  it('removes previews by resolved payload when markdown destination formatting changes', () => {
+    const state = createReferenceState()
+    const first = buildPreviewToken(state, payload('first', targetLocation('parent', 'sub')))
+    const second = buildPreviewToken(state, payload('second', targetLocation('other-parent', null)))
+    const firstPayload = parsePreviewToken(first, state)
+    const rawFirst = first.replace(/\(<(.+)>\)/, '($1)')
+    const markdown = `before\n${rawFirst}\nmiddle\n${second}\nafter`
+
+    expect(firstPayload).not.toBeNull()
+    expect(removePreviewTokenByPayload(markdown, state, firstPayload as NotePreviewReferencePayload)).toBe(
+      `before\n\nmiddle\n${second}\nafter`,
+    )
   })
 
   it('removes preview references for deleted sub-tabs without touching other previews or external links', () => {

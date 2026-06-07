@@ -490,6 +490,32 @@ describe('Electron app state storage load result', () => {
       expect(parsed.domains[0].spaces[0].settings).toEqual({ autoRemoveDeletedDays: 21 })
     }))
 
+  it('does not rewrite unchanged generated files on repeated saves', () =>
+    withTempUserDataPath((userDataPath) => {
+      const serializedState = serializedAppState()
+      saveAppState(userDataPath, serializedState)
+
+      const { root, rootManifest, noteRegistry } = getStoredWorkspacePaths(userDataPath)
+      const aisleBodyEntry = noteRegistry.aisleBodies.find((body) => body.id === 'aisle-body-1')
+      if (!aisleBodyEntry || typeof aisleBodyEntry.file !== 'string') {
+        throw new Error('missing aisle body file')
+      }
+      const oldDate = new Date(1_700_000_000_000)
+      const files = [
+        path.join(root, 'manifest.json'),
+        path.join(root, rootManifest.files.workspaceIndex),
+        path.join(root, aisleBodyEntry.file),
+        path.join(userDataPath, 'settings', 'app-settings.json'),
+      ]
+      files.forEach((filePath) => utimesSync(filePath, oldDate, oldDate))
+
+      saveAppState(userDataPath, serializedState)
+
+      files.forEach((filePath) => {
+        expect(Math.abs(statSync(filePath).mtimeMs - oldDate.getTime())).toBeLessThan(2)
+      })
+    }))
+
   it('writes only live note cursor locations to editor state', () =>
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())
@@ -1851,7 +1877,7 @@ describe('Electron app state storage load result', () => {
       const parsed = JSON.parse(result.serializedState)
       const roundTrippedMarkdown = getAisleMarkdown(parsed, parsed.noteBodies[0].aisles[0])
 
-      expect(markdown).toMatch(/!\[\[Tab--[0-9a-f]{6}\]\]/)
+      expect(markdown).toMatch(/!\[Tab\]\(Tab--[0-9a-f]{6}\)/)
       expect(markdown).not.toContain('{{tabs-preview')
       expect(markdown).toContain('#tabs-image=width=88,rotate=90')
       expect(roundTrippedMarkdown).toContain('#tabs-image=width=88,rotate=90')
