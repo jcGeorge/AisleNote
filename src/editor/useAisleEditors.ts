@@ -67,6 +67,10 @@ import {
   setEditorMarkdownForDisplay,
 } from './editor-markdown-display'
 import {
+  getAisleEditorPerfNow,
+  withAisleEditorPerfState,
+} from '../perf/aisle-editor-perf-state'
+import {
   AISLE_EDITOR_IDLE_UNMOUNT_MS,
   AISLE_EDITOR_INTERSECTION_ROOT_MARGIN,
   buildRetainedAisleEditorIds,
@@ -165,6 +169,14 @@ type PendingLinkScroll = {
   linkKey: string
 }
 
+type DevAisleEditorMountState = {
+  noteBodyId: string
+  mountedEditorCount: number
+  mountedEditorCountByAisleBodyId: Record<string, number>
+  mountedAisleIds: string[]
+  visibleAisleIds: string[]
+}
+
 export function useAisleEditors({
   viewMode,
   activeNoteBodyId,
@@ -234,6 +246,56 @@ export function useAisleEditors({
   activeNoteBodyIdRef.current = activeNoteBodyId
   const activeNoteAislesRef = useRef(activeNoteAisles)
   activeNoteAislesRef.current = activeNoteAisles
+  const emitDevAisleEditorMountState = () => {
+    if (!import.meta.env?.DEV) return
+
+    const activeAisleSet = new Set(activeAisleIds)
+    const visibleAisleIds = [...nearVisibleAisleIds].filter((aisleId) => activeAisleSet.has(aisleId))
+    const mountedAisleIds: string[] = []
+    const mountedEditorCountByAisleBodyId: Record<string, number> = {}
+
+    for (const meta of aisleEditorMetaRef.current.values()) {
+      if (!activeAisleSet.has(meta.aisleId)) continue
+      mountedAisleIds.push(meta.aisleId)
+      const aisleBodyId = getAisleBodyIdForAisleId(meta.aisleId)
+      mountedEditorCountByAisleBodyId[aisleBodyId] = (mountedEditorCountByAisleBodyId[aisleBodyId] ?? 0) + 1
+    }
+
+    const mountedAisleSet = new Set(mountedAisleIds)
+    const visibleMountedAisleIds = visibleAisleIds.filter((aisleId) => mountedAisleSet.has(aisleId))
+
+    ;(window as unknown as { __tabsAisleEditorMountState?: DevAisleEditorMountState }).__tabsAisleEditorMountState = {
+      noteBodyId: activeNoteBodyIdRef.current,
+      mountedEditorCount: mountedAisleIds.length,
+      mountedEditorCountByAisleBodyId,
+      mountedAisleIds,
+      visibleAisleIds: visibleMountedAisleIds,
+    }
+
+    withAisleEditorPerfState((state) => {
+      state.mountedEditorCount = mountedAisleIds.length
+      state.mountedEditorCountByAisleBodyId = { ...mountedEditorCountByAisleBodyId }
+      state.visibleAisleIds = [...visibleMountedAisleIds]
+      state.recentAisleIds = [...recentAisleIds]
+    })
+  }
+  const clearDevAisleEditorMountState = () => {
+    if (!import.meta.env?.DEV) return
+    ;(window as unknown as { __tabsAisleEditorMountState?: DevAisleEditorMountState }).__tabsAisleEditorMountState = {
+      noteBodyId: activeNoteBodyIdRef.current,
+      mountedEditorCount: 0,
+      mountedEditorCountByAisleBodyId: {},
+      mountedAisleIds: [],
+      visibleAisleIds: [],
+    }
+    withAisleEditorPerfState((state) => {
+      state.mountedEditorCount = 0
+      state.mountedEditorCountByAisleBodyId = {}
+      state.visibleAisleIds = []
+      state.recentAisleIds = []
+    })
+  }
+  const getAisleActivationNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
   const activeAisleIds = useMemo(() => activeNoteAisles.map((aisle) => aisle.id), [activeNoteAisles])
   const desiredMountedAisleIds = useMemo(
     () =>
@@ -304,22 +366,21 @@ export function useAisleEditors({
     activationDiagnosticFrameRef.current = window.requestAnimationFrame(flushActivationDiagnostics)
   }
 
-  const shouldSkipFocusActivationAfterPointer = (editorKey: string) => {
+  const shouldSkipFocusActivationAfterPointer = (editorKey: string, at: number) => {
     const recent = recentPointerActivationRef.current
     if (!recent || recent.editorKey !== editorKey) return false
-    const current = typeof performance !== 'undefined' ? performance.now() : Date.now()
-    return current - recent.at <= 250
+    return at - recent.at <= 250
   }
 
-  const activateEditorFromFocus = (editorKey: string) => {
-    if (shouldSkipFocusActivationAfterPointer(editorKey)) return false
+  const activateEditorFromFocus = (editorKey: string, at = getAisleActivationNow()) => {
+    if (shouldSkipFocusActivationAfterPointer(editorKey, at)) return false
     return activateAisleEditor(editorKey, { flushPrevious: true, source: 'focus' })
   }
 
-  const activateEditorFromPointer = (editorKey: string) => {
+  const activateEditorFromPointer = (editorKey: string, at: number) => {
     recentPointerActivationRef.current = {
       editorKey,
-      at: typeof performance !== 'undefined' ? performance.now() : Date.now(),
+      at,
     }
     return activateAisleEditor(editorKey, { flushPrevious: true, source: 'pointer' })
   }
@@ -671,6 +732,17 @@ export function useAisleEditors({
 
   const handleAisleEditorChange = (editorKey: string, aisleId: string, editor: Editor) => measureSlowOperation(`aisle editor change:${aisleId}`, () => {
     if (!isMainViewRef.current) return
+    if (import.meta.env?.DEV) {
+      const now = getAisleEditorPerfNow()
+      withAisleEditorPerfState((state) => {
+        state.editorChangeCount += 1
+        state.lastEditorChangeAt = now
+        state.activeAisleId = aisleId
+        state.activeAisleBodyId = getAisleBodyIdForAisleId(aisleId)
+        state.lastPendingUpdateAt = now
+      })
+    }
+
     const markdown = getNormalizedEditorMarkdown(editor)
 
     const programmaticRewriteMarkdown = resolveProgrammaticAisleRewriteMarkdown({
@@ -808,6 +880,9 @@ export function useAisleEditors({
       editorRef.current = null
       activeEditorAisleIdRef.current = ''
       multiLineCursorPluginKeyRef.current = null
+    }
+    if (import.meta.env?.DEV) {
+      emitDevAisleEditorMountState()
     }
   }
 
@@ -1000,8 +1075,8 @@ export function useAisleEditors({
           focus: () => activateEditorFromFocus(editorKey),
         },
       })
-      const activateFromFocus = () => activateEditorFromFocus(editorKey)
-      const activateFromPointer = () => activateEditorFromPointer(editorKey)
+      const activateFromFocus = () => activateEditorFromFocus(editorKey, getAisleActivationNow())
+      const activateFromPointer = () => activateEditorFromPointer(editorKey, getAisleActivationNow())
       root.addEventListener('focusin', activateFromFocus)
       root.addEventListener('pointerdown', activateFromPointer, true)
       const cleanupImageDisplayMetadataSync = installImageDisplayMetadataSync(root)
@@ -1070,6 +1145,9 @@ export function useAisleEditors({
         runPendingHeadingScroll()
         runPendingLinkScroll()
       })
+      if (import.meta.env?.DEV) {
+        emitDevAisleEditorMountState()
+      }
     }
 
     const activeEditorKey = buildAisleEditorKey(activeNoteBodyId, resolvedActiveAisleId)
@@ -1087,7 +1165,23 @@ export function useAisleEditors({
     })
   }, [viewMode, activeNoteBodyId, headingCollapseState])
 
-  useEffect(() => () => destroyAllAisleEditors(), [])
+  useEffect(() => {
+    if (!import.meta.env?.DEV) return
+    if (viewMode !== 'main' || !activeNoteBodyId) {
+      clearDevAisleEditorMountState()
+      return
+    }
+    emitDevAisleEditorMountState()
+  }, [viewMode, activeNoteBodyId, recentAisleIds, mountedAisleIds, nearVisibleAisleIds, activeAisleIds])
+
+  useEffect(() => {
+    return () => {
+      destroyAllAisleEditors()
+      if (import.meta.env?.DEV) {
+        clearDevAisleEditorMountState()
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (viewMode !== 'main' || !activeNoteBodyId) return

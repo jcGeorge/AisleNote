@@ -9,6 +9,10 @@ import { appPersistenceService } from '../storage/app-persistence-service'
 import type { AppStateSaveOptions } from '../storage/persistence-debounce'
 import type { AppState, NoteBody, PendingContent } from '../types/app'
 import { setEditorMarkdownForDisplay } from './editor-markdown-display'
+import {
+  getAisleEditorPerfNow,
+  withAisleEditorPerfState,
+} from '../perf/aisle-editor-perf-state'
 
 type UseEditorPersistenceParams = {
   stateRef: MutableRefObject<AppState>
@@ -151,7 +155,10 @@ export function applyEditorContentSnapshotsToState(
   }
 
   let nextState = sourceState
+  let markdownApplyDurationMs = 0
+  const shouldMeasurePerf = import.meta.env?.DEV
   snapshotsByAisleBodyId.forEach((snapshot) => {
+    const started = shouldMeasurePerf ? getAisleEditorPerfNow() : 0
     nextState = applyMarkdownToAppState(
       nextState,
       snapshot.spaceId,
@@ -161,7 +168,15 @@ export function applyEditorContentSnapshotsToState(
       snapshot.markdown,
       { aisleBodyId: snapshot.aisleBodyId },
     )
+    if (shouldMeasurePerf) {
+      markdownApplyDurationMs += getAisleEditorPerfNow() - started
+    }
   })
+  if (shouldMeasurePerf) {
+    withAisleEditorPerfState((state) => {
+      state.lastApplyMarkdownToAppStateDurationMs = markdownApplyDurationMs
+    })
+  }
   return nextState
 }
 
@@ -249,7 +264,41 @@ export const useEditorPersistence = ({
 
   const applyContentSnapshots = (snapshots: EditorContentSnapshot[]) => {
     if (snapshots.length === 0) return
-    setState((previous) => applyEditorContentSnapshotsToState(previous, snapshots))
+    const shouldMeasurePerf = import.meta.env?.DEV
+    const startedAt = shouldMeasurePerf ? getAisleEditorPerfNow() : 0
+    const snapshotCountsByAisleBodyId: Record<string, number> = {}
+    if (shouldMeasurePerf) {
+      snapshots.forEach((snapshot) => {
+        const currentCount = snapshotCountsByAisleBodyId[snapshot.aisleBodyId] ?? 0
+        snapshotCountsByAisleBodyId[snapshot.aisleBodyId] = currentCount + 1
+      })
+    }
+    setState((previous) => {
+      const applyStartedAt = shouldMeasurePerf ? getAisleEditorPerfNow() : 0
+      const nextState = applyEditorContentSnapshotsToState(previous, snapshots)
+      if (shouldMeasurePerf) {
+        const applyDurationMs = getAisleEditorPerfNow() - applyStartedAt
+        withAisleEditorPerfState((state) => {
+          state.lastApplyEditorContentSnapshotsDurationMs = applyDurationMs
+        })
+      }
+      return nextState
+    })
+    if (shouldMeasurePerf) {
+      const endedAt = getAisleEditorPerfNow()
+      withAisleEditorPerfState((state) => {
+        state.flushCount += 1
+        state.lastFlushStartedAt = startedAt
+        state.lastFlushEndedAt = endedAt
+        state.lastFlushDurationMs = endedAt - startedAt
+        state.snapshotsApplied += snapshots.length
+        state.snapshotsByAisleBodyId = snapshotCountsByAisleBodyId
+        state.pendingMapSize = pendingContentRef.current.size
+        state.pendingAisleBodyIds = Array.from(pendingContentRef.current.keys())
+        state.contentCommitTimerArmed = false
+        state.lastPendingUpdateAt = endedAt
+      })
+    }
   }
 
   const buildStateWithLatestEditorContent = ({ includeMountedEditors = true } = {}) => {
@@ -257,6 +306,7 @@ export const useEditorPersistence = ({
       stateRef.current,
       buildLatestContentSnapshots({ includeMountedEditors }),
     )
+
     if (!isMainViewRef.current) return applyAutoPurgeToAppState(nextState)
     if (!editorRef.current) return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
     return applyActiveCursorToState(applyAutoPurgeToAppState(nextState))
@@ -282,6 +332,11 @@ export const useEditorPersistence = ({
     if (saveTimerRef.current === null) return
     window.clearTimeout(saveTimerRef.current)
     saveTimerRef.current = null
+    if (import.meta.env?.DEV) {
+      withAisleEditorPerfState((state) => {
+        state.contentCommitTimerArmed = false
+      })
+    }
   }
 
   const cancelFocusBoundaryFlush = () => {
@@ -322,6 +377,13 @@ export const useEditorPersistence = ({
     if (pendingContentRef.current.size === 0) return
 
     const snapshots = buildLatestContentSnapshots()
+    if (import.meta.env?.DEV) {
+      withAisleEditorPerfState((state) => {
+        state.pendingMapSize = 0
+        state.pendingAisleBodyIds = []
+        state.contentCommitTimerArmed = false
+      })
+    }
     pendingContentRef.current.clear()
     applyContentSnapshots(snapshots)
   })
@@ -356,6 +418,16 @@ export const useEditorPersistence = ({
       aisleBodyId,
       markdown: normalizedMarkdown,
     })
+
+    if (import.meta.env?.DEV) {
+      withAisleEditorPerfState((state) => {
+        const now = getAisleEditorPerfNow()
+        state.lastPendingUpdateAt = now
+        state.pendingMapSize = pendingContentRef.current.size
+        state.pendingAisleBodyIds = Array.from(pendingContentRef.current.keys())
+        state.contentCommitTimerArmed = true
+      })
+    }
 
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current)

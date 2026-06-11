@@ -163,9 +163,13 @@ export function resetAisleWidthForLocation(
   const locationWidths = normalized[locationKey]
   if (!locationWidths || !(aisleId in locationWidths)) return source
 
-  const { [aisleId]: _removed, ...nextLocationWidths } = locationWidths
+  const nextLocationWidths = Object.fromEntries(
+    Object.entries(locationWidths).filter(([candidateAisleId]) => candidateAisleId !== aisleId),
+  ) as Record<string, number>
   if (Object.keys(nextLocationWidths).length === 0) {
-    const { [locationKey]: _removedLocation, ...nextWidths } = source
+    const nextWidths = Object.fromEntries(
+      Object.entries(source).filter(([candidateLocationKey]) => candidateLocationKey !== locationKey),
+    ) as AisleWidthsByLocation
     return nextWidths
   }
 

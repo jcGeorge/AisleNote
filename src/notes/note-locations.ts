@@ -1,5 +1,6 @@
 import type { AppState, Domain, NoteLocation, Space, SubTab, Tab } from '../types/app'
 import { getAisleMarkdown } from './note-markdown'
+import { getAisleEditorPerfNow, withAisleEditorPerfState } from '../perf/aisle-editor-perf-state'
 
 export type NoteLocationInfo = {
   domain: Domain | null
@@ -79,6 +80,7 @@ export function getDefaultNoteLinkLabel(sourceState: AppState, source: NoteLocat
 }
 
 export function listSearchableNoteLocations(sourceState: AppState): NoteSearchEntry[] {
+  const startedAt = import.meta.env?.DEV ? getAisleEditorPerfNow() : 0
   const entries: NoteSearchEntry[] = []
   for (const domain of getDomainsWithActiveProjection(sourceState)) {
     for (const space of domain.spaces) {
@@ -116,6 +118,13 @@ export function listSearchableNoteLocations(sourceState: AppState): NoteSearchEn
         }
       }
     }
+  }
+  if (import.meta.env?.DEV) {
+    withAisleEditorPerfState((state) => {
+      state.listSearchableNoteLocationsCallCount += 1
+      state.lastListSearchableNoteLocationsDurationMs = getAisleEditorPerfNow() - startedAt
+      state.lastListSearchableNoteLocationsResultCount = entries.length
+    })
   }
   return entries
 }

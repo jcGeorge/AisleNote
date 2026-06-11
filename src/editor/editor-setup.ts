@@ -1,4 +1,5 @@
 import type { Editor } from '@toast-ui/editor'
+import { Fragment } from 'prosemirror-model'
 import { TextSelection } from 'prosemirror-state'
 import { canSplit } from 'prosemirror-transform'
 import { applyBulletListMarkerCommand } from './list-marker-commands'
@@ -925,6 +926,140 @@ function splitCheckedTaskListItemWithUncheckedNext(state: any, dispatch?: (tr: u
   return true
 }
 
+function getTaskListItemEnterContext(state: any) {
+  const { selection } = state ?? {}
+  if (!selection?.empty) return null
+
+  const { $from } = selection
+  if (!$from || $from.parent?.type?.name !== 'paragraph') return null
+
+  const listItemDepth = getListItemDepth($from)
+  if (listItemDepth === null) return null
+
+  const listItemNode = $from.node(listItemDepth)
+  const parentListDepth = listItemDepth - 1
+  const parentList = $from.node(parentListDepth)
+  if (listItemNode?.type?.name !== 'listItem') return null
+  if (parentList?.type?.name !== 'bulletList' && parentList?.type?.name !== 'orderedList') return null
+  if (!listItemNode.attrs?.task) return null
+  if (listItemNode.childCount !== 1 || !isEmptyEditorTextBlock($from.parent)) return null
+
+  return {
+    $from,
+    listItemDepth,
+    listItemNode,
+    parentListDepth,
+    parentList,
+    itemIndex: $from.index(parentListDepth),
+  }
+}
+
+function createListNodeWithItems(listNode: any, items: any[]) {
+  return listNode.type.create(listNode.attrs, items)
+}
+
+function createEmptyParagraph(schema: any) {
+  return schema.nodes.paragraph?.create()
+}
+
+function exitTopLevelEmptyTaskListItem(state: any, dispatch?: (tr: unknown) => void): boolean {
+  const context = getTaskListItemEnterContext(state)
+  if (!context) return false
+
+  const { $from, parentListDepth, parentList, itemIndex } = context
+  const paragraphNode = createEmptyParagraph(state.schema)
+  if (!paragraphNode) return false
+
+  if (!dispatch) return true
+
+  const beforeItems: any[] = []
+  const afterItems: any[] = []
+  for (let index = 0; index < parentList.childCount; index += 1) {
+    if (index < itemIndex) beforeItems.push(parentList.child(index))
+    if (index > itemIndex) afterItems.push(parentList.child(index))
+  }
+
+  const replacementNodes: any[] = []
+  if (beforeItems.length > 0) replacementNodes.push(createListNodeWithItems(parentList, beforeItems))
+  replacementNodes.push(paragraphNode)
+  if (afterItems.length > 0) replacementNodes.push(createListNodeWithItems(parentList, afterItems))
+
+  const listStart = $from.before(parentListDepth)
+  const listEnd = $from.after(parentListDepth)
+  const paragraphStart =
+    listStart + (beforeItems.length > 0 ? replacementNodes[0].nodeSize : 0)
+  const nextTr = state.tr.replaceWith(listStart, listEnd, Fragment.fromArray(replacementNodes))
+  const selectionPosition = Math.min(paragraphStart + 1, nextTr.doc.content.size)
+  dispatch(nextTr.setSelection(TextSelection.create(nextTr.doc, selectionPosition, selectionPosition)).scrollIntoView())
+  return true
+}
+
+function liftNestedEmptyTaskListItem(state: any, dispatch?: (tr: unknown) => void): boolean {
+  const context = getTaskListItemEnterContext(state)
+  if (!context) return false
+
+  const { $from, listItemNode, parentListDepth, parentList, itemIndex } = context
+  const ancestorItemDepth = parentListDepth - 1
+  if (ancestorItemDepth <= 0 || $from.node(ancestorItemDepth)?.type?.name !== 'listItem') return false
+
+  const ancestorItem = $from.node(ancestorItemDepth)
+  const parentListChildIndex = $from.index(ancestorItemDepth)
+  const paragraphNode = createEmptyParagraph(state.schema)
+  if (!paragraphNode) return false
+
+  if (!dispatch) return true
+
+  const beforeNestedItems: any[] = []
+  const afterNestedItems: any[] = []
+  for (let index = 0; index < parentList.childCount; index += 1) {
+    if (index < itemIndex) beforeNestedItems.push(parentList.child(index))
+    if (index > itemIndex) afterNestedItems.push(parentList.child(index))
+  }
+
+  const rebuiltAncestorChildren: any[] = []
+  for (let index = 0; index < ancestorItem.childCount; index += 1) {
+    if (index === parentListChildIndex) {
+      if (beforeNestedItems.length > 0) {
+        rebuiltAncestorChildren.push(createListNodeWithItems(parentList, beforeNestedItems))
+      }
+      continue
+    }
+    rebuiltAncestorChildren.push(ancestorItem.child(index))
+  }
+
+  const liftedItemChildren = [paragraphNode]
+  if (afterNestedItems.length > 0) {
+    liftedItemChildren.push(createListNodeWithItems(parentList, afterNestedItems))
+  }
+
+  const rebuiltAncestorItem = ancestorItem.type.create(ancestorItem.attrs, rebuiltAncestorChildren)
+  const liftedItem = listItemNode.type.create(listItemNode.attrs, liftedItemChildren)
+  const ancestorItemStart = $from.before(ancestorItemDepth)
+  const ancestorItemEnd = $from.after(ancestorItemDepth)
+  const nextTr = state.tr.replaceWith(
+    ancestorItemStart,
+    ancestorItemEnd,
+    Fragment.fromArray([rebuiltAncestorItem, liftedItem]),
+  )
+  const liftedItemStart = ancestorItemStart + rebuiltAncestorItem.nodeSize
+  const selectionPosition = Math.min(liftedItemStart + 2, nextTr.doc.content.size)
+  dispatch(nextTr.setSelection(TextSelection.create(nextTr.doc, selectionPosition, selectionPosition)).scrollIntoView())
+  return true
+}
+
+function handleTaskListItemEnter(state: any, dispatch?: (tr: unknown) => void): boolean {
+  const context = getTaskListItemEnterContext(state)
+  if (context) {
+    const isNestedTask =
+      context.parentListDepth > 1 && context.$from.node(context.parentListDepth - 1)?.type?.name === 'listItem'
+    return isNestedTask
+      ? liftNestedEmptyTaskListItem(state, dispatch)
+      : exitTopLevelEmptyTaskListItem(state, dispatch)
+  }
+
+  return splitCheckedTaskListItemWithUncheckedNext(state, dispatch)
+}
+
 export function uncheckedTaskEnterPlugin(context: {
   pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
 }) {
@@ -934,7 +1069,7 @@ export function uncheckedTaskEnterPlugin(context: {
     wysiwygPlugins: [
       () =>
         keymap({
-          Enter: splitCheckedTaskListItemWithUncheckedNext,
+          Enter: handleTaskListItemEnter,
         }),
     ],
   }

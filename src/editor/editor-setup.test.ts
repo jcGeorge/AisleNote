@@ -42,6 +42,7 @@ import {
   thematicBreakShortcutPlugin,
   tagAppearancePlugin,
   toggleHighlightMark,
+  uncheckedTaskEnterPlugin,
 } from './editor-setup'
 import { getBulletListMarkerFromAttrs } from './list-markers'
 import { BLOCK_INDENT_TOKEN, INDENT_TOKEN } from '../markdown/markdown-utils'
@@ -348,6 +349,10 @@ const paragraphShortcutSchema = new Schema({
     },
     listItem: {
       content: 'paragraph block*',
+      attrs: {
+        task: { default: null },
+        checked: { default: null },
+      },
       toDOM: () => ['li', 0],
     },
     codeBlock: {
@@ -417,6 +422,15 @@ function getThematicBreakBindings() {
   return pluginBundle.wysiwygPlugins[0]() as Record<string, any>
 }
 
+function getTaskEnterBindings() {
+  const pluginBundle = uncheckedTaskEnterPlugin({
+    pmKeymap: {
+      keymap: (bindings: Record<string, unknown>) => bindings,
+    },
+  })
+  return pluginBundle.wysiwygPlugins[0]() as Record<string, any>
+}
+
 function applyParagraphSpaceShortcutToText(text: string, cursorOffset: number) {
   const doc = paragraphShortcutSchema.nodes.doc.create(null, [
     paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text(text)),
@@ -450,6 +464,88 @@ function createShortcutView(doc: any, selectionPosition: number) {
   }
   return { state, get nextState() { return nextState }, view }
 }
+
+function taskListItem(text: string, children: any[] = [], attrs: Record<string, unknown> = {}) {
+  const paragraphNode = text
+    ? paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text(text))
+    : paragraphShortcutSchema.nodes.paragraph.create()
+  return paragraphShortcutSchema.nodes.listItem.create(
+    {
+      task: true,
+      checked: false,
+      ...attrs,
+    },
+    [paragraphNode, ...children],
+  )
+}
+
+describe('task Enter behavior', () => {
+  it('exits a top-level empty task to a plain paragraph instead of creating a bullet', () => {
+    const list = paragraphShortcutSchema.nodes.bulletList.create(null, [
+      taskListItem('one'),
+      taskListItem(''),
+    ])
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [list])
+    const emptyParagraphPosition = findParagraphPosition(doc, '')
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, emptyParagraphPosition + 1),
+    })
+    const bindings = getTaskEnterBindings()
+    let nextState = state
+
+    expect(bindings.Enter(state, (transaction: any) => {
+      nextState = state.apply(transaction)
+    })).toBe(true)
+
+    expect(nextState.doc.childCount).toBe(2)
+    expect(nextState.doc.child(0).type.name).toBe('bulletList')
+    expect(nextState.doc.child(0).childCount).toBe(1)
+    expect(nextState.doc.child(0).child(0).attrs).toMatchObject({ task: true, checked: false })
+    expect(nextState.doc.child(1).type.name).toBe('paragraph')
+    expect(nextState.doc.child(1).textContent).toBe('')
+    expect(nextState.selection.from).toBe(nextState.doc.child(0).nodeSize + 1)
+  })
+
+  it('lifts an indented empty task to an unindented task', () => {
+    const nestedList = paragraphShortcutSchema.nodes.bulletList.create(null, [taskListItem('')])
+    const list = paragraphShortcutSchema.nodes.bulletList.create(null, [
+      taskListItem('parent', [nestedList]),
+    ])
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [list])
+    const emptyParagraphPosition = findParagraphPosition(doc, '')
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, emptyParagraphPosition + 1),
+    })
+    const bindings = getTaskEnterBindings()
+    let nextState = state
+
+    expect(bindings.Enter(state, (transaction: any) => {
+      nextState = state.apply(transaction)
+    })).toBe(true)
+
+    const nextList = nextState.doc.child(0)
+    expect(nextList.type.name).toBe('bulletList')
+    expect(nextList.childCount).toBe(2)
+    expect(nextList.child(0).textContent).toBe('parent')
+    expect(nextList.child(0).childCount).toBe(1)
+    expect(nextList.child(1).attrs).toMatchObject({ task: true, checked: false })
+    expect(nextList.child(1).textContent).toBe('')
+  })
+
+  it('leaves non-empty unchecked tasks to native Enter behavior', () => {
+    const list = paragraphShortcutSchema.nodes.bulletList.create(null, [taskListItem('one')])
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [list])
+    const paragraphEnd = getTextBlockEnd(doc, 'one')
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, paragraphEnd),
+    })
+
+    expect(getTaskEnterBindings().Enter(state)).toBe(false)
+  })
+})
 
 describe('paragraph space shortcut WYSIWYG behavior', () => {
   it('turns a heading marker at the start of an existing text line into a heading on Space', () => {

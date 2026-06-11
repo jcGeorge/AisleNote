@@ -130,10 +130,15 @@ import { closeEditorEphemera, type CloseEditorEphemeraOptions } from '../editor/
 import {
   deleteFocusedAisleFromDraft,
   getAislesForNewAisle,
-  isEmptyAisleMarkdown,
   MAX_AISLE_WARNING_MESSAGE,
 } from '../editor/aisle-edit-draft'
 import type { AisleStructuralSnapshot } from '../editor/aisle-structural-history'
+import {
+  buildFocusedAisleStructuralPasteReplacement,
+  getCopyAsNewAislePasteFocusedAisleReplacementMode,
+  getCopyAsPasteHereFocusedAisleReplacementMode,
+  type FocusedAisleStructuralPasteMode,
+} from '../editor/aisle-copy-paste'
 import { insertNewAisles, replaceFocusedAisleWithNewAisles } from '../editor/aisle-insertion'
 import { getAisleIdFromAisleEditorKey } from '../editor/aisle-editor'
 import {
@@ -157,6 +162,10 @@ import {
   type TableOfContentsPanelsState,
 } from '../editor/table-of-contents'
 import type { TableOfContentsLinkItem } from '../editor/table-of-contents-links'
+import {
+  installAisleEditorPerfStateWindowHelpers,
+  runAisleEditorPerfTiming,
+} from '../perf/aisle-editor-perf-state'
 import {
   getCommandCapableEditor,
   collectProseMirrorTextPositions,
@@ -700,6 +709,11 @@ export function useAppController(): AppController {
   const selectedDiagnosticDayRef = useRef(selectedDiagnosticDay)
 
   useEffect(() => {
+    if (!import.meta.env?.DEV) return
+    installAisleEditorPerfStateWindowHelpers()
+  }, [])
+
+  useEffect(() => {
     const closeOverlays = () => {
       setContextMenu(null)
       setMenuOpen(false)
@@ -1035,15 +1049,35 @@ export function useAppController(): AppController {
           : noteFilter.tags.selectedKeys
   const tagFilterActive = noteFilter.active
   const noteFilterSelectedKey = noteFilterSelectedKeys.join('\u0000')
-  const noteFilterIndex = useMemo(
-    () => buildNoteFilterIndex(state, noteFilterKind, noteFilterSelectedKey ? noteFilterSelectedKey.split('\u0000') : []),
-    [noteFilterKind, noteFilterSelectedKey, state],
-  )
+  const noteFilterIndex = useMemo(() => {
+    const selectedKeys = noteFilterSelectedKey ? noteFilterSelectedKey.split('\u0000') : []
+    if (import.meta.env?.DEV) {
+      return runAisleEditorPerfTiming(
+        (perfState, durationMs) => {
+          perfState.noteFilterIndexBuildCount += 1
+          perfState.lastNoteFilterIndexBuildDurationMs = durationMs
+        },
+        () => buildNoteFilterIndex(state, noteFilterKind, selectedKeys),
+      )
+    }
+    return buildNoteFilterIndex(state, noteFilterKind, selectedKeys)
+  }, [noteFilterKind, noteFilterSelectedKey, state])
   const sortedNoteFilterOptions = useMemo(
     () => sortNoteFilterOptions(noteFilterIndex.availableOptions, noteFilter.tags.sortMode),
     [noteFilter.tags.sortMode, noteFilterIndex.availableOptions],
   )
-  const tagAutocompleteFilterIndex = useMemo(() => buildNoteFilterIndex(state, 'tags', []), [state])
+  const tagAutocompleteFilterIndex = useMemo(() => {
+    if (import.meta.env?.DEV) {
+      return runAisleEditorPerfTiming(
+        (perfState, durationMs) => {
+          perfState.tagAutocompleteFilterIndexBuildCount += 1
+          perfState.lastTagAutocompleteFilterIndexBuildDurationMs = durationMs
+        },
+        () => buildNoteFilterIndex(state, 'tags', []),
+      )
+    }
+    return buildNoteFilterIndex(state, 'tags', [])
+  }, [state])
 
   const updateNoteFilter = (updater: (current: NoteFilterSettings) => NoteFilterSettings) => {
     setState((previous) => {
@@ -3382,44 +3416,44 @@ export function useAppController(): AppController {
       : destinationBody?.aisles[0]?.id ?? ''
   }
 
-  const replaceFocusedBlankAisleWithStructuralCopy = (
+  const replaceFocusedAisleWithStructuralCopy = (
     latestState: AppState,
     payload: CopyAsClipboardPayload,
     beforeSnapshot: AisleStructuralSnapshot | null = captureActiveAisleStructuralSnapshot(latestState),
+    mode: FocusedAisleStructuralPasteMode = 'blank-only',
   ): boolean => {
-    if (payload.scope !== 'aisle' || (payload.action !== 'copy' && payload.action !== 'duplicate')) return false
-    if (!beforeSnapshot) return false
-    const result = materializeStructuralAisleCopiesForInsertion(latestState, {
-      scope: payload.scope,
-      action: payload.action,
-      source: payload.source,
-      aisleId: payload.aisleId,
-    })
-    if (result.status !== 'applied') return false
-
-    const body = latestState.noteBodies.find((candidate) => candidate.id === beforeSnapshot.noteBodyId)
-    if (!body) return false
-    const baseAisles = cloneAisles(body.aisles, latestState.noteAisleBodies)
-    const nextAisles = replaceFocusedAisleWithNewAisles(
-      baseAisles,
-      result.aisles,
-      beforeSnapshot.activeAisleId,
-      (aisle) => isEmptyAisleMarkdown(aisle.markdown),
-    )
-    if (!nextAisles) return false
-
     const maxAisles = scratchpadWorkspaceActive ? getScratchpadAisleLimit() : MAX_NOTE_AISLES
-    if (nextAisles.length > maxAisles) {
-      if (scratchpadWorkspaceActive) {
-        showScratchpadAisleLimitToast()
-      } else {
-        pushToast(MAX_AISLE_WARNING_MESSAGE, 'warning')
+    const result = buildFocusedAisleStructuralPasteReplacement({
+      appState: latestState,
+      payload,
+      beforeSnapshot,
+      mode,
+      maxAisles,
+    })
+    if (result.status === 'not-applicable') return false
+    if (result.status === 'blocked') {
+      if (result.message === 'Maximum aisle count reached.') {
+        if (scratchpadWorkspaceActive) {
+          showScratchpadAisleLimitToast()
+        } else {
+          pushToast(MAX_AISLE_WARNING_MESSAGE, 'warning')
+        }
+        return true
       }
+      if (mode === 'always') {
+        pushToast(result.message, 'warning')
+        return true
+      }
+      return false
+    }
+
+    if (!result.activeAisleId) {
+      pushToast('Copied aisle no longer exists.', 'warning')
       return true
     }
 
-    applyAisleEditDraftToActiveNote(nextAisles, {
-      activeAisleId: result.aisles[0]?.id,
+    applyAisleEditDraftToActiveNote(result.aisles, {
+      activeAisleId: result.activeAisleId,
       additionalAisleBodies: result.aisleBodies,
     })
     closeEditorEphemeraRef.current()
@@ -3438,7 +3472,10 @@ export function useAppController(): AppController {
       pushToast('Scratchpad cannot receive synced copies.', 'warning')
       return true
     }
-    if (replaceFocusedBlankAisleWithStructuralCopy(latestState, payload)) return true
+    const pasteHereReplacementMode = getCopyAsPasteHereFocusedAisleReplacementMode(payload)
+    if (pasteHereReplacementMode) {
+      if (replaceFocusedAisleWithStructuralCopy(latestState, payload, undefined, pasteHereReplacementMode)) return true
+    }
     if (scratchpadWorkspaceActive && (payload.action === 'copy' || payload.action === 'duplicate')) {
       const sourceInfo = getLocationInfo(latestState, payload.source)
       const sourceBody = sourceInfo.noteBodyId
@@ -3612,7 +3649,10 @@ export function useAppController(): AppController {
         pushToast('Scratchpad cannot receive synced copies.', 'warning')
         return true
       }
-      if (replaceFocusedBlankAisleWithStructuralCopy(latestState, payload, beforeSnapshot)) return true
+      const replacementMode = getCopyAsNewAislePasteFocusedAisleReplacementMode(payload)
+      if (replacementMode && replaceFocusedAisleWithStructuralCopy(latestState, payload, beforeSnapshot, replacementMode)) {
+        return true
+      }
       const structuralAction: 'copy' | 'duplicate' = payload.action
       const result = materializeStructuralAisleCopiesForInsertion(latestState, {
         scope: payload.scope,
