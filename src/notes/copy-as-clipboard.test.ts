@@ -12,6 +12,7 @@ import {
   getCopyAsAisleIdForNoteContext,
   getCopyAsPasteSuccessMessage,
   getCopyAsSuccessMessage,
+  getScratchpadStructuralPastePayload,
   isCopyAsClipboardTextMarker,
   parseCopyAsPayload,
   parseCopyAsTextMarker,
@@ -226,6 +227,34 @@ describe('copy-as clipboard helpers', () => {
       ok: true,
       payload,
     })
+  })
+
+  it('converts synced live-source payloads to stand-alone scratchpad paste payloads without mutating the clipboard payload', () => {
+    const payload: CopyAsClipboardPayload = {
+      version: 1,
+      scope: 'note',
+      action: 'duplicate',
+      source: sourceLocation,
+    }
+
+    const result = getScratchpadStructuralPastePayload(payload)
+
+    expect(result.convertedFromSynced).toBe(true)
+    expect(result.payload).toEqual({ ...payload, action: 'copy' })
+    expect(result.warningMessage).toBe(
+      'Synced note copies are not allowed in Scratchpad. Pasted as a stand-alone copy.',
+    )
+    expect(payload.action).toBe('duplicate')
+
+    const aisleResult = getScratchpadStructuralPastePayload({
+      ...payload,
+      scope: 'aisle',
+      aisleId: 'aisle-source-1',
+    })
+    expect(aisleResult.payload).toMatchObject({ scope: 'aisle', action: 'copy', aisleId: 'aisle-source-1' })
+    expect(aisleResult.warningMessage).toBe(
+      'Synced aisle copies are not allowed in Scratchpad. Pasted as a stand-alone copy.',
+    )
   })
 
   it('writes private clipboard payloads and falls back to plain text', async () => {

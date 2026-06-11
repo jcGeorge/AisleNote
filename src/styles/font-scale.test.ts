@@ -469,6 +469,7 @@ describe('compact scope tab scaling styles', () => {
   it('uses one shared rail control sizing contract for rail buttons', () => {
     const appCss = readStyle('../App.css')
     const railCss = readStyle('rail-controls.css')
+    const topbarCss = readStyle('topbar.css')
     const railControlRule = extractRule(railCss, '.rail-control,\n.compact-scope-btn,\n.tab-btn,\n.add-tab-btn')
 
     expect(appCss.indexOf("@import './styles/base.css';")).toBeLessThan(
@@ -495,6 +496,7 @@ describe('compact scope tab scaling styles', () => {
     expect(railControlRule).toContain('font-family: inherit;')
     expect(railControlRule).toContain('font-size: var(--rail-control-font-size);')
     expect(railControlRule).toContain('line-height: var(--rail-control-line-height);')
+    expect(topbarCss).not.toContain('.view-settings .topbar-context-btn')
     expect(railControlRule).not.toContain('--rail-control-text:')
     expect(railControlRule).not.toContain('--rail-control-bg:')
     expect(railControlRule).not.toContain('--rail-control-border:')
@@ -896,8 +898,14 @@ describe('compact scope tab scaling styles', () => {
   it('uses semantic rail colors for note mention navigator chips', () => {
     const editorShellCss = readStyle('editor-shell.css')
     const menuSource = readFileSync(join(styleDir, '../components/editor/NoteMentionMenu.tsx'), 'utf8')
+    const popoverRule = extractRule(editorShellCss, '.note-mention-popover')
+    const previewPopoverRule = extractRule(editorShellCss, '.note-mention-popover.has-preview')
+    const noPreviewPopoverRule = extractRule(editorShellCss, '.note-mention-popover.has-no-preview')
+    const menuRule = extractRule(editorShellCss, '.note-mention-menu')
     const chipRule = extractRule(editorShellCss, '.note-mention-nav-chip')
     const searchMenuRule = extractRule(editorShellCss, '.note-mention-menu.is-search')
+    const previewRule = extractRule(editorShellCss, '.note-mention-preview')
+    const previewBodyRule = extractRule(editorShellCss, '.note-mention-preview-body.aisle-edit-preview')
     const resultTitleRule = extractRule(editorShellCss, '.note-mention-result-title')
     const resultContextRule = extractRule(editorShellCss, '.note-mention-result-context')
     const resultContextChipRule = extractRule(editorShellCss, '.note-mention-result-context-chip')
@@ -922,7 +930,16 @@ describe('compact scope tab scaling styles', () => {
     }
 
     expect(menuSource).toContain('className={`rail-control note-mention-nav-chip')
+    expect(menuSource).toContain('<AisleMarkdownPreview markdown={props.preview.markdown}')
     expect(editorShellCss).not.toContain('note-mention-row-label')
+    expect(popoverRule).toContain('position: fixed;')
+    expect(popoverRule).toContain('z-index: 3400;')
+    expect(popoverRule).toContain('align-items: start;')
+    expect(popoverRule).not.toContain('align-items: stretch;')
+    expect(previewPopoverRule).toContain('grid-template-columns: minmax(12rem, 17.6rem) minmax(0, auto);')
+    expect(noPreviewPopoverRule).toContain('grid-template-columns: minmax(0, 1fr);')
+    expect(menuRule).not.toContain('position: fixed;')
+    expect(menuRule).not.toMatch(/\n\s*height:/)
     expectRailVariables('.note-mention-nav-row.is-domain-row', 'domain')
     expectRailVariables('.note-mention-nav-row.is-space-row', 'space')
     expectRailVariables('.note-mention-nav-row.is-tab-row', 'parent')
@@ -938,6 +955,10 @@ describe('compact scope tab scaling styles', () => {
     expect(focusedRule).toContain('position: absolute;')
     expect(focusedRule).toContain('animation: note-mention-focus-underline')
     expect(focusedRule).not.toContain('outline')
+    expect(previewRule).toContain('box-sizing: border-box;')
+    expect(previewRule).toContain('width: min(17.6rem, calc(100vw - 1rem));')
+    expect(previewRule).toContain('background: color-mix(in srgb, var(--context-menu-bg) 88%, var(--app-surface));')
+    expect(previewBodyRule).toContain('overflow: auto;')
     expect(editorShellCss).toContain('@media (prefers-reduced-motion: reduce)')
     expect(searchMenuRule).toContain('width: min(45.6rem, calc(100vw - 1rem));')
     expect(resultTitleRule).toContain('font-weight: 400;')

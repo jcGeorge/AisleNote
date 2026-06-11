@@ -132,6 +132,22 @@ describe('copy-note modal text', () => {
     expect(text.body).toContain('one aisle')
     expect(text.body).toContain('current aisle instead')
   })
+
+  it('warns before independent note paste removes empty aisles', () => {
+    const modal: ModalState = {
+      type: 'confirm-independent-note-paste-reclaim',
+      source,
+      destination: target,
+      destinationAisleId: 'aisle-2',
+      placement: 'right-of-focus',
+    }
+    const text = getModalText(modal, createModalTextState())
+
+    expect(text.title).toBe('Paste independent note?')
+    expect(text.action).toBe('paste anyway')
+    expect(text.body).toContain('remove empty aisles')
+    expect(text.body).toContain('Non-empty aisles will be kept')
+  })
 })
 
 describe('delete target modal text', () => {

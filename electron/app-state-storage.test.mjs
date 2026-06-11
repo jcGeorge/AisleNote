@@ -288,6 +288,31 @@ describe('Electron app state storage load result', () => {
       expect(secondSave.saveMetrics.totalDurationMs).toBeGreaterThanOrEqual(0)
     }))
 
+  it('reports build-map subphases and reuses cached aisle storage payloads', () =>
+    withTempUserDataPath((userDataPath) => {
+      const state = JSON.parse(serializedAppState())
+      state.noteAisleBodies[0].markdown = 'cache-target body #SubphaseMetric'
+
+      const firstSave = saveAppState(userDataPath, JSON.stringify(state))
+      const secondSave = saveAppState(userDataPath, JSON.stringify(state))
+
+      expect(firstSave.saveMetrics.phases).toMatchObject({
+        noteBodyTraversal: expect.any(Number),
+        noteContentGeneration: expect.any(Number),
+        assetReferenceExtraction: expect.any(Number),
+        manifestAssembly: expect.any(Number),
+      })
+      expect(secondSave.saveMetrics.phases).toMatchObject({
+        noteBodyTraversal: expect.any(Number),
+        noteContentGeneration: expect.any(Number),
+        assetReferenceExtraction: expect.any(Number),
+        manifestAssembly: expect.any(Number),
+      })
+      expect(firstSave.saveMetrics.counts.aisleStorageCacheMisses).toBeGreaterThanOrEqual(1)
+      expect(secondSave.saveMetrics.counts.aisleStorageCacheHits).toBeGreaterThanOrEqual(1)
+      expect(secondSave.storageFingerprint).toBe(firstSave.storageFingerprint)
+    }))
+
   it('round-trips the custom theme through hybrid storage', () =>
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())

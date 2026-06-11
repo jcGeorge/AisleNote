@@ -3,6 +3,7 @@ import type {
   NoteMentionNavigatorRow,
   NoteMentionNavigatorRowId,
   NoteMentionAction,
+  NoteMentionPreviewData,
   NoteMentionSearchContextChip,
   NoteMentionSearchEntryDetails,
   NoteMentionSearchFocusStage,
@@ -11,6 +12,7 @@ import type {
 import { NOTE_MENTION_ACTIONS, isNoteMentionCopyAction } from '../../notes/note-mention-picker'
 import type { NoteSearchEntry } from '../../notes/note-locations'
 import { getNoteMentionActionLabel } from '../../notes/copy-reference-labels'
+import { AisleMarkdownPreview } from '../notes/AisleMarkdownPreview'
 import {
   handleNoteMentionSearchAisleClick,
   handleNoteMentionSearchResultClick,
@@ -30,6 +32,9 @@ type NoteMentionMenuProps = {
   selectedSearchIndex: number | null
   searchAisleItems: NoteMentionNavigatorItem[]
   selectedSearchAisleId: string
+  preview?: NoteMentionPreviewData | null
+  previewLayout?: 'left'
+  selectorHeight?: number | null
   searchFocusStage: NoteMentionSearchFocusStage
   keyboardFocusVisible: boolean
   focusedAisleIndex: number
@@ -114,7 +119,7 @@ function NoteMentionActions({
       </div>
       {pendingCopyAction && isNoteMentionCopyAction(pendingCopyAction) && (
         <div className="note-mention-copy-confirm" role="group" aria-label="confirm copy action">
-          <span className="note-mention-copy-confirm-text">this operation will replace this note</span>
+          <span className="note-mention-copy-confirm-text">this operation will replace this aisle</span>
           <button
             type="button"
             className={`note-mention-action-btn is-primary${focusedConfirmIndex === 0 && confirmFocusVisible ? ' is-focused' : ''}`}
@@ -148,134 +153,150 @@ export function NoteMentionMenu(props: NoteMentionMenuProps) {
   const showAisleFocus = props.keyboardFocusVisible && props.searchFocusStage === 'aisles'
   const showActionFocus = props.keyboardFocusVisible && props.searchFocusStage === 'actions'
   const showConfirmFocus = props.keyboardFocusVisible && props.searchFocusStage === 'copy-confirm'
+  const previewLayout = props.previewLayout ?? 'left'
 
   return (
     <div
-      className={`note-mention-menu ${searchMode ? 'is-search' : 'is-navigator'}`}
+      className={`note-mention-popover ${searchMode ? 'is-search' : 'is-navigator'} ${
+        props.preview ? `has-preview is-preview-${previewLayout}` : 'has-no-preview'
+      }`}
       style={{ top: `${props.top}px`, left: `${props.left}px` }}
-      role="menu"
-      aria-label={searchMode ? 'Note search' : 'Note navigator'}
       onPointerDown={(event) => {
         event.preventDefault()
         event.stopPropagation()
       }}
     >
-      {searchMode ? (
-        <div className="note-mention-search-results">
-          {props.searchEntries.length > 0 ? (
-            <>
-              {props.searchEntries.map((entry, index) => {
-                const details = props.searchEntryDetails[index]
-                const contextChips = details?.contextChips ?? [
-                  { kind: 'domain' as const, label: entry.domainName },
-                  { kind: 'space' as const, label: entry.spaceName },
-                  { kind: 'parent' as const, label: entry.parentName },
-                  { kind: 'note' as const, label: entry.noteName },
-                ]
-                const aisleCount = details?.aisleCount ?? 1
-                return (
-                  <button
-                    key={`${entry.domainId}:${entry.spaceId}:${entry.tabId}:${entry.subTabId ?? 'home'}`}
-                    type="button"
-                    className={`note-mention-result-card${index === props.activeSearchIndex ? ' is-active' : ''}${index === props.selectedSearchIndex ? ' is-selected-search' : ''}`}
-                    data-focused={index === props.activeSearchIndex && showResultFocus ? 'true' : undefined}
-                    role="menuitem"
-                    aria-current={index === props.activeSearchIndex ? 'true' : undefined}
-                    aria-selected={index === props.selectedSearchIndex ? 'true' : undefined}
-                    onPointerEnter={() => handleNoteMentionSearchResultHover(index, props.onHighlightSearch)}
-                    onClick={(event) => {
-                      handleNoteMentionSearchResultClick(event, index, props.onSelectSearchResult)
-                    }}
-                    onDoubleClick={(event) => {
-                      handleNoteMentionSearchResultDoubleClick(event, entry, props.onChooseSearchEntry)
-                    }}
-                  >
-                    <span className="note-mention-result-count" aria-label={`${aisleCount} ${aisleCount === 1 ? 'aisle' : 'aisles'}`}>
-                      {aisleCount}
-                    </span>
-                    <span className="note-mention-result-title">{entry.noteName}</span>
-                    <span className="note-mention-result-context">
-                      {contextChips.map((chip) => (
-                        <span key={`${chip.kind}:${chip.label}`} className={getSearchContextChipClassName(chip.kind)}>
-                          {chip.label}
-                        </span>
-                      ))}
-                    </span>
-                  </button>
-                )
-              })}
-              {props.searchAisleItems.length > 0 && (
-                <section className="note-mention-nav-row is-aisle-row" aria-label="aisles">
-                  <div className="note-mention-row-items">
-                    {props.searchAisleItems.map((item, index) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`rail-control note-mention-nav-chip${item.id === props.selectedSearchAisleId ? ' is-selected' : ''}`}
-                        data-focused={index === props.focusedAisleIndex && showAisleFocus ? 'true' : undefined}
-                        role="menuitem"
-                        aria-current={item.id === props.selectedSearchAisleId ? 'true' : undefined}
-                        onClick={(event) => {
-                          handleNoteMentionSearchAisleClick(event, item.id, props.onSelectSearchAisle)
-                        }}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-            </>
-          ) : (
-            <div className="note-mention-empty">no matching notes</div>
-          )}
-        </div>
-      ) : (
-        <div className="note-mention-navigator">
-          {props.navigatorRows.map((row) => (
-            <section
-              key={row.id}
-              className={`note-mention-nav-row is-${row.id}-row${row.id === props.activeRow ? ' is-active-row' : ''}`}
-              aria-label={row.label}
-            >
-              <div className="note-mention-row-items">
-                {row.items.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={`rail-control note-mention-nav-chip${item.id === row.selectedId ? ' is-selected' : ''}`}
-                    data-focused={props.keyboardFocusVisible && row.id === props.activeRow && item.id === row.selectedId ? 'true' : undefined}
-                    role="menuitem"
-                    aria-current={item.id === row.selectedId ? 'true' : undefined}
-                    onMouseEnter={() => props.onActiveRowChange(row.id)}
-                    onClick={() => props.onSelectNavigatorItem(row.id, item.id)}
-                  >
-                    {row.id === 'note' && item.id === HOME_NOTE_ID ? 'home' : item.label}
-                  </button>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
+      {props.preview && (
+        <aside
+          className="note-mention-preview"
+          aria-label={`Aisle preview for ${props.preview.targetLabel}`}
+          style={typeof props.selectorHeight === 'number' ? { height: `${props.selectorHeight}px` } : undefined}
+        >
+          <AisleMarkdownPreview markdown={props.preview.markdown} className="aisle-edit-preview note-mention-preview-body" />
+        </aside>
       )}
-      <NoteMentionActions
-        actions={NOTE_MENTION_ACTIONS}
-        focusedActionIndex={props.focusedActionIndex}
-        focusedConfirmIndex={props.focusedConfirmIndex}
-        pendingCopyAction={props.pendingCopyAction}
-        actionFocusVisible={showActionFocus}
-        confirmFocusVisible={showConfirmFocus}
-        onActionFocus={props.onFocusAction}
-        onActionChoose={(action) => {
-          if (searchMode && activeEntry) {
-            props.onChooseAction(action)
-            return
-          }
-          if (activeNavigatorTarget) props.onChooseTarget(activeNavigatorTarget, action)
-        }}
-        onConfirmCopyAction={props.onConfirmCopyAction}
-        onCancelCopyAction={props.onCancelCopyAction}
-      />
+      <div
+        className={`note-mention-menu ${searchMode ? 'is-search' : 'is-navigator'}`}
+        role="menu"
+        aria-label={searchMode ? 'Note search' : 'Note navigator'}
+      >
+        {searchMode ? (
+          <div className="note-mention-search-results">
+            {props.searchEntries.length > 0 ? (
+              <>
+                {props.searchEntries.map((entry, index) => {
+                  const details = props.searchEntryDetails[index]
+                  const contextChips = details?.contextChips ?? [
+                    { kind: 'domain' as const, label: entry.domainName },
+                    { kind: 'space' as const, label: entry.spaceName },
+                    { kind: 'parent' as const, label: entry.parentName },
+                    { kind: 'note' as const, label: entry.noteName },
+                  ]
+                  const aisleCount = details?.aisleCount ?? 1
+                  return (
+                    <button
+                      key={`${entry.domainId}:${entry.spaceId}:${entry.tabId}:${entry.subTabId ?? 'home'}`}
+                      type="button"
+                      className={`note-mention-result-card${index === props.activeSearchIndex ? ' is-active' : ''}${index === props.selectedSearchIndex ? ' is-selected-search' : ''}`}
+                      data-focused={index === props.activeSearchIndex && showResultFocus ? 'true' : undefined}
+                      role="menuitem"
+                      aria-current={index === props.activeSearchIndex ? 'true' : undefined}
+                      aria-selected={index === props.selectedSearchIndex ? 'true' : undefined}
+                      onPointerEnter={() => handleNoteMentionSearchResultHover(index, props.onHighlightSearch)}
+                      onClick={(event) => {
+                        handleNoteMentionSearchResultClick(event, index, props.onSelectSearchResult)
+                      }}
+                      onDoubleClick={(event) => {
+                        handleNoteMentionSearchResultDoubleClick(event, entry, props.onChooseSearchEntry)
+                      }}
+                    >
+                      <span className="note-mention-result-count" aria-label={`${aisleCount} ${aisleCount === 1 ? 'aisle' : 'aisles'}`}>
+                        {aisleCount}
+                      </span>
+                      <span className="note-mention-result-title">{entry.noteName}</span>
+                      <span className="note-mention-result-context">
+                        {contextChips.map((chip) => (
+                          <span key={`${chip.kind}:${chip.label}`} className={getSearchContextChipClassName(chip.kind)}>
+                            {chip.label}
+                          </span>
+                        ))}
+                      </span>
+                    </button>
+                  )
+                })}
+                {props.searchAisleItems.length > 0 && (
+                  <section className="note-mention-nav-row is-aisle-row" aria-label="aisles">
+                    <div className="note-mention-row-items">
+                      {props.searchAisleItems.map((item, index) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className={`rail-control note-mention-nav-chip${item.id === props.selectedSearchAisleId ? ' is-selected' : ''}`}
+                          data-focused={index === props.focusedAisleIndex && showAisleFocus ? 'true' : undefined}
+                          role="menuitem"
+                          aria-current={item.id === props.selectedSearchAisleId ? 'true' : undefined}
+                          onClick={(event) => {
+                            handleNoteMentionSearchAisleClick(event, item.id, props.onSelectSearchAisle)
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </>
+            ) : (
+              <div className="note-mention-empty">no matching notes</div>
+            )}
+          </div>
+        ) : (
+          <div className="note-mention-navigator">
+            {props.navigatorRows.map((row) => (
+              <section
+                key={row.id}
+                className={`note-mention-nav-row is-${row.id}-row${row.id === props.activeRow ? ' is-active-row' : ''}`}
+                aria-label={row.label}
+              >
+                <div className="note-mention-row-items">
+                  {row.items.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`rail-control note-mention-nav-chip${item.id === row.selectedId ? ' is-selected' : ''}`}
+                      data-focused={props.keyboardFocusVisible && row.id === props.activeRow && item.id === row.selectedId ? 'true' : undefined}
+                      role="menuitem"
+                      aria-current={item.id === row.selectedId ? 'true' : undefined}
+                      onMouseEnter={() => props.onActiveRowChange(row.id)}
+                      onClick={() => props.onSelectNavigatorItem(row.id, item.id)}
+                    >
+                      {row.id === 'note' && item.id === HOME_NOTE_ID ? 'home' : item.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+        <NoteMentionActions
+          actions={NOTE_MENTION_ACTIONS}
+          focusedActionIndex={props.focusedActionIndex}
+          focusedConfirmIndex={props.focusedConfirmIndex}
+          pendingCopyAction={props.pendingCopyAction}
+          actionFocusVisible={showActionFocus}
+          confirmFocusVisible={showConfirmFocus}
+          onActionFocus={props.onFocusAction}
+          onActionChoose={(action) => {
+            if (searchMode && activeEntry) {
+              props.onChooseAction(action)
+              return
+            }
+            if (activeNavigatorTarget) props.onChooseTarget(activeNavigatorTarget, action)
+          }}
+          onConfirmCopyAction={props.onConfirmCopyAction}
+          onCancelCopyAction={props.onCancelCopyAction}
+        />
+      </div>
     </div>
   )
 }

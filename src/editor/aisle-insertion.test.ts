@@ -3,6 +3,7 @@ import {
   getNewAisleInsertIndex,
   insertNewAisle,
   insertNewAisles,
+  insertNewAislesWithReclaimedSlots,
   replaceFocusedAisleWithNewAisles,
 } from './aisle-insertion'
 
@@ -100,5 +101,53 @@ describe('aisle insertion placement', () => {
 
     expect(replaceFocusedAisleWithNewAisles(aisles, [aisle('new')], 'missing', () => true)).toBeNull()
     expect(replaceFocusedAisleWithNewAisles(aisles, [aisle('new')], 'b', () => false)).toBeNull()
+  })
+
+  it('reclaims only eligible aisles when inserting a batch at the aisle limit', () => {
+    const aisles = [aisle('kept-1'), aisle('empty-1'), aisle('focus'), aisle('empty-2')]
+    const newAisles = [aisle('new-1'), aisle('new-2')]
+
+    const result = insertNewAislesWithReclaimedSlots(
+      aisles,
+      newAisles,
+      'focus',
+      'right-of-focus',
+      4,
+      (candidate) => candidate.id.startsWith('empty'),
+    )
+
+    expect(result.status).toBe('applied')
+    if (result.status !== 'applied') throw new Error('expected reclaimed insertion')
+    expect(result.reclaimedCount).toBe(2)
+    expect(result.aisles.map((item) => item.id)).toEqual(['kept-1', 'focus', 'new-1', 'new-2'])
+  })
+
+  it('blocks batch insertion when reclaimable aisles cannot make enough room', () => {
+    const result = insertNewAislesWithReclaimedSlots(
+      [aisle('kept-1'), aisle('empty'), aisle('kept-2')],
+      [aisle('new-1'), aisle('new-2')],
+      'kept-1',
+      'right-of-focus',
+      3,
+      (candidate) => candidate.id === 'empty',
+    )
+
+    expect(result).toEqual({ status: 'blocked' })
+  })
+
+  it('keeps insertion anchored when the focused aisle is reclaimed', () => {
+    const result = insertNewAislesWithReclaimedSlots(
+      [aisle('a'), aisle('focus'), aisle('b')],
+      [aisle('new')],
+      'focus',
+      'right-of-focus',
+      3,
+      (candidate) => candidate.id === 'focus',
+    )
+
+    expect(result.status).toBe('applied')
+    if (result.status !== 'applied') throw new Error('expected anchored insertion')
+    expect(result.reclaimedCount).toBe(1)
+    expect(result.aisles.map((item) => item.id)).toEqual(['a', 'new', 'b'])
   })
 })

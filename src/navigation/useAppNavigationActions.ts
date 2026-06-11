@@ -37,6 +37,7 @@ import type {
 } from '../types/app'
 import type { PendingCursorRestore } from '../editor/useNoteCursorPersistence'
 import type { AisleActivationSource } from '../editor/aisle-activation'
+import { measureSlowOperation } from '../performance/performance-logging'
 
 type EditableEntityType = 'tab' | 'subtab' | 'space' | 'domain'
 
@@ -117,7 +118,7 @@ export const useAppNavigationActions = ({
     id: string,
     nextTitle: string,
     options: CommitRenameOptions = {},
-  ) => {
+  ) => measureSlowOperation(`navigation commitRename:${type}`, () => {
     const isPendingCreatedRename =
       pendingCreatedEditRef.current?.type === type && pendingCreatedEditRef.current.id === id
     if ((type === 'tab' || type === 'subtab') && !isPendingCreatedRename) {
@@ -174,7 +175,7 @@ export const useAppNavigationActions = ({
     }))
 
     if (options.focusEditor !== false) focusEditorSoon()
-  }
+  })
 
   const commitActiveRenameBeforeAction = () => {
     const request = getRenameDraftCommitRequest(renameDraftRef.current, editingRef.current)
@@ -330,21 +331,21 @@ export const useAppNavigationActions = ({
     updateActiveSpaceData((data) => selectPrimeTabWithMemory(data, tabId))
   }
 
-  const selectSubTab = (subTabId: string) => {
+  const selectSubTab = (subTabId: string) => measureSlowOperation('navigation selectSubTab', () => {
     if (activeTab.activeSubTabId === subTabId) return
     commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     closeEditorEphemeraRef.current()
     updateActiveSpaceData((data) => selectSubTabWithMemory(data, subTabId))
-  }
+  })
 
-  const selectParentHomeTab = () => {
+  const selectParentHomeTab = () => measureSlowOperation('navigation selectParentHomeTab', () => {
     if (activeTab.activeSubTabId === null) return
     commitActiveRenameBeforeAction()
     saveActiveCursorBeforeNavigation()
     closeEditorEphemeraRef.current()
     updateActiveSpaceData((data) => selectActivePrimeTabHome(data))
-  }
+  })
 
   const openSpace = (spaceId: string) => {
     commitActiveRenameBeforeAction()

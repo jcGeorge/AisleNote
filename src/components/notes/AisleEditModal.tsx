@@ -1,37 +1,17 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type DragEvent, type ImgHTMLAttributes } from 'react'
-import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import {
-  EMPTY_AISLE_PREVIEW_TEXT,
   addAisleToDraftOrWarn,
   canDeleteAisleFromDraft,
   createAisleEditDraft,
   deleteAisleFromDraft,
-  getAislePreviewMarkdown,
   reorderAisleDraftByInsertion,
 } from '../../editor/aisle-edit-draft'
 import { getPlacementNeighborId } from '../../arrange/arrange-utils'
-import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
-import {
-  NOTE_PREVIEW_REFERENCE_RE,
-  getPreviewReferenceTokenLengthAt,
-  parseMarkdownNoteReferenceToken,
-} from '../../notes/note-references'
 import { createNoteAisle } from '../../state/workspace'
 import type { ResolvedNoteAisle } from '../../types/app'
+import { AisleMarkdownPreview } from './AisleMarkdownPreview'
 import { AisleHorizontalScrollbar } from './AisleHorizontalScrollbar'
 import { getHorizontalDragAutoScrollDelta } from './aisle-horizontal-scroll'
-import {
-  MarkdownPreviewHeading1,
-  MarkdownPreviewHeading2,
-  MarkdownPreviewHeading3,
-  MarkdownPreviewHeading4,
-  MarkdownPreviewHeading5,
-  MarkdownPreviewHeading6,
-  MarkdownPreviewLink,
-  MarkdownPreviewListItem,
-  MarkdownPreviewParagraph,
-} from './markdown-preview-components'
 
 const AISLE_DRAG_MIME = 'application/x-tabs-aisle-id'
 const EMPTY_STAGED_DECOUPLE_IDS: string[] = []
@@ -41,60 +21,6 @@ const AISLE_EDIT_DRAG_AUTO_SCROLL_MAX_STEP = 8
 type AisleDropTarget = {
   aisleId: string
   position: 'before' | 'after'
-}
-
-const transformAislePreviewUrl = (url: string, key: string) => {
-  if (key === 'href' && /^tabs-asset:/i.test(url)) return url
-  if (key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^tabs-asset:/i.test(url))) {
-    return resolveAssetDisplayUrl(url)
-  }
-  return defaultUrlTransform(url)
-}
-
-const aislePreviewMarkdownComponents = {
-  a: MarkdownPreviewLink,
-  h1: MarkdownPreviewHeading1,
-  h2: MarkdownPreviewHeading2,
-  h3: MarkdownPreviewHeading3,
-  h4: MarkdownPreviewHeading4,
-  h5: MarkdownPreviewHeading5,
-  h6: MarkdownPreviewHeading6,
-  li: MarkdownPreviewListItem,
-  p: MarkdownPreviewParagraph,
-  img: ({ node, ...props }: ImgHTMLAttributes<HTMLImageElement> & { node?: unknown }) => {
-    void node
-    return <img {...props} draggable={false} />
-  },
-}
-
-type AislePreviewSegment =
-  | { type: 'markdown'; markdown: string }
-  | { type: 'context-preview'; label: string }
-
-function getAislePreviewSegments(markdown: string): AislePreviewSegment[] {
-  const previewMarkdown = getAislePreviewMarkdown(markdown)
-  const segments: AislePreviewSegment[] = []
-  let lastIndex = 0
-  NOTE_PREVIEW_REFERENCE_RE.lastIndex = 0
-
-  for (const match of previewMarkdown.matchAll(NOTE_PREVIEW_REFERENCE_RE)) {
-    const parsed = getPreviewReferenceTokenLengthAt(match[0], 0) === match[0].length
-      ? parseMarkdownNoteReferenceToken(match[0])
-      : null
-    if (!parsed?.embed) continue
-    const start = match.index ?? 0
-    const before = previewMarkdown.slice(lastIndex, start)
-    if (before.trim()) segments.push({ type: 'markdown', markdown: before })
-
-    const fallbackLabel = parsed.label
-    segments.push({ type: 'context-preview', label: fallbackLabel || 'note preview' })
-    lastIndex = start + match[0].length
-  }
-
-  NOTE_PREVIEW_REFERENCE_RE.lastIndex = 0
-  const after = previewMarkdown.slice(lastIndex)
-  if (after.trim()) segments.push({ type: 'markdown', markdown: after })
-  return segments
 }
 
 type AisleEditModalProps = {
@@ -291,7 +217,6 @@ export function AisleEditModal({
             }}
           >
             {draft.map((aisle, index) => {
-              const previewSegments = getAislePreviewSegments(aisle.markdown)
               const linked = linkedAisleIds.has(aisle.id)
               const stagedDecouple = stagedDecoupleAisleIds.has(aisle.id)
               return (
@@ -326,30 +251,7 @@ export function AisleEditModal({
                   onDrop={(event) => handleDrop(event, aisle.id)}
                   aria-label={`Aisle preview ${index + 1}`}
                 >
-                  <div className={`aisle-edit-preview ${previewSegments.length <= 0 ? 'is-empty' : ''}`}>
-                    {previewSegments.length > 0 ? (
-                      previewSegments.map((segment, segmentIndex) => (
-                        <Fragment key={`${segment.type}-${segmentIndex}`}>
-                          {segment.type === 'markdown' ? (
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              urlTransform={transformAislePreviewUrl}
-                              components={aislePreviewMarkdownComponents}
-                            >
-                              {segment.markdown}
-                            </ReactMarkdown>
-                          ) : (
-                            <div className="aisle-edit-context-preview">
-                              <span className="aisle-edit-context-preview-label">note preview</span>
-                              <span className="aisle-edit-context-preview-title">{segment.label}</span>
-                            </div>
-                          )}
-                        </Fragment>
-                      ))
-                    ) : (
-                      <p>{EMPTY_AISLE_PREVIEW_TEXT}</p>
-                    )}
-                  </div>
+                  <AisleMarkdownPreview markdown={aisle.markdown} />
                   <div className="aisle-edit-card-controls">
                     <div className="aisle-edit-card-status">
                       {stagedDecouple ? (

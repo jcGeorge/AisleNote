@@ -45,13 +45,21 @@ function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown:
   const paragraphType = view?.state?.schema?.nodes?.paragraph
   if (!view?.dispatch || !doc || typeof doc.forEach !== 'function' || !paragraphType) return false
 
-  const contentNodes: any[] = []
+  const topLevelNodes: any[] = []
   doc.forEach((node: any) => {
-    if (!isBlankParagraphNode(node)) {
-      contentNodes.push(node)
-    }
+    topLevelNodes.push(node)
   })
 
+  if (
+    topLevelNodes.length === blankPrepared.blockKinds.length &&
+    blankPrepared.blockKinds.every((kind, index) =>
+      kind === 'blank' ? isBlankParagraphNode(topLevelNodes[index]) : !isBlankParagraphNode(topLevelNodes[index]),
+    )
+  ) {
+    return false
+  }
+
+  const contentNodes = topLevelNodes.filter((node) => !isBlankParagraphNode(node))
   const expectedContentCount = blankPrepared.blockKinds.filter((kind) => kind === 'content').length
   if (contentNodes.length !== expectedContentCount) return false
 

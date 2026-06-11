@@ -11,6 +11,7 @@ import {
   createDefaultNoteMentionSelection,
   filterNoteMentionSearchEntries,
   getNoteMentionAisleItems,
+  getNoteMentionPreviewData,
   getNoteMentionSearchEntryDetails,
   getNoteMentionSelectedAisleId,
   getNoteMentionTarget,
@@ -21,6 +22,7 @@ import {
   updateNoteMentionSelectionForRow,
   type NoteMentionAction,
   type NoteMentionNavigatorItem,
+  type NoteMentionPreviewData,
   type NoteMentionNavigatorRowId,
   type NoteMentionSearchEntryDetails,
   type NoteMentionSelection,
@@ -43,11 +45,13 @@ import type { NoteReferenceAction, NoteReferenceEditorCommandResult } from './no
 type NoteMentionMenuState = {
   top: number
   left: number
+  selectorHeight: number
   anchor: NoteMentionMenuAnchor
   query: NoteMentionQuery
   selection: NoteMentionSelection
   activeRow: NoteMentionNavigatorRowId
   searchAisleId?: string | null
+  previewLayout: NoteMentionPreviewLayout
 }
 
 export type NoteMentionMenuAnchor = {
@@ -64,12 +68,15 @@ export type NoteMentionMenuSize = {
 export type NoteMentionMenuPosition = {
   top: number
   left: number
+  previewLayout: NoteMentionPreviewLayout
 }
 
 export type NoteMentionViewport = {
   width: number
   height: number
 }
+
+export type NoteMentionPreviewLayout = 'left'
 
 type UseNoteMentionControllerParams = {
   viewMode: ViewMode
@@ -115,19 +122,26 @@ export function getViewportSafeNoteMentionMenuPosition(
   menuSize: NoteMentionMenuSize,
   viewport: NoteMentionViewport,
   gap = 8,
+  options: {
+    previewSize?: NoteMentionMenuSize | null
+  } = {},
 ): NoteMentionMenuPosition {
-  const maxLeft = Math.max(gap, viewport.width - menuSize.width - gap)
+  const previewSize = options.previewSize ?? null
+  const previewLayout: NoteMentionPreviewLayout = 'left'
+  const combinedWidth = previewSize ? previewSize.width + gap + menuSize.width : menuSize.width
+  const combinedHeight = menuSize.height
+  const maxLeft = Math.max(gap, viewport.width - combinedWidth - gap)
+  const preferredLeft = previewSize ? anchor.left - previewSize.width - gap : anchor.left
   const belowTop = anchor.bottom + gap
-  const aboveTop = anchor.top - menuSize.height - gap
-  const hasRoomBelow = belowTop + menuSize.height <= viewport.height - gap
-  const hasRoomAbove = aboveTop >= gap
+  const aboveTop = anchor.top - combinedHeight - gap
   const belowSpace = Math.max(0, viewport.height - gap - belowTop)
   const aboveSpace = Math.max(0, anchor.top - gap)
-  const preferredTop = hasRoomBelow || (!hasRoomAbove && belowSpace >= aboveSpace) ? belowTop : aboveTop
+  const preferredTop = belowSpace >= aboveSpace ? belowTop : aboveTop
 
   return {
-    top: clamp(preferredTop, gap, Math.max(gap, viewport.height - menuSize.height - gap)),
-    left: clamp(anchor.left, gap, maxLeft),
+    top: clamp(preferredTop, gap, Math.max(gap, viewport.height - combinedHeight - gap)),
+    left: clamp(preferredLeft, gap, maxLeft),
+    previewLayout,
   }
 }
 
@@ -170,6 +184,13 @@ function getEstimatedMenuSize(itemCount: number, viewport: NoteMentionViewport, 
   return {
     width: Math.min(maxWidth, Math.max(0, viewport.width - 16)),
     height: Math.min(380, Math.max(48, itemCount * 36 + 18)),
+  }
+}
+
+function getEstimatedPreviewSize(viewport: NoteMentionViewport): NoteMentionMenuSize {
+  return {
+    width: Math.min(281.6, Math.max(0, viewport.width - 16)),
+    height: Math.min(260, Math.max(140, viewport.height - 16)),
   }
 }
 
@@ -361,7 +382,8 @@ export function useNoteMentionController({
     const selection = currentMenu
       ? resolveNoteMentionSelection(stateRef.current, currentMenu.selection)
       : createDefaultNoteMentionSelection(stateRef.current, currentLocation)
-    const itemCount = query.query.trim().length > 0 ? Math.max(1, entries.length) : 6
+    const searchMode = query.query.trim().length > 0
+    const itemCount = searchMode ? Math.max(1, entries.length) : 6
     const viewport = getViewport()
     const anchor = getMenuAnchor(
       editorRef,
@@ -369,6 +391,7 @@ export function useNoteMentionController({
       activeAisleIdRef,
       query.to,
     )
+    const menuSize = getEstimatedMenuSize(itemCount, viewport, { searchMode })
     const queryChanged = currentMenu?.query.query !== query.query
     clampSearchSelection(entries.length, { clearSelection: queryChanged })
     if (queryChanged || !currentMenu) {
@@ -377,9 +400,14 @@ export function useNoteMentionController({
     setMenu({
       ...getViewportSafeNoteMentionMenuPosition(
         anchor,
-        getEstimatedMenuSize(itemCount, viewport, { searchMode: query.query.trim().length > 0 }),
+        menuSize,
         viewport,
+        8,
+        {
+          previewSize: !searchMode || entries.length > 0 ? getEstimatedPreviewSize(viewport) : null,
+        },
       ),
+      selectorHeight: menuSize.height,
       anchor,
       query,
       selection,
@@ -696,7 +724,7 @@ export function useNoteMentionController({
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target instanceof Element ? event.target : null
-      if (target?.closest('.note-mention-menu')) return
+      if (target?.closest('.note-mention-popover')) return
       closeMenuRef.current()
     }
 
@@ -750,31 +778,58 @@ export function useNoteMentionController({
   const selectedSearchAisleId = activeSearchLocation
     ? getNoteMentionSelectedAisleId(state, activeSearchLocation, menu?.searchAisleId) ?? ''
     : ''
+  const previewTarget = useMemo((): NoteMentionTarget | null => {
+    if (!menu) return null
+    if (menu.query.query.trim()) {
+      if (!activeSearchLocation) return null
+      const aisleId = getNoteMentionSelectedAisleId(state, activeSearchLocation, selectedSearchAisleId)
+      return aisleId ? { ...activeSearchLocation, aisleIds: [aisleId] } : activeSearchLocation
+    }
+    return getNoteMentionTarget(resolveNoteMentionSelection(state, menu.selection))
+  }, [activeSearchLocation, menu, selectedSearchAisleId, state])
+  const preview: NoteMentionPreviewData | null = useMemo(
+    () => getNoteMentionPreviewData(state, previewTarget),
+    [previewTarget, state],
+  )
 
   const reclampMenuToViewport = useCallback(() => {
     setMenu((current) => {
       if (!current) return current
-      const node = document.querySelector<HTMLElement>('.note-mention-menu')
-      const rect = node?.getBoundingClientRect()
+      const menuNode = document.querySelector<HTMLElement>('.note-mention-menu')
+      const previewNode = document.querySelector<HTMLElement>('.note-mention-preview')
+      const menuRect = menuNode?.getBoundingClientRect()
+      const previewRect = previewNode?.getBoundingClientRect()
       const viewport = getViewport()
       const itemCount = current.query.query.trim().length > 0 ? Math.max(1, searchEntries.length) : 6
       const searchMode = current.query.query.trim().length > 0
-      const size = rect && rect.width > 0 && rect.height > 0
-        ? { width: rect.width, height: rect.height }
+      const size = menuRect && menuRect.width > 0 && menuRect.height > 0
+        ? { width: menuRect.width, height: menuRect.height }
         : getEstimatedMenuSize(itemCount, viewport, { searchMode })
-      const nextPosition = getViewportSafeNoteMentionMenuPosition(current.anchor, size, viewport)
-      if (Math.abs(nextPosition.top - current.top) < 0.5 && Math.abs(nextPosition.left - current.left) < 0.5) {
+      const previewSize = preview
+        ? previewRect && previewRect.width > 0 && previewRect.height > 0
+          ? { width: previewRect.width, height: previewRect.height }
+          : getEstimatedPreviewSize(viewport)
+        : null
+      const nextPosition = getViewportSafeNoteMentionMenuPosition(current.anchor, size, viewport, 8, {
+        previewSize,
+      })
+      if (
+        Math.abs(nextPosition.top - current.top) < 0.5 &&
+        Math.abs(nextPosition.left - current.left) < 0.5 &&
+        Math.abs(size.height - current.selectorHeight) < 0.5 &&
+        nextPosition.previewLayout === current.previewLayout
+      ) {
         return current
       }
-      return { ...current, ...nextPosition }
+      return { ...current, ...nextPosition, selectorHeight: size.height }
     })
-  }, [searchEntries.length])
+  }, [preview, searchEntries.length])
 
   const navigatorLayoutKey = navigatorRows
     .map((row) => `${row.id}:${row.selectedId}:${row.items.length}`)
     .join('|')
   const menuLayoutKey = menu
-    ? `${menu.query.from}:${menu.query.to}:${menu.query.query}:${menu.activeRow}:${normalizedActiveSearchIndex}:${normalizedSelectedSearchIndex ?? 'none'}:${navigatorLayoutKey}:${searchEntries.length}:${selectedSearchAisleId}:${searchAisleItems.length}:${searchMachine.stage}:${searchMachine.focusedActionIndex}:${searchMachine.pendingCopyAction ?? 'none'}`
+    ? `${menu.query.from}:${menu.query.to}:${menu.query.query}:${menu.activeRow}:${menu.previewLayout}:${normalizedActiveSearchIndex}:${normalizedSelectedSearchIndex ?? 'none'}:${navigatorLayoutKey}:${searchEntries.length}:${selectedSearchAisleId}:${searchAisleItems.length}:${preview?.aisleId ?? 'none'}:${searchMachine.stage}:${searchMachine.focusedActionIndex}:${searchMachine.pendingCopyAction ?? 'none'}`
     : ''
 
   useLayoutEffect(() => {
@@ -797,6 +852,9 @@ export function useNoteMentionController({
     selectedSearchIndex: normalizedSelectedSearchIndex,
     searchAisleItems,
     selectedSearchAisleId,
+    preview,
+    previewLayout: menu?.previewLayout ?? 'left',
+    selectorHeight: menu?.selectorHeight ?? null,
     searchFocusStage: searchMachine.stage,
     keyboardFocusVisible,
     focusedAisleIndex: Math.max(0, Math.min(Math.max(0, searchAisleItems.length - 1), searchMachine.focusedAisleIndex)),

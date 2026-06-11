@@ -114,6 +114,14 @@ export function getModalText(modal: ModalState | null, state: AppState): ModalTe
     }
   }
 
+  if (modal.type === 'confirm-independent-note-paste-reclaim') {
+    return {
+      title: 'Paste independent note?',
+      body: 'This paste needs to remove empty aisles from this note to make room for the copied aisles. Non-empty aisles will be kept.',
+      action: 'paste anyway',
+    }
+  }
+
   if (modal.type === 'deduplicate-note') {
     return {
       title: 'de-couple',

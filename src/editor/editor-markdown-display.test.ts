@@ -150,4 +150,15 @@ describe('editor markdown display helpers', () => {
     expect(restoreEditorBlankParagraphs(editor, `one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)).toBe(false)
     expect(dispatch).not.toHaveBeenCalled()
   })
+
+  it('does not dispatch when blank paragraph layout already matches the expected document', () => {
+    const { editor, dispatch } = fakeEditorWithBlocks([
+      textBlock('paragraph', 'one'),
+      textBlock('paragraph'),
+      textBlock('paragraph', 'two'),
+    ])
+
+    expect(restoreEditorBlankParagraphs(editor, `one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)).toBe(false)
+    expect(dispatch).not.toHaveBeenCalled()
+  })
 })

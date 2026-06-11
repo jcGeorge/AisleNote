@@ -209,6 +209,88 @@ describe('NoteMentionMenu', () => {
       />,
     )
     expect(emptyHtml).toContain('no matching notes')
+    expect(emptyHtml).not.toContain('note-mention-preview')
+  })
+
+  it('renders the selected aisle preview with shared aisle markdown rendering', () => {
+    const html = renderToStaticMarkup(
+      <NoteMentionMenu
+        top={10}
+        left={12}
+        query=""
+        activeRow="aisle"
+        activeSearchIndex={0}
+        selectedSearchIndex={null}
+        searchAisleItems={[]}
+        selectedSearchAisleId=""
+        searchEntries={[]}
+        searchEntryDetails={[]}
+        preview={{
+          aisleId: 'aisle-2',
+          markdown: '# Selected aisle\n\nsecond aisle only',
+          targetLabel: 'Humble beginnings > mySpace > codex > ref',
+        }}
+        previewLayout="left"
+        selectorHeight={216}
+        navigatorRows={[
+          { id: 'domain', label: 'domains', selectedId: 'domain', items: [{ id: 'domain', label: 'Humble beginnings' }] },
+          { id: 'space', label: 'spaces', selectedId: 'space', items: [{ id: 'space', label: 'mySpace' }] },
+          { id: 'tab', label: 'prime tabs', selectedId: 'tab', items: [{ id: 'tab', label: 'codex' }] },
+          {
+            id: 'note',
+            label: 'notes',
+            selectedId: 'sub',
+            items: [{ id: 'sub', label: 'ref', target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: 'sub' } }],
+          },
+          {
+            id: 'aisle',
+            label: 'aisles',
+            selectedId: 'aisle-2',
+            items: [
+              { id: 'aisle-1', label: 'aisle 1', target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: 'sub', aisleIds: ['aisle-1'] } },
+              { id: 'aisle-2', label: 'aisle 2', target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: 'sub', aisleIds: ['aisle-2'] } },
+            ],
+          },
+        ]}
+        {...menuStateProps}
+        {...handlers}
+      />,
+    )
+
+    expect(html).toContain('note-mention-popover is-navigator has-preview is-preview-left')
+    expect(html).toContain('aria-label="Aisle preview for Humble beginnings &gt; mySpace &gt; codex &gt; ref"')
+    expect(html).toContain('style="height:216px"')
+    expect(html).toContain('aisle-edit-preview note-mention-preview-body')
+    expect(html).toContain('<h1>Selected aisle</h1>')
+    expect(html).toContain('second aisle only')
+    expect(html).not.toContain('first aisle')
+  })
+
+  it('renders typed search previews to the left of the selector', () => {
+    const html = renderToStaticMarkup(
+      <NoteMentionMenu
+        top={10}
+        left={12}
+        query="ref"
+        activeRow="space"
+        activeSearchIndex={0}
+        selectedSearchIndex={0}
+        searchAisleItems={[]}
+        selectedSearchAisleId=""
+        navigatorRows={[]}
+        searchEntries={[searchEntry]}
+        searchEntryDetails={searchEntryDetails}
+        preview={{ aisleId: 'aisle-1', markdown: 'search preview text', targetLabel: searchEntry.label }}
+        previewLayout="left"
+        selectorHeight={180}
+        {...menuStateProps}
+        {...handlers}
+      />,
+    )
+
+    expect(html).toContain('note-mention-popover is-search has-preview is-preview-left')
+    expect(html).toContain('style="height:180px"')
+    expect(html).toContain('search preview text')
   })
 
   it('renders aisle selection for navigator and search targets', () => {
@@ -388,7 +470,7 @@ describe('NoteMentionMenu', () => {
       />,
     )
 
-    expect(html).toContain('this operation will replace this note')
+    expect(html).toContain('this operation will replace this aisle')
     expect(html).toContain('>proceed</button>')
     expect(html).toContain('>nevermind</button>')
     expect(html).toContain('is-pending-copy')

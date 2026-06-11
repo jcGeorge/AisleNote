@@ -107,6 +107,14 @@ describe('AisleEditModal', () => {
     expect(html).not.toContain('>down</button>')
   })
 
+  it('uses the shared aisle markdown preview renderer', () => {
+    const source = readFileSync(join(componentDir, 'AisleEditModal.tsx'), 'utf8')
+
+    expect(source).toContain('AisleMarkdownPreview')
+    expect(source).not.toContain('ReactMarkdown')
+    expect(source).not.toContain('getAislePreviewSegments')
+  })
+
   it('renders editor-split data image previews without exposing raw markdown', () => {
     const html = renderModal([
       aisle('a', '<br> <br> ![Diagram]\n(data:image/png;base64,abc)'),

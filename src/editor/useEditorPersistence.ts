@@ -376,7 +376,7 @@ export const useEditorPersistence = ({
     clearPendingSaveTimer()
     if (pendingContentRef.current.size === 0) return
 
-    const snapshots = buildLatestContentSnapshots()
+    const snapshots = getPendingContentSnapshots()
     if (import.meta.env?.DEV) {
       withAisleEditorPerfState((state) => {
         state.pendingMapSize = 0

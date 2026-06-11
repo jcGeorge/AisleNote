@@ -74,6 +74,7 @@ const EXPORT_TAB_SPACES = '    '
 const LINKED_AISLE_MIRROR_AUTO_DECOUPLED_CODE = 'linked-aisle-mirror-auto-decoupled'
 const MAX_ATOMIC_WRITE_CACHE_ENTRIES = 5000
 const MAX_EXISTING_FILE_HASH_CACHE_ENTRIES = 5000
+const MAX_AISLE_STORAGE_PAYLOAD_CACHE_ENTRIES = 5000
 const KNOWN_STALE_ROOT_STORAGE_PATHS = [
   'app-settings.json',
   'profile-settings.json',
@@ -90,6 +91,7 @@ const KNOWN_STALE_ROOT_STORAGE_PATHS = [
 ]
 const atomicWriteCache = new Map()
 const existingFileHashCache = new Map()
+const aisleStoragePayloadCache = new Map()
 const lastExpectedFileSetSignaturesByRoot = new Map()
 
 function createStorageSaveMetrics() {
@@ -98,6 +100,10 @@ function createStorageSaveMetrics() {
     phases: {
       parseState: 0,
       buildFileMap: 0,
+      noteBodyTraversal: 0,
+      noteContentGeneration: 0,
+      assetReferenceExtraction: 0,
+      manifestAssembly: 0,
       assetResolve: 0,
       fingerprint: 0,
       textWrites: 0,
@@ -120,6 +126,8 @@ function createStorageSaveMetrics() {
       filesSkipped: 0,
       filesPruned: 0,
       directoriesPruned: 0,
+      aisleStorageCacheHits: 0,
+      aisleStorageCacheMisses: 0,
     },
     pruneSkipped: false,
   }
@@ -1232,6 +1240,72 @@ function buildNoteAisleBodyManifestRecord(aisleBodyId, file, aisleBody) {
   }
 }
 
+function rememberAisleStoragePayloadCache(cacheKey, payload) {
+  aisleStoragePayloadCache.delete(cacheKey)
+  aisleStoragePayloadCache.set(cacheKey, payload)
+  if (aisleStoragePayloadCache.size > MAX_AISLE_STORAGE_PAYLOAD_CACHE_ENTRIES) {
+    const oldestKey = aisleStoragePayloadCache.keys().next().value
+    if (oldestKey) aisleStoragePayloadCache.delete(oldestKey)
+  }
+}
+
+function getAisleStoragePayloadCore(aisleBodyId, aisleBody, metrics = null) {
+  const markdown = typeof aisleBody?.markdown === 'string' ? aisleBody.markdown : ''
+  const normalizedContent = normalizeAisleStorageContentForHash(aisleBody)
+  const cacheKey = createStorageContentHash({
+    id: typeof aisleBodyId === 'string' ? aisleBodyId : '',
+    content: normalizedContent,
+  })
+  const cached = aisleStoragePayloadCache.get(cacheKey)
+  if (cached) {
+    aisleStoragePayloadCache.delete(cacheKey)
+    aisleStoragePayloadCache.set(cacheKey, cached)
+    if (metrics?.counts) metrics.counts.aisleStorageCacheHits += 1
+    return cached
+  }
+
+  if (metrics?.counts) metrics.counts.aisleStorageCacheMisses += 1
+  const payload = measureStorageSavePhase(metrics, 'noteContentGeneration', () => ({
+    composedMarkdown: composeAisleMarkdownForStorage(markdown, aisleBody),
+    contentHash: createStorageContentHash(normalizedContent),
+    tags: extractMarkdownTags(markdown),
+    frontmatterMeta: isRecord(aisleBody?.frontmatterMeta) ? aisleBody.frontmatterMeta : undefined,
+  }))
+  rememberAisleStoragePayloadCache(cacheKey, payload)
+  return payload
+}
+
+function buildNoteAisleBodyManifestRecordFromCore(aisleBodyId, file, aisleBody, core) {
+  const payloadCore = core ?? getAisleStoragePayloadCore(aisleBodyId, aisleBody)
+  return {
+    id: aisleBodyId,
+    file,
+    contentHash: payloadCore.contentHash,
+    tags: payloadCore.tags,
+    frontmatterMeta: payloadCore.frontmatterMeta,
+  }
+}
+
+function writeAisleStorageMarkdownFile({
+  fileMap,
+  file,
+  aisleBodyId,
+  sourceAisleBody,
+  assetBank,
+  appState,
+  metrics,
+}) {
+  const core = getAisleStoragePayloadCore(aisleBodyId, sourceAisleBody, metrics)
+  const referenceNormalizedMarkdown = measureStorageSavePhase(metrics, 'noteContentGeneration', () =>
+    normalizePreviewReferenceTokensForMarkdown(core.composedMarkdown, appState),
+  )
+  const storageMarkdown = measureStorageSavePhase(metrics, 'assetReferenceExtraction', () =>
+    externalizeMarkdownImages(referenceNormalizedMarkdown, file, assetBank),
+  )
+  setStorageTextFile(fileMap, file, storageMarkdown)
+  return core
+}
+
 function writeNoteBodyAtPath({
   fileMap,
   noteBodyMap,
@@ -1243,13 +1317,18 @@ function writeNoteBodyAtPath({
   multiAisleRootRelative,
   assetBank,
   appState,
+  metrics,
 }) {
   const posixPath = path.posix
-  const bodyId = typeof noteBodyId === 'string' ? noteBodyId : ''
-  const body = bodyId ? noteBodyMap.get(bodyId) : null
-  const sourceAisles = ensureArray(body?.aisles)
-  const usesAisleFolder = sourceAisles.length > 1
-  const notePath = usesAisleFolder ? multiAisleRootRelative : primaryFileRelative
+  const traversal = measureStorageSavePhase(metrics, 'noteBodyTraversal', () => {
+    const bodyId = typeof noteBodyId === 'string' ? noteBodyId : ''
+    const body = bodyId ? noteBodyMap.get(bodyId) : null
+    const sourceAisles = ensureArray(body?.aisles)
+    const usesAisleFolder = sourceAisles.length > 1
+    const notePath = usesAisleFolder ? multiAisleRootRelative : primaryFileRelative
+    return { bodyId, body, sourceAisles, usesAisleFolder, notePath }
+  })
+  const { bodyId, body, sourceAisles, usesAisleFolder, notePath } = traversal
 
   const getAisleFile = (index, aisleId) => {
     const aisleFileName = buildStoragePathFileName(`aisle ${index + 1}`, aisleId, 'aisle', '.md')
@@ -1269,34 +1348,39 @@ function writeNoteBodyAtPath({
     const primaryFile = usesAisleFolder
       ? getAisleFile(0, firstAisleId)
       : primaryFileRelative
-    setStorageTextFile(
+    writeAisleStorageMarkdownFile({
       fileMap,
-      primaryFile,
-      externalizeMarkdownImages(
-        normalizePreviewReferenceTokensForMarkdown(composeAisleMarkdownForStorage(markdown, sourceAisleBody), appState),
-        primaryFile,
-        assetBank,
-      ),
-    )
+      file: primaryFile,
+      aisleBodyId: firstAisleBodyId,
+      sourceAisleBody,
+      assetBank,
+      appState,
+      metrics,
+    })
     return { primaryFile, notePath }
   }
 
   if (!body || sourceAisles.length === 0) {
-    setStorageTextFile(fileMap, primaryFileRelative, externalizeMarkdownImages('', primaryFileRelative, assetBank))
+    const emptyMarkdown = measureStorageSavePhase(metrics, 'assetReferenceExtraction', () =>
+      externalizeMarkdownImages('', primaryFileRelative, assetBank),
+    )
+    setStorageTextFile(fileMap, primaryFileRelative, emptyMarkdown)
     if (body && bodyId) {
-      const aisleId = `${bodyId}-home`
-      noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, [
-        {
-          id: aisleId,
-          aisleBodyId: aisleId,
-          file: primaryFileRelative,
-          contentHash: getAisleStorageContentHash(undefined),
-          tags: [],
-        },
-      ]))
-      if (!noteAisleBodyRecords.has(aisleId)) {
-        noteAisleBodyRecords.set(aisleId, buildNoteAisleBodyManifestRecord(aisleId, primaryFileRelative, undefined))
-      }
+      measureStorageSavePhase(metrics, 'manifestAssembly', () => {
+        const aisleId = `${bodyId}-home`
+        noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, [
+          {
+            id: aisleId,
+            aisleBodyId: aisleId,
+            file: primaryFileRelative,
+            contentHash: getAisleStorageContentHash(undefined),
+            tags: [],
+          },
+        ]))
+        if (!noteAisleBodyRecords.has(aisleId)) {
+          noteAisleBodyRecords.set(aisleId, buildNoteAisleBodyManifestRecord(aisleId, primaryFileRelative, undefined))
+        }
+      })
     }
     return { primaryFile: primaryFileRelative, notePath: primaryFileRelative }
   }
@@ -1307,29 +1391,34 @@ function writeNoteBodyAtPath({
     const aisleBodyId = typeof aisle?.aisleBodyId === 'string' && aisle.aisleBodyId ? aisle.aisleBodyId : aisleId
     const file = usesAisleFolder ? getAisleFile(index, aisleId) : primaryFileRelative
     const sourceAisleBody = noteAisleBodyMap.get(aisleBodyId)
-    const sharedMarkdown = sourceAisleBody?.markdown
-    const markdown = typeof sharedMarkdown === 'string' ? sharedMarkdown : ''
-    setStorageTextFile(
+    const core = writeAisleStorageMarkdownFile({
       fileMap,
       file,
-      externalizeMarkdownImages(
-        normalizePreviewReferenceTokensForMarkdown(composeAisleMarkdownForStorage(markdown, sourceAisleBody), appState),
-        file,
-        assetBank,
-      ),
-    )
-    aisleRecords.push({
-      id: aisleId,
       aisleBodyId,
-      file,
-      contentHash: getAisleStorageContentHash(sourceAisleBody),
-      tags: extractMarkdownTags(String(sourceAisleBody?.markdown ?? '')),
+      sourceAisleBody,
+      assetBank,
+      appState,
+      metrics,
     })
-    if (!noteAisleBodyRecords.has(aisleBodyId)) {
-      noteAisleBodyRecords.set(aisleBodyId, buildNoteAisleBodyManifestRecord(aisleBodyId, file, sourceAisleBody))
-    }
+    measureStorageSavePhase(metrics, 'manifestAssembly', () => {
+      aisleRecords.push({
+        id: aisleId,
+        aisleBodyId,
+        file,
+        contentHash: core.contentHash,
+        tags: core.tags,
+      })
+      if (!noteAisleBodyRecords.has(aisleBodyId)) {
+        noteAisleBodyRecords.set(
+          aisleBodyId,
+          buildNoteAisleBodyManifestRecordFromCore(aisleBodyId, file, sourceAisleBody, core),
+        )
+      }
+    })
   })
-  noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, aisleRecords))
+  measureStorageSavePhase(metrics, 'manifestAssembly', () => {
+    noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, aisleRecords))
+  })
   return { primaryFile: aisleRecords[0]?.file ?? primaryFileRelative, notePath }
 }
 
@@ -1372,6 +1461,7 @@ function buildSpaceFiles({
   noteAisleBodyRecords,
   assetBank,
   appState,
+  metrics,
 }) {
   const posixPath = path.posix
   const tabs = ensureArray(space?.data?.tabs)
@@ -1394,6 +1484,7 @@ function buildSpaceFiles({
       multiAisleRootRelative: posixPath.join(tabRoot, 'home'),
       assetBank,
       appState,
+      metrics,
     })
     const homeNoteFile = posixPath.relative(spaceRoot, homeWrite.primaryFile)
 
@@ -1415,6 +1506,7 @@ function buildSpaceFiles({
         multiAisleRootRelative: subTabRoot,
         assetBank,
         appState,
+        metrics,
       })
       return {
         id: subTabId,
@@ -1459,6 +1551,7 @@ function buildSpaceFiles({
       multiAisleRootRelative: posixPath.join(deletedRoot, 'home'),
       assetBank,
       appState,
+      metrics,
     })
     const homeNoteFile = posixPath.relative(trashRoot, deletedHomeWrite.primaryFile)
 
@@ -1480,6 +1573,7 @@ function buildSpaceFiles({
         multiAisleRootRelative: subTabRoot,
         assetBank,
         appState,
+        metrics,
       })
       return {
         id: subTabId,
@@ -1525,6 +1619,7 @@ function buildSpaceFiles({
       multiAisleRootRelative: deletedRoot,
       assetBank,
       appState,
+      metrics,
     })
     trashItems.push({
       id: entryId,
@@ -1542,18 +1637,20 @@ function buildSpaceFiles({
     })
   }
 
-  setStorageJsonFile(fileMap, posixPath.join(spaceRoot, 'manifest.json'), {
-    id: space.id,
-    title: typeof space.name === 'string' ? space.name : 'Untitled Space',
-    settings: space.settings ?? { autoRemoveDeletedDays: 7 },
-    tabs: tabManifest,
-    activeTabId:
-      typeof space?.data?.activeTabId === 'string' && tabs.some((tab) => tab?.id === space.data.activeTabId)
-        ? space.data.activeTabId
-        : tabManifest[0]?.id ?? '',
-    trashManifestFile: 'trash/manifest.json',
+  measureStorageSavePhase(metrics, 'manifestAssembly', () => {
+    setStorageJsonFile(fileMap, posixPath.join(spaceRoot, 'manifest.json'), {
+      id: space.id,
+      title: typeof space.name === 'string' ? space.name : 'Untitled Space',
+      settings: space.settings ?? { autoRemoveDeletedDays: 7 },
+      tabs: tabManifest,
+      activeTabId:
+        typeof space?.data?.activeTabId === 'string' && tabs.some((tab) => tab?.id === space.data.activeTabId)
+          ? space.data.activeTabId
+          : tabManifest[0]?.id ?? '',
+      trashManifestFile: 'trash/manifest.json',
+    })
+    setStorageJsonFile(fileMap, posixPath.join(trashRoot, 'manifest.json'), { items: trashItems })
   })
-  setStorageJsonFile(fileMap, posixPath.join(trashRoot, 'manifest.json'), { items: trashItems })
 
   return {
     id: typeof space.id === 'string' ? space.id : '',
@@ -1606,15 +1703,18 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
         noteAisleBodyRecords,
         assetBank,
         appState: parsedState,
+        metrics,
       })
       spaceEntries.push({ ...spaceEntry, path: spaceSegment })
     }
 
-    setStorageJsonFile(fileMap, posixPath.join(domainRoot, 'manifest.json'), buildDomainManifest(domain, spaceEntries))
-    domainEntries.push({
-      id: domainId,
-      title: getDomainTitle(domain),
-      path: domainSegment,
+    measureStorageSavePhase(metrics, 'manifestAssembly', () => {
+      setStorageJsonFile(fileMap, posixPath.join(domainRoot, 'manifest.json'), buildDomainManifest(domain, spaceEntries))
+      domainEntries.push({
+        id: domainId,
+        title: getDomainTitle(domain),
+        path: domainSegment,
+      })
     })
   }
 
@@ -1641,6 +1741,7 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
       multiAisleRootRelative: 'scratchpad',
       assetBank,
       appState: parsedState,
+      metrics,
     })
   }
 
@@ -1663,56 +1764,59 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
       multiAisleRootRelative: posixPath.join('_internal', 'orphan-bodies', orphanSegment),
       assetBank,
       appState: parsedState,
+      metrics,
     })
   }
 
   addAssetBankToStorageFileMap(fileMap, assetBank)
-  const allNoteBodyEntries = noteBodies
-    .map((body) => (typeof body?.id === 'string' ? noteBodyRecords.get(body.id) : null))
-    .filter(Boolean)
-  const attachedNoteBodyEntries = allNoteBodyEntries.filter((body) => {
-    const bodyId = typeof body?.id === 'string' ? body.id : ''
-    return !orphanNoteBodyIds.has(bodyId)
-  })
-  const noteBodyEntries = allNoteBodyEntries.map((body) => {
-    const bodyId = typeof body?.id === 'string' ? body.id : ''
-    return orphanNoteBodyIds.has(bodyId) ? { ...body, storageStatus: 'unlinked' } : body
-  })
-  const liveAisleBodyIds = new Set()
-  for (const body of attachedNoteBodyEntries) {
-    for (const aisle of ensureArray(body?.aisles)) {
-      const aisleBodyId =
-        typeof aisle?.aisleBodyId === 'string' && aisle.aisleBodyId
-          ? aisle.aisleBodyId
-          : typeof aisle?.id === 'string'
-            ? aisle.id
-            : ''
-      if (aisleBodyId) liveAisleBodyIds.add(aisleBodyId)
+  measureStorageSavePhase(metrics, 'manifestAssembly', () => {
+    const allNoteBodyEntries = noteBodies
+      .map((body) => (typeof body?.id === 'string' ? noteBodyRecords.get(body.id) : null))
+      .filter(Boolean)
+    const attachedNoteBodyEntries = allNoteBodyEntries.filter((body) => {
+      const bodyId = typeof body?.id === 'string' ? body.id : ''
+      return !orphanNoteBodyIds.has(bodyId)
+    })
+    const noteBodyEntries = allNoteBodyEntries.map((body) => {
+      const bodyId = typeof body?.id === 'string' ? body.id : ''
+      return orphanNoteBodyIds.has(bodyId) ? { ...body, storageStatus: 'unlinked' } : body
+    })
+    const liveAisleBodyIds = new Set()
+    for (const body of attachedNoteBodyEntries) {
+      for (const aisle of ensureArray(body?.aisles)) {
+        const aisleBodyId =
+          typeof aisle?.aisleBodyId === 'string' && aisle.aisleBodyId
+            ? aisle.aisleBodyId
+            : typeof aisle?.id === 'string'
+              ? aisle.id
+              : ''
+        if (aisleBodyId) liveAisleBodyIds.add(aisleBodyId)
+      }
     }
-  }
-  const aisleBodyEntries = []
-  for (const body of noteAisleBodyRecords.values()) {
-    const bodyId = typeof body?.id === 'string' ? body.id : ''
-    aisleBodyEntries.push(bodyId && liveAisleBodyIds.has(bodyId) ? body : { ...body, storageStatus: 'unlinked' })
-  }
+    const aisleBodyEntries = []
+    for (const body of noteAisleBodyRecords.values()) {
+      const bodyId = typeof body?.id === 'string' ? body.id : ''
+      aisleBodyEntries.push(bodyId && liveAisleBodyIds.has(bodyId) ? body : { ...body, storageStatus: 'unlinked' })
+    }
 
-  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.workspaceIndex, {
-    domains: domainEntries,
-    ...(scratchpadEntry ? { scratchpad: scratchpadEntry } : {}),
+    setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.workspaceIndex, {
+      domains: domainEntries,
+      ...(scratchpadEntry ? { scratchpad: scratchpadEntry } : {}),
+    })
+    setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.navigationState, buildNavigationState(parsedState))
+    setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.frontmatterSettings, extractFrontmatterSettings(parsedState))
+    setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.editorState, extractEditorState(parsedState))
+    setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.messages, {
+      messages: ensureArray(parsedState.messages).filter(isRecord),
+      toastHistory: ensureArray(parsedState.toastHistory).filter(isRecord),
+    })
+    setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.deletedWorkspace, {
+      deletedDomains: ensureArray(parsedState.deletedDomains).filter(isRecord),
+      deletedSpaces: ensureArray(parsedState.deletedSpaces).filter(isRecord),
+    })
+    setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.noteRegistry, { noteBodies: noteBodyEntries, aisleBodies: aisleBodyEntries })
+    setStorageJsonFile(fileMap, 'manifest.json', buildRootManifest())
   })
-  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.navigationState, buildNavigationState(parsedState))
-  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.frontmatterSettings, extractFrontmatterSettings(parsedState))
-  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.editorState, extractEditorState(parsedState))
-  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.messages, {
-    messages: ensureArray(parsedState.messages).filter(isRecord),
-    toastHistory: ensureArray(parsedState.toastHistory).filter(isRecord),
-  })
-  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.deletedWorkspace, {
-    deletedDomains: ensureArray(parsedState.deletedDomains).filter(isRecord),
-    deletedSpaces: ensureArray(parsedState.deletedSpaces).filter(isRecord),
-  })
-  setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.noteRegistry, { noteBodies: noteBodyEntries, aisleBodies: aisleBodyEntries })
-  setStorageJsonFile(fileMap, 'manifest.json', buildRootManifest())
   addMetricPhaseDuration(metrics, 'buildFileMap', nowMs() - buildStartedAt)
   addStorageFileMapMetrics(metrics, fileMap, assetBank)
 

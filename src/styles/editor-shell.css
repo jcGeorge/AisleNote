@@ -1581,9 +1581,25 @@
   -webkit-box-decoration-break: clone;
 }
 
-.note-mention-menu {
+.note-mention-popover {
   position: fixed;
   z-index: 3400;
+  display: grid;
+  align-items: start;
+  gap: 0.55rem;
+  max-width: calc(100vw - 1rem);
+  max-height: calc(100vh - 1rem);
+}
+
+.note-mention-popover.has-preview {
+  grid-template-columns: minmax(12rem, 17.6rem) minmax(0, auto);
+}
+
+.note-mention-popover.has-no-preview {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.note-mention-menu {
   width: min(38rem, calc(100vw - 1rem));
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
@@ -1601,6 +1617,30 @@
 
 .note-mention-menu.is-search {
   width: min(45.6rem, calc(100vw - 1rem));
+}
+
+.note-mention-popover.has-preview .note-mention-menu {
+  max-height: min(24rem, 62vh);
+}
+
+.note-mention-preview {
+  box-sizing: border-box;
+  display: grid;
+  min-width: 0;
+  width: min(17.6rem, calc(100vw - 1rem));
+  max-height: min(24rem, 62vh);
+  padding: 0.45rem;
+  border: 1px solid var(--context-menu-border);
+  border-radius: 0.48rem;
+  background: color-mix(in srgb, var(--context-menu-bg) 88%, var(--app-surface));
+  color: var(--context-menu-item-text);
+  box-shadow: var(--context-menu-shadow);
+}
+
+.note-mention-preview-body.aisle-edit-preview {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
 }
 
 .note-mention-navigator {

@@ -13,6 +13,10 @@ type SaveAppStateMetrics = {
   phases: {
     parseState: number
     buildFileMap: number
+    noteBodyTraversal: number
+    noteContentGeneration: number
+    assetReferenceExtraction: number
+    manifestAssembly: number
     assetResolve: number
     fingerprint: number
     textWrites: number
@@ -35,6 +39,8 @@ type SaveAppStateMetrics = {
     filesSkipped: number
     filesPruned: number
     directoriesPruned: number
+    aisleStorageCacheHits: number
+    aisleStorageCacheMisses: number
   }
   pruneSkipped?: boolean
 }

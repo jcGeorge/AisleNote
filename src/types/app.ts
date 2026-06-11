@@ -912,6 +912,13 @@ export type ModalState =
       sourceAisleId?: string
     }
   | {
+      type: 'confirm-independent-note-paste-reclaim'
+      source: NoteLocation
+      destination: NoteLocation
+      destinationAisleId: string
+      placement: NewAislePlacement
+    }
+  | {
       type: 'deduplicate-note'
       noteBodyId: string
       keepLocationKeys: string[]

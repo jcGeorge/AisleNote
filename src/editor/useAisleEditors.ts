@@ -238,6 +238,8 @@ export function useAisleEditors({
   const activationDiagnosticSummariesRef = useRef<Map<string, AisleActivationDiagnosticSummary>>(new Map())
   const recentPointerActivationRef = useRef<{ editorKey: string; at: number } | null>(null)
   const pendingFocusAfterMountAisleIdRef = useRef<string | null>(null)
+  const programmaticAisleMarkdownRef = useRef<Map<string, string>>(new Map())
+  const pendingBlankRestoreFrameRef = useRef<Map<string, number>>(new Map())
   const pendingHeadingScrollRef = useRef<PendingHeadingScroll | null>(null)
   const pendingLinkScrollRef = useRef<PendingLinkScroll | null>(null)
   const headingCollapseStateRef = useRef(headingCollapseState)
@@ -340,6 +342,39 @@ export function useAisleEditors({
     lastEditorMarkdownByAisleRef.current.set(getAisleBodyIdForAisleId(aisleId), markdown)
   }
 
+  const markProgrammaticAisleMarkdown = (aisleId: string, markdown: string) => {
+    programmaticAisleMarkdownRef.current.set(aisleId, markdown)
+    normalizingAisleIdsRef.current.add(aisleId)
+  }
+
+  const consumeProgrammaticAisleMarkdown = (aisleId: string) => {
+    const markdown = programmaticAisleMarkdownRef.current.get(aisleId)
+    if (typeof markdown !== 'string') return null
+    programmaticAisleMarkdownRef.current.delete(aisleId)
+    normalizingAisleIdsRef.current.delete(aisleId)
+    return markdown
+  }
+
+  const clearProgrammaticAisleMarkdown = (aisleId: string, markdown: string) => {
+    if (programmaticAisleMarkdownRef.current.get(aisleId) !== markdown) return
+    programmaticAisleMarkdownRef.current.delete(aisleId)
+    normalizingAisleIdsRef.current.delete(aisleId)
+  }
+
+  const cancelPendingBlankRestore = (aisleId: string) => {
+    const frameId = pendingBlankRestoreFrameRef.current.get(aisleId)
+    if (typeof frameId === 'number') {
+      window.cancelAnimationFrame(frameId)
+    }
+    pendingBlankRestoreFrameRef.current.delete(aisleId)
+  }
+
+  const cancelAllPendingBlankRestores = () => {
+    pendingBlankRestoreFrameRef.current.forEach((frameId) => window.cancelAnimationFrame(frameId))
+    pendingBlankRestoreFrameRef.current.clear()
+    programmaticAisleMarkdownRef.current.clear()
+  }
+
   const flushActivationDiagnostics = () => {
     activationDiagnosticFrameRef.current = null
     const summaries = Array.from(activationDiagnosticSummariesRef.current.values())
@@ -432,8 +467,9 @@ export function useAisleEditors({
     if (activeAisleIdRef.current === meta.aisleId) {
       lastEditorMarkdownRef.current = expectedCanonicalMarkdown
     }
-    normalizingAisleIdsRef.current.add(meta.aisleId)
+    markProgrammaticAisleMarkdown(meta.aisleId, expectedCanonicalMarkdown)
     setEditorMarkdownForDisplay(meta.editor, expectedDisplayMarkdown)
+    window.setTimeout(() => clearProgrammaticAisleMarkdown(meta.aisleId, expectedCanonicalMarkdown), 0)
   }
 
   const getLatestMarkdownForAisle = (aisle: ResolvedNoteAisle) => {
@@ -447,7 +483,7 @@ export function useAisleEditors({
     aisleEditorMetaRef.current.forEach((meta) => {
       if (meta.aisleId === sourceAisleId) return
       if (getAisleBodyIdForAisleId(meta.aisleId) !== sourceAisleBodyId) return
-      const currentMarkdown = getNormalizedEditorMarkdown(meta.editor)
+      const currentMarkdown = getCachedMarkdownForAisle(meta.aisleId) ?? getNormalizedEditorMarkdown(meta.editor)
       if (!shouldApplyEditorDisplayRewrite({
         currentCanonicalMarkdown: currentMarkdown,
         expectedCanonicalMarkdown: expected.canonicalMarkdown,
@@ -465,7 +501,7 @@ export function useAisleEditors({
   const activateAisleEditor = (
     editorKey: string,
     options: ActivateAisleEditorOptions = {},
-  ) => {
+  ) => measureSlowOperation('activateAisleEditor', () => {
     const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
     const previousAisleId = activeAisleIdRef.current
     const requestedAisleId = getAisleIdFromAisleEditorKey(editorKey)
@@ -575,7 +611,9 @@ export function useAisleEditors({
     activeAisleIdRef.current = meta.aisleId
     activeEditorAisleIdRef.current = meta.aisleId
     multiLineCursorPluginKeyRef.current = meta.pluginKey
-    const currentMarkdown = getNormalizedEditorMarkdown(meta.editor)
+    const sourceAisle = getAisleById(meta.aisleId)
+    const pendingMarkdown = sourceAisle ? getPendingContentForAisle(sourceAisle)?.markdown : undefined
+    const currentMarkdown = pendingMarkdown ?? getCachedMarkdownForAisle(meta.aisleId) ?? getNormalizedEditorMarkdown(meta.editor)
     lastEditorMarkdownRef.current = currentMarkdown
     cacheMarkdownForAisleBody(meta.aisleId, currentMarkdown)
     if (activeAisleId !== meta.aisleId) {
@@ -588,7 +626,7 @@ export function useAisleEditors({
     scheduleToolbarFormatStateSync()
     queueActivationResult(switchingAisle ? 'switched-aisle' : 'activated-mounted', meta.aisleId)
     return true
-  }
+  })
 
   const activateEditorFromEventTarget = (target: EventTarget | null) => {
     const element = getElementFromEventTarget(target)
@@ -743,6 +781,28 @@ export function useAisleEditors({
       })
     }
 
+    const expectedProgrammaticMarkdown = consumeProgrammaticAisleMarkdown(aisleId)
+    if (expectedProgrammaticMarkdown !== null) {
+      recordDiagnosticEvent('editor', 'programmatic-change-suppressed', {
+        details: {
+          aisleId,
+          aisleBodyId: getAisleBodyIdForAisleId(aisleId),
+        },
+      })
+      lastEditorMarkdownRef.current = expectedProgrammaticMarkdown
+      cacheMarkdownForAisleBody(aisleId, expectedProgrammaticMarkdown)
+      scheduleContentCommit(
+        expectedProgrammaticMarkdown,
+        activeSpaceIdRef.current,
+        activeTabIdRef.current,
+        activeSubTabIdRef.current,
+        aisleId,
+        { aisleBodyId: getAisleBodyIdForAisleId(aisleId), noteBodyId: activeNoteBodyIdRef.current },
+      )
+      return
+    }
+
+    cancelPendingBlankRestore(aisleId)
     const markdown = getNormalizedEditorMarkdown(editor)
 
     const programmaticRewriteMarkdown = resolveProgrammaticAisleRewriteMarkdown({
@@ -873,6 +933,8 @@ export function useAisleEditors({
     if (options.captureContent) {
       captureAisleEditorContent(meta)
     }
+    cancelPendingBlankRestore(meta.aisleId)
+    programmaticAisleMarkdownRef.current.delete(meta.aisleId)
     meta.cleanup()
     aisleEditorMetaRef.current.delete(editorKey)
     normalizingAisleIdsRef.current.delete(meta.aisleId)
@@ -1132,19 +1194,32 @@ export function useAisleEditors({
           pendingFocusAfterMount: pendingFocusAfterMountAisleIdRef.current === aisle.id,
         },
       })
-      restoreEditorBlankParagraphs(editor, initialMarkdown.displayMarkdown)
-      markWysiwygLoadedUndoBoundary(editor)
       cacheMarkdownForAisleBody(aisle.id, initialMarkdown.canonicalMarkdown)
 
-      if (pendingFocusAfterMountAisleIdRef.current === aisle.id) {
-        pendingFocusAfterMountAisleIdRef.current = null
-        activateAisleEditor(editorKey, { focus: true })
-      }
-
-      window.requestAnimationFrame(() => {
+      const focusAfterRestore = pendingFocusAfterMountAisleIdRef.current === aisle.id
+      const restoreFrameId = window.requestAnimationFrame(() => {
+        pendingBlankRestoreFrameRef.current.delete(aisle.id)
+        const mountedMeta = aisleEditorMetaRef.current.get(editorKey)
+        if (!mountedMeta || mountedMeta.editor !== editor) return
+        const restored = measureSlowOperation(`aisle editor mount blank restore:${aisle.id}`, () => {
+          markProgrammaticAisleMarkdown(aisle.id, initialMarkdown.canonicalMarkdown)
+          const didRestore = restoreEditorBlankParagraphs(editor, initialMarkdown.displayMarkdown)
+          markWysiwygLoadedUndoBoundary(editor)
+          return didRestore
+        })
+        if (restored) {
+          window.setTimeout(() => clearProgrammaticAisleMarkdown(aisle.id, initialMarkdown.canonicalMarkdown), 0)
+        } else {
+          clearProgrammaticAisleMarkdown(aisle.id, initialMarkdown.canonicalMarkdown)
+        }
+        if (focusAfterRestore && pendingFocusAfterMountAisleIdRef.current === aisle.id) {
+          pendingFocusAfterMountAisleIdRef.current = null
+          activateAisleEditor(editorKey, { focus: true })
+        }
         runPendingHeadingScroll()
         runPendingLinkScroll()
       })
+      pendingBlankRestoreFrameRef.current.set(aisle.id, restoreFrameId)
       if (import.meta.env?.DEV) {
         emitDevAisleEditorMountState()
       }
@@ -1177,6 +1252,7 @@ export function useAisleEditors({
   useEffect(() => {
     return () => {
       destroyAllAisleEditors()
+      cancelAllPendingBlankRestores()
       if (import.meta.env?.DEV) {
         clearDevAisleEditorMountState()
       }
@@ -1193,7 +1269,7 @@ export function useAisleEditors({
       const cachedMarkdown = getCachedMarkdownForAisle(aisle.id)
       const expectedMarkdown = pending?.markdown ?? cachedMarkdown ?? aisle.markdown
       const expected = getMarkdownSyncSnapshot(expectedMarkdown)
-      const currentMarkdown = getNormalizedEditorMarkdown(meta.editor)
+      const currentMarkdown = cachedMarkdown ?? getNormalizedEditorMarkdown(meta.editor)
       if (shouldApplyEditorDisplayRewrite({
         currentCanonicalMarkdown: currentMarkdown,
         expectedCanonicalMarkdown: expected.canonicalMarkdown,

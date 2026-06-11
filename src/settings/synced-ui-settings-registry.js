@@ -46,8 +46,8 @@ export const MISC_SYNCED_UI_BOOLEAN_SETTINGS = Object.freeze([
   },
   {
     key: 'noteMentionCopyRequiresConfirmation',
-    label: '@ menu requires confirmation for replacing note with synced or independent copy',
-    ariaLabel: '@ menu requires confirmation for replacing note with synced or independent copy',
+    label: '@ menu requires confirmation for replacing aisle with synced or independent copy',
+    ariaLabel: '@ menu requires confirmation for replacing aisle with synced or independent copy',
   },
   {
     key: 'deleteActiveAisleShortcutEnabled',

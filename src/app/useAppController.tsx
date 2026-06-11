@@ -130,6 +130,7 @@ import { closeEditorEphemera, type CloseEditorEphemeraOptions } from '../editor/
 import {
   deleteFocusedAisleFromDraft,
   getAislesForNewAisle,
+  isEmptyAisleMarkdown,
   MAX_AISLE_WARNING_MESSAGE,
 } from '../editor/aisle-edit-draft'
 import type { AisleStructuralSnapshot } from '../editor/aisle-structural-history'
@@ -139,7 +140,11 @@ import {
   getCopyAsPasteHereFocusedAisleReplacementMode,
   type FocusedAisleStructuralPasteMode,
 } from '../editor/aisle-copy-paste'
-import { insertNewAisles, replaceFocusedAisleWithNewAisles } from '../editor/aisle-insertion'
+import {
+  insertNewAisles,
+  insertNewAislesWithReclaimedSlots,
+  replaceFocusedAisleWithNewAisles,
+} from '../editor/aisle-insertion'
 import { getAisleIdFromAisleEditorKey } from '../editor/aisle-editor'
 import {
   getActiveAisleRefSyncValue,
@@ -245,7 +250,6 @@ import {
   listLinkedAisleSlotsForAisleBody,
 } from '../notes/aisle-links'
 import { openExternalWebUrl } from '../notes/external-links'
-import { getNoteCopyCreatedToast } from '../notes/copy-reference-labels'
 import {
   buildDefaultNoteReferenceDraft,
   buildExternalLinkEditDraft,
@@ -277,10 +281,10 @@ import {
 } from '../notes/note-references'
 import { useNoteMentionController } from '../notes/useNoteMentionController'
 import {
-  applyIndependentCopyToScratchpad,
   applyNoteCopyToState,
   materializeStructuralAisleCopiesForInsertion,
 } from '../notes/note-copy-service'
+import { getNoteMentionAisleCopyTarget } from '../notes/note-mention-picker'
 import { getAisleBodyId } from '../notes/note-markdown'
 import { cloneAisles, getAisleMarkdown } from '../notes/aisle-body-state'
 import { resetAisleWidthForLocation, setAisleWidthForLocation } from '../notes/aisle-widths'
@@ -328,7 +332,6 @@ import {
   getScratchpadActiveAisleId,
   getScratchpadNoteBody,
   setScratchpadActiveAisleId,
-  syncScratchpadAislesInState,
 } from '../state/scratchpad'
 import {
   projectActiveDomainState,
@@ -450,6 +453,12 @@ import type {
 } from '../types/app'
 import type { ElectronNoteRevealPayload } from '../types/electron-api'
 
+type EtCeteraViewMode = Extract<ViewMode, 'about' | 'messages' | 'settings'>
+
+function isEtCeteraViewMode(viewMode: ViewMode): viewMode is EtCeteraViewMode {
+  return viewMode === 'about' || viewMode === 'messages' || viewMode === 'settings'
+}
+
 type ShortcutMenuState = {
   top: number
   left: number
@@ -481,6 +490,8 @@ type CopyAsMenuState = {
 }
 
 const COPY_AS_MENU_ACTIONS: CopyAsAction[] = ['copy', 'duplicate', 'link', 'preview']
+const SCRATCHPAD_COPY_AISLE_LIMIT_MESSAGE =
+  'This copy operation would exceed the number of available aisles in scratchpad. Please increase the number of aisles for scratchpad in misc settings or delete unused scratchpad aisles.'
 
 const TOOLBAR_LIST_COMMAND_TO_MULTILINE_OPERATION: Partial<Record<ToolbarListCommand, MultiLineListOperation>> = {
   taskList: 'task',
@@ -570,12 +581,18 @@ export function useAppController(): AppController {
   }
   const { state, setState, stateRef, flushPendingPersistence, commitAppStateNow } = usePersistentAppState()
   const [viewMode, setViewMode] = useState<ViewMode>(() => initialDeviceSettingsRef.current?.lastOpened?.viewMode ?? 'main')
+  const lastEtCeteraViewModeRef = useRef<EtCeteraViewMode>(
+    isEtCeteraViewMode(viewMode) ? viewMode : 'settings',
+  )
   const [scratchpadActive, setScratchpadActive] = useState(() =>
     shouldRestoreScratchpadWorkspace(initialDeviceSettingsRef.current?.lastOpened),
   )
   const toggleViewModeRef = useRef<ViewMode>(viewMode)
   const toggleScratchpadActiveRef = useRef(scratchpadActive)
   const [editing, setEditing] = useState<{ type: EditableEntityType; id: string } | null>(null)
+  const beginEdit = useCallback((target: { type: EditableEntityType; id: string }) => {
+    measureSlowOperation('navigation beginEdit', () => setEditing(target))
+  }, [])
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
   const insertNoteReferenceModalOpen = modal?.type === 'insert-note-reference'
@@ -631,6 +648,12 @@ export function useAppController(): AppController {
     () => initialDeviceSettingsRef.current?.activeToolbarLayoutId ?? DEFAULT_TOOLBAR_LAYOUT_ID,
   )
   const [dismissedStorageAlertSignatures, setDismissedStorageAlertSignatures] = useState<string[]>([])
+
+  useEffect(() => {
+    if (isEtCeteraViewMode(viewMode)) {
+      lastEtCeteraViewModeRef.current = viewMode
+    }
+  }, [viewMode])
 
   const editorMountRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<Editor | null>(null)
@@ -2857,30 +2880,55 @@ export function useAppController(): AppController {
         pushToast(message, 'warning')
         return { handled: false, toast: { message, tone: 'warning' as const } }
       }
-      const result = applyIndependentCopyToScratchpad(latestState, target, 'replace', getScratchpadAisleLimit())
-      if (result.status !== 'applied') {
-        const message = 'Selected note could not be copied.'
-        pushToast(message, 'warning')
-        return { handled: false, toast: { message, tone: 'warning' as const } }
-      }
-      stateRef.current = result.state
-      setState(result.state)
-      pushToast(getNoteCopyCreatedToast(mode), 'success')
-      return { handled: true }
     }
-    const destination = getCurrentNoteLocation()
-    const result = applyNoteCopyToState(latestState, destination, target, mode, 'replace')
-    if (result.status !== 'applied') {
-      const message =
-        result.status === 'self-copy' || result.status === 'already-linked'
-          ? 'Choose a different note to copy from.'
-          : 'Selected note could not be copied.'
+
+    const copyTarget = getNoteMentionAisleCopyTarget(latestState, target)
+    if (!copyTarget) {
+      const message = 'Selected aisle could not be copied.'
       pushToast(message, 'warning')
       return { handled: false, toast: { message, tone: 'warning' as const } }
     }
-    stateRef.current = result.state
-    setState(result.state)
-    pushToast(getNoteCopyCreatedToast(mode), 'success')
+    const action = mode === 'linked' ? 'duplicate' : 'copy'
+    const payload: CopyAsClipboardPayload = {
+      version: 1,
+      scope: 'aisle',
+      action,
+      source: copyTarget.source,
+      aisleId: copyTarget.aisleId,
+    }
+    const result = buildFocusedAisleStructuralPasteReplacement({
+      appState: latestState,
+      payload,
+      beforeSnapshot: captureActiveAisleStructuralSnapshot(latestState),
+      mode: 'always',
+      maxAisles: scratchpadWorkspaceActive ? getScratchpadAisleLimit() : MAX_NOTE_AISLES,
+    })
+    if (result.status !== 'applied') {
+      const message = result.status === 'blocked' ? result.message : 'Selected aisle could not be copied.'
+      if (message === 'Maximum aisle count reached.') {
+        if (scratchpadWorkspaceActive) {
+          showScratchpadAisleLimitToast()
+        } else {
+          pushToast(MAX_AISLE_WARNING_MESSAGE, 'warning')
+        }
+        return { handled: false, toast: { message, tone: 'warning' as const } }
+      }
+      pushToast(message, 'warning')
+      return { handled: false, toast: { message, tone: 'warning' as const } }
+    }
+
+    if (!result.activeAisleId) {
+      const message = 'Copied aisle no longer exists.'
+      pushToast(message, 'warning')
+      return { handled: false, toast: { message, tone: 'warning' as const } }
+    }
+
+    applyAisleEditDraftToActiveNote(result.aisles, {
+      activeAisleId: result.activeAisleId,
+      additionalAisleBodies: result.aisleBodies,
+    })
+    closeEditorEphemeraRef.current()
+    pushToast(getCopyAsPasteSuccessMessage('aisle', payload.action), 'success')
     return { handled: true }
   }
   const noteMention = useNoteMentionController({
@@ -2912,10 +2960,22 @@ export function useAppController(): AppController {
     commitActiveEditorMarkdownNow,
     syncToolbarFormatState,
   })
-  const openSettingsWithoutMentionMenu = () => {
+  const openSettingsView = () => {
     closeEditorEphemeraRef.current()
     exitTagFilterMode()
     openSettings()
+  }
+  const openEtCeteraView = () => {
+    const targetViewMode = lastEtCeteraViewModeRef.current
+    if (targetViewMode === 'messages') {
+      openMessagesView()
+      return
+    }
+    if (targetViewMode === 'about') {
+      openAboutView()
+      return
+    }
+    openSettingsView()
   }
 
   const toggleHeadingCollapse = (aisleId: string, headingKey: string) => {
@@ -3491,6 +3551,116 @@ export function useAppController(): AppController {
     return true
   }
 
+  const insertScratchpadAisleCopiesWithCapacity = (
+    latestState: AppState,
+    newAisles: ResolvedNoteAisle[],
+    activeAisleId: string | null | undefined,
+    placement: NewAislePlacement,
+    additionalAisleBodies: NoteAisleBody[] = [],
+  ): boolean => {
+    const body = getScratchpadNoteBody(latestState)
+    if (!body) {
+      pushToast('Open a note before pasting.', 'warning')
+      return false
+    }
+    const baseAisles = cloneAisles(body.aisles, latestState.noteAisleBodies)
+    const result = insertNewAislesWithReclaimedSlots(
+      baseAisles,
+      newAisles,
+      activeAisleId,
+      placement,
+      getScratchpadAisleLimit(),
+      (aisle) => isEmptyAisleMarkdown(aisle.markdown),
+    )
+    if (result.status === 'blocked') {
+      pushToast(SCRATCHPAD_COPY_AISLE_LIMIT_MESSAGE, 'warning')
+      return false
+    }
+    applyAisleEditDraftToActiveNote(result.aisles, {
+      activeAisleId: newAisles[0]?.id,
+      additionalAisleBodies,
+    })
+    return true
+  }
+
+  const pasteIndependentNoteCopyAsAisles = (
+    payload: CopyAsClipboardPayload,
+    options: {
+      destination: NoteLocation
+      placement: NewAislePlacement
+      destinationAisleId: string
+      allowReclaim?: boolean
+    },
+  ): boolean => {
+    if (payload.scope !== 'note' || payload.action !== 'copy' || isScratchpadCopyAsSource(payload.source)) return false
+    const latestState = buildStateWithLatestEditorContent()
+    if (buildNoteLocationKey(payload.source) === buildNoteLocationKey(options.destination)) {
+      pushToast('Choose a different note to paste this independent copy.', 'warning')
+      return true
+    }
+    const destinationInfo = getLocationInfo(latestState, options.destination)
+    const destinationBody = destinationInfo.noteBodyId
+      ? latestState.noteBodies.find((candidate) => candidate.id === destinationInfo.noteBodyId) ?? null
+      : null
+    if (!destinationInfo.noteBodyId || !destinationBody) {
+      pushToast('Open a note before pasting.', 'warning')
+      return true
+    }
+    if (!destinationBody.aisles.some((aisle) => aisle.id === options.destinationAisleId)) {
+      pushToast('Destination aisle no longer exists.', 'warning')
+      return true
+    }
+
+    const result = materializeStructuralAisleCopiesForInsertion(latestState, {
+      scope: payload.scope,
+      action: payload.action,
+      source: payload.source,
+      aisleId: payload.aisleId,
+    })
+    if (result.status !== 'applied') {
+      pushToast(result.message, 'warning')
+      return true
+    }
+
+    const baseAisles = cloneAisles(destinationBody.aisles, latestState.noteAisleBodies)
+    const insertResult = insertNewAislesWithReclaimedSlots(
+      baseAisles,
+      result.aisles,
+      options.destinationAisleId,
+      options.placement,
+      MAX_NOTE_AISLES,
+      (aisle) => isEmptyAisleMarkdown(aisle.markdown),
+    )
+    if (insertResult.status === 'blocked') {
+      pushToast(MAX_AISLE_WARNING_MESSAGE, 'warning')
+      return true
+    }
+    if (insertResult.reclaimedCount > 0 && !options.allowReclaim) {
+      closeEditorEphemeraRef.current()
+      setModal({
+        type: 'confirm-independent-note-paste-reclaim',
+        source: payload.source,
+        destination: options.destination,
+        destinationAisleId: options.destinationAisleId,
+        placement: options.placement,
+      })
+      return true
+    }
+
+    const beforeSnapshot = captureActiveAisleStructuralSnapshot(latestState)
+    if (!beforeSnapshot || beforeSnapshot.noteBodyId !== destinationInfo.noteBodyId) {
+      pushToast('Open the destination note before pasting.', 'warning')
+      return true
+    }
+    applyAisleEditDraftToActiveNote(insertResult.aisles, {
+      activeAisleId: result.aisles[0]?.id,
+      additionalAisleBodies: result.aisleBodies,
+    })
+    closeEditorEphemeraRef.current()
+    pushToast(getCopyAsPasteSuccessMessage(payload.scope, payload.action), 'success')
+    return true
+  }
+
   const pasteCopyAsPayload = (payload: CopyAsClipboardPayload): boolean => {
     if (viewMode !== 'main') {
       pushToast('Open a note before pasting.', 'warning')
@@ -3510,15 +3680,6 @@ export function useAppController(): AppController {
       if (replaceFocusedAisleWithStructuralCopy(latestState, pastePayload, undefined, pasteHereReplacementMode, conversionToast)) return true
     }
     if (scratchpadWorkspaceActive && isScratchpadCopyAsSource(pastePayload.source) && pastePayload.scope === 'aisle' && pastePayload.action === 'copy') {
-      const scratchpadBody = getScratchpadNoteBody(latestState)
-      if (!scratchpadBody) {
-        pushToast('Copied aisle no longer exists.', 'warning')
-        return true
-      }
-      if (scratchpadBody.aisles.length + 1 > getScratchpadAisleLimit()) {
-        showScratchpadAisleLimitToast()
-        return true
-      }
       const result = materializeStructuralAisleCopiesForInsertion(latestState, {
         scope: pastePayload.scope,
         action: pastePayload.action,
@@ -3529,20 +3690,16 @@ export function useAppController(): AppController {
         pushToast(result.message, 'warning')
         return true
       }
-      const nextState = setScratchpadActiveAisleId(
-        syncScratchpadAislesInState(
-          {
-            ...latestState,
-            noteAisleBodies: [...(latestState.noteAisleBodies ?? []), ...result.aisleBodies],
-          },
-          [...scratchpadBody.aisles, ...result.aisles],
-        ),
-        result.aisles[0]?.id ?? '',
-      )
-      stateRef.current = nextState
-      setState(nextState)
-      closeEditorEphemeraRef.current()
-      pushToast(getCopyAsPasteSuccessMessage(pastePayload.scope, pastePayload.action), 'success')
+      if (insertScratchpadAisleCopiesWithCapacity(
+        latestState,
+        result.aisles,
+        getScratchpadActiveAisleId(latestState, resolvedActiveAisleId),
+        'right-of-focus',
+        result.aisleBodies,
+      )) {
+        closeEditorEphemeraRef.current()
+        pushToast(getCopyAsPasteSuccessMessage(pastePayload.scope, pastePayload.action), 'success')
+      }
       return true
     }
     if (scratchpadWorkspaceActive && (pastePayload.action === 'copy' || pastePayload.action === 'duplicate')) {
@@ -3561,36 +3718,49 @@ export function useAppController(): AppController {
             : 0
           : sourceBody?.aisles.length ?? 0
       const scratchpadBody = getScratchpadNoteBody(latestState)
-      const nextAisleCount =
-        pastePayload.scope === 'aisle' ? (scratchpadBody?.aisles.length ?? 0) + sourceAisleCount : sourceAisleCount
       if (!sourceBody || sourceAisleCount <= 0) {
         pushToast(pastePayload.scope === 'aisle' ? 'Copied aisle no longer exists.' : 'Copied note no longer exists.', 'warning')
         return true
       }
-      if (nextAisleCount > getScratchpadAisleLimit()) {
-        showScratchpadAisleLimitToast()
+      if (!scratchpadBody) {
+        pushToast('Open a note before pasting.', 'warning')
         return true
       }
-      const target = pastePayload.scope === 'aisle' && pastePayload.aisleId
-        ? { ...pastePayload.source, aisleIds: [pastePayload.aisleId] }
-        : pastePayload.source
-      const result = applyIndependentCopyToScratchpad(
-        latestState,
-        target,
-        pastePayload.scope === 'aisle' ? 'append' : 'replace',
-        getScratchpadAisleLimit(),
-      )
+      const result = materializeStructuralAisleCopiesForInsertion(latestState, {
+        scope: pastePayload.scope,
+        action: 'copy',
+        source: pastePayload.source,
+        aisleId: pastePayload.aisleId,
+      })
       if (result.status !== 'applied') {
-        pushToast(pastePayload.scope === 'aisle' ? 'Copied aisle no longer exists.' : 'Copied note no longer exists.', 'warning')
+        pushToast(result.message, 'warning')
         return true
       }
-      stateRef.current = result.state
-      setState(result.state)
-      closeEditorEphemeraRef.current()
-      pushToast(conversionToast?.message ?? getCopyAsPasteSuccessMessage(pastePayload.scope, pastePayload.action), conversionToast?.tone ?? 'success')
+      if (insertScratchpadAisleCopiesWithCapacity(
+        latestState,
+        result.aisles,
+        getScratchpadActiveAisleId(latestState, resolvedActiveAisleId),
+        'right-of-focus',
+        result.aisleBodies,
+      )) {
+        closeEditorEphemeraRef.current()
+        pushToast(conversionToast?.message ?? getCopyAsPasteSuccessMessage(pastePayload.scope, pastePayload.action), conversionToast?.tone ?? 'success')
+      }
       return true
     }
     const destination = getCurrentNoteLocation()
+    if (!scratchpadWorkspaceActive) {
+      const destinationAisleId = getDestinationAisleIdForSyncedNotePaste(latestState, destination)
+      if (
+        pasteIndependentNoteCopyAsAisles(pastePayload, {
+          destination,
+          destinationAisleId,
+          placement: 'right-of-focus',
+        })
+      ) {
+        return true
+      }
+    }
     if (!isScratchpadCopyAsSource(payload.source) && shouldConfirmSyncedNotePaste(latestState, payload, destination)) {
       closeEditorEphemeraRef.current()
       setModal({
@@ -3708,15 +3878,19 @@ export function useAppController(): AppController {
       pushToast('Open a note before pasting.', 'warning')
       return false
     }
+    if (scratchpadWorkspaceActive) {
+      return insertScratchpadAisleCopiesWithCapacity(
+        latestState,
+        newAisles,
+        beforeSnapshot.activeAisleId,
+        getEditorPasteAislePlacement(destination),
+        additionalAisleBodies,
+      )
+    }
     const baseAisles = cloneAisles(body.aisles, latestState.noteAisleBodies)
     const nextAisleCount = baseAisles.length + newAisles.length
-    const maxAisles = scratchpadWorkspaceActive ? getScratchpadAisleLimit() : MAX_NOTE_AISLES
-    if (nextAisleCount > maxAisles) {
-      if (scratchpadWorkspaceActive) {
-        showScratchpadAisleLimitToast()
-      } else {
-        pushToast(MAX_AISLE_WARNING_MESSAGE, 'warning')
-      }
+    if (nextAisleCount > MAX_NOTE_AISLES) {
+      pushToast(MAX_AISLE_WARNING_MESSAGE, 'warning')
       return false
     }
     const nextAisles = insertNewAisles(
@@ -3746,8 +3920,23 @@ export function useAppController(): AppController {
       ? { message: scratchpadStructuralPaste.warningMessage, tone: 'warning' as const }
       : undefined
 
+    if (!scratchpadWorkspaceActive && pastePayload.scope === 'note' && pastePayload.action === 'copy') {
+      const currentDestination = getCurrentNoteLocation()
+      if (
+        pasteIndependentNoteCopyAsAisles(pastePayload, {
+          destination: currentDestination,
+          destinationAisleId: beforeSnapshot.activeAisleId,
+          placement: getEditorPasteAislePlacement(destination),
+        })
+      ) {
+        return true
+      }
+    }
+
     if (pastePayload.action === 'copy' || pastePayload.action === 'duplicate') {
-      const replacementMode = getCopyAsNewAislePasteFocusedAisleReplacementMode(pastePayload)
+      const replacementMode = scratchpadWorkspaceActive
+        ? null
+        : getCopyAsNewAislePasteFocusedAisleReplacementMode(pastePayload)
       if (replacementMode && replaceFocusedAisleWithStructuralCopy(latestState, pastePayload, beforeSnapshot, replacementMode, conversionToast)) {
         return true
       }
@@ -5291,7 +5480,7 @@ export function useAppController(): AppController {
     settingsController.setSettingsFrontmatterTemplate(templateId)
     settingsController.changeSection('frontmatter')
     setModal(null)
-    openSettingsWithoutMentionMenu()
+    openSettingsView()
   }
 
   const applyArrangeTabSort = (target: TabSortTarget, mode: TabSortMode) => {
@@ -5505,6 +5694,26 @@ export function useAppController(): AppController {
 
     if (modal.type === 'rename-notebook') {
       void confirmRenameNotebookModal(modal)
+      return
+    }
+
+    if (modal.type === 'confirm-independent-note-paste-reclaim') {
+      const currentModal = modal
+      setModal(null)
+      pasteIndependentNoteCopyAsAisles(
+        {
+          version: 1,
+          scope: 'note',
+          action: 'copy',
+          source: currentModal.source,
+        },
+        {
+          destination: currentModal.destination,
+          destinationAisleId: currentModal.destinationAisleId,
+          placement: currentModal.placement,
+          allowReclaim: true,
+        },
+      )
       return
     }
 
@@ -5827,7 +6036,7 @@ export function useAppController(): AppController {
     setEditingShortcut: settingsController.setEditingShortcut,
     updateShortcutSetting: settingsController.updateShortcutSetting,
     exitArrangeMode,
-    openSettings: openSettingsWithoutMentionMenu,
+    openSettings: openEtCeteraView,
     toggleSpaceRail: toggleSpaceRailVisibility,
     toggleDomainRail: toggleDomainRailVisibility,
     toggleNotesTrash: toggleNotesTrashFromShortcut,
@@ -6053,7 +6262,7 @@ export function useAppController(): AppController {
       onToggleSpaceRail={toggleSpaceRailVisibility}
       onToggleDomainRail={toggleDomainRailVisibility}
       onToggleTrash={toggleTrashView}
-      onOpenSettings={openSettingsWithoutMentionMenu}
+      onOpenEtCetera={openEtCeteraView}
       onOpenFilter={openNoteFilterFromMenu}
       tagFilterControl={viewForMenu === 'main' ? tagFilterControl : null}
     />
@@ -6147,7 +6356,7 @@ export function useAppController(): AppController {
           onCommitRename={commitRename}
           onCancelRename={cancelRename}
           onRenameDraftChange={trackRenameDraft}
-          onBeginEdit={setEditing}
+          onBeginEdit={beginEdit}
           onAutoSizeRenameInput={autoSizeRenameInput}
           onClearRenameDraft={clearRenameDraft}
           onAddDomain={addDomainFromCompactRail}
@@ -6196,7 +6405,7 @@ export function useAppController(): AppController {
           onCommitRename={commitRename}
           onCancelRename={cancelRename}
           onRenameDraftChange={trackRenameDraft}
-          onBeginEdit={setEditing}
+          onBeginEdit={beginEdit}
           onAutoSizeRenameInput={autoSizeRenameInput}
           onClearRenameDraft={clearRenameDraft}
           onAddSpace={addSpaceFromCompactRail}
@@ -6428,7 +6637,7 @@ export function useAppController(): AppController {
             }
             selectParentTabFromTopBar(tabId, event)
           }}
-          onBeginEdit={setEditing}
+          onBeginEdit={beginEdit}
           onOpenContextMenuForTab={openContextMenuForTab}
           onStartArrangeDragSeed={startArrangeDragSeed}
           onStartArrangeTapCandidate={startArrangeTapCandidate}
@@ -6486,7 +6695,8 @@ export function useAppController(): AppController {
           onToggleDomainRail={toggleDomainRailVisibility}
           onToggleTrash={toggleTrashView}
           onOpenMessages={openMessagesView}
-          onOpenSettings={openSettingsWithoutMentionMenu}
+          onOpenSettings={openSettingsView}
+          onOpenEtCetera={openEtCeteraView}
           onOpenAbout={openAboutView}
           onOpenFilter={openNoteFilterFromMenu}
           settingsSection={settingsController.section}
@@ -6688,7 +6898,7 @@ export function useAppController(): AppController {
             onConsumeArrangeClickSuppression={consumeArrangeClickSuppression}
             onSelectParentHomeTab={tagFilterActive ? selectParentHomeFromTagFilter : selectParentHomeTabFromRail}
             onSelectSubTab={tagFilterActive ? selectSubTabFromTagFilter : selectSubTabFromRail}
-            onBeginEdit={setEditing}
+            onBeginEdit={beginEdit}
             onOpenContextMenuForHomeTab={openContextMenuForHomeTab}
             onOpenContextMenuForSubTab={openContextMenuForSubTab}
             onExitArrangeMode={exitArrangeMode}
@@ -6932,6 +7142,9 @@ export function useAppController(): AppController {
           selectedSearchIndex={noteMention.selectedSearchIndex}
           searchAisleItems={noteMention.searchAisleItems}
           selectedSearchAisleId={noteMention.selectedSearchAisleId}
+          preview={noteMention.preview}
+          previewLayout={noteMention.previewLayout}
+          selectorHeight={noteMention.selectorHeight}
           searchFocusStage={noteMention.searchFocusStage}
           keyboardFocusVisible={noteMention.keyboardFocusVisible}
           focusedAisleIndex={noteMention.focusedAisleIndex}

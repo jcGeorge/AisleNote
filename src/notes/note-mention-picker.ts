@@ -1,5 +1,6 @@
 import type { AppState, Domain, NoteLocation, NoteNavigationTarget, Space, SubTab, Tab } from '../types/app'
-import { filterNoteSearchEntries, getLocationInfo, type NoteSearchEntry } from './note-locations'
+import { getAisleMarkdown } from './note-markdown'
+import { filterNoteSearchEntries, getLocationInfo, getNoteLocationBreadcrumbLabel, type NoteSearchEntry } from './note-locations'
 
 export type NoteMentionNavigatorRowId = 'domain' | 'space' | 'tab' | 'note' | 'aisle'
 export type NoteMentionTarget = NoteNavigationTarget
@@ -46,6 +47,17 @@ export type NoteMentionSelection = NoteLocation & {
   aisleId?: string | null
 }
 
+export type NoteMentionPreviewData = {
+  aisleId: string
+  markdown: string
+  targetLabel: string
+}
+
+export type NoteMentionAisleCopyTarget = {
+  source: NoteLocation
+  aisleId: string
+}
+
 const NAVIGATOR_ROW_IDS: NoteMentionNavigatorRowId[] = ['domain', 'space', 'tab', 'note']
 const HOME_NOTE_ID = '__home__'
 
@@ -77,6 +89,15 @@ function getNoteBodyAisles(sourceState: AppState, target: NoteLocation) {
   const noteBodyId = getLocationInfo(sourceState, target).noteBodyId
   if (!noteBodyId) return []
   return sourceState.noteBodies?.find((body) => body.id === noteBodyId)?.aisles ?? []
+}
+
+function toNoteLocation(target: NoteLocation): NoteLocation {
+  return {
+    domainId: target.domainId,
+    spaceId: target.spaceId,
+    tabId: target.tabId,
+    subTabId: target.subTabId,
+  }
 }
 
 export function getNoteMentionAisleItems(sourceState: AppState, target: NoteLocation): NoteMentionNavigatorItem[] {
@@ -335,6 +356,50 @@ export function getNoteMentionTarget(selection: NoteMentionSelection): NoteMenti
   }
   if (selection.aisleId) target.aisleIds = [selection.aisleId]
   return target
+}
+
+export function getNoteMentionAisleCopyTarget(
+  sourceState: AppState,
+  target: NoteMentionTarget | null | undefined,
+): NoteMentionAisleCopyTarget | null {
+  if (!target) return null
+  const source = toNoteLocation(target)
+  const aisles = getNoteBodyAisles(sourceState, source)
+  if (aisles.length <= 0) return null
+
+  const requestedAisleId = target.aisleIds?.[0] ?? target.aisleId ?? null
+  if (requestedAisleId) {
+    return aisles.some((aisle) => aisle.id === requestedAisleId)
+      ? { source, aisleId: requestedAisleId }
+      : null
+  }
+
+  return aisles.length === 1 ? { source, aisleId: aisles[0]?.id ?? '' } : null
+}
+
+export function getNoteMentionPreviewData(
+  sourceState: AppState,
+  target: NoteMentionTarget | null | undefined,
+): NoteMentionPreviewData | null {
+  if (!target) return null
+  const targetInfo = getLocationInfo(sourceState, target)
+  const noteBody = targetInfo.noteBodyId
+    ? sourceState.noteBodies.find((body) => body.id === targetInfo.noteBodyId) ?? null
+    : null
+  if (!noteBody || noteBody.aisles.length <= 0) return null
+
+  const requestedAisleId = target.aisleIds?.[0] ?? null
+  const selectedAisle =
+    (requestedAisleId ? noteBody.aisles.find((aisle) => aisle.id === requestedAisleId) : null) ??
+    noteBody.aisles[0] ??
+    null
+  if (!selectedAisle) return null
+
+  return {
+    aisleId: selectedAisle.id,
+    markdown: getAisleMarkdown(selectedAisle, sourceState.noteAisleBodies),
+    targetLabel: getNoteLocationBreadcrumbLabel(sourceState, target),
+  }
 }
 
 export function filterNoteMentionSearchEntries(

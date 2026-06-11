@@ -27,7 +27,7 @@ type NavigationRailControlsProps = {
   onToggleSpaceRail: () => void
   onToggleDomainRail: () => void
   onToggleTrash: () => void
-  onOpenSettings: () => void
+  onOpenEtCetera: () => void
   onOpenFilter: () => void
   tagFilterControl?: ReactNode
 }
@@ -44,7 +44,7 @@ export function NavigationRailControls({
   onToggleSpaceRail,
   onToggleDomainRail,
   onToggleTrash,
-  onOpenSettings,
+  onOpenEtCetera,
   onOpenFilter,
   tagFilterControl,
 }: NavigationRailControlsProps) {
@@ -122,8 +122,8 @@ export function NavigationRailControls({
             <button type="button" className="menu-item" onClick={onOpenFilter}>
               filter
             </button>
-            <button type="button" className="menu-item" onClick={onOpenSettings}>
-              settings
+            <button type="button" className="menu-item" onClick={onOpenEtCetera}>
+              et cetera
             </button>
           </div>
         )}

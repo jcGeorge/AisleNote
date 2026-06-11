@@ -79,6 +79,10 @@ describe('Electron app state coordinator', () => {
       phases: {
         parseState: 1,
         buildFileMap: 2,
+        noteBodyTraversal: 0,
+        noteContentGeneration: 0,
+        assetReferenceExtraction: 0,
+        manifestAssembly: 0,
         assetResolve: 3,
         fingerprint: 4,
         textWrites: 5,
@@ -101,6 +105,8 @@ describe('Electron app state coordinator', () => {
         filesSkipped: 3,
         filesPruned: 0,
         directoriesPruned: 0,
+        aisleStorageCacheHits: 0,
+        aisleStorageCacheMisses: 0,
       },
     }
     const coordinator = createAppStateCoordinator({

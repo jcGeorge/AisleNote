@@ -333,10 +333,10 @@ describe('frontmatter settings page', () => {
     state.ui.noteMentionCopyRequiresConfirmation = true
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc', state })
 
-    expect(html).toContain('@ menu requires confirmation for replacing note with synced or independent copy')
-    expect(html).toContain('aria-label="@ menu requires confirmation for replacing note with synced or independent copy"')
-    expect(html).toContain('role="switch" aria-label="@ menu requires confirmation for replacing note with synced or independent copy" checked=""')
-    expect(html.indexOf('@ menu requires confirmation for replacing note with synced or independent copy')).toBeLessThan(
+    expect(html).toContain('@ menu requires confirmation for replacing aisle with synced or independent copy')
+    expect(html).toContain('aria-label="@ menu requires confirmation for replacing aisle with synced or independent copy"')
+    expect(html).toContain('role="switch" aria-label="@ menu requires confirmation for replacing aisle with synced or independent copy" checked=""')
+    expect(html.indexOf('@ menu requires confirmation for replacing aisle with synced or independent copy')).toBeLessThan(
       html.indexOf('add table row or column'),
     )
   })
@@ -354,7 +354,7 @@ describe('frontmatter settings page', () => {
     expect(windowsHtml).toContain('control+w deletes active aisle')
     expect(windowsHtml).toContain('aria-label="control+w deletes active aisle"')
     expect(windowsHtml).not.toContain('role="switch" aria-label="control+w deletes active aisle" checked=""')
-    expect(windowsHtml.indexOf('@ menu requires confirmation for replacing note with synced or independent copy')).toBeLessThan(
+    expect(windowsHtml.indexOf('@ menu requires confirmation for replacing aisle with synced or independent copy')).toBeLessThan(
       windowsHtml.indexOf('control+w deletes active aisle'),
     )
     expect(windowsHtml.indexOf('control+w deletes active aisle')).toBeLessThan(

@@ -34,7 +34,7 @@ function renderMenu(spaceRailVisible = false, domainRailVisible = false) {
       onToggleSpaceRail={noop}
       onToggleDomainRail={noop}
       onToggleTrash={noop}
-      onOpenSettings={noop}
+      onOpenEtCetera={noop}
       onOpenFilter={noop}
     />,
   )
@@ -54,7 +54,7 @@ function renderTrashMenu() {
       onToggleSpaceRail={noop}
       onToggleDomainRail={noop}
       onToggleTrash={noop}
-      onOpenSettings={noop}
+      onOpenEtCetera={noop}
       onOpenFilter={noop}
     />,
   )
@@ -73,11 +73,12 @@ describe('NavigationRailControls', () => {
     expect(html.indexOf('>show domain<')).toBeLessThan(html.indexOf('>trash<'))
   })
 
-  it('renders utility menu rows in trash filter settings order without messages or about', () => {
+  it('renders utility menu rows in trash filter et cetera order without messages or about', () => {
     const html = renderMenu()
 
     expect(html.indexOf('>trash<')).toBeLessThan(html.indexOf('>filter<'))
-    expect(html.indexOf('>filter<')).toBeLessThan(html.indexOf('>settings<'))
+    expect(html.indexOf('>filter<')).toBeLessThan(html.indexOf('>et cetera<'))
+    expect(html).not.toContain('>settings<')
     expect(html).not.toContain('>messages<')
     expect(html).not.toContain('>about<')
     expect(html).not.toContain('messages (')
@@ -130,7 +131,7 @@ describe('NavigationRailControls', () => {
       onToggleSpaceRail: noop,
       onToggleDomainRail: noop,
       onToggleTrash,
-      onOpenSettings: noop,
+      onOpenEtCetera: noop,
       onOpenFilter: noop,
     })
     const button = findButtonByClass(element, 'menu-btn')

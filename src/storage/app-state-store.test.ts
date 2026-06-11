@@ -303,6 +303,10 @@ describe('Electron app state store', () => {
       phases: {
         parseState: 1,
         buildFileMap: 2,
+        noteBodyTraversal: 0,
+        noteContentGeneration: 0,
+        assetReferenceExtraction: 0,
+        manifestAssembly: 0,
         assetResolve: 0,
         fingerprint: 3,
         textWrites: 4,
@@ -325,6 +329,8 @@ describe('Electron app state store', () => {
         filesSkipped: 4,
         filesPruned: 0,
         directoriesPruned: 0,
+        aisleStorageCacheHits: 0,
+        aisleStorageCacheMisses: 0,
       },
     }
     const appendDiagnosticLogEntry = vi.fn(async () => ({ ok: true }))

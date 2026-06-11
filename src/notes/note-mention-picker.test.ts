@@ -4,6 +4,8 @@ import {
   buildNoteMentionNavigatorRows,
   createDefaultNoteMentionSelection,
   filterNoteMentionSearchEntries,
+  getNoteMentionAisleCopyTarget,
+  getNoteMentionPreviewData,
   getNoteMentionSearchEntryDetails,
   getNoteMentionSearchSelectionAfterClick,
   getNoteMentionSearchSelectionAfterHover,
@@ -70,6 +72,15 @@ function createMentionState(): AppState {
       { id: 'tab-b-body', aisles: [{ id: 'tab-b-aisle-1', aisleBodyId: 'tab-b-aisle-body-1' }] },
       { id: 'tab-c-body', aisles: [{ id: 'tab-c-aisle-1', aisleBodyId: 'tab-c-aisle-body-1' }] },
       { id: 'tab-d-body', aisles: [{ id: 'tab-d-aisle-1', aisleBodyId: 'tab-d-aisle-body-1' }] },
+    ],
+    noteAisleBodies: [
+      { id: 'tab-a-aisle-body-1', markdown: 'tab a home' },
+      { id: 'sub-a-aisle-body-1', markdown: 'sub a only aisle' },
+      { id: 'sub-b-aisle-body-1', markdown: 'sub b first aisle' },
+      { id: 'sub-b-aisle-body-2', markdown: '# Selected second aisle' },
+      { id: 'tab-b-aisle-body-1', markdown: 'tab b home' },
+      { id: 'tab-c-aisle-body-1', markdown: 'tab c home' },
+      { id: 'tab-d-aisle-body-1', markdown: 'tab d home' },
     ],
   } as unknown as AppState
 }
@@ -146,6 +157,83 @@ describe('note mention picker model', () => {
       subTabId: 'sub-b',
       aisleIds: ['sub-b-aisle-2'],
     })
+  })
+
+  it('resolves mention previews to exactly the selected or first aisle', () => {
+    const state = createMentionState()
+
+    expect(getNoteMentionPreviewData(state, {
+      domainId: 'domain-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: 'sub-a',
+    })).toMatchObject({
+      aisleId: 'sub-a-aisle-1',
+      markdown: 'sub a only aisle',
+      targetLabel: 'Humble beginnings > Alpha space > Alpha prime > Alpha sub',
+    })
+
+    expect(getNoteMentionPreviewData(state, {
+      domainId: 'domain-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: 'sub-b',
+      aisleIds: ['sub-b-aisle-2'],
+    })).toMatchObject({
+      aisleId: 'sub-b-aisle-2',
+      markdown: '# Selected second aisle',
+      targetLabel: 'Humble beginnings > Alpha space > Alpha prime > Beta sub',
+    })
+  })
+
+  it('resolves mention copy targets to exactly one source aisle', () => {
+    const state = createMentionState()
+
+    expect(getNoteMentionAisleCopyTarget(state, {
+      domainId: 'domain-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: 'sub-a',
+    })).toEqual({
+      source: {
+        domainId: 'domain-a',
+        spaceId: 'space-a',
+        tabId: 'tab-a',
+        subTabId: 'sub-a',
+      },
+      aisleId: 'sub-a-aisle-1',
+    })
+
+    expect(getNoteMentionAisleCopyTarget(state, {
+      domainId: 'domain-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: 'sub-b',
+      aisleIds: ['sub-b-aisle-2'],
+    })).toEqual({
+      source: {
+        domainId: 'domain-a',
+        spaceId: 'space-a',
+        tabId: 'tab-a',
+        subTabId: 'sub-b',
+      },
+      aisleId: 'sub-b-aisle-2',
+    })
+
+    expect(getNoteMentionAisleCopyTarget(state, {
+      domainId: 'domain-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: 'sub-b',
+    })).toBeNull()
+
+    expect(getNoteMentionAisleCopyTarget(state, {
+      domainId: 'domain-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: 'sub-b',
+      aisleIds: ['missing-aisle'],
+    })).toBeNull()
   })
 
   it('searches all notes while ranking the current space and prime tab higher', () => {

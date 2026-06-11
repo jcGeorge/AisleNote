@@ -533,11 +533,6 @@
   font-size: calc(var(--ui-font-menu) * 0.86);
 }
 
-.view-settings .topbar-context-btn {
-  font-size: calc(1rem * var(--note-font-scale, 1)) !important;
-  line-height: 1.1 !important;
-}
-
 .menu-wrap {
   position: relative;
   flex: 0 0 auto;

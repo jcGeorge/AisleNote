@@ -127,6 +127,7 @@ type TopBarProps = {
   onToggleTrash: () => void
   onOpenMessages: () => void
   onOpenSettings: () => void
+  onOpenEtCetera: () => void
   onOpenAbout: () => void
   onOpenFilter: () => void
   onSettingsSectionChange: (section: SettingsSection) => void
@@ -211,6 +212,7 @@ export function TopBar({
   onToggleTrash,
   onOpenMessages,
   onOpenSettings,
+  onOpenEtCetera,
   onOpenAbout,
   onOpenFilter,
   onSettingsSectionChange,
@@ -266,6 +268,17 @@ export function TopBar({
               if (isDraggingArrangeItem) return
               onAdvanceArrangeHierarchyReveal()
             },
+          },
+        ]
+      : []),
+    ...(isUtilityView
+      ? [
+          {
+            key: 'et-cetera',
+            label: 'et cetera',
+            selected: false,
+            className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
+            onClick: onOpenEtCetera,
           },
         ]
       : []),
@@ -673,7 +686,7 @@ export function TopBar({
             onToggleSpaceRail={onToggleSpaceRail}
             onToggleDomainRail={onToggleDomainRail}
             onToggleTrash={onToggleTrash}
-            onOpenSettings={onOpenSettings}
+            onOpenEtCetera={onOpenEtCetera}
             onOpenFilter={onOpenFilter}
             tagFilterControl={tagFilterControl}
           />

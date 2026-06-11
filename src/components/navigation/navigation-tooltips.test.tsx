@@ -165,6 +165,7 @@ function createTopBarElement(
       onToggleTrash={noop}
       onOpenMessages={noop}
       onOpenSettings={noop}
+      onOpenEtCetera={noop}
       onOpenAbout={noop}
       onOpenFilter={noop}
       onSettingsSectionChange={noop}
@@ -306,6 +307,7 @@ describe('navigation arrange tooltips', () => {
     expect(html.indexOf('>toolbar</button>')).toBeLessThan(html.indexOf('>visuals</button>'))
     expect(html).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn subtab-btn settings-section-rail-btn utility-child-rail-btn">toolbar</button>')
     expect(html).not.toMatch(/topbar-context-btn[^"]*">settings<\/button>/)
+    expect(html).toMatch(/topbar-context-btn[^"]*">et cetera<\/button>/)
   })
 
   it('renders messages and about utility parents with subtab-styled children', () => {
