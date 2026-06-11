@@ -135,6 +135,34 @@ describe('note preview plugin', () => {
     expect(hiddenNode).toMatchObject({ from: 4, to: 5, attrs: { class: 'note-context-node-hidden' } })
   })
 
+  it('resolves encoded internal note image node sources', () => {
+    const context = createPluginContext()
+    const payload = {
+      id: 'preview-id',
+      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+    }
+    const resolvePreviewToken = vi.fn(() => payload)
+    const pluginFactory = createNotePreviewPlugin(context, {
+      sourceNoteBodyId: 'source-body',
+      getNotePreviewData: vi.fn(),
+      resolvePreviewToken,
+      navigateToNoteLocation: vi.fn(),
+      deleteNotePreview: vi.fn(),
+    }).wysiwygPlugins[0]()
+
+    const decorations = pluginFactory.props.decorations({ doc: createImageDoc('Linked%20note--123abc', 'Linked note') })
+    const widget = decorations.find((decoration: any) => decoration.type === 'widget')
+    widget.factory()
+
+    expect(resolvePreviewToken).toHaveBeenCalledWith('![Linked note](<Linked note--123abc>)')
+    expect(createNotePreviewWidgetElement).toHaveBeenCalledWith(
+      payload,
+      expect.objectContaining({ sourceNoteBodyId: 'source-body' }),
+      { from: 4, to: 5 },
+      'Linked note',
+    )
+  })
+
   it('renders navigation-only preview widgets in readonly-preview mode', () => {
     const context = createPluginContext()
     const payload = {

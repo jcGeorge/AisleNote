@@ -8,6 +8,7 @@ import {
   COPY_AS_CLIPBOARD_MIME,
   applyCopyAsStructuralPayloadToState,
   buildCopyAsClipboardData,
+  buildScratchpadAisleCopyAsClipboardData,
   getCopyAsAisleIdForNoteContext,
   getCopyAsPasteSuccessMessage,
   getCopyAsSuccessMessage,
@@ -127,6 +128,24 @@ function createCopyAsState(): AppState {
   }
 }
 
+function addScratchpadSource(state: AppState): AppState {
+  return {
+    ...state,
+    scratchpad: { noteBodyId: 'body-scratch', activeAisleId: 'aisle-scratch-1' },
+    noteBodies: [
+      ...state.noteBodies,
+      {
+        id: 'body-scratch',
+        aisles: [{ id: 'aisle-scratch-1', aisleBodyId: 'aisle-scratch-1' }],
+      },
+    ],
+    noteAisleBodies: [
+      ...(state.noteAisleBodies ?? []),
+      { id: 'aisle-scratch-1', markdown: 'scratch aisle', frontmatterStatus: 'none' },
+    ],
+  }
+}
+
 describe('copy-as clipboard helpers', () => {
   it('uses centralized user-facing copy and paste wording', () => {
     expect(getCopyAsSuccessMessage('note', 'copy')).toBe('Independent note copy copied.')
@@ -188,6 +207,24 @@ describe('copy-as clipboard helpers', () => {
         action: 'duplicate',
         aisleId: 'aisle-source-1',
       },
+    })
+  })
+
+  it('serializes only independent scratchpad aisle copy payloads', () => {
+    const payload: CopyAsClipboardPayload = {
+      version: 1,
+      scope: 'aisle',
+      action: 'copy',
+      source: { type: 'scratchpad' },
+      aisleId: 'aisle-scratch-1',
+    }
+
+    expect(parseCopyAsPayload(serializeCopyAsPayload(payload))).toEqual(payload)
+    expect(parseCopyAsPayload(serializeCopyAsPayload({ ...payload, action: 'duplicate' }))).toBeNull()
+    expect(parseCopyAsPayload(serializeCopyAsPayload({ ...payload, scope: 'note' }))).toBeNull()
+    expect(buildScratchpadAisleCopyAsClipboardData(addScratchpadSource(createCopyAsState()), 'aisle-scratch-1')).toMatchObject({
+      ok: true,
+      payload,
     })
   })
 
@@ -314,6 +351,25 @@ describe('copy-as clipboard helpers', () => {
     expect(targetBody?.aisles[1]?.aisleBodyId).not.toBe('aisle-source-2')
   })
 
+  it('applies independent scratchpad aisle copies structurally', () => {
+    const state = addScratchpadSource(createCopyAsState())
+    const result = applyCopyAsStructuralPayloadToState(state, targetLocation, {
+      version: 1,
+      scope: 'aisle',
+      action: 'copy',
+      source: { type: 'scratchpad' },
+      aisleId: 'aisle-scratch-1',
+    })
+
+    expect(result.status).toBe('applied')
+    const targetBody = result.state.noteBodies.find((body) => body.id === 'body-target')
+    expect(targetBody?.aisles.map((aisle) => getAisleMarkdown(aisle, result.state.noteAisleBodies))).toEqual([
+      'target text',
+      'scratch aisle',
+    ])
+    expect(targetBody?.aisles[1]?.aisleBodyId).not.toBe('aisle-scratch-1')
+  })
+
   it('applies linked duplicate payloads structurally', () => {
     const state = createCopyAsState()
     const noteResult = applyCopyAsStructuralPayloadToState(state, targetLocation, {
@@ -403,6 +459,17 @@ describe('copy-as clipboard helpers', () => {
     expect(independent.aisles[0]?.markdown).toBe('source two')
     expect(independent.aisles[0]?.aisleBodyId).not.toBe('aisle-source-2')
     expect(independent.aisleBodies).toHaveLength(1)
+
+    const scratchpadIndependent = materializeStructuralAisleCopiesForInsertion(addScratchpadSource(state), {
+      scope: 'aisle',
+      action: 'copy',
+      source: { type: 'scratchpad' },
+      aisleId: 'aisle-scratch-1',
+    })
+    expect(scratchpadIndependent.status).toBe('applied')
+    if (scratchpadIndependent.status !== 'applied') throw new Error('expected scratchpad aisle copies')
+    expect(scratchpadIndependent.aisles.map((aisle) => aisle.markdown)).toEqual(['scratch aisle'])
+    expect(scratchpadIndependent.aisles[0]?.aisleBodyId).not.toBe('aisle-scratch-1')
 
     const linked = materializeStructuralAisleCopiesForInsertion(state, {
       scope: 'note',

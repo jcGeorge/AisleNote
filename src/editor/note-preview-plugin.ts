@@ -6,6 +6,7 @@ import {
 import {
   buildMarkdownNoteReferenceToken,
   NOTE_PREVIEW_REFERENCE_RE,
+  parseMarkdownNoteReferenceDestination,
   parseMarkdownNoteReferenceToken,
   type NotePreviewReferencePayload,
   type NotePreviewSourceRange,
@@ -34,6 +35,11 @@ function getImageNodeAltText(node: any): string {
   return typeof alt === 'string' ? alt.trim() : ''
 }
 
+function normalizePreviewImageNodeSource(source: string): string {
+  const unescaped = source.trim().replace(/\\([\\[\]()<>#-])/g, '$1')
+  return parseMarkdownNoteReferenceDestination(unescaped) || unescaped
+}
+
 function resolvePreviewImageNode(
   node: any,
   resolvePreviewToken: (token: string) => NotePreviewReferencePayload | null,
@@ -46,7 +52,7 @@ function resolvePreviewImageNode(
   const label = getImageNodeAltText(node)
   const token = buildMarkdownNoteReferenceToken({
     embed: true,
-    target: source,
+    target: normalizePreviewImageNodeSource(source),
     label,
   })
   const payload = token ? resolvePreviewToken(token) : null

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_FRONTMATTER_SETTINGS } from '../../frontmatter/frontmatter'
 import type { AppState, ModalState, NewlineOperationId, Space } from '../../types/app'
 import { makeFrontmatterRowsManual, normalizeFrontmatterModalRows } from './frontmatter-modal-state'
-import { shouldModalBackdropClose } from './modal-behavior'
+import { shouldCloseModalFromBackdropGesture, shouldModalBackdropClose } from './modal-behavior'
 import { shouldSubmitInsertNoteReferenceOnEnter } from './modal-keyboard'
 import { ModalHost } from './ModalHost'
 
@@ -190,6 +190,7 @@ function renderFrontmatterModal(modal: ModalState) {
       onDeduplicateKeepDataChange={() => undefined}
       onPasteSyncedNoteAsAisle={() => undefined}
       onOpenSyncedFilter={() => undefined}
+      onOpenFrontmatterFilter={() => undefined}
       onChooseNotebookLocation={async () => null}
       onConfirm={() => undefined}
     />,
@@ -215,6 +216,7 @@ function renderModal(modal: ModalState, state = createState()) {
       onDeduplicateKeepDataChange={() => undefined}
       onPasteSyncedNoteAsAisle={() => undefined}
       onOpenSyncedFilter={() => undefined}
+      onOpenFrontmatterFilter={() => undefined}
       onChooseNotebookLocation={async () => null}
       onConfirm={() => undefined}
     />,
@@ -240,6 +242,7 @@ function renderShortcutMenuSettingsModal(shortcutMenuOperations: NewlineOperatio
       onDeduplicateKeepDataChange={() => undefined}
       onPasteSyncedNoteAsAisle={() => undefined}
       onOpenSyncedFilter={() => undefined}
+      onOpenFrontmatterFilter={() => undefined}
       onChooseNotebookLocation={async () => null}
       onConfirm={() => undefined}
     />,
@@ -254,8 +257,8 @@ describe('sort modal rendering', () => {
     expect(html).toContain('quick standalone place to put unsorted notes')
     expect(html).toContain('stored with your other notes')
     expect(html).toContain('searching your entire notebook')
-    expect(html).toContain('allows 16 aisles by default')
-    expect(html).toContain('adjustable up to 40')
+    expect(html).toContain('set to 16 aisles by default')
+    expect(html).toContain('maximum of 40')
     expect(html).toContain('added to the left by default')
     expect(html).toContain('>return</button>')
     expect(html).not.toContain('>cancel</button>')
@@ -335,6 +338,30 @@ describe('sort modal rendering', () => {
       urlLabel: '',
     })).toBe(false)
     expect(shouldModalBackdropClose({ type: 'shortcut-menu-settings' })).toBe(true)
+  })
+
+  it('closes dismissable modals only from complete backdrop gestures', () => {
+    const modal: ModalState = { type: 'scratchpad-about' }
+
+    expect(
+      shouldCloseModalFromBackdropGesture({ modal, startedOnBackdrop: true, endedOnBackdrop: true }),
+    ).toBe(true)
+    expect(
+      shouldCloseModalFromBackdropGesture({ modal, startedOnBackdrop: false, endedOnBackdrop: true }),
+    ).toBe(false)
+    expect(
+      shouldCloseModalFromBackdropGesture({ modal, startedOnBackdrop: true, endedOnBackdrop: false }),
+    ).toBe(false)
+  })
+
+  it('keeps non-dismissable modals open even after complete backdrop gestures', () => {
+    expect(
+      shouldCloseModalFromBackdropGesture({
+        modal: { type: 'sort-tabs', target: 'parents' },
+        startedOnBackdrop: true,
+        endedOnBackdrop: true,
+      }),
+    ).toBe(false)
   })
 
   it('renders explicit aisle direction commands in shortcut menu settings', () => {
@@ -934,6 +961,8 @@ describe('linked aisle modal rendering', () => {
     expect(html).toContain('aisle 1')
     expect(html).toContain('aisle 2')
     expect(html).toContain('synced filter')
+    expect(html).toMatch(/modal-header-row[\s\S]*linked aisle[\s\S]*synced filter/)
+    expect(html).not.toContain('linked-aisle-filter-actions')
     expect(html).toContain('keep data in de-coupled aisles?')
     expect(html).toMatch(/<button type="button" class="btn btn-sm modal-primary-btn">apply<\/button>/)
     expect(html).not.toContain('this aisle shares content with another aisle')
@@ -967,6 +996,8 @@ describe('linked aisle modal rendering', () => {
     expect(html).toContain('aria-label="Domain / Space / Tab / home. Will stay coupled."')
     expect(html).toContain('aria-label="Domain / Space / Second / home. Will stay coupled."')
     expect(html).toContain('synced filter')
+    expect(html).toMatch(/modal-header-row[\s\S]*linked note[\s\S]*synced filter/)
+    expect(html).not.toContain('linked-aisle-filter-actions')
     expect(html).not.toContain('duplicate-note-list')
     expect(html).toContain('keep data in de-coupled notes?')
     expect(html).toMatch(/<button type="button" class="btn btn-sm modal-primary-btn">apply<\/button>/)
@@ -1080,6 +1111,7 @@ describe('frontmatter modal rendering', () => {
     })
 
     expect(html.match(/role="switch"/g) ?? []).toHaveLength(2)
+    expect(html).toMatch(/modal-header-row[\s\S]*frontmatter[\s\S]*filter frontmatter/)
     expect(html).not.toContain('synced to template')
     expect(html).toContain('>derived</span>')
     expect(html).toContain('>computed</span>')

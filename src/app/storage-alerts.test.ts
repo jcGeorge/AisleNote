@@ -62,7 +62,7 @@ describe('storage alerts', () => {
         label: 'duplicate files de-coupled',
         message: 'Duplicate files were edited differently. Some copies were de-coupled.',
         detail: '1 changed duplicate file was de-coupled.',
-        actionLabel: 'open messages',
+        actionLabel: 'open settings --> messages --> inbox',
       },
     ])
   })

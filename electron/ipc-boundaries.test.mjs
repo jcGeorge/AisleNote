@@ -754,10 +754,14 @@ describe('electron ipc boundaries', () => {
       const saveEvent = { sender: sourceSender, returnValue: null }
       ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: '{"theme":"dawn"}', baseRevision: 0 })
 
-      expect(saveEvent.returnValue).toEqual({
+      expect(saveEvent.returnValue).toMatchObject({
         ok: true,
         serializedState: '{"theme":"dawn"}',
         revision: 1,
+      })
+      expect(saveEvent.returnValue.saveMetrics).toMatchObject({
+        counts: expect.objectContaining({ generatedFiles: expect.any(Number) }),
+        phases: expect.objectContaining({ fingerprint: expect.any(Number) }),
       })
       expect(sourceWindow.webContents.send).not.toHaveBeenCalledWith('app-state-updated', expect.anything())
       expect(otherWindow.webContents.send).toHaveBeenCalledWith('app-state-updated', {
@@ -788,10 +792,14 @@ describe('electron ipc boundaries', () => {
           { sender: { id: 1 } },
           { serializedState: '{"theme":"dawn"}', baseRevision: 0 },
         ),
-      ).resolves.toEqual({
+      ).resolves.toMatchObject({
         ok: true,
         serializedState: '{"theme":"dawn"}',
         revision: 1,
+        saveMetrics: {
+          counts: expect.objectContaining({ generatedFiles: expect.any(Number) }),
+          phases: expect.objectContaining({ fingerprint: expect.any(Number) }),
+        },
       })
       expect(sourceWindow.webContents.send).not.toHaveBeenCalledWith('app-state-updated', expect.anything())
       expect(otherWindow.webContents.send).toHaveBeenCalledWith('app-state-updated', {

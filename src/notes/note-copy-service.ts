@@ -11,6 +11,7 @@ import { createId, createTimestamp } from '../state/workspace'
 import { getAisleBodyTags } from '../tags/tags.js'
 import type { AppState, FrontmatterMeta, NoteAisle, NoteAisleBody, NoteBody, NoteCopyDestinationMode, NoteCopyMode, NoteLocation, ResolvedNoteAisle } from '../types/app'
 import { ensureScratchpadInAppState, getScratchpadNoteBody } from '../state/scratchpad'
+import type { CopyAsSource } from './copy-as-clipboard'
 
 export type ApplyNoteCopyResult =
   | { status: 'applied'; state: AppState; mode: NoteCopyMode }
@@ -21,7 +22,7 @@ export type ApplyNoteCopyResult =
 export type StructuralAisleCopyPayload = {
   scope: 'note' | 'aisle'
   action: 'copy' | 'duplicate'
-  source: NoteLocation
+  source: CopyAsSource
   aisleId?: string
 }
 
@@ -109,11 +110,39 @@ function resolveAisleMarkdowns(sourceState: AppState, aisles: NoteAisle[]): Reso
   }))
 }
 
+function isScratchpadCopyAsSource(source: CopyAsSource): source is { type: 'scratchpad' } {
+  return Boolean(source && typeof source === 'object' && 'type' in source && source.type === 'scratchpad')
+}
+
 export function materializeStructuralAisleCopiesForInsertion(
   sourceState: AppState,
   payload: StructuralAisleCopyPayload,
 ): MaterializeStructuralAisleCopiesResult {
   const mode: NoteCopyMode = payload.action === 'duplicate' ? 'linked' : 'independent'
+  if (isScratchpadCopyAsSource(payload.source)) {
+    if (payload.scope !== 'aisle' || payload.action !== 'copy') {
+      return { status: 'blocked', mode, message: 'Copied aisle no longer exists.' }
+    }
+    const workingState = ensureScratchpadInAppState(sourceState)
+    const scratchpadBody = getScratchpadNoteBody(workingState)
+    const selectedSourceAisles = scratchpadBody?.aisles.filter((aisle) => aisle.id === payload.aisleId) ?? []
+    if (selectedSourceAisles.length <= 0) {
+      return { status: 'blocked', mode, message: 'Copied aisle no longer exists.' }
+    }
+    const resolvedSourceAisles = resolveAisleMarkdowns(workingState, selectedSourceAisles)
+    const copied = createIndependentAisleCopies(workingState, resolvedSourceAisles)
+    const stateWithCopiedBodies = {
+      ...workingState,
+      noteAisleBodies: [...(workingState.noteAisleBodies ?? []), ...copied.aisleBodies],
+    }
+    return {
+      status: 'applied',
+      mode,
+      aisles: resolveAisleMarkdowns(stateWithCopiedBodies, copied.aisles),
+      aisleBodies: copied.aisleBodies,
+    }
+  }
+
   const workingState = ensureNoteBodiesForAppState(sourceState)
   const sourceInfo = getLocationInfo(workingState, payload.source)
   const sourceBody = sourceInfo.noteBodyId

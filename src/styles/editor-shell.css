@@ -853,37 +853,6 @@
   pointer-events: auto;
 }
 
-.note-aisle-action-menu {
-  position: absolute;
-  top: calc(100% + 0.3rem);
-  right: 0;
-  z-index: 38;
-  min-width: 8.5rem;
-  padding: 0.3rem;
-  border: 1px solid var(--editor-popup-input-border);
-  border-radius: var(--rail-control-radius, 0.42rem);
-  background: var(--editor-popup-bg);
-  box-shadow: 0 0.35rem 0.85rem color-mix(in srgb, var(--app-bg) 36%, transparent);
-}
-
-.note-aisle-action-menu-item {
-  width: 100%;
-  padding: 0.32rem 0.46rem;
-  border: 0;
-  border-radius: calc(var(--rail-control-radius, 0.42rem) - 0.12rem);
-  background: transparent;
-  color: var(--editor-text);
-  font-size: calc(0.82rem * var(--app-text-scale, 1));
-  line-height: 1.2;
-  text-align: left;
-}
-
-.note-aisle-action-menu-item:hover,
-.note-aisle-action-menu-item:focus-visible {
-  background: color-mix(in srgb, var(--editor-popup-input-focus-border) 18%, transparent);
-  color: var(--editor-text);
-}
-
 .note-scratchpad-aisle-controls {
   --note-scratchpad-aisle-control-size: 3.225rem;
   --note-scratchpad-aisle-add-icon-size: 1.77rem;

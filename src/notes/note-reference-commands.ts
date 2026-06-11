@@ -4,6 +4,7 @@ import {
   applyCopyAsStructuralPayloadToState,
   getAisleCopyLabel,
   getCopyAsPasteSuccessMessage,
+  isScratchpadCopyAsSource,
   type CopyAsClipboardPayload,
 } from './copy-as-clipboard'
 import { getLocationInfo } from './note-locations'
@@ -211,7 +212,7 @@ export function buildNoteReferenceCommand({
   }
 }
 
-function getResolvedCopyAsSource(appState: AppState, payload: CopyAsClipboardPayload) {
+function getResolvedCopyAsSource(appState: AppState, payload: CopyAsClipboardPayload & { source: NoteLocation }) {
   const info = getLocationInfo(appState, payload.source)
   const body = info.noteBodyId ? appState.noteBodies.find((candidate) => candidate.id === info.noteBodyId) ?? null : null
   const aisle = payload.aisleId && body ? body.aisles.find((candidate) => candidate.id === payload.aisleId) ?? null : null
@@ -245,7 +246,12 @@ export function buildCopyAsPasteCommand({
     }
   }
 
-  const { info, body, aisle } = getResolvedCopyAsSource(appState, payload)
+  if (isScratchpadCopyAsSource(payload.source)) {
+    return { status: 'blocked', message: 'Copied note no longer exists.', tone: 'warning' }
+  }
+
+  const livePayload = payload as CopyAsClipboardPayload & { source: NoteLocation }
+  const { info, body, aisle } = getResolvedCopyAsSource(appState, livePayload)
   if (!info.domain || !info.space || !info.tab || !body) {
     return { status: 'blocked', message: 'Copied note no longer exists.', tone: 'warning' }
   }
@@ -256,17 +262,17 @@ export function buildCopyAsPasteCommand({
     return { status: 'blocked', message: 'Copy a specific aisle as preview for notes with multiple aisles.', tone: 'warning' }
   }
 
-  const target = payload.scope === 'aisle' && payload.aisleId
-    ? { ...payload.source, aisleIds: [payload.aisleId] }
-    : payload.source
+  const target = livePayload.scope === 'aisle' && livePayload.aisleId
+    ? { ...livePayload.source, aisleIds: [livePayload.aisleId] }
+    : livePayload.source
   const command = buildNoteReferenceCommand({
     appState,
     source: destination,
     target,
     action: payload.action,
     activeNoteBodyId,
-    labelOverride: payload.action === 'link' && payload.scope === 'aisle' && payload.aisleId
-      ? getAisleCopyLabel(appState, payload.source, payload.aisleId)
+    labelOverride: livePayload.action === 'link' && livePayload.scope === 'aisle' && livePayload.aisleId
+      ? getAisleCopyLabel(appState, livePayload.source, livePayload.aisleId)
       : '',
     previewMarkdowns,
     insertPlacement: payload.action === 'preview' ? 'block' : 'inline',

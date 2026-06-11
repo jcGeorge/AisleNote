@@ -24,6 +24,7 @@ type UseGlobalHotkeysParams = {
   toggleNotesFilter: () => void
   navigateHistoryBy: (delta: number) => void
   showTip: (tipId: TipId) => void
+  cycleUtilityChild?: (direction: -1 | 1) => void
   addTab: () => void
   addSubTab: () => void
   addScratchpadAisle?: () => void
@@ -223,6 +224,24 @@ export function isSettingsShortcut(event: KeyboardEvent, isMacPlatform: boolean)
   return usesPlatformPrimaryModifier(event, isMacPlatform)
 }
 
+export function getUtilityChildCycleShortcutDirection({
+  event,
+  hotkeys,
+  isMacPlatform,
+  viewMode,
+}: {
+  event: KeyboardEvent
+  hotkeys: AppState['hotkeys']
+  isMacPlatform: boolean
+  viewMode: ViewMode
+}): -1 | 1 | null {
+  if (viewMode !== 'settings' && viewMode !== 'messages' && viewMode !== 'about') return null
+  const normalizedHotkeys = normalizeHotkeySettings(hotkeys)
+  if (eventMatchesShortcut(event, normalizedHotkeys.shortcuts.cycleSubTabNext, isMacPlatform)) return 1
+  if (eventMatchesShortcut(event, normalizedHotkeys.shortcuts.cycleSubTabPrev, isMacPlatform)) return -1
+  return null
+}
+
 export function getDeleteActiveAisleShortcutIntent({
   event,
   isMacPlatform,
@@ -305,6 +324,7 @@ export function useGlobalHotkeys({
   toggleNotesFilter,
   navigateHistoryBy,
   showTip,
+  cycleUtilityChild = () => undefined,
   addTab,
   addSubTab,
   addScratchpadAisle = () => undefined,
@@ -331,6 +351,7 @@ export function useGlobalHotkeys({
     toggleNotesFilter,
     navigateHistoryBy,
     showTip,
+    cycleUtilityChild,
     addTab,
     addSubTab,
     addScratchpadAisle,
@@ -354,6 +375,7 @@ export function useGlobalHotkeys({
     toggleNotesFilter,
     navigateHistoryBy,
     showTip,
+    cycleUtilityChild,
     addTab,
     addSubTab,
     addScratchpadAisle,
@@ -515,12 +537,22 @@ export function useGlobalHotkeys({
         return
       }
 
+      const isCycleNextShortcut = eventMatchesShortcut(event, normalizedHotkeys.shortcuts.cycleSubTabNext, isMacPlatform)
+      const isCyclePrevShortcut = eventMatchesShortcut(event, normalizedHotkeys.shortcuts.cycleSubTabPrev, isMacPlatform)
+      if (
+        viewMode !== 'main' &&
+        (viewMode === 'settings' || viewMode === 'messages' || viewMode === 'about') &&
+        (isCycleNextShortcut || isCyclePrevShortcut)
+      ) {
+        event.preventDefault()
+        actions.cycleUtilityChild(isCyclePrevShortcut ? -1 : 1)
+        return
+      }
+
       if (viewMode !== 'main') return
       if (arrangeMode.active) return
 
       const isCommandNewTab = eventMatchesShortcut(event, normalizedHotkeys.shortcuts.newTab, isMacPlatform)
-      const isCycleNextShortcut = eventMatchesShortcut(event, normalizedHotkeys.shortcuts.cycleSubTabNext, isMacPlatform)
-      const isCyclePrevShortcut = eventMatchesShortcut(event, normalizedHotkeys.shortcuts.cycleSubTabPrev, isMacPlatform)
       const isCycleAisleNextShortcut = eventMatchesShortcut(event, normalizedHotkeys.shortcuts.cycleAisleNext, isMacPlatform)
       const isCycleAislePrevShortcut = eventMatchesShortcut(event, normalizedHotkeys.shortcuts.cycleAislePrev, isMacPlatform)
 

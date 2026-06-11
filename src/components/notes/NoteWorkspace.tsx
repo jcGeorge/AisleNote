@@ -107,9 +107,7 @@ type NoteWorkspaceProps = {
   onSelectTableOfContentsLink?: (aisleId: string, linkKey: string) => void
   onOpenTableOfContentsLink?: (aisleId: string, link: TableOfContentsLinkItem) => void
   onOpenAisleFrontmatter?: (aisleId: string) => void
-  onOpenAisleFrontmatterFilter?: (aisleId: string) => void
   onOpenAisleLink?: (aisleId: string) => void
-  onOpenAisleSyncedFilter?: (aisleId: string) => void
   onOpenTagFilter?: (tag: string) => void
   scratchpadAisleControls?: ScratchpadAisleControls
   onRegisterAislePaneRoot: (aisleId: string, node: HTMLElement | null) => void
@@ -254,16 +252,13 @@ export function NoteWorkspace({
   onSelectTableOfContentsLink = () => undefined,
   onOpenTableOfContentsLink = () => undefined,
   onOpenAisleFrontmatter = () => undefined,
-  onOpenAisleFrontmatterFilter = () => undefined,
   onOpenAisleLink = () => undefined,
-  onOpenAisleSyncedFilter = () => undefined,
   onOpenTagFilter = () => undefined,
   scratchpadAisleControls,
   onRegisterAislePaneRoot,
   onRegisterAisleEditorRoot,
 }: NoteWorkspaceProps) {
   const [aisleScrollNode, setAisleScrollNode] = useState<HTMLDivElement | null>(null)
-  const [actionMenu, setActionMenu] = useState<{ type: 'frontmatter' | 'link'; aisleId: string } | null>(null)
   const aisleResizeDragRef = useRef<{
     pointerId: number
     aisleId: string
@@ -348,10 +343,6 @@ export function NoteWorkspace({
         ref={setAisleScrollRef}
         className="note-aisle-scroll"
         onPointerDownCapture={(event) => {
-          const target = event.target instanceof Element ? event.target : null
-          if (!target?.closest('.note-aisle-action-layer')) {
-            setActionMenu(null)
-          }
           if (shouldExitArrangeModeFromNoteWorkspacePointer(arrangeModeActive, event.button)) {
             scheduleNoteWorkspaceArrangeExit(onExitArrangeMode)
           }
@@ -427,9 +418,8 @@ export function NoteWorkspace({
                       <button
                         type="button"
                         className="note-aisle-action-btn note-aisle-link-btn"
-                        aria-label={`Open link controls for aisle ${index + 1}`}
-                        data-app-tooltip="Link"
-                        aria-expanded={actionMenu?.type === 'link' && actionMenu.aisleId === aisle.id}
+                        aria-label={`Open de-couple for aisle ${index + 1}`}
+                        data-app-tooltip="De-couple"
                         data-note-workspace-skip-aisle-activation="true"
                         onPointerDown={(event) => {
                           event.stopPropagation()
@@ -437,41 +427,11 @@ export function NoteWorkspace({
                         onClick={(event) => {
                           event.preventDefault()
                           event.stopPropagation()
-                          setActionMenu((current) =>
-                            current?.type === 'link' && current.aisleId === aisle.id ? null : { type: 'link', aisleId: aisle.id },
-                          )
+                          onOpenAisleLink(aisle.id)
                         }}
                       >
                         <ToolbarToolIcon toolId="link" className="note-aisle-link-icon" />
                       </button>
-                      {actionMenu?.type === 'link' && actionMenu.aisleId === aisle.id && (
-                        <div className="note-aisle-action-menu" role="menu" aria-label={`Link actions for aisle ${index + 1}`}>
-                          <button
-                            type="button"
-                            className="note-aisle-action-menu-item"
-                            onClick={(event) => {
-                              event.preventDefault()
-                              event.stopPropagation()
-                              setActionMenu(null)
-                              onOpenAisleLink(aisle.id)
-                            }}
-                          >
-                            de-couple
-                          </button>
-                          <button
-                            type="button"
-                            className="note-aisle-action-menu-item"
-                            onClick={(event) => {
-                              event.preventDefault()
-                              event.stopPropagation()
-                              setActionMenu(null)
-                              onOpenAisleSyncedFilter(aisle.id)
-                            }}
-                          >
-                            synced filter
-                          </button>
-                        </div>
-                      )}
                     </div>
                   )}
                   {showFrontmatterButton && (
@@ -481,7 +441,6 @@ export function NoteWorkspace({
                         className="note-aisle-action-btn note-aisle-frontmatter-btn"
                         aria-label={`Open frontmatter for aisle ${index + 1}`}
                         data-app-tooltip="Frontmatter"
-                        aria-expanded={actionMenu?.type === 'frontmatter' && actionMenu.aisleId === aisle.id}
                         data-note-workspace-skip-aisle-activation="true"
                         onPointerDown={(event) => {
                           event.stopPropagation()
@@ -489,43 +448,11 @@ export function NoteWorkspace({
                         onClick={(event) => {
                           event.preventDefault()
                           event.stopPropagation()
-                          setActionMenu((current) =>
-                            current?.type === 'frontmatter' && current.aisleId === aisle.id
-                              ? null
-                              : { type: 'frontmatter', aisleId: aisle.id },
-                          )
+                          onOpenAisleFrontmatter(aisle.id)
                         }}
                       >
                         <span className="frontmatter-toolbar-icon note-aisle-frontmatter-icon" aria-hidden="true">fm</span>
                       </button>
-                      {actionMenu?.type === 'frontmatter' && actionMenu.aisleId === aisle.id && (
-                        <div className="note-aisle-action-menu" role="menu" aria-label={`Frontmatter actions for aisle ${index + 1}`}>
-                          <button
-                            type="button"
-                            className="note-aisle-action-menu-item"
-                            onClick={(event) => {
-                              event.preventDefault()
-                              event.stopPropagation()
-                              setActionMenu(null)
-                              onOpenAisleFrontmatter(aisle.id)
-                            }}
-                          >
-                            edit frontmatter
-                          </button>
-                          <button
-                            type="button"
-                            className="note-aisle-action-menu-item"
-                            onClick={(event) => {
-                              event.preventDefault()
-                              event.stopPropagation()
-                              setActionMenu(null)
-                              onOpenAisleFrontmatterFilter(aisle.id)
-                            }}
-                          >
-                            fm filter
-                          </button>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>

@@ -34,9 +34,7 @@ function renderMenu(spaceRailVisible = false, domainRailVisible = false) {
       onToggleSpaceRail={noop}
       onToggleDomainRail={noop}
       onToggleTrash={noop}
-      onOpenMessages={noop}
       onOpenSettings={noop}
-      onOpenAbout={noop}
       onOpenFilter={noop}
     />,
   )
@@ -56,9 +54,7 @@ function renderTrashMenu() {
       onToggleSpaceRail={noop}
       onToggleDomainRail={noop}
       onToggleTrash={noop}
-      onOpenMessages={noop}
       onOpenSettings={noop}
-      onOpenAbout={noop}
       onOpenFilter={noop}
     />,
   )
@@ -77,13 +73,14 @@ describe('NavigationRailControls', () => {
     expect(html.indexOf('>show domain<')).toBeLessThan(html.indexOf('>trash<'))
   })
 
-  it('renders utility menu rows in trash filter messages settings about order', () => {
+  it('renders utility menu rows in trash filter settings order without messages or about', () => {
     const html = renderMenu()
 
     expect(html.indexOf('>trash<')).toBeLessThan(html.indexOf('>filter<'))
-    expect(html.indexOf('>filter<')).toBeLessThan(html.indexOf('>messages<'))
-    expect(html.indexOf('>messages<')).toBeLessThan(html.indexOf('>settings<'))
-    expect(html.indexOf('>settings<')).toBeLessThan(html.indexOf('>about<'))
+    expect(html.indexOf('>filter<')).toBeLessThan(html.indexOf('>settings<'))
+    expect(html).not.toContain('>messages<')
+    expect(html).not.toContain('>about<')
+    expect(html).not.toContain('messages (')
   })
 
   it('uses show labels when both rails are hidden', () => {
@@ -133,9 +130,7 @@ describe('NavigationRailControls', () => {
       onToggleSpaceRail: noop,
       onToggleDomainRail: noop,
       onToggleTrash,
-      onOpenMessages: noop,
       onOpenSettings: noop,
-      onOpenAbout: noop,
       onOpenFilter: noop,
     })
     const button = findButtonByClass(element, 'menu-btn')

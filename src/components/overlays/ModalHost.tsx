@@ -33,7 +33,7 @@ import type {
   TabSortMode,
   TabSortTarget,
 } from '../../types/app'
-import { shouldModalBackdropClose } from './modal-behavior'
+import { shouldCloseModalFromBackdropGesture } from './modal-behavior'
 import { shouldSubmitInsertNoteReferenceOnEnter } from './modal-keyboard'
 import { makeFrontmatterRowsManual, normalizeFrontmatterModalRows } from './frontmatter-modal-state'
 import { getModalText } from './modal-text'
@@ -57,6 +57,7 @@ type ModalHostProps = {
   onDeduplicateKeepDataChange: (keepData: boolean) => void
   onPasteSyncedNoteAsAisle: () => void
   onOpenSyncedFilter: () => void
+  onOpenFrontmatterFilter: () => void
   onChooseNotebookLocation: () => Promise<string | null>
   onConfirm: () => void
 }
@@ -228,12 +229,14 @@ export function ModalHost({
   onDeduplicateKeepDataChange,
   onPasteSyncedNoteAsAisle,
   onOpenSyncedFilter,
+  onOpenFrontmatterFilter,
   onChooseNotebookLocation,
   onConfirm,
 }: ModalHostProps) {
   const enterSubmitPendingRef = useRef(false)
   const urlInputRef = useRef<HTMLInputElement | null>(null)
   const urlLabelInputRef = useRef<HTMLInputElement | null>(null)
+  const backdropPointerStartedRef = useRef(false)
 
   useEffect(() => {
     if (!modal) return
@@ -714,11 +717,44 @@ export function ModalHost({
     )
   }
 
+  const modalHeaderAction =
+    modal.type === 'linked-aisle' ? (
+      <button type="button" className="btn btn-sm settings-action-btn" onClick={onOpenSyncedFilter}>
+        synced filter
+      </button>
+    ) : modal.type === 'frontmatter-note' ? (
+      <button type="button" className="btn btn-sm settings-action-btn" onClick={onOpenFrontmatterFilter}>
+        filter frontmatter
+      </button>
+    ) : modal.type === 'sort-tabs' ? (
+      <button
+        type="button"
+        className="modal-close-x-btn"
+        onClick={() => onModalChange(null)}
+        aria-label="close sort modal"
+        data-app-tooltip="close sort modal"
+      >
+        X
+      </button>
+    ) : null
+
   return (
     <div
       className={`delete-modal-backdrop ${modal.type === 'insert-note-reference' ? 'insert-note-reference-backdrop' : ''}`}
-      onClick={() => {
-        if (shouldModalBackdropClose(modal)) onModalChange(null)
+      onPointerDown={(event) => {
+        backdropPointerStartedRef.current = event.target === event.currentTarget
+      }}
+      onPointerCancel={() => {
+        backdropPointerStartedRef.current = false
+      }}
+      onClick={(event) => {
+        const shouldClose = shouldCloseModalFromBackdropGesture({
+          modal,
+          startedOnBackdrop: backdropPointerStartedRef.current,
+          endedOnBackdrop: event.target === event.currentTarget,
+        })
+        backdropPointerStartedRef.current = false
+        if (shouldClose) onModalChange(null)
       }}
     >
       <div
@@ -733,18 +769,10 @@ export function ModalHost({
         onClick={(event) => event.stopPropagation()}
         onKeyDown={handleDialogKeyDown}
       >
-        <h2>{modalText.title}</h2>
-        {modal.type === 'sort-tabs' && (
-          <button
-            type="button"
-            className="modal-close-x-btn"
-            onClick={() => onModalChange(null)}
-            aria-label="close sort modal"
-            data-app-tooltip="close sort modal"
-          >
-            X
-          </button>
-        )}
+        <div className="modal-header-row">
+          <h2>{modalText.title}</h2>
+          {modalHeaderAction && <div className="modal-header-actions">{modalHeaderAction}</div>}
+        </div>
         {modalText.body ? <p>{modalText.body}</p> : null}
         {modal.type === 'scratchpad-about' && (
           <div className="scratchpad-about-modal">
@@ -756,8 +784,8 @@ export function ModalHost({
               Scratchpad results appear when searching your entire notebook, or when searching within scratchpad itself.
             </p>
             <p>
-              Scratchpad allows 16 aisles by default, adjustable up to 40 in the misc settings. New scratchpad aisles
-              are added to the left by default, also adjustable in the settings.
+              Scratchpad is set to 16 aisles by default, minimum of 8; maximum of 40. New scratchpad aisles
+              are added to the left by default. Both settings adjustable in the misc settings.
             </p>
           </div>
         )}
@@ -894,11 +922,6 @@ export function ModalHost({
         )}
         {modal.type === 'linked-aisle' && (
           <div className="linked-aisle-modal">
-            <div className="settings-page-actions linked-aisle-filter-actions">
-              <button type="button" className="btn btn-sm settings-action-btn" onClick={onOpenSyncedFilter}>
-                synced filter
-              </button>
-            </div>
             {modal.reason === 'note-body' ? (
               <>
                 <DecoupleLocationCardStrip

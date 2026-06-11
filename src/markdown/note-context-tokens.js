@@ -687,9 +687,9 @@ export function normalizeContextReferenceTokensForMarkdown(markdown, appState) {
 export function prepareMarkdownNoteReferencesForEditor(markdown, appState) {
   return normalizeContextReferenceTokensForMarkdown(markdown, appState).replace(MARKDOWN_NOTE_REFERENCE_RE, (token) => {
     const resolved = resolveMarkdownNoteReferenceToken(appState, token)
-    if (!resolved || resolved.parsed.embed) return token
+    if (!resolved) return token
     return buildMarkdownNoteReferenceToken({
-      embed: false,
+      embed: resolved.parsed.embed,
       target: formatEditorMarkdownNoteReferenceHref(resolved.canonicalTarget),
       label: resolved.label,
     })

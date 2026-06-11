@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { AboutSection } from '../../types/app'
 
 export type RuntimeInfo = {
   version: string
@@ -6,18 +7,36 @@ export type RuntimeInfo = {
 }
 
 export function AboutViewContent({
+  section = 'home',
   runtimeInfo,
   runtimeUnavailable = false,
 }: {
+  section?: AboutSection
   runtimeInfo: RuntimeInfo | null
   runtimeUnavailable?: boolean
 }) {
+  if (section === 'donation') {
+    return (
+      <section className="utility-page-wrap about-view" aria-label="About Tabs">
+        <div className="utility-page-card about-view-card">
+          <h2>donation</h2>
+          <p>
+            Tabs is free to use and intended to be open source. Donation and support options can be added here later.
+          </p>
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section className="utility-page-wrap about-view" aria-label="About Tabs">
       <div className="utility-page-card about-view-card">
         <h2>Tabs</h2>
         <p>
           Tabs is a local-first notebook for organizing notes across domains, spaces, parents, subtabs, and aisles.
+        </p>
+        <p>
+          Toolbar and app icons include icons from Lucide.dev.
         </p>
         <dl className="about-runtime-list">
           <div>
@@ -34,7 +53,7 @@ export function AboutViewContent({
   )
 }
 
-export function AboutView() {
+export function AboutView({ section = 'home' }: { section?: AboutSection }) {
   const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | null>(null)
   const [runtimeUnavailable, setRuntimeUnavailable] = useState(false)
 
@@ -63,5 +82,5 @@ export function AboutView() {
     }
   }, [])
 
-  return <AboutViewContent runtimeInfo={runtimeInfo} runtimeUnavailable={runtimeUnavailable} />
+  return <AboutViewContent section={section} runtimeInfo={runtimeInfo} runtimeUnavailable={runtimeUnavailable} />
 }

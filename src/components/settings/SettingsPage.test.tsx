@@ -294,11 +294,11 @@ describe('frontmatter settings page', () => {
     state.ui.tabRenameEnterBehavior = 'creates-another-tab'
     const html = renderSettingsPage(DEFAULT_FRONTMATTER_SETTINGS, false, { section: 'misc', state })
 
-    expect(html).toContain('pressing enter after typing tab name')
+    expect(html).toContain('pressing enter after typing new tab name')
     expect(html).toContain('role="radiogroup" aria-labelledby="settings-tab-rename-enter-behavior-label"')
     expect(html).toContain('aria-checked="false" class="settings-segmented-option ">goes to note</button>')
     expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">creates another tab</button>')
-    expect(html.indexOf('pressing enter after typing tab name')).toBeLessThan(
+    expect(html.indexOf('pressing enter after typing new tab name')).toBeLessThan(
       html.indexOf('remove all links to a note when it&#x27;s trashed'),
     )
   })

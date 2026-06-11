@@ -1,7 +1,16 @@
 import { createRef, isValidElement, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { ArrangeModeState, MessagesSection, SettingsSection, Tab, TrashParentBucket, ViewMode, WorkspaceData } from '../../types/app'
+import type {
+  AboutSection,
+  ArrangeModeState,
+  MessagesSection,
+  SettingsSection,
+  Tab,
+  TrashParentBucket,
+  ViewMode,
+  WorkspaceData,
+} from '../../types/app'
 import { SubTabRail } from './SubTabRail'
 import { TopBar } from './TopBar'
 
@@ -88,6 +97,7 @@ function createTopBarElement(
   arrangeControlsDisabled = false,
   options: {
     viewMode?: ViewMode
+    aboutSection?: AboutSection
     settingsSection?: SettingsSection
     messagesSection?: MessagesSection
     messagesCount?: number
@@ -158,6 +168,8 @@ function createTopBarElement(
       onOpenAbout={noop}
       onOpenFilter={noop}
       onSettingsSectionChange={noop}
+      aboutSection={options.aboutSection}
+      onAboutSectionChange={noop}
       messagesSection={options.messagesSection}
       messagesCount={options.messagesCount ?? 0}
       toastHistoryCount={options.toastHistoryCount ?? 0}
@@ -173,6 +185,7 @@ function renderTopBar(
   arrangeControlsDisabled = false,
   options: {
     viewMode?: ViewMode
+    aboutSection?: AboutSection
     settingsSection?: SettingsSection
     messagesSection?: MessagesSection
     messagesCount?: number
@@ -276,22 +289,26 @@ describe('navigation arrange tooltips', () => {
     expect(enabledHtml.indexOf('Alpha')).toBeLessThan(enabledHtml.indexOf('aria-label="sort parents"'))
   })
 
-  it('renders settings section buttons in the primary rail', () => {
+  it('renders utility parents and settings section children in separate rails', () => {
     const html = renderTopBar(false, { active: false }, false, {
       viewMode: 'settings',
       settingsSection: 'toolbar',
     })
 
+    expect(html).toContain('aria-label="utility sections"')
+    expect(html.indexOf('>about</button>')).toBeLessThan(html.indexOf('>messages</button>'))
+    expect(html.indexOf('>messages</button>')).toBeLessThan(html.indexOf('>settings</button>'))
+    expect(html).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-parent-rail-btn">settings</button>')
     expect(html).toContain('aria-label="settings sections"')
     expect(html.indexOf('>data</button>')).toBeLessThan(html.indexOf('>frontmatter</button>'))
     expect(html.indexOf('>frontmatter</button>')).toBeLessThan(html.indexOf('>hotkeys</button>'))
     expect(html.indexOf('>tips</button>')).toBeLessThan(html.indexOf('>toolbar</button>'))
     expect(html.indexOf('>toolbar</button>')).toBeLessThan(html.indexOf('>visuals</button>'))
-    expect(html).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn settings-section-rail-btn">toolbar</button>')
-    expect(html).toMatch(/topbar-context-btn[^"]*">settings<\/button>/)
+    expect(html).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn subtab-btn settings-section-rail-btn utility-child-rail-btn">toolbar</button>')
+    expect(html).not.toMatch(/topbar-context-btn[^"]*">settings<\/button>/)
   })
 
-  it('renders messages and about as selected utility rail buttons', () => {
+  it('renders messages and about utility parents with subtab-styled children', () => {
     const messagesHtml = renderTopBar(false, { active: false }, false, {
       viewMode: 'messages',
       messagesCount: 2,
@@ -312,23 +329,29 @@ describe('navigation arrange tooltips', () => {
       diagnosticLogCount: 4,
     })
     const aboutHtml = renderTopBar(false, { active: false }, false, { viewMode: 'about' })
+    const donationHtml = renderTopBar(false, { active: false }, false, { viewMode: 'about', aboutSection: 'donation' })
 
-    expect(messagesHtml).toContain('aria-label="utility pages"')
-    expect(messagesHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">inbox (2)</button>')
-    expect(messagesHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn parent-tab-btn utility-view-rail-btn">toast history (3)</button>')
-    expect(messagesHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn parent-tab-btn utility-view-rail-btn">diagnostics</button>')
-    expect(toastHistoryHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn parent-tab-btn utility-view-rail-btn">inbox (2)</button>')
-    expect(toastHistoryHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">toast history (3)</button>')
-    expect(toastHistoryHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn parent-tab-btn utility-view-rail-btn">diagnostics (4)</button>')
-    expect(diagnosticsHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">diagnostics (4)</button>')
+    expect(messagesHtml).toContain('aria-label="utility sections"')
+    expect(messagesHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-parent-rail-btn">messages (2)</button>')
+    expect(messagesHtml).toContain('aria-label="messages sections"')
+    expect(messagesHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">inbox (2)</button>')
+    expect(messagesHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">toast history (3)</button>')
+    expect(messagesHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">diagnostics</button>')
+    expect(toastHistoryHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">inbox (2)</button>')
+    expect(toastHistoryHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">toast history (3)</button>')
+    expect(toastHistoryHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">diagnostics (4)</button>')
+    expect(diagnosticsHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">diagnostics (4)</button>')
     expect(diagnosticsHtml).not.toContain('aria-label="diagnostic controls"')
     expect(diagnosticsHtml).not.toContain('aria-label="diagnostic filters"')
     expect(diagnosticsHtml).not.toContain('aria-label="diagnostic mode"')
     expect(diagnosticsHtml).not.toContain('aria-label="diagnostic message type"')
     expect(diagnosticsHtml).not.toContain('aria-label="diagnostic message count"')
-    expect(messagesHtml).toMatch(/topbar-context-btn[^"]*">messages \(2\)<\/button>/)
-    expect(aboutHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn">about</button>')
-    expect(aboutHtml).toMatch(/topbar-context-btn[^"]*">about<\/button>/)
+    expect(messagesHtml).not.toMatch(/topbar-context-btn[^"]*">messages \(2\)<\/button>/)
+    expect(aboutHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-parent-rail-btn">about</button>')
+    expect(aboutHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">home</button>')
+    expect(aboutHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">donation</button>')
+    expect(donationHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">donation</button>')
+    expect(aboutHtml).not.toMatch(/topbar-context-btn[^"]*">about<\/button>/)
   })
 
   it('keeps parent and sub-tab sort controls visible while arranging spaces or domains', () => {

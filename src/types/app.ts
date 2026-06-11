@@ -24,6 +24,7 @@ export type CustomThemePaletteSlot =
 export type CustomThemePalette = Record<CustomThemePaletteSlot, string>
 export type ThemePaletteOverrides = Partial<Record<AppTheme, CustomThemePalette>>
 export type ViewMode = 'main' | 'trash' | 'settings' | 'messages' | 'about'
+export type AboutSection = 'home' | 'donation'
 export type MessagesSection = 'inbox' | 'toast-history' | 'diagnostics'
 export type ShortcutId =
   | 'toggleNotesTrash'

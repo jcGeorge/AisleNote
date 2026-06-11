@@ -85,10 +85,11 @@ export type EditorAisleInsertSide = 'left' | 'right'
 type CopyAsMenuItemState = {
   available: boolean
   reason?: string
+  visible?: boolean
 }
 
 type CopyAsMenuState = {
-  note: Record<CopyAsAction, CopyAsMenuItemState>
+  note?: Record<CopyAsAction, CopyAsMenuItemState>
   aisle?: Record<CopyAsAction, CopyAsMenuItemState>
 }
 
@@ -244,9 +245,11 @@ export function ContextMenuHost({
 
   const renderCopyAsSubmenu = (scope: CopyAsScope, items: Record<CopyAsAction, CopyAsMenuItemState> | undefined) => {
     if (!items) return null
+    const visibleActions = COPY_AS_MENU_ACTION_ORDER.filter((action) => items[action]?.visible !== false)
+    if (visibleActions.length === 0) return null
     return (
       <SubMenu label={`copy ${scope} as`}>
-        {COPY_AS_MENU_ACTION_ORDER.map((action) => {
+        {visibleActions.map((action) => {
           const item = items[action]
           const unavailableReason = item.available ? '' : item.reason || `${scope} cannot be copied as ${action}.`
           return (

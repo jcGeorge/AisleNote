@@ -1,7 +1,9 @@
 import type { AppState, NoteLocation } from '../types/app'
 import { MAX_NOTE_AISLES } from '../state/workspace'
-import { applyNoteCopyToState } from './note-copy-service'
+import { applyNoteCopyToState, materializeStructuralAisleCopiesForInsertion } from './note-copy-service'
+import { syncNoteBodyAislesInState } from './aisle-body-state'
 import { buildNoteLocationKey, getLocationInfo } from './note-locations'
+import { getScratchpadNoteBody } from '../state/scratchpad'
 import {
   getCopyAsCopiedToast,
   getCopyAsPastedToast,
@@ -16,12 +18,13 @@ export const COPY_AS_CLIPBOARD_TEXT_SUFFIX = '}}'
 export const COPY_AS_ACTIONS = ['copy', 'duplicate', 'link', 'preview'] as const
 export type CopyAsAction = (typeof COPY_AS_ACTIONS)[number]
 export type CopyAsScope = 'note' | 'aisle'
+export type CopyAsSource = NoteLocation | { type: 'scratchpad' }
 
 export type CopyAsClipboardPayload = {
   version: 1
   scope: CopyAsScope
   action: CopyAsAction
-  source: NoteLocation
+  source: CopyAsSource
   aisleId?: string
 }
 
@@ -82,6 +85,30 @@ function normalizeNoteLocation(value: unknown): NoteLocation | null {
   }
 }
 
+export function isScratchpadCopyAsSource(source: CopyAsSource | unknown): source is { type: 'scratchpad' } {
+  return Boolean(source && typeof source === 'object' && (source as { type?: unknown }).type === 'scratchpad')
+}
+
+export function isLiveCopyAsSource(source: CopyAsSource | unknown): source is NoteLocation {
+  return normalizeNoteLocation(source) !== null
+}
+
+function normalizeCopyAsSource(value: unknown, scope: CopyAsScope, action: CopyAsAction, aisleId: string | undefined): CopyAsSource | null {
+  const liveLocation = normalizeNoteLocation(value)
+  if (liveLocation) return liveLocation
+  if (
+    value &&
+    typeof value === 'object' &&
+    (value as Record<string, unknown>).type === 'scratchpad' &&
+    scope === 'aisle' &&
+    action === 'copy' &&
+    aisleId
+  ) {
+    return { type: 'scratchpad' }
+  }
+  return null
+}
+
 function getGlobalClipboard(): ClipboardLike | null {
   return typeof navigator !== 'undefined' ? navigator.clipboard ?? null : null
 }
@@ -102,10 +129,10 @@ export function parseCopyAsPayload(value: string): CopyAsClipboardPayload | null
   try {
     const parsed = JSON.parse(value) as Record<string, unknown>
     if (parsed.version !== 1 || !isCopyAsScope(parsed.scope) || !isCopyAsAction(parsed.action)) return null
-    const source = normalizeNoteLocation(parsed.source)
-    if (!source) return null
     const aisleId = typeof parsed.aisleId === 'string' && parsed.aisleId.trim() ? parsed.aisleId : undefined
     if (parsed.scope === 'aisle' && !aisleId) return null
+    const source = normalizeCopyAsSource(parsed.source, parsed.scope, parsed.action, aisleId)
+    if (!source) return null
     return {
       version: 1,
       scope: parsed.scope,
@@ -212,6 +239,29 @@ export function getCopyAsPasteSuccessMessage(scope: CopyAsScope, action: CopyAsA
   return getCopyAsPastedToast(scope, action)
 }
 
+export function getScratchpadStandaloneCopyPasteWarning(scope: CopyAsScope): string {
+  const subject = scope === 'aisle' ? 'aisle' : 'note'
+  return `Synced ${subject} copies are not allowed in Scratchpad. Pasted as a stand-alone copy.`
+}
+
+export function getScratchpadStructuralPastePayload(payload: CopyAsClipboardPayload): {
+  payload: CopyAsClipboardPayload
+  convertedFromSynced: boolean
+  warningMessage?: string
+} {
+  if (payload.action !== 'duplicate' || isScratchpadCopyAsSource(payload.source)) {
+    return { payload, convertedFromSynced: false }
+  }
+  return {
+    payload: {
+      ...payload,
+      action: 'copy',
+    },
+    convertedFromSynced: true,
+    warningMessage: getScratchpadStandaloneCopyPasteWarning(payload.scope),
+  }
+}
+
 export function getAisleCopyLabel(appState: AppState, source: NoteLocation, aisleId: string): string {
   const info = getLocationInfo(appState, source)
   const body = info.noteBodyId ? appState.noteBodies.find((candidate) => candidate.id === info.noteBodyId) ?? null : null
@@ -273,6 +323,28 @@ export function buildCopyAsClipboardData(
   }
 }
 
+export function buildScratchpadAisleCopyAsClipboardData(
+  appState: AppState,
+  aisleId: string,
+): CopyAsClipboardData {
+  const body = getScratchpadNoteBody(appState)
+  const aisle = body?.aisles.find((candidate) => candidate.id === aisleId) ?? null
+  if (!body || !aisle) return { ok: false, message: 'Aisle not found.' }
+  const payload: CopyAsClipboardPayload = {
+    version: 1,
+    scope: 'aisle',
+    action: 'copy',
+    source: { type: 'scratchpad' },
+    aisleId,
+  }
+  return {
+    ok: true,
+    payload,
+    text: serializeCopyAsTextMarker(payload),
+    privatePayloadRequired: false,
+  }
+}
+
 export type ApplyCopyAsStructuralResult =
   | { status: 'applied'; state: AppState }
   | { status: 'missing-source'; state: AppState; message: string }
@@ -295,6 +367,41 @@ export function applyCopyAsStructuralPayloadToState(
   const structuralAction = payload.action
   const mode = structuralAction === 'duplicate' ? 'linked' : 'independent'
   const noun = getCopyAsStructuralNoun(structuralAction)
+  if (isScratchpadCopyAsSource(payload.source)) {
+    if (payload.scope !== 'aisle' || payload.action !== 'copy') {
+      return { status: 'missing-source', state: appState, message: getCopyAsStructuralFailureMessage(payload.scope, structuralAction) }
+    }
+    const destinationInfo = getLocationInfo(appState, destination)
+    const destinationBody = destinationInfo.noteBodyId
+      ? appState.noteBodies.find((body) => body.id === destinationInfo.noteBodyId) ?? null
+      : null
+    if (!destinationInfo.noteBodyId || !destinationBody) {
+      return { status: 'missing-destination', state: appState, message: `Open a note before pasting a ${noun}.` }
+    }
+    if (destinationBody.aisles.length >= maxAisles) {
+      return { status: 'max-aisles', state: appState, message: 'Maximum aisle count reached.' }
+    }
+    const materialized = materializeStructuralAisleCopiesForInsertion(appState, {
+      scope: payload.scope,
+      action: payload.action,
+      source: payload.source,
+      aisleId: payload.aisleId,
+    })
+    if (materialized.status !== 'applied') {
+      return { status: 'missing-source', state: appState, message: materialized.message }
+    }
+    return {
+      status: 'applied',
+      state: syncNoteBodyAislesInState(
+        {
+          ...appState,
+          noteAisleBodies: [...(appState.noteAisleBodies ?? []), ...materialized.aisleBodies],
+        },
+        destinationInfo.noteBodyId,
+        [...destinationBody.aisles, ...materialized.aisles],
+      ),
+    }
+  }
   const sourceInfo = getLocationInfo(appState, payload.source)
   const sourceBody = sourceInfo.noteBodyId ? appState.noteBodies.find((body) => body.id === sourceInfo.noteBodyId) ?? null : null
   if (!sourceInfo.noteBodyId || !sourceBody) {

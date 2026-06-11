@@ -8,11 +8,43 @@ type SaveAppStatePayload = {
   baseRevision: number
 }
 
+type SaveAppStateMetrics = {
+  totalDurationMs: number
+  phases: {
+    parseState: number
+    buildFileMap: number
+    assetResolve: number
+    fingerprint: number
+    textWrites: number
+    binaryWrites: number
+    prune: number
+    appSettingsWrite: number
+  }
+  counts: {
+    generatedFiles: number
+    generatedBytes: number
+    textFiles: number
+    binaryFiles: number
+    existingAssetFiles: number
+    assetsReferenced: number
+    assetsReadFromDisk: number
+    assetsReused: number
+    assetBytesReferenced: number
+    assetBytesReadFromDisk: number
+    filesChanged: number
+    filesSkipped: number
+    filesPruned: number
+    directoriesPruned: number
+  }
+  pruneSkipped?: boolean
+}
+
 type SaveAppStateResult =
   | {
       ok: true
       serializedState: string
       revision: number
+      saveMetrics?: SaveAppStateMetrics
     }
   | {
       ok: false

@@ -27,11 +27,8 @@ type NavigationRailControlsProps = {
   onToggleSpaceRail: () => void
   onToggleDomainRail: () => void
   onToggleTrash: () => void
-  onOpenMessages: () => void
   onOpenSettings: () => void
-  onOpenAbout: () => void
   onOpenFilter: () => void
-  messagesCount?: number
   tagFilterControl?: ReactNode
 }
 
@@ -47,11 +44,8 @@ export function NavigationRailControls({
   onToggleSpaceRail,
   onToggleDomainRail,
   onToggleTrash,
-  onOpenMessages,
   onOpenSettings,
-  onOpenAbout,
   onOpenFilter,
-  messagesCount = 0,
   tagFilterControl,
 }: NavigationRailControlsProps) {
   const trashExitControlActive = viewMode === 'trash' && !showCloseControl
@@ -128,14 +122,8 @@ export function NavigationRailControls({
             <button type="button" className="menu-item" onClick={onOpenFilter}>
               filter
             </button>
-            <button type="button" className="menu-item" onClick={onOpenMessages}>
-              messages{messagesCount > 0 ? ` (${messagesCount})` : ''}
-            </button>
             <button type="button" className="menu-item" onClick={onOpenSettings}>
               settings
-            </button>
-            <button type="button" className="menu-item" onClick={onOpenAbout}>
-              about
             </button>
           </div>
         )}

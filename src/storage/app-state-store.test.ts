@@ -297,6 +297,76 @@ describe('Electron app state store', () => {
     })
   })
 
+  it('records save metrics diagnostics returned by Electron saves', async () => {
+    const saveMetrics = {
+      totalDurationMs: 12,
+      phases: {
+        parseState: 1,
+        buildFileMap: 2,
+        assetResolve: 0,
+        fingerprint: 3,
+        textWrites: 4,
+        binaryWrites: 0,
+        prune: 0,
+        appSettingsWrite: 1,
+      },
+      counts: {
+        generatedFiles: 5,
+        generatedBytes: 200,
+        textFiles: 5,
+        binaryFiles: 0,
+        existingAssetFiles: 0,
+        assetsReferenced: 0,
+        assetsReadFromDisk: 0,
+        assetsReused: 0,
+        assetBytesReferenced: 0,
+        assetBytesReadFromDisk: 0,
+        filesChanged: 1,
+        filesSkipped: 4,
+        filesPruned: 0,
+        directoriesPruned: 0,
+      },
+    }
+    const appendDiagnosticLogEntry = vi.fn(async () => ({ ok: true }))
+    const saveAppState = vi.fn(() => ({
+      ok: true,
+      serializedState: '{"theme":"light"}',
+      revision: 2,
+      saveMetrics,
+    }))
+    vi.stubGlobal('window', {
+      electronAPI: {
+        loadAppStateResult: () => ({
+          ok: true,
+          serializedState: '{"theme":"dawn"}',
+          source: 'hybrid',
+          revision: 1,
+        }),
+        saveAppState,
+        appendDiagnosticLogEntry,
+        listDiagnosticLogDays: vi.fn(),
+        readDiagnosticLogEntries: vi.fn(),
+      },
+    })
+
+    const store = createAppStateStore()
+
+    expect(store.load()).toBe('{"theme":"dawn"}')
+    store.save('{"theme":"light"}', { preferSync: true, trigger: 'test-trigger', pendingEditorCount: 2 })
+    await Promise.resolve()
+
+    expect(appendDiagnosticLogEntry).toHaveBeenCalledWith(expect.objectContaining({
+      area: 'storage',
+      event: 'app-state-save-metrics',
+      details: expect.objectContaining({
+        trigger: 'test-trigger',
+        mode: 'sync',
+        pendingEditorCount: 2,
+        saveMetrics,
+      }),
+    }))
+  })
+
   it('does not apply an older async save result after a forced sync save', async () => {
     let resolveAsyncSave: ((value: { ok: true; serializedState: string; revision: number }) => void) | undefined
     const saveAppStateAsync = vi.fn(

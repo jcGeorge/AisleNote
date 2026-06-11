@@ -13,6 +13,7 @@ import {
   getCycledParentTabTarget,
   getCapturedRailVisibilityShortcutTarget,
   getDeleteActiveAisleShortcutIntent,
+  getUtilityChildCycleShortcutDirection,
   handleDeleteActiveAisleShortcutCapture,
   getNumberedPrimeTabTarget,
   getNumberedPrimeTabShortcutIndex,
@@ -335,6 +336,67 @@ describe('settings hotkey', () => {
     expect(isSettingsShortcut(keyboardEvent(',', { metaKey: true, ctrlKey: true }), true)).toBe(false)
     expect(isSettingsShortcut(keyboardEvent(',', { ctrlKey: true, altKey: true }), false)).toBe(false)
     expect(isSettingsShortcut(keyboardEvent(',', { ctrlKey: true, shiftKey: true }), false)).toBe(false)
+  })
+})
+
+describe('utility child cycle hotkeys', () => {
+  const hotkeys: AppState['hotkeys'] = {
+    shortcuts: DEFAULT_SHORTCUTS,
+    newlineShortcuts: DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
+  }
+
+  it('maps cycle-subtab shortcuts to utility child cycling in utility views', () => {
+    expect(
+      getUtilityChildCycleShortcutDirection({
+        event: keyboardEvent('Tab', { ctrlKey: true }, 'Tab'),
+        hotkeys,
+        isMacPlatform: false,
+        viewMode: 'settings',
+      }),
+    ).toBe(1)
+    expect(
+      getUtilityChildCycleShortcutDirection({
+        event: keyboardEvent('Tab', { ctrlKey: true, shiftKey: true }, 'Tab'),
+        hotkeys,
+        isMacPlatform: false,
+        viewMode: 'messages',
+      }),
+    ).toBe(-1)
+    expect(
+      getUtilityChildCycleShortcutDirection({
+        event: keyboardEvent('Tab', { ctrlKey: true }, 'Tab'),
+        hotkeys,
+        isMacPlatform: false,
+        viewMode: 'about',
+      }),
+    ).toBe(1)
+  })
+
+  it('leaves main/trash views and unrelated tab keys for existing handlers', () => {
+    expect(
+      getUtilityChildCycleShortcutDirection({
+        event: keyboardEvent('Tab', { ctrlKey: true }, 'Tab'),
+        hotkeys,
+        isMacPlatform: false,
+        viewMode: 'main',
+      }),
+    ).toBeNull()
+    expect(
+      getUtilityChildCycleShortcutDirection({
+        event: keyboardEvent('Tab', { ctrlKey: true }, 'Tab'),
+        hotkeys,
+        isMacPlatform: false,
+        viewMode: 'trash',
+      }),
+    ).toBeNull()
+    expect(
+      getUtilityChildCycleShortcutDirection({
+        event: keyboardEvent('Tab', {}, 'Tab'),
+        hotkeys,
+        isMacPlatform: false,
+        viewMode: 'settings',
+      }),
+    ).toBeNull()
   })
 })
 

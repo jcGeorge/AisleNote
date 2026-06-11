@@ -436,7 +436,7 @@ export function SettingsPage({
     return (
       <div className="settings-hotkey-row">
         <span className="settings-hotkey-label" id={labelId}>
-          pressing enter after typing tab name
+          pressing enter after typing new tab name
         </span>
         <div className="settings-segmented-control settings-flag-segmented-control" role="radiogroup" aria-labelledby={labelId}>
           {TAB_RENAME_ENTER_BEHAVIOR_OPTIONS.map((option) => (

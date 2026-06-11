@@ -252,6 +252,42 @@ describe('Electron app state storage load result', () => {
       expect(secondSave.storageFingerprint).toBe(firstSave.storageFingerprint)
     }))
 
+  it('reports save metrics and reuses unchanged existing asset hashes on repeated saves', () =>
+    withTempUserDataPath((userDataPath) => {
+      const assetRelativePath = path.posix.join('assets', 'asset-large-test.mp4')
+      const assetBytes = Buffer.alloc(1024 * 1024, 7)
+      mkdirSync(path.join(userDataPath, 'assets'), { recursive: true })
+      writeFileSync(path.join(userDataPath, assetRelativePath), assetBytes)
+      const state = JSON.parse(serializedAppState())
+      setFirstAisleBodyMarkdown(state, `[clip](tabs-asset:///assets/asset-large-test.mp4)`)
+
+      const firstSave = saveAppState(userDataPath, JSON.stringify(state))
+      const secondSave = saveAppState(userDataPath, JSON.stringify(state))
+
+      expect(firstSave.saveMetrics).toMatchObject({
+        counts: {
+          assetsReferenced: 1,
+          assetsReadFromDisk: 1,
+          existingAssetFiles: 1,
+          assetBytesReferenced: assetBytes.length,
+          assetBytesReadFromDisk: assetBytes.length,
+        },
+      })
+      expect(secondSave.storageFingerprint).toBe(firstSave.storageFingerprint)
+      expect(secondSave.saveMetrics).toMatchObject({
+        pruneSkipped: true,
+        counts: {
+          assetsReferenced: 1,
+          assetsReadFromDisk: 0,
+          existingAssetFiles: 1,
+          filesPruned: 0,
+        },
+      })
+      expect(secondSave.saveMetrics.counts.assetsReused).toBeGreaterThanOrEqual(1)
+      expect(secondSave.saveMetrics.phases.fingerprint).toBeGreaterThanOrEqual(0)
+      expect(secondSave.saveMetrics.totalDurationMs).toBeGreaterThanOrEqual(0)
+    }))
+
   it('round-trips the custom theme through hybrid storage', () =>
     withTempUserDataPath((userDataPath) => {
       const state = JSON.parse(serializedAppState())

@@ -86,8 +86,8 @@ function frontmatterForTab(state: AppState, tab: Tab) {
 }
 
 describe('mergeMarkdownFolderImport', () => {
-  it('strips wrapper folders and storage suffixes before matching existing containers', async () => {
-    const current = createState()
+  it('strips wrapper folders and storage suffixes while importing into a new appended domain', async () => {
+    const current = createState({ parent: 'current home' })
     const { state, summary } = await mergeMarkdownFolderImport(
       current,
       {
@@ -101,22 +101,33 @@ describe('mergeMarkdownFolderImport', () => {
       },
       { createId: createIdGenerator() },
     )
-    const parent = state.domains[0].spaces[0].data.tabs[0]
+    const existingParent = state.domains[0].spaces[0].data.tabs[0]
+    const importedDomain = state.domains[1]
+    const importedSpace = importedDomain.spaces[0]
+    const importedParent = importedSpace.data.tabs[0]
 
-    expect(state.domains).toHaveLength(1)
-    expect(state.domains[0].spaces).toHaveLength(1)
-    expect(markdownForTab(state, parent)).toBe('# Imported')
-    expect(frontmatterForTab(state, parent)).toEqual({ status: 'imported' })
+    expect(state.activeDomainId).toBe(current.activeDomainId)
+    expect(state.activeSpaceId).toBe(current.activeSpaceId)
+    expect(state.domains).toHaveLength(2)
+    expect(markdownForTab(state, existingParent)).toBe('current home')
+    expect(importedDomain.name).toBe('Domain')
+    expect(importedDomain.id).not.toBe(current.domains[0].id)
+    expect(importedSpace.name).toBe('Space')
+    expect(importedSpace.id).not.toBe(current.domains[0].spaces[0].id)
+    expect(importedParent.title).toBe('Parent')
+    expect(importedParent.id).not.toBe(existingParent.id)
+    expect(markdownForTab(state, importedParent)).toBe('# Imported')
+    expect(frontmatterForTab(state, importedParent)).toEqual({ status: 'imported' })
     expect(summary).toMatchObject({
-      domainsCreated: 0,
-      spacesCreated: 0,
-      parentsCreated: 0,
+      domainsCreated: 1,
+      spacesCreated: 1,
+      parentsCreated: 1,
       subtabsCreated: 0,
       notesImported: 1,
     })
   })
 
-  it('keeps non-empty existing home notes and imports home.md as an imported home subtab', async () => {
+  it('applies imported home notes only to empty parents created inside the isolated import', async () => {
     const current = createState({ parent: 'existing home' })
     const { state, summary } = await mergeMarkdownFolderImport(
       current,
@@ -126,15 +137,17 @@ describe('mergeMarkdownFolderImport', () => {
       },
       { createId: createIdGenerator() },
     )
-    const parent = state.domains[0].spaces[0].data.tabs[0]
-    const importedHome = parent.subTabs[0]
+    const existingParent = state.domains[0].spaces[0].data.tabs[0]
+    const importedParent = state.domains[1].spaces[0].data.tabs[0]
 
-    expect(markdownForTab(state, parent)).toBe('existing home')
-    expect(importedHome?.title).toBe('imported home')
-    expect(summary.subtabsCreated).toBe(1)
+    expect(markdownForTab(state, existingParent)).toBe('existing home')
+    expect(markdownForTab(state, importedParent)).toBe('imported home')
+    expect(importedParent.subTabs).toHaveLength(0)
+    expect(summary.parentsCreated).toBe(1)
+    expect(summary.subtabsCreated).toBe(0)
   })
 
-  it('creates fallback imported domains and allows duplicate subtab titles', async () => {
+  it('mirrors source domain names and allows duplicate subtab titles', async () => {
     const current = createState()
     const { state, summary } = await mergeMarkdownFolderImport(
       current,
@@ -151,7 +164,7 @@ describe('mergeMarkdownFolderImport', () => {
     const importedDomain = state.domains[1]
     const parent = importedDomain.spaces[0].data.tabs[0]
 
-    expect(importedDomain.name).toBe('imported domain 1')
+    expect(importedDomain.name).toBe('New Domain')
     expect(importedDomain.spaces[0].name).toBe('New Space')
     expect(parent.title).toBe('New Parent')
     expect(parent.subTabs.map((subTab) => subTab.title)).toEqual(['note', 'deep / path', 'note'])
@@ -164,7 +177,40 @@ describe('mergeMarkdownFolderImport', () => {
     })
   })
 
-  it('creates a new parent instead of guessing when parent name matches are ambiguous', async () => {
+  it('creates separate appended domains for multiple source domains', async () => {
+    const current = createState()
+    const { state, summary } = await mergeMarkdownFolderImport(
+      current,
+      {
+        sourceId: 'source',
+        files: [
+          { relativePath: 'Imports/Alpha Domain/Space/Parent/home.md', markdown: 'alpha home' },
+          { relativePath: 'Imports/Alpha Domain/Second Space/Other/home.md', markdown: 'alpha other' },
+          { relativePath: 'Imports/Beta Domain/Space/Parent/home.md', markdown: 'beta home' },
+        ],
+      },
+      { createId: createIdGenerator() },
+    )
+
+    expect(state.domains.map((domain) => domain.name)).toEqual(['Domain', 'Alpha Domain', 'Beta Domain'])
+    const alphaSpace = state.domains[1].spaces.find((space) => space.name === 'Space')
+    const alphaSecondSpace = state.domains[1].spaces.find((space) => space.name === 'Second Space')
+    const betaSpace = state.domains[2].spaces.find((space) => space.name === 'Space')
+
+    expect(state.domains[1].spaces.map((space) => space.name).sort()).toEqual(['Second Space', 'Space'])
+    expect(state.domains[2].spaces.map((space) => space.name)).toEqual(['Space'])
+    expect(alphaSpace ? markdownForTab(state, alphaSpace.data.tabs[0]) : '').toBe('alpha home')
+    expect(alphaSecondSpace ? markdownForTab(state, alphaSecondSpace.data.tabs[0]) : '').toBe('alpha other')
+    expect(betaSpace ? markdownForTab(state, betaSpace.data.tabs[0]) : '').toBe('beta home')
+    expect(summary).toMatchObject({
+      domainsCreated: 2,
+      spacesCreated: 3,
+      parentsCreated: 3,
+      notesImported: 3,
+    })
+  })
+
+  it('never merges into existing duplicate domain, space, or parent names', async () => {
     const current = createState({}, [
       createTabFixture('dup-a', 'Dup'),
       createTabFixture('dup-b', 'Dup'),
@@ -177,13 +223,19 @@ describe('mergeMarkdownFolderImport', () => {
       },
       { createId: createIdGenerator() },
     )
-    const tabs = state.domains[0].spaces[0].data.tabs
+    const existingTabs = state.domains[0].spaces[0].data.tabs
+    const importedParent = state.domains[1].spaces[0].data.tabs[0]
 
-    expect(tabs).toHaveLength(3)
-    expect(tabs[2].title).toBe('Dup')
-    expect(markdownForTab(state, tabs[2])).toBe('new dup')
+    expect(existingTabs.map((tab) => tab.id)).toEqual(['dup-a', 'dup-b'])
+    expect(existingTabs.map((tab) => markdownForTab(state, tab))).toEqual(['', ''])
+    expect(state.domains[1].name).toBe('Domain')
+    expect(state.domains[1].spaces[0].name).toBe('Space')
+    expect(importedParent.title).toBe('Dup')
+    expect(markdownForTab(state, importedParent)).toBe('new dup')
+    expect(summary.domainsCreated).toBe(1)
+    expect(summary.spacesCreated).toBe(1)
     expect(summary.parentsCreated).toBe(1)
-    expect(summary.warnings[0]).toContain('matched more than once')
+    expect(summary.warnings).toEqual([])
   })
 
   it('copies relative assets and rewrites local markdown note links to imported notes', async () => {
@@ -210,7 +262,9 @@ describe('mergeMarkdownFolderImport', () => {
         importAsset: () => importedAssetUrl,
       },
     )
-    const parent = state.domains[0].spaces[0].data.tabs.find((tab) => tab.title === 'Import')
+    const importedDomain = state.domains[1]
+    const importedSpace = importedDomain.spaces[0]
+    const parent = importedSpace.data.tabs.find((tab) => tab.title === 'Import')
     const markdown = parent ? markdownForTab(state, parent) : ''
     const tokens = [...markdown.matchAll(MARKDOWN_NOTE_REFERENCE_RE)]
       .map((match) => match[0])
@@ -223,6 +277,8 @@ describe('mergeMarkdownFolderImport', () => {
     expect(tokens).toHaveLength(1)
     tokens.forEach((token) => {
       const resolved = resolveMarkdownNoteReferenceToken(state, token)
+      expect(resolved?.payload.target.domainId).toBe(importedDomain.id)
+      expect(resolved?.payload.target.spaceId).toBe(importedSpace.id)
       expect(resolved?.payload.target.tabId).toBe(parent?.id)
       expect(resolved?.payload.target.subTabId).toBe(parent?.subTabs[0]?.id)
     })
@@ -255,7 +311,7 @@ describe('mergeMarkdownFolderImport', () => {
       readAsset: (relativePath) => parsed.assets.get(relativePath) ?? null,
       importAsset: () => importedAssetUrl,
     })
-    const parent = state.domains[0].spaces[0].data.tabs.find((tab) => tab.title === 'Zip Parent')
+    const parent = state.domains[1].spaces[0].data.tabs.find((tab) => tab.title === 'Zip Parent')
     const markdown = parent ? markdownForTab(state, parent) : ''
 
     expect(markdown).toContain(`![img](${importedAssetUrl})`)
@@ -263,6 +319,23 @@ describe('mergeMarkdownFolderImport', () => {
     expect(summary.assetsImported).toBe(1)
     expect(markdown).toContain('[[Target|target]]')
     expect([...markdown.matchAll(MARKDOWN_NOTE_REFERENCE_RE)].filter((match) => resolveMarkdownNoteReferenceToken(state, match[0]))).toHaveLength(1)
+  })
+
+  it('keeps the current notebook unchanged and warns when no Markdown files are selected', async () => {
+    const current = createState({ parent: 'current home' })
+    const { state, summary } = await mergeMarkdownFolderImport(
+      current,
+      {
+        sourceId: 'source',
+        files: [{ relativePath: 'Domain/Space/Parent/image.png', markdown: 'not markdown' }],
+      },
+      { createId: createIdGenerator() },
+    )
+
+    expect(state.domains).toEqual(current.domains)
+    expect(markdownForTab(state, state.domains[0].spaces[0].data.tabs[0])).toBe('current home')
+    expect(summary.notesImported).toBe(0)
+    expect(summary.warnings).toEqual(['selected folder did not contain Markdown files.'])
   })
 
   it('rejects unsafe Markdown ZIP paths', async () => {

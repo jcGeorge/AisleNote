@@ -23,7 +23,7 @@ export function buildStorageAlerts(messages: AppMessage[], dismissedStorageAlert
         label: 'duplicate files de-coupled',
         message: 'Duplicate files were edited differently. Some copies were de-coupled.',
         detail: message.body,
-        actionLabel: 'open messages',
+        actionLabel: 'open settings --> messages --> inbox',
       }]
     }
     if (message.type === STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE) {

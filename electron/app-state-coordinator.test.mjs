@@ -73,6 +73,50 @@ describe('Electron app state coordinator', () => {
     expect(coordinator.isRecentAppSaveStorageEcho('storage-fingerprint-2')).toBe(false)
   })
 
+  it('returns save metrics from successful revisioned saves', () => {
+    const saveMetrics = {
+      totalDurationMs: 12,
+      phases: {
+        parseState: 1,
+        buildFileMap: 2,
+        assetResolve: 3,
+        fingerprint: 4,
+        textWrites: 5,
+        binaryWrites: 0,
+        prune: 0,
+        appSettingsWrite: 0,
+      },
+      counts: {
+        generatedFiles: 4,
+        generatedBytes: 100,
+        textFiles: 4,
+        binaryFiles: 0,
+        existingAssetFiles: 0,
+        assetsReferenced: 0,
+        assetsReadFromDisk: 0,
+        assetsReused: 0,
+        assetBytesReferenced: 0,
+        assetBytesReadFromDisk: 0,
+        filesChanged: 1,
+        filesSkipped: 3,
+        filesPruned: 0,
+        directoriesPruned: 0,
+      },
+    }
+    const coordinator = createAppStateCoordinator({
+      userDataPath: '/tmp/tabs',
+      load: () => ({ ok: true, serializedState: '{"theme":"dawn"}', source: 'hybrid' }),
+      save: vi.fn(() => ({ storageFingerprint: 'storage-fingerprint-1', saveMetrics })),
+    })
+
+    expect(coordinator.saveRevisionedState({ serializedState: '{"theme":"light"}', baseRevision: 1 })).toEqual({
+      ok: true,
+      serializedState: '{"theme":"light"}',
+      revision: 2,
+      saveMetrics,
+    })
+  })
+
   it('rejects stale revision saves without persisting', () => {
     const save = vi.fn()
     const coordinator = createAppStateCoordinator({

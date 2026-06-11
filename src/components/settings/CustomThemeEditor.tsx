@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   CUSTOM_THEME_PALETTE_SLOTS,
   DEFAULT_CUSTOM_THEME_PALETTE,
@@ -13,6 +13,7 @@ import type {
   CustomThemePaletteSlot,
   VisualsSettingsSection,
 } from '../../types/app'
+import { shouldCloseGenericBackdropFromGesture } from '../overlays/modal-behavior'
 import { CustomThemeColorPicker } from './CustomThemeColorPicker'
 import { VisualsSectionSwitch } from './VisualsSectionSwitch'
 
@@ -90,6 +91,7 @@ export function CustomThemeEditor({
   const [themeJsonModal, setThemeJsonModal] = useState<'export' | 'import' | null>(null)
   const [themeImportJson, setThemeImportJson] = useState('')
   const [themeTransferStatus, setThemeTransferStatus] = useState('')
+  const themeJsonBackdropStartedRef = useRef(false)
   const getPaletteValue = (slot: CustomThemePaletteSlot) => getPaletteColorPickerValue(customThemePaletteDraft, slot)
   const exportedThemeJson = serializeThemeSettings(customThemePaletteDraft)
 
@@ -232,7 +234,15 @@ export function CustomThemeEditor({
         <div
           className="delete-modal-backdrop custom-theme-json-modal-backdrop"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeThemeJsonModal()
+            themeJsonBackdropStartedRef.current = event.target === event.currentTarget
+          }}
+          onClick={(event) => {
+            const shouldClose = shouldCloseGenericBackdropFromGesture({
+              startedOnBackdrop: themeJsonBackdropStartedRef.current,
+              endedOnBackdrop: event.target === event.currentTarget,
+            })
+            themeJsonBackdropStartedRef.current = false
+            if (shouldClose) closeThemeJsonModal()
           }}
         >
           <div

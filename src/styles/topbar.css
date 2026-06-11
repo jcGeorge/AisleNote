@@ -239,6 +239,14 @@
   flex: 1 1 auto;
 }
 
+.utility-child-tabbar-row {
+  margin-top: 0.28rem;
+}
+
+.utility-child-rail {
+  flex: 1 1 auto;
+}
+
 .tabbar-controls {
   display: flex;
   align-items: center;
@@ -248,6 +256,10 @@
   position: relative;
   z-index: 25;
   padding-block: 0.05rem;
+}
+
+.tabbar-controls:has(.menu-dropdown) {
+  z-index: 90;
 }
 
 .topbar-actions {

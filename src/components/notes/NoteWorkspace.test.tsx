@@ -306,8 +306,12 @@ describe('NoteWorkspace aisle mounting', () => {
 
     expect(html.match(/note-aisle-frontmatter-btn/g) ?? []).toHaveLength(1)
     expect(html).toContain('Open frontmatter for aisle 2')
+    expect(html).toContain('data-app-tooltip="Frontmatter"')
     expect(html).toContain('frontmatter-toolbar-icon note-aisle-frontmatter-icon')
     expect(html).toContain('>fm</span>')
+    expect(html).not.toContain('note-aisle-action-menu')
+    expect(html).not.toContain('edit frontmatter')
+    expect(html).not.toContain('fm filter')
     expect(html).not.toContain('note-aisle-link-btn')
   })
 
@@ -315,8 +319,11 @@ describe('NoteWorkspace aisle mounting', () => {
     const html = renderWorkspace(new Set(['a']), { linkedAisleIds: new Set(['b']) })
 
     expect(html.match(/note-aisle-link-btn/g) ?? []).toHaveLength(1)
-    expect(html).toContain('Open link controls for aisle 2')
+    expect(html).toContain('Open de-couple for aisle 2')
+    expect(html).toContain('data-app-tooltip="De-couple"')
     expect(html).toContain('toolbar-tool-icon toolbar-tool-icon-link note-aisle-link-icon')
+    expect(html).not.toContain('note-aisle-action-menu')
+    expect(html).not.toContain('synced filter')
     expect(html).not.toContain('note-aisle-frontmatter-btn')
   })
 

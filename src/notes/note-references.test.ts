@@ -158,13 +158,13 @@ describe('note preview references', () => {
     )
   })
 
-  it('prepares note hyperlinks with editor-safe hrefs while keeping previews canonical', () => {
+  it('prepares note hyperlinks and previews with editor-safe hrefs', () => {
     const state = createReferenceState()
     const handle = resolveMarkdownNoteReferenceToken(state, buildInternalNoteLinkToken(state, targetLocation('parent', 'sub')))?.canonicalTarget ?? ''
     const markdown = `[link th](<${handle}>)\n![preview](<${handle}>)`
 
     expect(prepareMarkdownNoteReferencesForEditor(markdown, state)).toBe(
-      `[link th](${encodeURI(handle)})\n![preview](<${handle}>)`,
+      `[link th](${encodeURI(handle)})\n![preview](${encodeURI(handle)})`,
     )
   })
 

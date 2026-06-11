@@ -79,6 +79,30 @@ describe('menu font scaling styles', () => {
     expect(shellRule).toContain('flex: 0 0 auto;')
   })
 
+  it('provides modal header actions without reusing note aisle popover styles', () => {
+    const overlaysCss = readStyle('overlays.css')
+    const editorShellCss = readStyle('editor-shell.css')
+    const headerRule = extractRule(overlaysCss, '.modal-header-row')
+    const headerActionsRule = extractRule(overlaysCss, '.modal-header-actions')
+    const footerRule = extractRule(overlaysCss, '.delete-modal-actions')
+
+    expect(headerRule).toContain('display: flex;')
+    expect(headerRule).toContain('justify-content: space-between;')
+    expect(headerActionsRule).toContain('display: inline-flex;')
+    expect(footerRule).toContain('padding-top: 0.6rem;')
+    expect(editorShellCss).not.toContain('.note-aisle-action-menu')
+    expect(editorShellCss).not.toContain('.note-aisle-action-menu-item')
+  })
+
+  it('raises the hamburger dropdown stack above note aisle action buttons only while open', () => {
+    const css = readStyle('topbar.css')
+    const baseRule = extractRule(css, '.tabbar-controls')
+    const openRule = extractRule(css, '.tabbar-controls:has(.menu-dropdown)')
+
+    expect(baseRule).toContain('z-index: 25;')
+    expect(openRule).toContain('z-index: 90;')
+  })
+
   it('keeps note reference start controls on one row', () => {
     const css = readStyle('overlays.css')
     const primaryRule = extractRule(css, '.note-reference-heading-primary')
@@ -600,6 +624,8 @@ describe('compact scope tab scaling styles', () => {
     const topbarCss = readStyle('topbar.css')
     const tabRowsRule = extractLastRule(topbarCss, '.tabbar,\n.subtabbar')
     const compactRailRule = extractRule(topbarCss, '.compact-scope-rail')
+    const utilityChildRowRule = extractRule(topbarCss, '.utility-child-tabbar-row')
+    const utilityChildRailRule = extractRule(topbarCss, '.utility-child-rail')
 
     expect(baseCss).toContain('--nav-rail-bg:')
     expect(baseCss).toContain('--nav-rail-border:')
@@ -622,6 +648,8 @@ describe('compact scope tab scaling styles', () => {
     expect(topbarCss).not.toContain('background: var(--tabbar-bg);')
     expect(topbarCss).not.toContain('background: var(--subtabbar-bg);')
     expect(topbarCss).not.toContain('border-bottom: 1px solid var(--tabbar-border);')
+    expect(utilityChildRowRule).toContain('margin-top: 0.28rem;')
+    expect(utilityChildRailRule).toContain('flex: 1 1 auto;')
   })
 
   it('uses shared semantic rail colors for compact scope buttons', () => {

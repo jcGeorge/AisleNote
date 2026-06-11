@@ -150,6 +150,29 @@ describe('ContextMenuHost copy actions', () => {
     expect(html).toContain('copy aisle as')
   })
 
+  it('can render a scratchpad aisle-only copy-as submenu', () => {
+    const html = renderToStaticMarkup(
+      <ContextMenuHost
+        {...createContextMenuProps({ type: 'editor', x: 0, y: 0 }, 1, {
+          copyAsMenu: {
+            aisle: {
+              duplicate: { available: false, visible: false },
+              link: { available: false, visible: false },
+              copy: { available: true },
+              preview: { available: false, visible: false },
+            },
+          },
+        })}
+      />,
+    )
+
+    expect(html).toContain('copy aisle as')
+    expect(html).toContain('independent copy')
+    expect(html).not.toContain('copy note as')
+    expect(html).not.toContain('synced copy')
+    expect(html).not.toContain('note preview')
+  })
+
   it('hides copy aisle as from subtab rail context menus', () => {
     const html = renderToStaticMarkup(
       <ContextMenuHost

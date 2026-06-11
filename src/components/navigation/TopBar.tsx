@@ -1,6 +1,7 @@
 import type { MouseEvent, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from 'react'
 import { TRASH_HOME_ID } from '../../trash/trash-model'
 import type {
+  AboutSection,
   ArrangeDragItem,
   ArrangeInsertPosition,
   ArrangeModeState,
@@ -130,6 +131,8 @@ type TopBarProps = {
   onOpenFilter: () => void
   onSettingsSectionChange: (section: SettingsSection) => void
   onExitTagFilterMode?: () => void
+  aboutSection?: AboutSection
+  onAboutSectionChange?: (section: AboutSection) => void
   messagesSection?: MessagesSection
   messagesCount?: number
   toastHistoryCount?: number
@@ -212,24 +215,22 @@ export function TopBar({
   onOpenFilter,
   onSettingsSectionChange,
   onExitTagFilterMode = () => undefined,
+  aboutSection = 'home',
+  onAboutSectionChange = () => undefined,
   messagesSection = 'inbox',
   messagesCount = 0,
   toastHistoryCount = 0,
   diagnosticLogCount = 0,
   onMessagesSectionChange = () => undefined,
 }: TopBarProps) {
+  const isUtilityView = viewMode === 'settings' || viewMode === 'messages' || viewMode === 'about'
   const primaryTablistProps =
-    viewMode === 'settings'
-      ? ({
-          role: 'tablist',
-          'aria-label': 'settings sections',
-        } as const)
-      : viewMode === 'messages' || viewMode === 'about'
+    isUtilityView
         ? ({
             role: 'tablist',
-            'aria-label': 'utility pages',
+            'aria-label': 'utility sections',
           } as const)
-      : ({
+        : ({
           role: 'tablist',
           'aria-label': 'Primary tabs',
         } as const)
@@ -246,39 +247,6 @@ export function TopBar({
               onSetTrashTabId(TRASH_HOME_ID)
               onSetTrashSubTabId(null)
             },
-          },
-        ]
-      : []),
-    ...(viewMode === 'settings'
-      ? [
-          {
-            key: 'settings-view',
-            label: 'settings',
-            selected: false,
-            className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
-            onClick: () => undefined,
-          },
-        ]
-      : []),
-    ...(viewMode === 'messages'
-      ? [
-          {
-            key: 'messages-view',
-            label: messagesCount > 0 ? `messages (${messagesCount})` : 'messages',
-            selected: false,
-            className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
-            onClick: () => undefined,
-          },
-        ]
-      : []),
-    ...(viewMode === 'about'
-      ? [
-          {
-            key: 'about-view',
-            label: 'about',
-            selected: false,
-            className: 'btn btn-sm tab-btn topbar-action-btn topbar-context-btn',
-            onClick: () => undefined,
           },
         ]
       : []),
@@ -324,24 +292,58 @@ export function TopBar({
     parentPlacementPosition,
     arrangeMode.dragItem?.type === 'tab' ? arrangeMode.dragItem.tabId : draggingParentTabId,
   )
+  const renderUtilityParentButton = (
+    targetViewMode: Extract<ViewMode, 'about' | 'messages' | 'settings'>,
+    label: string,
+    onClick: () => void,
+  ) => (
+    <button
+      key={targetViewMode}
+      type="button"
+      role="tab"
+      aria-selected={viewMode === targetViewMode}
+      className={`btn btn-sm ${
+        viewMode === targetViewMode ? 'btn-primary' : 'btn-outline-secondary'
+      } tab-btn parent-tab-btn utility-parent-rail-btn`}
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  )
+  const renderUtilityChildRail = () => {
+    if (!isUtilityView) return null
+    const childRailLabel =
+      viewMode === 'settings' ? 'settings sections' : viewMode === 'messages' ? 'messages sections' : 'about sections'
 
-  return (
-    <header className={`tabbar ${arrangeMode.active && viewMode === 'main' ? 'is-arranging' : ''}`}>
-      <div className="tabbar-row">
-        <div ref={primaryTabRailRef} className="tabbar-scroll tabbar-primary" {...primaryTablistProps}>
-          {viewMode === 'settings' &&
-            SETTINGS_SECTIONS.map((section) => (
+    return (
+      <div className="tabbar-row utility-child-tabbar-row">
+        <div className="tabbar-scroll tabbar-secondary utility-child-rail" role="tablist" aria-label={childRailLabel}>
+          {viewMode === 'about' && (
+            <>
               <button
-                key={section}
                 type="button"
                 role="tab"
-                aria-selected={settingsSection === section}
-                className={`btn btn-sm ${settingsSection === section ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn settings-section-rail-btn`}
-                onClick={() => onSettingsSectionChange(section)}
+                aria-selected={aboutSection === 'home'}
+                className={`btn btn-sm ${
+                  aboutSection === 'home' ? 'btn-primary' : 'btn-outline-secondary'
+                } tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn`}
+                onClick={() => onAboutSectionChange('home')}
               >
-                {section}
+                home
               </button>
-            ))}
+              <button
+                type="button"
+                role="tab"
+                aria-selected={aboutSection === 'donation'}
+                className={`btn btn-sm ${
+                  aboutSection === 'donation' ? 'btn-primary' : 'btn-outline-secondary'
+                } tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn`}
+                onClick={() => onAboutSectionChange('donation')}
+              >
+                donation
+              </button>
+            </>
+          )}
 
           {viewMode === 'messages' && (
             <>
@@ -349,7 +351,9 @@ export function TopBar({
                 type="button"
                 role="tab"
                 aria-selected={messagesSection === 'inbox'}
-                className={`btn btn-sm ${messagesSection === 'inbox' ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn utility-view-rail-btn`}
+                className={`btn btn-sm ${
+                  messagesSection === 'inbox' ? 'btn-primary' : 'btn-outline-secondary'
+                } tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn`}
                 onClick={() => onMessagesSectionChange('inbox')}
               >
                 inbox{messagesCount > 0 ? ` (${messagesCount})` : ''}
@@ -358,7 +362,9 @@ export function TopBar({
                 type="button"
                 role="tab"
                 aria-selected={messagesSection === 'toast-history'}
-                className={`btn btn-sm ${messagesSection === 'toast-history' ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn utility-view-rail-btn`}
+                className={`btn btn-sm ${
+                  messagesSection === 'toast-history' ? 'btn-primary' : 'btn-outline-secondary'
+                } tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn`}
                 onClick={() => onMessagesSectionChange('toast-history')}
               >
                 toast history{toastHistoryCount > 0 ? ` (${toastHistoryCount})` : ''}
@@ -367,7 +373,9 @@ export function TopBar({
                 type="button"
                 role="tab"
                 aria-selected={messagesSection === 'diagnostics'}
-                className={`btn btn-sm ${messagesSection === 'diagnostics' ? 'btn-primary' : 'btn-outline-secondary'} tab-btn parent-tab-btn utility-view-rail-btn`}
+                className={`btn btn-sm ${
+                  messagesSection === 'diagnostics' ? 'btn-primary' : 'btn-outline-secondary'
+                } tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn`}
                 onClick={() => onMessagesSectionChange('diagnostics')}
               >
                 diagnostics{diagnosticLogCount > 0 ? ` (${diagnosticLogCount})` : ''}
@@ -375,15 +383,40 @@ export function TopBar({
             </>
           )}
 
-          {viewMode === 'about' && (
-            <button
-              type="button"
-              role="tab"
-              aria-selected
-              className="btn btn-sm btn-primary tab-btn parent-tab-btn utility-view-rail-btn"
-            >
-              about
-            </button>
+          {viewMode === 'settings' &&
+            SETTINGS_SECTIONS.map((section) => (
+              <button
+                key={section}
+                type="button"
+                role="tab"
+                aria-selected={settingsSection === section}
+                className={`btn btn-sm ${
+                  settingsSection === section ? 'btn-primary' : 'btn-outline-secondary'
+                } tab-btn subtab-btn settings-section-rail-btn utility-child-rail-btn`}
+                onClick={() => onSettingsSectionChange(section)}
+              >
+                {section}
+              </button>
+            ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <header className={`tabbar ${arrangeMode.active && viewMode === 'main' ? 'is-arranging' : ''}`}>
+      <div className="tabbar-row">
+        <div ref={primaryTabRailRef} className="tabbar-scroll tabbar-primary" {...primaryTablistProps}>
+          {isUtilityView && (
+            <>
+              {renderUtilityParentButton('about', 'about', onOpenAbout)}
+              {renderUtilityParentButton(
+                'messages',
+                messagesCount > 0 ? `messages (${messagesCount})` : 'messages',
+                onOpenMessages,
+              )}
+              {renderUtilityParentButton('settings', 'settings', onOpenSettings)}
+            </>
           )}
 
           {isNoteWorkspaceView &&
@@ -640,15 +673,13 @@ export function TopBar({
             onToggleSpaceRail={onToggleSpaceRail}
             onToggleDomainRail={onToggleDomainRail}
             onToggleTrash={onToggleTrash}
-            onOpenMessages={onOpenMessages}
             onOpenSettings={onOpenSettings}
-            onOpenAbout={onOpenAbout}
             onOpenFilter={onOpenFilter}
-            messagesCount={messagesCount}
             tagFilterControl={tagFilterControl}
           />
         )}
       </div>
+      {renderUtilityChildRail()}
     </header>
   )
 }

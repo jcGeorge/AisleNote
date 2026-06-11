@@ -73,7 +73,89 @@ const EDITOR_BLANK_LINE_PLACEHOLDER = '\u200b'
 const EXPORT_TAB_SPACES = '    '
 const LINKED_AISLE_MIRROR_AUTO_DECOUPLED_CODE = 'linked-aisle-mirror-auto-decoupled'
 const MAX_ATOMIC_WRITE_CACHE_ENTRIES = 5000
+const MAX_EXISTING_FILE_HASH_CACHE_ENTRIES = 5000
+const KNOWN_STALE_ROOT_STORAGE_PATHS = [
+  'app-settings.json',
+  'profile-settings.json',
+  'appearance-settings.json',
+  'shortcut-settings.json',
+  'ui-preferences.json',
+  'note-bodies.json',
+  'aisle-bodies.json',
+  'orphan-note-bodies.json',
+  'orphan-aisle-bodies.json',
+  'topics',
+  'note-bodies',
+  'notes.bak',
+]
 const atomicWriteCache = new Map()
+const existingFileHashCache = new Map()
+const lastExpectedFileSetSignaturesByRoot = new Map()
+
+function createStorageSaveMetrics() {
+  return {
+    totalDurationMs: 0,
+    phases: {
+      parseState: 0,
+      buildFileMap: 0,
+      assetResolve: 0,
+      fingerprint: 0,
+      textWrites: 0,
+      binaryWrites: 0,
+      prune: 0,
+      appSettingsWrite: 0,
+    },
+    counts: {
+      generatedFiles: 0,
+      generatedBytes: 0,
+      textFiles: 0,
+      binaryFiles: 0,
+      existingAssetFiles: 0,
+      assetsReferenced: 0,
+      assetsReadFromDisk: 0,
+      assetsReused: 0,
+      assetBytesReferenced: 0,
+      assetBytesReadFromDisk: 0,
+      filesChanged: 0,
+      filesSkipped: 0,
+      filesPruned: 0,
+      directoriesPruned: 0,
+    },
+    pruneSkipped: false,
+  }
+}
+
+function nowMs() {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now()
+}
+
+function addMetricPhaseDuration(metrics, phase, durationMs) {
+  if (!metrics?.phases || typeof metrics.phases[phase] !== 'number') return
+  metrics.phases[phase] += durationMs
+}
+
+function measureStorageSavePhase(metrics, phase, operation) {
+  const startedAt = nowMs()
+  try {
+    return operation()
+  } finally {
+    addMetricPhaseDuration(metrics, phase, nowMs() - startedAt)
+  }
+}
+
+function roundStorageMetricNumber(value) {
+  return Math.round(Number(value ?? 0) * 10) / 10
+}
+
+function finalizeStorageSaveMetrics(metrics, startedAt) {
+  metrics.totalDurationMs = roundStorageMetricNumber(nowMs() - startedAt)
+  for (const phase of Object.keys(metrics.phases)) {
+    metrics.phases[phase] = roundStorageMetricNumber(metrics.phases[phase])
+  }
+  return metrics
+}
 
 function createStorageIssue(code, severity, pathValue, message, details = undefined) {
   return {
@@ -176,12 +258,14 @@ function normalizeAppStateForExport(appState) {
   }
 }
 
-function createAssetBank(assetRootRelative = 'assets', existingRoot = null) {
+function createAssetBank(assetRootRelative = 'assets', existingRoot = null, metrics = null) {
   return {
     assetRootRelative,
     existingRoot,
     files: new Map(),
+    existingFiles: new Map(),
     keys: new Map(),
+    metrics,
   }
 }
 
@@ -331,6 +415,88 @@ function addAssetToBank(assetBank, bytes, extension) {
   return relativeAssetPath
 }
 
+function getExistingFileSignatureInfo(absolutePath) {
+  try {
+    const stat = statSync(absolutePath)
+    if (!stat.isFile()) return null
+    return {
+      byteLength: stat.size,
+      signature: `${stat.size}:${stat.mtimeMs}`,
+    }
+  } catch {
+    return null
+  }
+}
+
+function getExistingFileHashCacheKey(absolutePath) {
+  return path.resolve(absolutePath)
+}
+
+function rememberExistingFileHash(absolutePath, signatureInfo, contentHash) {
+  if (!signatureInfo || typeof signatureInfo.signature !== 'string' || !signatureInfo.signature) return
+  if (typeof contentHash !== 'string' || !contentHash) return
+  const cacheKey = getExistingFileHashCacheKey(absolutePath)
+  existingFileHashCache.delete(cacheKey)
+  existingFileHashCache.set(cacheKey, {
+    signature: signatureInfo.signature,
+    contentHash,
+    byteLength: signatureInfo.byteLength,
+  })
+  if (existingFileHashCache.size > MAX_EXISTING_FILE_HASH_CACHE_ENTRIES) {
+    const oldestKey = existingFileHashCache.keys().next().value
+    if (oldestKey) existingFileHashCache.delete(oldestKey)
+  }
+}
+
+function getExistingFileHashEntry(absolutePath, signatureInfo, metrics = null) {
+  if (!signatureInfo) return null
+  const cacheKey = getExistingFileHashCacheKey(absolutePath)
+  const cached = existingFileHashCache.get(cacheKey)
+  if (cached?.signature === signatureInfo.signature) {
+    if (metrics?.counts) metrics.counts.assetsReused += 1
+    return {
+      kind: 'existing-file',
+      absolutePath: path.resolve(absolutePath),
+      contentHash: cached.contentHash,
+      byteLength: cached.byteLength,
+    }
+  }
+
+  try {
+    const bytes = readFileSync(absolutePath)
+    const contentHash = createRawContentHash(bytes)
+    if (metrics?.counts) {
+      metrics.counts.assetsReadFromDisk += 1
+      metrics.counts.assetBytesReadFromDisk += bytes.length
+    }
+    rememberExistingFileHash(absolutePath, signatureInfo, contentHash)
+    return {
+      kind: 'existing-file',
+      absolutePath: path.resolve(absolutePath),
+      contentHash,
+      byteLength: bytes.length,
+    }
+  } catch {
+    existingFileHashCache.delete(cacheKey)
+    return null
+  }
+}
+
+function addExistingAssetReferenceToBank(assetBank, assetRelativePath) {
+  if (!assetBank?.existingRoot) return false
+  const normalizedRelativePath = normalizeImageAssetPath(assetRelativePath)
+  const absolutePath = path.join(assetBank.existingRoot, normalizedRelativePath)
+  const signatureInfo = getExistingFileSignatureInfo(absolutePath)
+  if (!signatureInfo) return false
+  if (!assetBank.files.has(normalizedRelativePath)) {
+    assetBank.existingFiles.set(normalizedRelativePath, {
+      absolutePath,
+      signatureInfo,
+    })
+  }
+  return true
+}
+
 function addAssetToNotesRoot(notesRootPath, bytes, extension) {
   const ext = normalizeAssetExtension(extension)
   const buffer = Buffer.from(bytes)
@@ -466,12 +632,7 @@ function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
 
     if (assetRelativePath) {
       assetRelativePath = normalizeImageAssetPath(assetRelativePath)
-      if (assetBank.existingRoot) {
-        const existingAssetPath = path.join(assetBank.existingRoot, assetRelativePath)
-        if (existsSync(existingAssetPath)) {
-          assetBank.files.set(assetRelativePath, readFileSync(existingAssetPath))
-        }
-      }
+      addExistingAssetReferenceToBank(assetBank, assetRelativePath)
     } else if (imageBang === '!' && assetUrl.startsWith('data:image/')) {
       decoded = decodeImageDataUrl(assetUrl)
     } else if (assetUrl.startsWith('file://')) {
@@ -644,6 +805,18 @@ export function createStorageFilesSnapshot(entries) {
   hash.update('tabs-storage-files-v1\n')
   const files = Array.from(entries ?? [])
     .map(([relativeFile, entry]) => {
+      if (
+        isRecord(entry) &&
+        entry.kind === 'existing-file' &&
+        typeof entry.contentHash === 'string' &&
+        Number.isFinite(entry.byteLength)
+      ) {
+        return {
+          path: normalizeStorageFingerprintPath(relativeFile),
+          contentHash: entry.contentHash,
+          byteLength: Number(entry.byteLength),
+        }
+      }
       const contents = getStorageFingerprintBuffer(entry)
       return {
         path: normalizeStorageFingerprintPath(relativeFile),
@@ -707,6 +880,7 @@ function writeTextFileAtomic(rootPath, relativeFile, contents) {
   try {
     if (readFileSync(absolutePath, 'utf8') === contents) {
       rememberAtomicWriteCache(absolutePath, contentHash)
+      rememberExistingFileHash(absolutePath, { signature: getAtomicWriteSignature(absolutePath), byteLength: Buffer.byteLength(contents, 'utf8') }, contentHash)
       return { changed: false, contentHash }
     }
   } catch {
@@ -720,6 +894,7 @@ function writeTextFileAtomic(rootPath, relativeFile, contents) {
   writeFileSync(tempPath, contents, 'utf8')
   renameSync(tempPath, absolutePath)
   rememberAtomicWriteCache(absolutePath, contentHash)
+  rememberExistingFileHash(absolutePath, { signature: getAtomicWriteSignature(absolutePath), byteLength: Buffer.byteLength(contents, 'utf8') }, contentHash)
   return { changed: true, contentHash }
 }
 
@@ -734,6 +909,7 @@ function writeBinaryFileAtomic(rootPath, relativeFile, contents) {
     const existing = readFileSync(absolutePath)
     if (existing.length === contentBuffer.length && existing.equals(contentBuffer)) {
       rememberAtomicWriteCache(absolutePath, contentHash)
+      rememberExistingFileHash(absolutePath, { signature: getAtomicWriteSignature(absolutePath), byteLength: contentBuffer.length }, contentHash)
       return { changed: false, contentHash }
     }
   } catch {
@@ -747,6 +923,7 @@ function writeBinaryFileAtomic(rootPath, relativeFile, contents) {
   writeFileSync(tempPath, contentBuffer)
   renameSync(tempPath, absolutePath)
   rememberAtomicWriteCache(absolutePath, contentHash)
+  rememberExistingFileHash(absolutePath, { signature: getAtomicWriteSignature(absolutePath), byteLength: contentBuffer.length }, contentHash)
   return { changed: true, contentHash }
 }
 
@@ -802,6 +979,7 @@ function removeStorageConflictPaths(profileRootPath, rootPath) {
 
 function pruneStorageRoot(rootPath, expectedRelativeFiles) {
   const expected = new Set(expectedRelativeFiles)
+  const result = { filesPruned: 0, directoriesPruned: 0 }
 
   function pruneDirectory(currentPath) {
     for (const entry of listDirectoryEntries(currentPath)) {
@@ -810,18 +988,79 @@ function pruneStorageRoot(rootPath, expectedRelativeFiles) {
       if (entry.isDirectory()) {
         pruneDirectory(absolutePath)
         try {
-          if (readdirSync(absolutePath).length === 0) rmSync(absolutePath, { recursive: true, force: true })
+          if (readdirSync(absolutePath).length === 0) {
+            rmSync(absolutePath, { recursive: true, force: true })
+            result.directoriesPruned += 1
+          }
         } catch {
           // Ignore cloud-provider races while pruning stale paths.
         }
         continue
       }
       if (!entry.isFile()) continue
-      if (!expected.has(relativePath)) rmSync(absolutePath, { force: true })
+      if (!expected.has(relativePath)) {
+        rmSync(absolutePath, { force: true })
+        result.filesPruned += 1
+      }
     }
   }
 
   if (existsSync(rootPath)) pruneDirectory(rootPath)
+  return result
+}
+
+function createExpectedFileSetSignature(expectedRelativeFiles) {
+  return Array.from(expectedRelativeFiles ?? [])
+    .map((relativeFile) => String(relativeFile ?? '').split(path.sep).join(path.posix.sep))
+    .sort()
+    .join('\n')
+}
+
+function pruneKnownStaleRootStoragePaths(rootPath, expectedRelativeFiles) {
+  const expected = new Set(expectedRelativeFiles)
+  const result = { filesPruned: 0, directoriesPruned: 0 }
+  for (const relativePath of KNOWN_STALE_ROOT_STORAGE_PATHS) {
+    if (expected.has(relativePath)) continue
+    const absolutePath = path.join(rootPath, relativePath)
+    try {
+      const stat = statSync(absolutePath)
+      rmSync(absolutePath, { recursive: stat.isDirectory(), force: true })
+      if (stat.isDirectory()) result.directoriesPruned += 1
+      else if (stat.isFile()) result.filesPruned += 1
+    } catch {
+      // Missing or racing legacy paths do not matter.
+    }
+  }
+  return result
+}
+
+function getStorageFileEntryByteLength(entry) {
+  if (isRecord(entry) && entry.kind === 'text') return Buffer.byteLength(String(entry.contents ?? ''), 'utf8')
+  if (isRecord(entry) && entry.kind === 'binary') return Buffer.from(entry.contents).length
+  if (isRecord(entry) && entry.kind === 'existing-file' && Number.isFinite(entry.byteLength)) {
+    return Number(entry.byteLength)
+  }
+  return getStorageFingerprintBuffer(entry).length
+}
+
+function addStorageFileMapMetrics(metrics, fileMap, assetBank) {
+  if (!metrics?.counts) return
+  metrics.counts.generatedFiles = fileMap.size
+  for (const entry of fileMap.values()) {
+    metrics.counts.generatedBytes += getStorageFileEntryByteLength(entry)
+    if (isRecord(entry) && entry.kind === 'text') metrics.counts.textFiles += 1
+    else if (isRecord(entry) && entry.kind === 'binary') metrics.counts.binaryFiles += 1
+    else if (isRecord(entry) && entry.kind === 'existing-file') metrics.counts.existingAssetFiles += 1
+  }
+  const referencedAssets = new Set([
+    ...Array.from(assetBank?.existingFiles?.keys?.() ?? []),
+    ...Array.from(assetBank?.files?.keys?.() ?? []),
+  ])
+  metrics.counts.assetsReferenced = referencedAssets.size
+  metrics.counts.assetBytesReferenced = Array.from(referencedAssets).reduce((total, relativeFile) => {
+    const entry = fileMap.get(relativeFile)
+    return total + (entry ? getStorageFileEntryByteLength(entry) : 0)
+  }, 0)
 }
 
 function isMainPerformanceLoggingEnabled() {
@@ -852,7 +1091,25 @@ function setStorageBinaryFile(fileMap, relativeFile, contents) {
   fileMap.set(relativeFile, { kind: 'binary', contents: Buffer.from(contents) })
 }
 
+function setStorageExistingFile(fileMap, relativeFile, entry) {
+  fileMap.set(relativeFile, {
+    kind: 'existing-file',
+    absolutePath: entry.absolutePath,
+    contentHash: entry.contentHash,
+    byteLength: entry.byteLength,
+  })
+}
+
 function addAssetBankToStorageFileMap(fileMap, assetBank) {
+  const metrics = assetBank?.metrics ?? null
+  measureStorageSavePhase(metrics, 'assetResolve', () => {
+    for (const [relativeFile, entry] of assetBank.existingFiles.entries()) {
+      if (assetBank.files.has(relativeFile)) continue
+      const fileEntry = getExistingFileHashEntry(entry.absolutePath, entry.signatureInfo, metrics)
+      if (!fileEntry) continue
+      setStorageExistingFile(fileMap, relativeFile, fileEntry)
+    }
+  })
   for (const [relativeFile, bytes] of assetBank.files.entries()) {
     setStorageBinaryFile(fileMap, relativeFile, bytes)
   }
@@ -1305,8 +1562,11 @@ function buildSpaceFiles({
 }
 
 function writeHybridStorage(tempRoot, serializedState, options = {}) {
+  const metrics = createStorageSaveMetrics()
+  const saveStartedAt = nowMs()
   const posixPath = path.posix
-  const parsedState = JSON.parse(serializedState)
+  const parsedState = measureStorageSavePhase(metrics, 'parseState', () => JSON.parse(serializedState))
+  const buildStartedAt = nowMs()
   const domains = getDomainsFromAppState(parsedState)
   const noteBodies = getNoteBodiesFromAppState(parsedState)
   const referencedNoteBodyIds = collectReferencedNoteBodyIdsFromAppState(parsedState)
@@ -1317,7 +1577,11 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   const noteAisleBodyRecords = new Map()
   const orphanNoteBodyIds = new Set()
   const fileMap = new Map()
-  const assetBank = createAssetBank('assets', typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : tempRoot)
+  const assetBank = createAssetBank(
+    'assets',
+    typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : tempRoot,
+    metrics,
+  )
   const domainPathForTitle = createStoragePathAllocator()
   const domainEntries = []
 
@@ -1449,6 +1713,8 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   })
   setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.noteRegistry, { noteBodies: noteBodyEntries, aisleBodies: aisleBodyEntries })
   setStorageJsonFile(fileMap, 'manifest.json', buildRootManifest())
+  addMetricPhaseDuration(metrics, 'buildFileMap', nowMs() - buildStartedAt)
+  addStorageFileMapMetrics(metrics, fileMap, assetBank)
 
   const fingerprintEntries = new Map(fileMap)
   const appSettingsRoot =
@@ -1459,26 +1725,77 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
     fingerprintEntries.set(USER_SETTINGS_FILE_PATH, { kind: 'text', contents: appSettingsContents })
   }
   const storageSnapshot = measureSlowMainOperation('hybrid storage fingerprint', () =>
-    createStorageFilesSnapshot(fingerprintEntries),
+    measureStorageSavePhase(metrics, 'fingerprint', () => createStorageFilesSnapshot(fingerprintEntries)),
   )
 
   mkdirSync(tempRoot, { recursive: true })
   for (const [relativeFile, entry] of fileMap.entries()) {
     if (relativeFile === 'manifest.json') continue
-    if (entry.kind === 'text') writeTextFileAtomic(tempRoot, relativeFile, entry.contents)
-    else writeBinaryFileAtomic(tempRoot, relativeFile, entry.contents)
+    if (entry.kind === 'text') {
+      const result = measureStorageSavePhase(metrics, 'textWrites', () =>
+        writeTextFileAtomic(tempRoot, relativeFile, entry.contents),
+      )
+      if (result.changed) metrics.counts.filesChanged += 1
+      else metrics.counts.filesSkipped += 1
+    } else if (entry.kind === 'binary') {
+      const result = measureStorageSavePhase(metrics, 'binaryWrites', () =>
+        writeBinaryFileAtomic(tempRoot, relativeFile, entry.contents),
+      )
+      if (result.changed) metrics.counts.filesChanged += 1
+      else metrics.counts.filesSkipped += 1
+    } else if (entry.kind === 'existing-file') {
+      const destinationPath = path.join(tempRoot, relativeFile)
+      if (path.resolve(destinationPath) === path.resolve(entry.absolutePath)) {
+        metrics.counts.filesSkipped += 1
+      } else {
+        const result = measureStorageSavePhase(metrics, 'binaryWrites', () => {
+          const bytes = readFileSync(entry.absolutePath)
+          metrics.counts.assetsReadFromDisk += 1
+          metrics.counts.assetBytesReadFromDisk += bytes.length
+          return writeBinaryFileAtomic(tempRoot, relativeFile, bytes)
+        })
+        if (result.changed) metrics.counts.filesChanged += 1
+        else metrics.counts.filesSkipped += 1
+      }
+    }
   }
   const rootManifest = fileMap.get('manifest.json')
-  writeTextFileAtomic(tempRoot, 'manifest.json', rootManifest.contents)
+  const rootManifestWrite = measureStorageSavePhase(metrics, 'textWrites', () =>
+    writeTextFileAtomic(tempRoot, 'manifest.json', rootManifest.contents),
+  )
+  if (rootManifestWrite.changed) metrics.counts.filesChanged += 1
+  else metrics.counts.filesSkipped += 1
   const expectedFiles = new Set(fileMap.keys())
   if (typeof options.userSettingsRoot === 'string' && path.resolve(options.userSettingsRoot) === path.resolve(tempRoot)) {
     expectedFiles.add(USER_SETTINGS_FILE_PATH)
   }
-  pruneStorageRoot(tempRoot, expectedFiles)
-  if (typeof options.userSettingsRoot === 'string') {
-    writeTextFileAtomic(options.userSettingsRoot, USER_SETTINGS_FILE_PATH, appSettingsContents)
+  const expectedFileSetSignature = createExpectedFileSetSignature(expectedFiles)
+  const staleRootPruneResult = measureStorageSavePhase(metrics, 'prune', () =>
+    pruneKnownStaleRootStoragePaths(tempRoot, expectedFiles),
+  )
+  metrics.counts.filesPruned += staleRootPruneResult.filesPruned
+  metrics.counts.directoriesPruned += staleRootPruneResult.directoriesPruned
+  const previousExpectedFileSetSignature = lastExpectedFileSetSignaturesByRoot.get(storageRoot)
+  if (previousExpectedFileSetSignature === expectedFileSetSignature) {
+    metrics.pruneSkipped = true
+  } else {
+    const pruneResult = measureStorageSavePhase(metrics, 'prune', () => pruneStorageRoot(tempRoot, expectedFiles))
+    metrics.counts.filesPruned += pruneResult.filesPruned
+    metrics.counts.directoriesPruned += pruneResult.directoriesPruned
+    lastExpectedFileSetSignaturesByRoot.set(storageRoot, expectedFileSetSignature)
   }
-  return { storageFingerprint: storageSnapshot.fingerprint, storageFiles: storageSnapshot.files }
+  if (typeof options.userSettingsRoot === 'string') {
+    const settingsWrite = measureStorageSavePhase(metrics, 'appSettingsWrite', () =>
+      writeTextFileAtomic(options.userSettingsRoot, USER_SETTINGS_FILE_PATH, appSettingsContents),
+    )
+    if (settingsWrite.changed) metrics.counts.filesChanged += 1
+    else metrics.counts.filesSkipped += 1
+  }
+  return {
+    storageFingerprint: storageSnapshot.fingerprint,
+    storageFiles: storageSnapshot.files,
+    saveMetrics: finalizeStorageSaveMetrics(metrics, saveStartedAt),
+  }
 }
 
 function readNoteBodiesFromRoot(rootManifest) {

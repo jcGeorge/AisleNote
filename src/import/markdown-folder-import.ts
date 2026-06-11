@@ -84,6 +84,16 @@ type ImportedNoteRecord = {
   location: NoteLocation
 }
 
+type ImportedSpaceBucket = {
+  space: Space
+  parentsByKey: Map<string, Tab>
+}
+
+type ImportedDomainBucket = {
+  domain: Domain
+  spacesByKey: Map<string, ImportedSpaceBucket>
+}
+
 const DEFAULT_IMPORTED_DOMAIN_PREFIX = 'imported domain'
 const DEFAULT_IMPORTED_SPACE = 'imported space'
 const DEFAULT_IMPORTED_PARENT = 'imported parent'
@@ -353,13 +363,6 @@ function syncActiveSpaces(state: MutableImportState): MutableImportState {
   }) as MutableImportState
 }
 
-function findUniqueByName<T>(items: T[], getName: (item: T) => string, name: string): T | null {
-  const normalized = normalizeName(name)
-  if (!normalized) return null
-  const matches = items.filter((item) => normalizeName(getName(item)) === normalized)
-  return matches.length === 1 ? matches[0] : null
-}
-
 function createImportedSpace(name: string, generateId: IdGenerator): Space {
   return {
     ...createSpace(name || DEFAULT_IMPORTED_SPACE, generateId),
@@ -372,54 +375,66 @@ function createImportedSpace(name: string, generateId: IdGenerator): Space {
   }
 }
 
+function getImportNameKey(name: string, fallback: string): string {
+  return normalizeName(name) || fallback
+}
+
+function getImportDomainKey(parsed: ParsedMarkdownImportFile): string {
+  return parsed.reliableDomain ? getImportNameKey(parsed.domainName, DEFAULT_IMPORTED_DOMAIN_PREFIX) : '__fallback_domain__'
+}
+
+function createImportedSpaceBucket(name: string, generateId: IdGenerator): ImportedSpaceBucket {
+  return {
+    space: createImportedSpace(name, generateId),
+    parentsByKey: new Map(),
+  }
+}
+
 function resolveTargetDomain(
   state: MutableImportState,
   parsed: ParsedMarkdownImportFile,
-  sourceDomainMap: Map<string, Domain>,
+  sourceDomainMap: Map<string, ImportedDomainBucket>,
   summary: MarkdownFolderImportSummary,
   generateId: IdGenerator,
-): Domain {
-  if (parsed.reliableDomain) {
-    const existing = findUniqueByName(state.domains, (domain) => domain.name, parsed.domainName)
-    if (existing) return existing
-  }
-
-  if (!parsed.reliableDomain) {
-    const spaceMatches = state.domains.filter((domain) =>
-      domain.spaces.some((space) => normalizeName(space.name) === normalizeName(parsed.spaceName)),
-    )
-    if (spaceMatches.length === 1) return spaceMatches[0]
-  }
-
-  const sourceKey = normalizeName(parsed.domainName) || DEFAULT_IMPORTED_DOMAIN_PREFIX
+): ImportedDomainBucket {
+  const sourceKey = getImportDomainKey(parsed)
   const mapped = sourceDomainMap.get(sourceKey)
   if (mapped) return mapped
 
-  const domain = createDomainFromSpaces(makeImportedDomainName(summary.domainsCreated + 1), [createImportedSpace(parsed.spaceName, generateId)], {
+  const spaceKey = getImportNameKey(parsed.spaceName, DEFAULT_IMPORTED_SPACE)
+  const spaceBucket = createImportedSpaceBucket(parsed.spaceName, generateId)
+  const domain = createDomainFromSpaces(parsed.reliableDomain ? parsed.domainName : makeImportedDomainName(summary.domainsCreated + 1), [spaceBucket.space], {
     id: generateId(),
+    activeSpaceId: spaceBucket.space.id,
     createId: generateId,
   })
+  const bucket: ImportedDomainBucket = {
+    domain,
+    spacesByKey: new Map([[spaceKey, spaceBucket]]),
+  }
   state.domains.push(domain)
-  sourceDomainMap.set(sourceKey, domain)
+  sourceDomainMap.set(sourceKey, bucket)
   summary.domainsCreated += 1
   summary.spacesCreated += 1
-  return domain
+  return bucket
 }
 
-function resolveTargetSpace(domain: Domain, parsed: ParsedMarkdownImportFile, summary: MarkdownFolderImportSummary, generateId: IdGenerator): Space {
-  const existing = findUniqueByName(domain.spaces, (space) => space.name, parsed.spaceName)
+function resolveTargetSpace(domainBucket: ImportedDomainBucket, parsed: ParsedMarkdownImportFile, summary: MarkdownFolderImportSummary, generateId: IdGenerator): ImportedSpaceBucket {
+  const spaceKey = getImportNameKey(parsed.spaceName, DEFAULT_IMPORTED_SPACE)
+  const existing = domainBucket.spacesByKey.get(spaceKey)
   if (existing) return existing
-  const space = createImportedSpace(parsed.spaceName, generateId)
-  domain.spaces.push(space)
-  domain.activeSpaceId = domain.activeSpaceId || space.id
+  const spaceBucket = createImportedSpaceBucket(parsed.spaceName, generateId)
+  domainBucket.domain.spaces.push(spaceBucket.space)
+  domainBucket.domain.activeSpaceId = domainBucket.domain.activeSpaceId || spaceBucket.space.id
+  domainBucket.spacesByKey.set(spaceKey, spaceBucket)
   summary.spacesCreated += 1
-  return space
+  return spaceBucket
 }
 
-function resolveTargetParent(state: MutableImportState, space: Space, parsed: ParsedMarkdownImportFile, summary: MarkdownFolderImportSummary, generateId: IdGenerator): { tab: Tab; created: boolean; ambiguous: boolean } {
-  const normalized = normalizeName(parsed.parentName)
-  const matches = space.data.tabs.filter((tab) => normalizeName(tab.title) === normalized)
-  if (matches.length === 1) return { tab: matches[0], created: false, ambiguous: false }
+function resolveTargetParent(state: MutableImportState, spaceBucket: ImportedSpaceBucket, parsed: ParsedMarkdownImportFile, summary: MarkdownFolderImportSummary, generateId: IdGenerator): { tab: Tab; created: boolean } {
+  const parentKey = getImportNameKey(parsed.parentName, DEFAULT_IMPORTED_PARENT)
+  const existing = spaceBucket.parentsByKey.get(parentKey)
+  if (existing) return { tab: existing, created: false }
 
   const noteContent = createNoteBodyContent('', generateId)
   const tab = {
@@ -428,10 +443,11 @@ function resolveTargetParent(state: MutableImportState, space: Space, parsed: Pa
   }
   state.noteBodies.push(noteContent.noteBody)
   state.noteAisleBodies.push(noteContent.aisleBody)
-  space.data.tabs.push(tab)
-  if (!space.data.activeTabId) space.data.activeTabId = tab.id
+  spaceBucket.space.data.tabs.push(tab)
+  if (!spaceBucket.space.data.activeTabId) spaceBucket.space.data.activeTabId = tab.id
+  spaceBucket.parentsByKey.set(parentKey, tab)
   summary.parentsCreated += 1
-  return { tab, created: true, ambiguous: matches.length > 1 }
+  return { tab, created: true }
 }
 
 function getAisleBody(state: MutableImportState, aisleBodyId: string): NoteAisleBody | null {
@@ -761,19 +777,18 @@ export async function mergeMarkdownFolderImport(
     .sort((left, right) => normalizeRelativePath(left.relativePath).localeCompare(normalizeRelativePath(right.relativePath)))
     .map((file, index) => parseImportFile(file, index + 1))
   let state = cloneImportState(current)
-  const sourceDomainMap = new Map<string, Domain>()
+  const sourceDomainMap = new Map<string, ImportedDomainBucket>()
   const importedNotes: ImportedNoteRecord[] = []
   const homeAppliedByParent = new Set<string>()
 
   for (const parsed of files) {
     const markdown = await rewriteMarkdownAssets(parsed.markdown, parsed.sourceRelativePath, options, summary)
-    const domain = resolveTargetDomain(state, parsed, sourceDomainMap, summary, generateId)
-    const space = resolveTargetSpace(domain, parsed, summary, generateId)
-    const parentResult = resolveTargetParent(state, space, parsed, summary, generateId)
+    const domainBucket = resolveTargetDomain(state, parsed, sourceDomainMap, summary, generateId)
+    const spaceBucket = resolveTargetSpace(domainBucket, parsed, summary, generateId)
+    const parentResult = resolveTargetParent(state, spaceBucket, parsed, summary, generateId)
+    const domain = domainBucket.domain
+    const space = spaceBucket.space
     const parent = parentResult.tab
-    if (parentResult.ambiguous) {
-      appendWarning(summary, `parent "${parsed.parentName}" matched more than once, so a new parent was created.`)
-    }
 
     const existingHomeCanReceiveImport =
       parsed.isHome &&
@@ -817,5 +832,5 @@ export async function mergeMarkdownFolderImport(
 export function formatMarkdownFolderImportSummary(summary: MarkdownFolderImportSummary): string {
   const warningText = summary.warnings.length > 0 ? ` ${summary.warnings.length} warning(s).` : ''
   const unresolvedText = summary.unresolvedReferences > 0 ? ` ${summary.unresolvedReferences} reference(s) stayed unresolved.` : ''
-  return `imported Markdown folder: ${summary.notesImported} note(s), ${summary.parentsCreated} parent(s), ${summary.subtabsCreated} tab(s), ${summary.assetsImported} asset(s).${unresolvedText}${warningText}`
+  return `imported Markdown folder: ${summary.domainsCreated} domain(s), ${summary.spacesCreated} space(s), ${summary.parentsCreated} parent(s), ${summary.subtabsCreated} tab(s), ${summary.notesImported} note(s), ${summary.assetsImported} asset(s).${unresolvedText}${warningText}`
 }

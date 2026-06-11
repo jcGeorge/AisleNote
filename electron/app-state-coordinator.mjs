@@ -169,6 +169,7 @@ export function createAppStateCoordinator({
         ok: true,
         serializedState,
         revision,
+        ...(saveResult?.saveMetrics ? { saveMetrics: saveResult.saveMetrics } : {}),
       }
     } catch (error) {
       return {

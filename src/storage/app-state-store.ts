@@ -131,6 +131,7 @@ class ElectronAppStateStore implements AppStateStore {
   private syncSaveEpoch = 0
   private asyncSaveActive = false
   private pendingAsyncSerializedState: string | null = null
+  private pendingAsyncSaveOptions: AppStateSaveOptions | null = null
   private lastSavedSerializedState: string | null = null
 
   constructor() {
@@ -213,6 +214,23 @@ class ElectronAppStateStore implements AppStateStore {
     })
   }
 
+  private recordSaveMetricsDiagnostic(
+    result: ReturnType<NonNullable<Window['electronAPI']>['saveAppState']> | undefined,
+    serializedState: string,
+    mode: 'async' | 'sync',
+    trigger: string,
+    pendingEditorCount: number | undefined,
+    queueDepth = 0,
+  ) {
+    if (!result?.ok || !result.saveMetrics) return
+    recordDiagnosticEvent('storage', 'app-state-save-metrics', {
+      details: {
+        ...this.getSaveDiagnosticsDetails(serializedState, mode, trigger, pendingEditorCount, queueDepth),
+        saveMetrics: result.saveMetrics,
+      },
+    })
+  }
+
   private runAsyncSaveQueue(): void {
     if (this.asyncSaveActive) return
     this.asyncSaveActive = true
@@ -224,10 +242,13 @@ class ElectronAppStateStore implements AppStateStore {
           while (this.pendingAsyncSerializedState !== null) {
             if (saveEpoch !== this.syncSaveEpoch) {
               this.pendingAsyncSerializedState = null
+              this.pendingAsyncSaveOptions = null
               return
             }
             const serializedState = this.pendingAsyncSerializedState
+            const saveOptions = this.pendingAsyncSaveOptions ?? {}
             this.pendingAsyncSerializedState = null
+            this.pendingAsyncSaveOptions = null
             const payload = {
               serializedState,
               baseRevision: this.revision,
@@ -236,6 +257,13 @@ class ElectronAppStateStore implements AppStateStore {
               window.electronAPI!.saveAppStateAsync!(payload),
             )
             if (saveEpoch !== this.syncSaveEpoch) return
+            this.recordSaveMetricsDiagnostic(
+              result,
+              serializedState,
+              'async',
+              saveOptions.trigger ?? 'unknown',
+              saveOptions.pendingEditorCount,
+            )
             this.applySaveResult(result)
           }
         } finally {
@@ -258,6 +286,7 @@ class ElectronAppStateStore implements AppStateStore {
 
     if (!options.preferSync && typeof window.electronAPI?.saveAppStateAsync === 'function') {
       this.pendingAsyncSerializedState = serializedState
+      this.pendingAsyncSaveOptions = options
       this.recordSaveDiagnostic(
         'app-state-save-queued',
         serializedState,
@@ -273,8 +302,10 @@ class ElectronAppStateStore implements AppStateStore {
     try {
       this.syncSaveEpoch += 1
       this.pendingAsyncSerializedState = null
+      this.pendingAsyncSaveOptions = null
       this.recordSaveDiagnostic('app-state-save-start', serializedState, 'sync', trigger, options.pendingEditorCount)
       const result = measureSlowOperation('electron sync app-state save', () => window.electronAPI?.saveAppState(payload))
+      this.recordSaveMetricsDiagnostic(result, serializedState, 'sync', trigger, options.pendingEditorCount)
       this.applySaveResult(result)
     } catch {
       // Keep current behavior non-fatal until a dedicated error surface is added.

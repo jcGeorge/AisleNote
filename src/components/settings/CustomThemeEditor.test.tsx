@@ -1,6 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CUSTOM_THEME_PALETTE } from '../../settings/defaults'
+import { shouldCloseGenericBackdropFromGesture } from '../overlays/modal-behavior'
 import type {
   AppTheme,
   CustomThemeId,
@@ -8,6 +12,8 @@ import type {
   VisualsSettingsSection,
 } from '../../types/app'
 import { CustomThemeEditor } from './CustomThemeEditor'
+
+const componentDir = dirname(fileURLToPath(import.meta.url))
 
 function renderEditor({
   theme = 'custom1',
@@ -99,5 +105,16 @@ describe('CustomThemeEditor', () => {
     expect(html).toContain('<option value="custom2" selected="">custom 2</option>')
     expect(html).toContain('copy to custom 2')
     expect(html).toContain('reset palette')
+  })
+
+  it('uses a complete backdrop gesture for the json modal', () => {
+    expect(shouldCloseGenericBackdropFromGesture({ startedOnBackdrop: true, endedOnBackdrop: true })).toBe(true)
+    expect(shouldCloseGenericBackdropFromGesture({ startedOnBackdrop: false, endedOnBackdrop: true })).toBe(false)
+    expect(shouldCloseGenericBackdropFromGesture({ startedOnBackdrop: true, endedOnBackdrop: false })).toBe(false)
+
+    const source = readFileSync(join(componentDir, 'CustomThemeEditor.tsx'), 'utf8')
+    expect(source).toContain('onMouseDown={(event) => {')
+    expect(source).toContain('shouldCloseGenericBackdropFromGesture')
+    expect(source).not.toContain('if (event.target === event.currentTarget) closeThemeJsonModal()')
   })
 })
