@@ -921,6 +921,7 @@ export type ModalState =
   | {
       type: 'deduplicate-note'
       noteBodyId: string
+      location: NoteLocation
       keepLocationKeys: string[]
       keepData: boolean
     }

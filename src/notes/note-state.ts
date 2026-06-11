@@ -211,6 +211,40 @@ export const syncNoteBodyAisleStructureInState = (previous: AppState, noteBodyId
   )
 }
 
+export const clearAisleFrontmatterInState = (previous: AppState, aisleBodyIds: Iterable<string>): AppState => {
+  const targetAisleBodyIds = new Set(Array.from(aisleBodyIds).filter((id) => id.trim().length > 0))
+  if (targetAisleBodyIds.size <= 0) return previous
+
+  let changed = false
+  const noteAisleBodies = (previous.noteAisleBodies ?? []).map((body) => {
+    if (!targetAisleBodyIds.has(body.id)) return body
+    if (
+      body.frontmatter === null &&
+      body.frontmatterStatus === 'none' &&
+      body.frontmatterParseError === undefined &&
+      body.frontmatterRaw === undefined &&
+      body.frontmatterMeta === undefined
+    ) {
+      return body
+    }
+
+    changed = true
+    const {
+      frontmatterMeta: _frontmatterMeta,
+      frontmatterParseError: _frontmatterParseError,
+      frontmatterRaw: _frontmatterRaw,
+      ...bodyWithoutFrontmatterParseFields
+    } = body
+    return {
+      ...bodyWithoutFrontmatterParseFields,
+      frontmatter: null,
+      frontmatterStatus: 'none' as const,
+    }
+  })
+
+  return changed ? { ...previous, noteAisleBodies } : previous
+}
+
 export const syncNoteAisleBodyMarkdownInState = (
   previous: AppState,
   aisleBodyId: string,

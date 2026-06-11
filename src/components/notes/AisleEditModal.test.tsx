@@ -13,14 +13,21 @@ const componentDir = dirname(fileURLToPath(import.meta.url))
 
 function renderModal(
   aisles: ResolvedNoteAisle[],
-  options: { linkedAisleIds?: Set<string>; initialStagedDecoupleAisleIds?: string[] } = {},
+  options: {
+    linkedAisleIds?: Set<string>
+    frontmatterAisleIds?: Set<string>
+    initialStagedDecoupleAisleIds?: string[]
+    initialStagedRemoveFrontmatterAisleIds?: string[]
+  } = {},
 ) {
   return renderToStaticMarkup(
     <AisleEditModal
       open
       aisles={aisles}
       linkedAisleIds={options.linkedAisleIds}
+      frontmatterAisleIds={options.frontmatterAisleIds}
       initialStagedDecoupleAisleIds={options.initialStagedDecoupleAisleIds}
+      initialStagedRemoveFrontmatterAisleIds={options.initialStagedRemoveFrontmatterAisleIds}
       getNotePreviewLabel={() => 'Domain / Space / Parent / Child'}
       onCancel={() => undefined}
       onApply={() => undefined}
@@ -147,24 +154,65 @@ describe('AisleEditModal', () => {
     expect(html).not.toContain('![Child note](&lt;Child note--123abc&gt;)')
   })
 
-  it('shows linked status and de-couple only for linked aisle cards', () => {
+  it('renders linked aisles with top-right staging buttons instead of bottom status controls', () => {
     const html = renderModal([aisle('a', 'first'), aisle('b', 'plain')], {
       linkedAisleIds: new Set(['a']),
     })
 
-    expect(html).toContain('aisle-edit-status-badge">linked')
-    expect(html).toContain('de-couple')
+    expect(html).toContain('aisle-edit-card-action-layer')
+    expect(html.match(/note-aisle-action-btn note-aisle-link-btn/g) ?? []).toHaveLength(1)
+    expect(html).toContain('Stage de-couple for aisle 1')
+    expect(html).not.toContain('aisle-edit-status-badge')
+    expect(html).not.toContain('>linked</span>')
+    expect(html).not.toContain('>de-couple</button>')
     expect(html).not.toContain('will de-couple')
   })
 
-  it('shows staged de-couple status and undo for staged aisle cards', () => {
+  it('renders frontmatter aisles with a top-right fm staging button', () => {
+    const html = renderModal([aisle('a', 'first'), aisle('b', 'plain')], {
+      frontmatterAisleIds: new Set(['b']),
+    })
+
+    expect(html).toContain('aisle-edit-card-action-layer')
+    expect(html.match(/note-aisle-action-btn note-aisle-frontmatter-btn/g) ?? []).toHaveLength(1)
+    expect(html).toContain('Stage frontmatter removal for aisle 2')
+    expect(html).toContain('frontmatter-toolbar-icon note-aisle-frontmatter-icon')
+    expect(html).not.toContain('aisle-edit-status-badge')
+  })
+
+  it('shows staged de-couple through an unfocused top-right action and caution tape', () => {
     const html = renderModal([aisle('a', 'linked')], {
       linkedAisleIds: new Set(['a']),
       initialStagedDecoupleAisleIds: ['a'],
     })
 
-    expect(html).toContain('will de-couple')
-    expect(html).toContain('undo')
+    expect(html).toContain('is-staged-decouple')
+    expect(html).toContain('is-staged-aisle-change')
+    expect(html).toContain('is-staged-removal')
+    expect(html).toContain('decouple-caution-stripe')
+    expect(html).toContain('DE-COUPLED')
+    expect(html).toContain('Undo de-couple for aisle 1')
+    expect(html).not.toContain('will de-couple')
+    expect(html).not.toContain('>undo</button>')
     expect(html).not.toContain('>de-couple</button>')
+  })
+
+  it('shows staged frontmatter removal and combined caution tape labels', () => {
+    const fmOnlyHtml = renderModal([aisle('a', 'frontmatter')], {
+      frontmatterAisleIds: new Set(['a']),
+      initialStagedRemoveFrontmatterAisleIds: ['a'],
+    })
+    const combinedHtml = renderModal([aisle('a', 'linked fm')], {
+      linkedAisleIds: new Set(['a']),
+      frontmatterAisleIds: new Set(['a']),
+      initialStagedDecoupleAisleIds: ['a'],
+      initialStagedRemoveFrontmatterAisleIds: ['a'],
+    })
+
+    expect(fmOnlyHtml).toContain('is-staged-frontmatter-removal')
+    expect(fmOnlyHtml).toContain('is-staged-aisle-change')
+    expect(fmOnlyHtml).toContain('FM REMOVED')
+    expect(fmOnlyHtml).toContain('Undo frontmatter removal for aisle 1')
+    expect(combinedHtml).toContain('DE-COUPLED &amp; FM REMOVED')
   })
 })

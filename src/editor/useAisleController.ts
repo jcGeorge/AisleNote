@@ -5,6 +5,7 @@ import { materializeDecoupledAisleCopies } from '../notes/aisle-links'
 import { buildNoteCursorLocationKey } from '../notes/note-cursors'
 import { getLocationInfo } from '../notes/note-locations'
 import {
+  clearAisleFrontmatterInState,
   cloneAisles,
   getAisleSignature,
   resolveNoteAisles,
@@ -335,11 +336,17 @@ export const useAisleController = ({
 
   const applyAisleEditDraftToActiveNote = (
     nextAisles: ResolvedNoteAisle[],
-    options: { decoupleAisleIds?: Iterable<string>; activeAisleId?: string; additionalAisleBodies?: NoteAisleBody[] } = {},
+    options: {
+      decoupleAisleIds?: Iterable<string>
+      removeFrontmatterAisleIds?: Iterable<string>
+      activeAisleId?: string
+      additionalAisleBodies?: NoteAisleBody[]
+    } = {},
   ) => {
     if (!activeNoteBodyId) return
     const draftAisles = cloneAisles(nextAisles)
     const stagedDecoupleAisleIds = new Set(options.decoupleAisleIds ?? [])
+    const stagedRemoveFrontmatterAisleIds = new Set(options.removeFrontmatterAisleIds ?? [])
     const afterAisleIds = draftAisles.map((aisle) => aisle.id)
     if (draftAisles.length <= 0) {
       pushToast(
@@ -363,10 +370,14 @@ export const useAisleController = ({
     const afterAisles = stagedDecoupleAisleIds.size > 0
       ? materializeDecoupledAisleCopies(latestState, draftAisles, stagedDecoupleAisleIds)
       : draftAisles
-    if (getAisleSignature(beforeSnapshot.aisles) === getAisleSignature(afterAisles)) {
+    const structuralChanged = getAisleSignature(beforeSnapshot.aisles) !== getAisleSignature(afterAisles)
+    if (!structuralChanged && stagedRemoveFrontmatterAisleIds.size <= 0) {
       closeAisleEditModal()
       return
     }
+    const aisleBodyIdsToClearFrontmatter = afterAisles
+      .filter((aisle) => stagedRemoveFrontmatterAisleIds.has(aisle.id))
+      .map((aisle) => aisle.aisleBodyId)
 
     flushPendingContent()
     const afterAisleIdSet = new Set(afterAisleIds)
@@ -409,12 +420,19 @@ export const useAisleController = ({
         beforeSnapshot.noteBodyId,
         afterAisles,
       )
-      const withCursor = applyCursorLocationSnapshot(withAisles, afterSnapshot.locationKey, afterSnapshot.cursorLocation)
+      const withFrontmatterCleared = clearAisleFrontmatterInState(withAisles, aisleBodyIdsToClearFrontmatter)
+      const withCursor = applyCursorLocationSnapshot(
+        withFrontmatterCleared,
+        afterSnapshot.locationKey,
+        afterSnapshot.cursorLocation,
+      )
       return structuralScope === 'scratchpad'
         ? setScratchpadActiveAisleId(withCursor, afterSnapshot.activeAisleId)
         : withCursor
     })
-    pushAisleStructuralHistory('edit-aisles', beforeSnapshot, afterSnapshot)
+    if (structuralChanged) {
+      pushAisleStructuralHistory('edit-aisles', beforeSnapshot, afterSnapshot)
+    }
     setActiveAisleId(afterActiveAisleId)
     pendingScrollToAisleIdRef.current = afterActiveAisleId
     pendingFocusToAisleIdRef.current = afterActiveAisleId

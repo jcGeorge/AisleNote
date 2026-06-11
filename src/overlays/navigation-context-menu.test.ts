@@ -23,6 +23,7 @@ function makeActions(options: {
   contextMenu?: ContextMenuState | null
   setState?: ReturnType<typeof vi.fn>
   setContextMenu?: ReturnType<typeof vi.fn>
+  setModal?: ReturnType<typeof vi.fn>
   setMenuOpen?: ReturnType<typeof vi.fn>
   setTrashDomainId?: ReturnType<typeof vi.fn>
   setTrashSpaceId?: ReturnType<typeof vi.fn>
@@ -42,7 +43,7 @@ function makeActions(options: {
     contextMenu: options.contextMenu ?? null,
     setContextMenu: (options.setContextMenu ?? vi.fn()) as Dispatch<SetStateAction<ContextMenuState | null>>,
     modal: null,
-    setModal: vi.fn() as Dispatch<SetStateAction<ModalState | null>>,
+    setModal: (options.setModal ?? vi.fn()) as Dispatch<SetStateAction<ModalState | null>>,
     setMenuOpen: (options.setMenuOpen ?? vi.fn()) as Dispatch<SetStateAction<boolean>>,
     setEditing: vi.fn(),
     activeSpaceId: state.activeSpaceId,
@@ -103,6 +104,50 @@ describe('navigation context menu suppression', () => {
 
     expect(event.preventDefault).toHaveBeenCalledTimes(1)
     expect(setContextMenu).toHaveBeenCalledWith({ type: 'tab', tabId: 'tab-a', x: 12, y: 34 })
+  })
+
+  it('opens de-couple modals with the context-menu tab as the launch context', () => {
+    const sourceSpace = DEFAULT_STATE.spaces[0]
+    const sourceTab = sourceSpace.data.tabs[0]
+    const duplicateTab = { ...sourceTab, id: 'tab-copy', title: 'Copy', subTabs: [] }
+    const activeSpace = {
+      ...sourceSpace,
+      data: {
+        ...sourceSpace.data,
+        tabs: [...sourceSpace.data.tabs, duplicateTab],
+      },
+    }
+    const state: AppState = {
+      ...DEFAULT_STATE,
+      spaces: [activeSpace],
+      domains: [{ ...DEFAULT_STATE.domains[0], spaces: [activeSpace] }],
+      activeSpaceId: activeSpace.id,
+    }
+    const setModal = vi.fn()
+    const setContextMenu = vi.fn()
+    const actions = makeActions({
+      navigationContextMenusDisabled: false,
+      state,
+      contextMenu: { type: 'tab', tabId: 'tab-copy', x: 0, y: 0 },
+      setContextMenu,
+      setModal,
+    })
+
+    actions.openDeduplicateModalFromContext()
+
+    expect(setModal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'deduplicate-note',
+        noteBodyId: sourceTab.noteBodyId,
+        location: {
+          domainId: state.activeDomainId,
+          spaceId: activeSpace.id,
+          tabId: 'tab-copy',
+          subTabId: null,
+        },
+      }),
+    )
+    expect(setContextMenu).toHaveBeenCalledWith(null)
   })
 
   it('restores standalone deleted spaces from the trash context menu and clears stale trash selection', () => {

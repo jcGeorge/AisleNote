@@ -171,6 +171,7 @@ describe('de-couple modal text', () => {
     const modal: ModalState = {
       type: 'deduplicate-note',
       noteBodyId: 'body-1',
+      location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null },
       keepLocationKeys: [],
       keepData: true,
     }

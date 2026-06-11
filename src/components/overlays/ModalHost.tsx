@@ -14,10 +14,10 @@ import {
   isFrontmatterComputedValueCompatibleWithFieldType,
 } from '../../frontmatter/frontmatter'
 import { buildFrontmatterModalDraftForAisle, buildFrontmatterRowsForAisle } from '../../frontmatter/frontmatter-state'
-import { listNoteLocationsForBody } from '../../notes/note-locations'
+import { buildNoteLocationKey, listNoteLocationsForBody } from '../../notes/note-locations'
 import { getDefaultMarkdownNoteReferenceLabel } from '../../notes/note-reference-model'
 import { getAisleBodyId } from '../../notes/note-markdown'
-import { listLinkedAisleSlotsForAisleBody } from '../../notes/aisle-links'
+import { buildAisleSlotKey, listLinkedAisleSlotsForAisleBody } from '../../notes/aisle-links'
 import { normalizeNoteReferenceTarget, resolveNoteReferenceTarget } from '../../notes/note-reference-targets'
 import { createId } from '../../state/workspace'
 import type {
@@ -904,6 +904,7 @@ export function ModalHost({
             <DecoupleLocationCardStrip
               state={state}
               noteBodyId={modal.noteBodyId}
+              currentItemKey={buildNoteLocationKey(modal.location)}
               keepLocationKeys={modal.keepLocationKeys}
               onKeepLocationKeysChange={(keepLocationKeys) => onModalChange({ ...modal, keepLocationKeys })}
             />
@@ -927,6 +928,7 @@ export function ModalHost({
                 <DecoupleLocationCardStrip
                   state={state}
                   noteBodyId={modal.noteBodyId}
+                  currentItemKey={buildNoteLocationKey(modal.location)}
                   keepLocationKeys={modal.keepLocationKeys}
                   onKeepLocationKeysChange={(keepLocationKeys) => onModalChange({ ...modal, keepLocationKeys })}
                 />
@@ -948,6 +950,7 @@ export function ModalHost({
                   mode="aisle"
                   state={state}
                   aisleBodyId={modal.aisleBodyId}
+                  currentItemKey={buildAisleSlotKey(modal.noteBodyId, modal.aisleId)}
                   keepAisleSlotKeys={modal.keepAisleSlotKeys}
                   onKeepAisleSlotKeysChange={(keepAisleSlotKeys) => onModalChange({ ...modal, keepAisleSlotKeys })}
                 />

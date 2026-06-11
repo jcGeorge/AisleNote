@@ -7,6 +7,7 @@ import {
 } from '../../notes/note-locations'
 import { listLinkedAisleSlotsForAisleBody, type LinkedAisleSlot } from '../../notes/aisle-links'
 import type { AppState } from '../../types/app'
+import { DecoupleCautionStripe } from '../decouple/DecoupleCautionStripe'
 import { AisleHorizontalScrollbar } from '../notes/AisleHorizontalScrollbar'
 
 const locationCollator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
@@ -20,21 +21,27 @@ type ResolvedDecoupleLocation = NoteLocationListEntry & {
   aisleLabel?: string | null
 }
 
-type DecoupleLocationCardStripProps =
-  | {
-      mode?: 'note'
-      state: AppState
-      noteBodyId: string
-      keepLocationKeys: string[]
-      onKeepLocationKeysChange: (keepLocationKeys: string[]) => void
-    }
-  | {
-      mode: 'aisle'
-      state: AppState
-      aisleBodyId: string
-      keepAisleSlotKeys: string[]
-      onKeepAisleSlotKeysChange: (keepAisleSlotKeys: string[]) => void
-    }
+type DecoupleLocationCardStripSharedProps = {
+  currentItemKey?: string | null
+}
+
+type NoteDecoupleLocationCardStripProps = DecoupleLocationCardStripSharedProps & {
+  mode?: 'note'
+  state: AppState
+  noteBodyId: string
+  keepLocationKeys: string[]
+  onKeepLocationKeysChange: (keepLocationKeys: string[]) => void
+}
+
+type AisleDecoupleLocationCardStripProps = DecoupleLocationCardStripSharedProps & {
+  mode: 'aisle'
+  state: AppState
+  aisleBodyId: string
+  keepAisleSlotKeys: string[]
+  onKeepAisleSlotKeysChange: (keepAisleSlotKeys: string[]) => void
+}
+
+type DecoupleLocationCardStripProps = NoteDecoupleLocationCardStripProps | AisleDecoupleLocationCardStripProps
 
 function compareLocationText(left: string, right: string) {
   return locationCollator.compare(left, right)
@@ -62,7 +69,7 @@ function getLocationChipClassName(kind: 'domain' | 'space' | 'parent' | 'subtab'
     return 'decouple-location-chip rail-control context-preview-title-btn btn btn-sm tab-btn parent-tab-btn is-parent'
   }
   if (kind === 'aisle') {
-    return 'decouple-location-chip decouple-aisle-chip rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab'
+    return 'decouple-location-chip decouple-aisle-chip rail-control context-preview-title-btn compact-scope-btn compact-domain-btn is-domain'
   }
   return 'decouple-location-chip rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab'
 }
@@ -151,13 +158,22 @@ export function DecoupleLocationCardStrip(props: DecoupleLocationCardStripProps)
             props.mode === 'aisle'
               ? !props.keepAisleSlotKeys.includes(location.key)
               : !props.keepLocationKeys.includes(location.key)
+          const isCurrentContext = props.currentItemKey === location.key
           return (
             <button
               key={location.key}
               type="button"
-              className={`decouple-location-card ${willDecouple ? 'is-decoupled' : ''}`}
+              className={[
+                'decouple-location-card',
+                willDecouple ? 'is-decoupled' : '',
+                isCurrentContext ? 'is-current-context' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
               aria-pressed={willDecouple}
-              aria-label={`${location.label}. ${willDecouple ? 'Will be de-coupled.' : 'Will stay coupled.'}`}
+              aria-label={`${location.label}. ${willDecouple ? 'Will be de-coupled.' : 'Will stay coupled.'}${
+                isCurrentContext ? ' Current context.' : ''
+              }`}
               onClick={() => toggleLocation(location.key)}
             >
               <span className="decouple-location-chip-stack" aria-hidden="true">
@@ -169,7 +185,7 @@ export function DecoupleLocationCardStrip(props: DecoupleLocationCardStripProps)
                   <span className={getLocationChipClassName('aisle')}>{location.aisleLabel}</span>
                 )}
               </span>
-              {willDecouple && <span className="decouple-location-status">de-coupled</span>}
+              {willDecouple && <DecoupleCautionStripe />}
             </button>
           )
         })}

@@ -714,6 +714,7 @@ export const useAppOverlayActions = ({
     setModal({
       type: 'deduplicate-note',
       noteBodyId,
+      location: source,
       keepLocationKeys: locations.map((location) => buildNoteLocationKey(location)),
       keepData: getDecoupledItemsKeepData(),
     })

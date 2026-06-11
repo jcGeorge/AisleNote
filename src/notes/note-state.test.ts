@@ -6,6 +6,7 @@ import type { AppState, NoteAisle, NoteAisleBody, Space } from '../types/app'
 import {
   applyCursorLocationSnapshot,
   applyNoteLocationToState,
+  clearAisleFrontmatterInState,
   getAisleSignature,
   syncNoteAisleBodyMarkdownInState,
   syncNoteBodyAisleStructureInState,
@@ -269,6 +270,79 @@ describe('note-state helpers', () => {
     expect(next.noteAisleBodies?.find((body) => body.id === decoupledAisle?.aisleBodyId)?.tags).toEqual(['Shared'])
     expect(linkedAisle).toEqual({ id: 'aisle-b', aisleBodyId: 'shared-aisle-body' })
     expect(next.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')?.markdown).toBe('current shared text #Shared')
+  })
+
+  it('clears aisle frontmatter metadata without changing markdown', () => {
+    const state = {
+      ...createTestState(),
+      noteAisleBodies: [
+        {
+          id: 'aisle-1',
+          markdown: 'body text',
+          tags: ['Keep'],
+          frontmatter: { title: 'Remove me' },
+          frontmatterStatus: 'valid' as const,
+          frontmatterRaw: '---\ntitle: Remove me\n---',
+          frontmatterMeta: { templateId: 'template-1', templateDerived: true },
+        },
+      ],
+    }
+
+    const next = clearAisleFrontmatterInState(state, ['aisle-1'])
+    const body = next.noteAisleBodies?.find((candidate) => candidate.id === 'aisle-1')
+
+    expect(body?.markdown).toBe('body text')
+    expect(body?.tags).toEqual(['Keep'])
+    expect(body?.frontmatter).toBeNull()
+    expect(body?.frontmatterStatus).toBe('none')
+    expect(body?.frontmatterRaw).toBeUndefined()
+    expect(body?.frontmatterMeta).toBeUndefined()
+    expect(body?.frontmatterParseError).toBeUndefined()
+  })
+
+  it('clears frontmatter from the final independent aisle body after a staged de-couple', () => {
+    const state = {
+      ...createTestState(),
+      noteAisleBodies: [
+        {
+          id: 'shared-aisle-body',
+          markdown: 'current shared text',
+          tags: [],
+          frontmatter: { title: 'Shared' },
+          frontmatterStatus: 'valid' as const,
+          frontmatterRaw: '---\ntitle: Shared\n---',
+          frontmatterMeta: { templateId: 'template-1' },
+        },
+      ],
+      noteBodies: [
+        {
+          id: 'body-1',
+          aisles: [{ id: 'aisle-a', aisleBodyId: 'shared-aisle-body' }],
+        },
+        {
+          id: 'body-2',
+          aisles: [{ id: 'aisle-b', aisleBodyId: 'shared-aisle-body' }],
+        },
+      ],
+    }
+    const sourceAisles = state.noteBodies.find((body) => body.id === 'body-1')?.aisles ?? []
+    const afterAisles = materializeDecoupledAisleCopies(state, resolveNoteAisles(sourceAisles, state.noteAisleBodies), [
+      'aisle-a',
+    ])
+    const withDecoupledAisle = syncNoteBodyAisleStructureInState(state, 'body-1', afterAisles)
+    const finalAisleBodyId = withDecoupledAisle.noteBodies.find((body) => body.id === 'body-1')?.aisles[0]?.aisleBodyId
+    const next = clearAisleFrontmatterInState(withDecoupledAisle, finalAisleBodyId ? [finalAisleBodyId] : [])
+    const decoupledBody = next.noteAisleBodies?.find((body) => body.id === finalAisleBodyId)
+    const stillLinkedBody = next.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')
+
+    expect(finalAisleBodyId).toBeTruthy()
+    expect(finalAisleBodyId).not.toBe('shared-aisle-body')
+    expect(decoupledBody?.markdown).toBe('current shared text')
+    expect(decoupledBody?.frontmatter).toBeNull()
+    expect(decoupledBody?.frontmatterStatus).toBe('none')
+    expect(decoupledBody?.frontmatterMeta).toBeUndefined()
+    expect(stillLinkedBody?.frontmatter).toEqual({ title: 'Shared' })
+    expect(stillLinkedBody?.frontmatterStatus).toBe('valid')
   })
 
   it('applies note location across domain, space, tab, and sub-tab state', () => {

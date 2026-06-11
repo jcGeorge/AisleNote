@@ -10,6 +10,7 @@ export {
 } from './note-markdown'
 export {
   cloneAisles,
+  clearAisleFrontmatterInState,
   getAisleSignature,
   getAisleStructureSignature,
   syncNoteAisleBodyMarkdownInState,

@@ -9,12 +9,15 @@ import {
 import { getPlacementNeighborId } from '../../arrange/arrange-utils'
 import { createNoteAisle } from '../../state/workspace'
 import type { ResolvedNoteAisle } from '../../types/app'
+import { DecoupleCautionStripe } from '../decouple/DecoupleCautionStripe'
+import { ToolbarToolIcon } from '../editor/ToolbarToolIcon'
 import { AisleMarkdownPreview } from './AisleMarkdownPreview'
 import { AisleHorizontalScrollbar } from './AisleHorizontalScrollbar'
 import { getHorizontalDragAutoScrollDelta } from './aisle-horizontal-scroll'
 
 const AISLE_DRAG_MIME = 'application/x-tabs-aisle-id'
 const EMPTY_STAGED_DECOUPLE_IDS: string[] = []
+const EMPTY_STAGED_FRONTMATTER_IDS: string[] = []
 const AISLE_EDIT_DRAG_AUTO_SCROLL_EDGE_ZONE = 72
 const AISLE_EDIT_DRAG_AUTO_SCROLL_MAX_STEP = 8
 
@@ -27,13 +30,18 @@ type AisleEditModalProps = {
   open: boolean
   aisles: ResolvedNoteAisle[]
   linkedAisleIds?: Set<string>
+  frontmatterAisleIds?: Set<string>
   initialStagedDecoupleAisleIds?: Iterable<string>
+  initialStagedRemoveFrontmatterAisleIds?: Iterable<string>
   getNotePreviewLabel?: unknown
   maxAisles?: number
   maxAislesWarningMessage?: string
   reclaimEmptyAisleAtLimit?: boolean
   onCancel: () => void
-  onApply: (aisles: ResolvedNoteAisle[], options?: { decoupleAisleIds?: string[]; activeAisleId?: string }) => void
+  onApply: (
+    aisles: ResolvedNoteAisle[],
+    options?: { decoupleAisleIds?: string[]; removeFrontmatterAisleIds?: string[]; activeAisleId?: string },
+  ) => void
   onWarn: (message: string) => void
 }
 
@@ -41,7 +49,9 @@ export function AisleEditModal({
   open,
   aisles,
   linkedAisleIds = new Set(),
+  frontmatterAisleIds = new Set(),
   initialStagedDecoupleAisleIds = EMPTY_STAGED_DECOUPLE_IDS,
+  initialStagedRemoveFrontmatterAisleIds = EMPTY_STAGED_FRONTMATTER_IDS,
   maxAisles,
   maxAislesWarningMessage,
   reclaimEmptyAisleAtLimit = false,
@@ -56,6 +66,9 @@ export function AisleEditModal({
   const dragPointerXRef = useRef<number | null>(null)
   const [stagedDecoupleAisleIds, setStagedDecoupleAisleIds] = useState<Set<string>>(
     () => new Set(initialStagedDecoupleAisleIds),
+  )
+  const [stagedRemoveFrontmatterAisleIds, setStagedRemoveFrontmatterAisleIds] = useState<Set<string>>(
+    () => new Set(initialStagedRemoveFrontmatterAisleIds),
   )
 
   const setAisleListRef = useCallback((node: HTMLDivElement | null) => {
@@ -73,7 +86,8 @@ export function AisleEditModal({
     setDraft(createAisleEditDraft(aisles))
     clearDragState()
     setStagedDecoupleAisleIds(new Set(initialStagedDecoupleAisleIds))
-  }, [aisles, clearDragState, initialStagedDecoupleAisleIds, open])
+    setStagedRemoveFrontmatterAisleIds(new Set(initialStagedRemoveFrontmatterAisleIds))
+  }, [aisles, clearDragState, initialStagedDecoupleAisleIds, initialStagedRemoveFrontmatterAisleIds, open])
 
   useEffect(() => {
     if (!open) return
@@ -180,14 +194,35 @@ export function AisleEditModal({
     )
   }
 
-  const stageDecoupleAisle = (aisleId: string) => {
-    setStagedDecoupleAisleIds((previous) => new Set([...previous, aisleId]))
+  const toggleStagedDecoupleAisle = (aisleId: string) => {
+    setStagedDecoupleAisleIds((previous) => {
+      const next = new Set(previous)
+      if (next.has(aisleId)) {
+        next.delete(aisleId)
+      } else {
+        next.add(aisleId)
+      }
+      return next
+    })
   }
 
   const undoStagedDecoupleAisle = (aisleId: string) => {
     setStagedDecoupleAisleIds((previous) => {
+      if (!previous.has(aisleId)) return previous
       const next = new Set(previous)
       next.delete(aisleId)
+      return next
+    })
+  }
+
+  const toggleStagedRemoveFrontmatterAisle = (aisleId: string) => {
+    setStagedRemoveFrontmatterAisleIds((previous) => {
+      const next = new Set(previous)
+      if (next.has(aisleId)) {
+        next.delete(aisleId)
+      } else {
+        next.add(aisleId)
+      }
       return next
     })
   }
@@ -195,6 +230,12 @@ export function AisleEditModal({
   const deleteAisle = (aisleId: string) => {
     setDraft((previous) => deleteAisleFromDraft(previous, aisleId))
     undoStagedDecoupleAisle(aisleId)
+    setStagedRemoveFrontmatterAisleIds((previous) => {
+      if (!previous.has(aisleId)) return previous
+      const next = new Set(previous)
+      next.delete(aisleId)
+      return next
+    })
   }
 
   return (
@@ -218,7 +259,17 @@ export function AisleEditModal({
           >
             {draft.map((aisle, index) => {
               const linked = linkedAisleIds.has(aisle.id)
+              const hasFrontmatter = frontmatterAisleIds.has(aisle.id)
               const stagedDecouple = stagedDecoupleAisleIds.has(aisle.id)
+              const stagedFrontmatterRemoval = stagedRemoveFrontmatterAisleIds.has(aisle.id)
+              const stagedChange = stagedDecouple || stagedFrontmatterRemoval
+              const cautionLabel = stagedDecouple
+                ? stagedFrontmatterRemoval
+                  ? 'DE-COUPLED & FM REMOVED'
+                  : 'DE-COUPLED'
+                : stagedFrontmatterRemoval
+                  ? 'FM REMOVED'
+                  : null
               return (
                 <article
                   key={aisle.id}
@@ -232,6 +283,12 @@ export function AisleEditModal({
                     dropNeighborAisleId === aisle.id && dropTarget?.position === 'before'
                       ? 'is-drop-neighbor-after'
                       : ''
+                  } ${
+                    stagedDecouple ? 'is-staged-decouple' : ''
+                  } ${
+                    stagedFrontmatterRemoval ? 'is-staged-frontmatter-removal' : ''
+                  } ${
+                    stagedChange ? 'is-staged-aisle-change' : ''
                   }`}
                   draggable
                   onDragStart={(event) => {
@@ -251,42 +308,61 @@ export function AisleEditModal({
                   onDrop={(event) => handleDrop(event, aisle.id)}
                   aria-label={`Aisle preview ${index + 1}`}
                 >
-                  <AisleMarkdownPreview markdown={aisle.markdown} />
-                  <div className="aisle-edit-card-controls">
-                    <div className="aisle-edit-card-status">
-                      {stagedDecouple ? (
-                        <span className="aisle-edit-status-badge is-staged">will de-couple</span>
-                      ) : linked ? (
-                        <span className="aisle-edit-status-badge">linked</span>
-                      ) : null}
+                  {(linked || hasFrontmatter) && (
+                    <div className="aisle-edit-card-action-layer" aria-label={`Aisle ${index + 1} staged actions`}>
+                      {linked && (
+                        <div className="note-aisle-action-wrap">
+                          <button
+                            type="button"
+                            className={`note-aisle-action-btn note-aisle-link-btn aisle-edit-card-action-btn ${
+                              stagedDecouple ? 'is-staged-removal' : ''
+                            }`}
+                            aria-label={`${stagedDecouple ? 'Undo de-couple' : 'Stage de-couple'} for aisle ${index + 1}`}
+                            data-app-tooltip={stagedDecouple ? 'Undo de-couple' : 'Stage de-couple'}
+                            onPointerDown={(event) => {
+                              event.stopPropagation()
+                            }}
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              toggleStagedDecoupleAisle(aisle.id)
+                            }}
+                          >
+                            <ToolbarToolIcon toolId="link" className="note-aisle-link-icon" />
+                          </button>
+                        </div>
+                      )}
+                      {hasFrontmatter && (
+                        <div className="note-aisle-action-wrap">
+                          <button
+                            type="button"
+                            className={`note-aisle-action-btn note-aisle-frontmatter-btn aisle-edit-card-action-btn ${
+                              stagedFrontmatterRemoval ? 'is-staged-removal' : ''
+                            }`}
+                            aria-label={`${stagedFrontmatterRemoval ? 'Undo frontmatter removal' : 'Stage frontmatter removal'} for aisle ${
+                              index + 1
+                            }`}
+                            data-app-tooltip={stagedFrontmatterRemoval ? 'Undo frontmatter removal' : 'Stage frontmatter removal'}
+                            onPointerDown={(event) => {
+                              event.stopPropagation()
+                            }}
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              toggleStagedRemoveFrontmatterAisle(aisle.id)
+                            }}
+                          >
+                            <span className="frontmatter-toolbar-icon note-aisle-frontmatter-icon" aria-hidden="true">fm</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <div className="aisle-edit-card-actions">
-                      {stagedDecouple ? (
-                        <button
-                          type="button"
-                          className="aisle-edit-link-action"
-                          onClick={(event) => {
-                            event.preventDefault()
-                            event.stopPropagation()
-                            undoStagedDecoupleAisle(aisle.id)
-                          }}
-                        >
-                          undo
-                        </button>
-                      ) : linked ? (
-                        <button
-                          type="button"
-                          className="aisle-edit-link-action"
-                          onClick={(event) => {
-                            event.preventDefault()
-                            event.stopPropagation()
-                            stageDecoupleAisle(aisle.id)
-                          }}
-                        >
-                          de-couple
-                        </button>
-                      ) : null}
-                      {canDelete && (
+                  )}
+                  <AisleMarkdownPreview markdown={aisle.markdown} />
+                  {cautionLabel && <DecoupleCautionStripe label={cautionLabel} />}
+                  {canDelete && (
+                    <div className="aisle-edit-card-controls">
+                      <div className="aisle-edit-card-actions">
                         <button
                           type="button"
                           className="aisle-edit-delete-btn"
@@ -300,9 +376,9 @@ export function AisleEditModal({
                         >
                           <span className="aisle-edit-delete-icon" aria-hidden="true" />
                         </button>
-                      )}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </article>
               )
             })}
@@ -335,7 +411,12 @@ export function AisleEditModal({
             <button
               type="button"
               className="btn btn-sm modal-primary-btn"
-              onClick={() => onApply(draft, { decoupleAisleIds: Array.from(stagedDecoupleAisleIds) })}
+              onClick={() =>
+                onApply(draft, {
+                  decoupleAisleIds: Array.from(stagedDecoupleAisleIds),
+                  removeFrontmatterAisleIds: Array.from(stagedRemoveFrontmatterAisleIds),
+                })
+              }
             >
               apply
             </button>

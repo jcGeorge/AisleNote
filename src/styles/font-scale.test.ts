@@ -94,6 +94,55 @@ describe('menu font scaling styles', () => {
     expect(editorShellCss).not.toContain('.note-aisle-action-menu-item')
   })
 
+  it('uses a non-interactive caution stripe for de-coupled modal and aisle cards', () => {
+    const overlaysCss = readStyle('overlays.css')
+    const editorShellCss = readStyle('editor-shell.css')
+    const stripeRule = extractRule(overlaysCss, '.decouple-caution-stripe')
+    const stripeTextRule = extractRule(overlaysCss, '.decouple-caution-stripe-text')
+    const modalDecoupledRule = extractRule(overlaysCss, '.decouple-location-card.is-decoupled')
+    const modalDecoupledChipRule = extractRule(
+      overlaysCss,
+      '.decouple-location-card.is-decoupled .decouple-location-chip-stack',
+    )
+    const currentContextRule = extractRule(overlaysCss, '.decouple-location-card.is-current-context')
+    const aisleStagedRule = extractRule(editorShellCss, '.aisle-edit-card.is-staged-aisle-change')
+    const aislePreviewRule = extractRule(editorShellCss, '.aisle-edit-card.is-staged-aisle-change .aisle-edit-preview')
+    const aisleActionLayerRule = extractRule(editorShellCss, '.aisle-edit-card-action-layer')
+    const aisleStagedActionRule = extractRule(editorShellCss, '.aisle-edit-card-action-btn.is-staged-removal')
+    const aisleControlsRule = extractRule(editorShellCss, '.aisle-edit-card-controls')
+
+    expect(stripeRule).toContain('background: #facc15;')
+    expect(stripeRule).toContain('#facc15')
+    expect(stripeRule).toContain('#111827')
+    expect(stripeRule).toContain('pointer-events: none;')
+    expect(stripeRule).toContain('--decouple-stripe-angle: -44deg;')
+    expect(stripeRule).toContain('rotate(var(--decouple-stripe-angle))')
+    expect(stripeRule).not.toContain('repeating-linear-gradient')
+    expect(stripeTextRule).toContain('background: transparent;')
+    expect(stripeTextRule).toContain('font-size: calc(var(--ui-font-body) * 1.12);')
+    expect(stripeTextRule).toContain('letter-spacing: 0;')
+    expect(stripeTextRule).not.toContain('border:')
+    expect(modalDecoupledRule).not.toContain('opacity:')
+    expect(modalDecoupledRule).not.toContain('filter:')
+    expect(modalDecoupledChipRule).toContain('opacity: 0.58;')
+    expect(modalDecoupledChipRule).toContain('filter: grayscale(0.45);')
+    expect(currentContextRule).toContain('box-shadow:')
+    expect(overlaysCss).not.toContain('.decouple-location-current-badge')
+    expect(aisleStagedRule).toContain('border-color: var(--toast-warning);')
+    expect(extractRule(editorShellCss, '.aisle-edit-card.is-staged-aisle-change .decouple-caution-stripe')).toContain(
+      '--decouple-stripe-angle: -68deg;',
+    )
+    expect(aislePreviewRule).toContain('filter: grayscale(0.35);')
+    expect(aisleActionLayerRule).toContain('position: absolute;')
+    expect(aisleActionLayerRule).toContain('top: 0.92rem;')
+    expect(aisleActionLayerRule).toContain('right: 0.92rem;')
+    expect(aisleActionLayerRule).toContain('pointer-events: none;')
+    expect(aisleStagedActionRule).toContain('border-color: var(--parent-rail-border);')
+    expect(aisleStagedActionRule).toContain('background: var(--parent-rail-bg);')
+    expect(aisleStagedActionRule).toContain('color: var(--parent-rail-text);')
+    expect(aisleControlsRule).toContain('z-index: 3;')
+  })
+
   it('raises the hamburger dropdown stack above note aisle action buttons only while open', () => {
     const css = readStyle('topbar.css')
     const baseRule = extractRule(css, '.tabbar-controls')

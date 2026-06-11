@@ -7325,6 +7325,7 @@ export function useAppController(): AppController {
         open={aisleEditModalOpen && viewMode === 'main'}
         aisles={activeNoteAisles}
         linkedAisleIds={activeLinkedAisleIds}
+        frontmatterAisleIds={activeFrontmatterAisleIds}
         maxAisles={scratchpadWorkspaceActive ? getScratchpadAisleLimit() : MAX_NOTE_AISLES}
         maxAislesWarningMessage={
           scratchpadWorkspaceActive

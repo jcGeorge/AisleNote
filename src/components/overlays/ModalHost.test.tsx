@@ -787,10 +787,13 @@ describe('link modal rendering', () => {
 })
 
 describe('de-couple modal rendering', () => {
+  const homeLocation = { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-1', subTabId: null }
+
   it('keeps apply clickable with no retained notes so confirm can show a toast', () => {
     const html = renderModal({
       type: 'deduplicate-note',
       noteBodyId: 'body-1',
+      location: homeLocation,
       keepLocationKeys: [],
       keepData: true,
     })
@@ -798,13 +801,16 @@ describe('de-couple modal rendering', () => {
     expect(html).toMatch(/<button type="button" class="btn btn-sm modal-primary-btn">apply<\/button>/)
     expect(html).toContain('decouple-location-card is-decoupled')
     expect(html).toContain('aria-pressed="true"')
-    expect(html).toContain('<span class="decouple-location-status">de-coupled</span>')
+    expect(html).toContain('decouple-caution-stripe')
+    expect(html).toContain('DE-COUPLED')
+    expect(html).not.toContain('decouple-location-status')
   })
 
   it('renders a horizontal card strip instead of checkbox rows', () => {
     const html = renderModal({
       type: 'deduplicate-note',
       noteBodyId: 'body-1',
+      location: homeLocation,
       keepLocationKeys: ['domain-1::space-1::tab-1::__home__'],
       keepData: true,
     })
@@ -820,6 +826,10 @@ describe('de-couple modal rendering', () => {
     expect(html).toContain('Space')
     expect(html).toContain('Tab')
     expect(html).toContain('home')
+    expect(html).toContain('decouple-location-card is-current-context')
+    expect(html).toContain('aria-label="Domain / Space / Tab / home. Will stay coupled. Current context."')
+    expect(html).not.toContain('decouple-location-current-badge')
+    expect(html).not.toContain('>current context</span>')
     expect(html).not.toContain('decouple-location-status')
     expect(html).not.toContain('duplicate-note-list')
     expect(html).not.toContain('duplicate-note-choice')
@@ -830,6 +840,7 @@ describe('de-couple modal rendering', () => {
     const html = renderModal({
       type: 'deduplicate-note',
       noteBodyId: 'body-1',
+      location: homeLocation,
       keepLocationKeys: ['domain-1::space-1::tab-1::__home__'],
       keepData: true,
     })
@@ -846,18 +857,42 @@ describe('de-couple modal rendering', () => {
       {
         type: 'deduplicate-note',
         noteBodyId: 'body-1',
+        location: homeLocation,
         keepLocationKeys: ['domain-1::space-1::tab-1::__home__'],
         keepData: true,
       },
       createDuplicateLocationState(),
     )
 
-    expect(html).toContain('aria-label="Domain / Space / Tab / home. Will stay coupled."')
+    expect(html).toContain('aria-label="Domain / Space / Tab / home. Will stay coupled. Current context."')
     expect(html).toContain('aria-label="Domain / Space / Second / home. Will be de-coupled."')
     expect(html).toContain('decouple-location-card is-decoupled')
     expect(html).toContain('aria-pressed="true"')
-    expect(html).toContain('<span class="decouple-location-status">de-coupled</span>')
-    expect(html.match(/class="decouple-location-status"/g) ?? []).toHaveLength(1)
+    expect(html).toContain('DE-COUPLED')
+    expect(html.match(/class="decouple-caution-stripe"/g) ?? []).toHaveLength(1)
+    expect(html).not.toContain('decouple-location-status')
+  })
+
+  it('marks only the launch context location card', () => {
+    const html = renderModal(
+      {
+        type: 'deduplicate-note',
+        noteBodyId: 'body-1',
+        location: { domainId: 'domain-1', spaceId: 'space-1', tabId: 'tab-2', subTabId: null },
+        keepLocationKeys: [
+          'domain-1::space-1::tab-1::__home__',
+          'domain-1::space-1::tab-2::__home__',
+        ],
+        keepData: true,
+      },
+      createDuplicateLocationState(),
+    )
+
+    expect(html).toContain('aria-label="Domain / Space / Tab / home. Will stay coupled."')
+    expect(html).toContain('aria-label="Domain / Space / Second / home. Will stay coupled. Current context."')
+    expect(html.match(/is-current-context/g) ?? []).toHaveLength(1)
+    expect(html).not.toContain('decouple-location-current-badge')
+    expect(html).not.toContain('>current context</span>')
   })
 
   it('sorts de-couple cards by domain, space, parent, then subtab', () => {
@@ -865,6 +900,7 @@ describe('de-couple modal rendering', () => {
       {
         type: 'deduplicate-note',
         noteBodyId: 'body-1',
+        location: homeLocation,
         keepLocationKeys: [
           'domain-alpha::space-alpha::parent-alpha::sub-alpha',
           'domain-alpha::space-alpha::parent-alpha::sub-zulu',
@@ -895,6 +931,7 @@ describe('de-couple modal rendering', () => {
       {
         type: 'deduplicate-note',
         noteBodyId: 'body-1',
+        location: homeLocation,
         keepLocationKeys: [
           'domain-1::space-1::tab-1::__home__',
           'domain-1::space-1::tab-2::__home__',
@@ -907,6 +944,7 @@ describe('de-couple modal rendering', () => {
       {
         type: 'deduplicate-note',
         noteBodyId: 'body-1',
+        location: { domainId: 'domain-1', spaceId: 'space-many', tabId: 'tab-1', subTabId: null },
         keepLocationKeys: [
           'domain-1::space-many::tab-1::__home__',
           'domain-1::space-many::tab-2::__home__',
@@ -960,6 +998,12 @@ describe('linked aisle modal rendering', () => {
     expect(html).toContain('aria-label="Synced aisle locations"')
     expect(html).toContain('aisle 1')
     expect(html).toContain('aisle 2')
+    expect(html).toContain('decouple-aisle-chip rail-control context-preview-title-btn compact-scope-btn compact-domain-btn is-domain')
+    expect(html).not.toContain('decouple-aisle-chip rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab')
+    expect(html).toContain('aria-label="Domain &gt; Space &gt; Tab &gt; home / aisle 1. Will stay coupled. Current context."')
+    expect(html.match(/is-current-context/g) ?? []).toHaveLength(1)
+    expect(html).not.toContain('decouple-location-current-badge')
+    expect(html).not.toContain('>current context</span>')
     expect(html).toContain('synced filter')
     expect(html).toMatch(/modal-header-row[\s\S]*linked aisle[\s\S]*synced filter/)
     expect(html).not.toContain('linked-aisle-filter-actions')
@@ -993,8 +1037,11 @@ describe('linked aisle modal rendering', () => {
     expect(html).toContain('Select items to de-couple.')
     expect(html).toContain('decouple-location-list')
     expect(html).toContain('style="--decouple-modal-content-width:30rem"')
-    expect(html).toContain('aria-label="Domain / Space / Tab / home. Will stay coupled."')
+    expect(html).toContain('aria-label="Domain / Space / Tab / home. Will stay coupled. Current context."')
     expect(html).toContain('aria-label="Domain / Space / Second / home. Will stay coupled."')
+    expect(html.match(/is-current-context/g) ?? []).toHaveLength(1)
+    expect(html).not.toContain('decouple-location-current-badge')
+    expect(html).not.toContain('>current context</span>')
     expect(html).toContain('synced filter')
     expect(html).toMatch(/modal-header-row[\s\S]*linked note[\s\S]*synced filter/)
     expect(html).not.toContain('linked-aisle-filter-actions')
