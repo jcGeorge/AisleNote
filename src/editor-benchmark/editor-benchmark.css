@@ -1,0 +1,154 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f6f7f9;
+  color: #1d2430;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button {
+  border: 1px solid #b6c0cc;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1d2430;
+  cursor: pointer;
+  font: inherit;
+  padding: 8px 10px;
+}
+
+button:hover {
+  border-color: #667085;
+}
+
+.editor-benchmark-shell {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.editor-benchmark-header {
+  align-items: start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.editor-benchmark-header h1 {
+  font-size: 24px;
+  margin: 0 0 4px;
+}
+
+.editor-benchmark-header p {
+  color: #526071;
+  margin: 0;
+}
+
+.editor-benchmark-status {
+  background: #e8edf3;
+  border-radius: 6px;
+  color: #344054;
+  max-width: 420px;
+  padding: 8px 10px;
+}
+
+.editor-benchmark-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.editor-benchmark-fixture {
+  display: grid;
+  gap: 8px;
+}
+
+.editor-benchmark-fixture h2 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.editor-benchmark-fixture pre {
+  background: #111827;
+  border-radius: 6px;
+  color: #f9fafb;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.editor-benchmark-workspace {
+  display: grid;
+  gap: 12px;
+}
+
+.editor-benchmark-instance {
+  background: #ffffff;
+  border: 1px solid #ccd3dc;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.editor-benchmark-instance-label {
+  color: #526071;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.editor-benchmark-editor-host {
+  min-height: 360px;
+}
+
+.editor-benchmark-codemirror .cm-editor,
+.editor-benchmark-lexical-content,
+.editor-benchmark-tiptap-content {
+  border: 1px solid #ccd3dc;
+  border-radius: 6px;
+  min-height: 360px;
+}
+
+.editor-benchmark-codemirror .cm-scroller,
+.editor-benchmark-lexical-content,
+.editor-benchmark-tiptap-content {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.editor-benchmark-lexical-content,
+.editor-benchmark-tiptap-content {
+  outline: none;
+  overflow: auto;
+  padding: 12px;
+}
+
+.editor-benchmark-mdxeditor .mdxeditor,
+.editor-benchmark-toastui .toastui-editor-defaultUI {
+  min-height: 360px;
+}
+
+.editor-benchmark-tiptap table,
+.editor-benchmark-lexical table,
+.editor-benchmark-mdxeditor table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.editor-benchmark-tiptap td,
+.editor-benchmark-tiptap th,
+.editor-benchmark-lexical td,
+.editor-benchmark-lexical th,
+.editor-benchmark-mdxeditor td,
+.editor-benchmark-mdxeditor th {
+  border: 1px solid #ccd3dc;
+  padding: 4px 6px;
+}

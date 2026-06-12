@@ -1,0 +1,297 @@
+{
+  "generatedAt": "2026-06-12T05:33:32.106Z",
+  "url": "http://127.0.0.1:5187/editor-benchmark.html",
+  "fixture": "small Markdown table with external lucide.dev links",
+  "candidates": [
+    {
+      "candidate": {
+        "id": "toast-ui",
+        "name": "Toast UI Editor baseline",
+        "kind": "wysiwyg-markdown",
+        "featureGaps": [
+          "Baseline uses Toast UI WYSIWYG and app display prep/blank restore, without app media/note-preview plugins."
+        ],
+        "migrationRisk": "Low if retained, but current app diagnostics already show constructor/change/blank-restore costs."
+      },
+      "ok": true,
+      "error": null,
+      "mountMs": 28.576542000000018,
+      "firstFocusOutsideMs": 2.326625000000149,
+      "firstFocusInsideMs": 0.9077080000001843,
+      "typeOutside": {
+        "count": 50,
+        "p50": 14.5,
+        "p95": 18.5,
+        "max": 20.3,
+        "total": 709.7
+      },
+      "typeInside": {
+        "count": 50,
+        "p50": 15,
+        "p95": 19,
+        "max": 26,
+        "total": 732.4
+      },
+      "serializeMs": 2.972834000000148,
+      "destroyMs": 2.2548750000000837,
+      "remountMs": 10.77441699999963,
+      "fourEditorSwitch": {
+        "count": 7,
+        "p50": 1.8,
+        "p95": 2.9,
+        "max": 2.9,
+        "total": 12.4
+      },
+      "longTasks": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": 0
+      },
+      "heap": {},
+      "renderedShape": {
+        "tableCount": 2,
+        "linkCount": 50
+      },
+      "roundTrip": {
+        "status": "pass",
+        "notes": [
+          "Fixture heading, table shape, and sampled external links survived."
+        ]
+      },
+      "markdownChars": 1379
+    },
+    {
+      "candidate": {
+        "id": "codemirror-6",
+        "name": "CodeMirror 6 Markdown",
+        "kind": "source-markdown",
+        "featureGaps": [
+          "Source Markdown editor, not WYSIWYG.",
+          "Would need a separate preview or rich editing layer to match current notes UX."
+        ],
+        "migrationRisk": "Medium: fastest likely core, but it changes the editing model away from WYSIWYG."
+      },
+      "ok": true,
+      "error": null,
+      "mountMs": 12.003624999999829,
+      "firstFocusOutsideMs": 16.328207999999904,
+      "firstFocusInsideMs": 1.0844999999999345,
+      "typeOutside": {
+        "count": 50,
+        "p50": 14.5,
+        "p95": 26.4,
+        "max": 33.2,
+        "total": 745
+      },
+      "typeInside": {
+        "count": 50,
+        "p50": 14.2,
+        "p95": 27.5,
+        "max": 29.5,
+        "total": 721.1
+      },
+      "serializeMs": 0.9483339999997042,
+      "destroyMs": 2.95049999999992,
+      "remountMs": 4.067500000000109,
+      "fourEditorSwitch": {
+        "count": 7,
+        "p50": 4,
+        "p95": 6.7,
+        "max": 6.7,
+        "total": 26.2
+      },
+      "longTasks": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": 0
+      },
+      "heap": {},
+      "renderedShape": {
+        "tableCount": 0,
+        "linkCount": 0
+      },
+      "roundTrip": {
+        "status": "pass",
+        "notes": [
+          "Fixture heading, table shape, and sampled external links survived."
+        ]
+      },
+      "markdownChars": 1477
+    },
+    {
+      "candidate": {
+        "id": "mdxeditor",
+        "name": "MDXEditor minimal WYSIWYG",
+        "kind": "wysiwyg-markdown",
+        "featureGaps": [
+          "Toolbar, app-specific commands, and custom note/media behavior are not included in this spike.",
+          "MDX support is unused here; this is testing its Markdown WYSIWYG core."
+        ],
+        "migrationRisk": "Medium: React/Lexical foundation with Markdown input/output, but toolbar and custom behaviors need replacement."
+      },
+      "ok": true,
+      "error": null,
+      "mountMs": 82.08320800000001,
+      "firstFocusOutsideMs": 1.8738750000002256,
+      "firstFocusInsideMs": 19.822041999999783,
+      "typeOutside": {
+        "count": 50,
+        "p50": 14.1,
+        "p95": 27,
+        "max": 29.6,
+        "total": 694.3
+      },
+      "typeInside": {
+        "count": 50,
+        "p50": 14.6,
+        "p95": 27.1,
+        "max": 27.7,
+        "total": 723.9
+      },
+      "serializeMs": 1.650416999999834,
+      "destroyMs": 6.950667000000067,
+      "remountMs": 48.141583999999966,
+      "fourEditorSwitch": {
+        "count": 7,
+        "p50": 18.9,
+        "p95": 67.1,
+        "max": 67.1,
+        "total": 203.5
+      },
+      "longTasks": {
+        "count": 2,
+        "totalMs": 135,
+        "maxMs": 70
+      },
+      "heap": {},
+      "renderedShape": {
+        "tableCount": 1,
+        "linkCount": 25
+      },
+      "roundTrip": {
+        "status": "pass",
+        "notes": [
+          "Fixture heading, table shape, and sampled external links survived."
+        ]
+      },
+      "markdownChars": 2038
+    },
+    {
+      "candidate": {
+        "id": "lexical-direct",
+        "name": "Lexical direct minimal rich editor",
+        "kind": "wysiwyg-markdown",
+        "featureGaps": [
+          "Direct Lexical needs custom Markdown table transformers for a production-quality Markdown table round trip.",
+          "Toolbar, commands, paste handling, and app-specific note/media behavior would be custom migration work."
+        ],
+        "migrationRisk": "High: strong editor foundation, but direct migration requires owning Markdown table behavior and more editor plumbing."
+      },
+      "ok": true,
+      "error": null,
+      "mountMs": 10.585540999999466,
+      "firstFocusOutsideMs": 1.0522499999997308,
+      "firstFocusInsideMs": 0.5451249999996435,
+      "typeOutside": {
+        "count": 50,
+        "p50": 14.1,
+        "p95": 27,
+        "max": 29.6,
+        "total": 699.6
+      },
+      "typeInside": {
+        "count": 50,
+        "p50": 14.6,
+        "p95": 27.4,
+        "max": 28.5,
+        "total": 722.4
+      },
+      "serializeMs": 1.2862919999988662,
+      "destroyMs": 0.8544160000001284,
+      "remountMs": 15.296417000001384,
+      "fourEditorSwitch": {
+        "count": 7,
+        "p50": 0.4,
+        "p95": 0.8,
+        "max": 0.8,
+        "total": 3.2
+      },
+      "longTasks": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": 0
+      },
+      "heap": {},
+      "renderedShape": {
+        "tableCount": 0,
+        "linkCount": 25
+      },
+      "roundTrip": {
+        "status": "fail",
+        "notes": [
+          "Rendered editor did not expose a table element, so the table was not actually WYSIWYG in this harness."
+        ]
+      },
+      "markdownChars": 1477
+    },
+    {
+      "candidate": {
+        "id": "tiptap",
+        "name": "Tiptap minimal Markdown",
+        "kind": "wysiwyg-markdown",
+        "featureGaps": [
+          "Markdown support is tested through Tiptap markdown extension rather than the app storage pipeline.",
+          "Tiptap keeps the app on a ProseMirror-derived editor stack."
+        ],
+        "migrationRisk": "Medium-high: familiar ProseMirror concepts, but Markdown layer and custom toolbar behavior need validation."
+      },
+      "ok": true,
+      "error": null,
+      "mountMs": 17.16887499999939,
+      "firstFocusOutsideMs": 1.9062919999996666,
+      "firstFocusInsideMs": 0.6056250000001455,
+      "typeOutside": {
+        "count": 50,
+        "p50": 14.6,
+        "p95": 28.4,
+        "max": 30.7,
+        "total": 717.3
+      },
+      "typeInside": {
+        "count": 50,
+        "p50": 14.1,
+        "p95": 27,
+        "max": 27.5,
+        "total": 699.2
+      },
+      "serializeMs": 1.8469999999997526,
+      "destroyMs": 0.7559579999997368,
+      "remountMs": 5.612957999999708,
+      "fourEditorSwitch": {
+        "count": 7,
+        "p50": 0.6,
+        "p95": 1,
+        "max": 1,
+        "total": 4.1
+      },
+      "longTasks": {
+        "count": 0,
+        "totalMs": 0,
+        "maxMs": 0
+      },
+      "heap": {},
+      "renderedShape": {
+        "tableCount": 1,
+        "linkCount": 25
+      },
+      "roundTrip": {
+        "status": "pass",
+        "notes": [
+          "Fixture heading, table shape, and sampled external links survived."
+        ]
+      },
+      "markdownChars": 2666
+    }
+  ],
+  "recommendation": "Keep Toast UI only if the production-only plugins/blank-restore path are proven to be the actual issue; the isolated baseline met the spike thresholds."
+}
