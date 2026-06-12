@@ -58,7 +58,17 @@ export type EditorContentSnapshot = EditorContentTarget & {
 }
 
 export type MountedEditorSnapshotProvider = () => EditorContentSnapshot[]
-export type PendingContentMap = Map<string, PendingContent>
+export type PendingContentDraft = PendingContent & {
+  resolveMarkdown?: () => string
+  onMaterialized?: (markdown: string) => void
+}
+export type PendingContentMap = Map<string, PendingContentDraft>
+export type LazyContentCommitOptions = {
+  aisleBodyId?: string | null
+  noteBodyId?: string | null
+  fallbackAlreadyNormalized?: boolean
+  onMaterialized?: (markdown: string) => void
+}
 export type EditorFocusBoundaryEvent = 'blur' | 'visibilitychange' | 'beforeunload' | 'pagehide'
 export type EditorFocusBoundaryFlushAction = 'schedule' | 'force' | 'ignore'
 
@@ -116,6 +126,32 @@ export function pendingContentMatchesTarget(pending: PendingContent, target: Edi
       pending.aisleId === target.aisleId
     )
   )
+}
+
+export function materializePendingContentDraft(
+  pending: PendingContentDraft,
+  normalizeMarkdown: (markdown: string) => string = normalizeMarkdownForPersistence,
+): PendingContent {
+  const { resolveMarkdown, onMaterialized, ...snapshot } = pending
+  if (typeof resolveMarkdown !== 'function') return snapshot
+  try {
+    const markdown = normalizeMarkdown(resolveMarkdown())
+    onMaterialized?.(markdown)
+    return {
+      ...snapshot,
+      markdown,
+    }
+  } catch {
+    return snapshot
+  }
+}
+
+export function normalizeLazyContentFallbackMarkdown(
+  markdown: string,
+  options: Pick<LazyContentCommitOptions, 'fallbackAlreadyNormalized'> = {},
+  normalizeMarkdown: (value: string) => string = normalizeMarkdownForPersistence,
+): string {
+  return options.fallbackAlreadyNormalized === true ? markdown : normalizeMarkdown(markdown)
 }
 
 function getLocationNoteBodyId(sourceState: AppState, target: EditorContentTarget): string | null {
@@ -239,7 +275,15 @@ export const useEditorPersistence = ({
     aisleBodyId: getAisleBodyIdForAisleId(activeAisleIdRef.current),
   })
 
-  const getPendingContentSnapshots = () => Array.from(pendingContentRef.current.values())
+  const getPendingContentSnapshots = () => measureSlowOperation('editor pending content materialization', () =>
+    Array.from(pendingContentRef.current.values()).map((pending) => {
+      const snapshot = materializePendingContentDraft(pending)
+      if (snapshot.aisleId === activeAisleIdRef.current) {
+        lastEditorMarkdownRef.current = snapshot.markdown
+      }
+      lastEditorMarkdownByAisleRef.current.set(snapshot.aisleBodyId, snapshot.markdown)
+      return snapshot
+    }))
 
   const getFallbackActiveEditorSnapshot = (): EditorContentSnapshot[] => {
     if (!isMainViewRef.current || !editorRef.current || !activeNoteBody?.id) return []
@@ -441,6 +485,59 @@ export const useEditorPersistence = ({
     }, 180)
   }
 
+  const scheduleLazyContentCommit = (
+    editor: Editor,
+    fallbackMarkdown: string,
+    spaceId: string,
+    tabId: string,
+    subTabId: string | null,
+    aisleId: string,
+    options: LazyContentCommitOptions = {},
+  ) => {
+    const fallbackNormalizedMarkdown = normalizeLazyContentFallbackMarkdown(fallbackMarkdown, options)
+    const explicitAisleBodyId = typeof options.aisleBodyId === 'string' && options.aisleBodyId.trim()
+      ? options.aisleBodyId.trim()
+      : null
+    const aisleBodyId = explicitAisleBodyId ?? getAisleBodyIdForAisleId(aisleId)
+    const noteBodyId = typeof options.noteBodyId === 'string' && options.noteBodyId.trim()
+      ? options.noteBodyId.trim()
+      : activeNoteBody?.id ?? ''
+    if (!noteBodyId || !aisleBodyId) return
+
+    pendingContentRef.current.set(aisleBodyId, {
+      noteBodyId,
+      spaceId,
+      tabId,
+      subTabId,
+      aisleId,
+      aisleBodyId,
+      markdown: fallbackNormalizedMarkdown,
+      resolveMarkdown: () => getNormalizedEditorMarkdown(editor),
+      onMaterialized: options.onMaterialized,
+    })
+
+    if (import.meta.env?.DEV) {
+      withAisleEditorPerfState((state) => {
+        const now = getAisleEditorPerfNow()
+        state.lastPendingUpdateAt = now
+        state.pendingMapSize = pendingContentRef.current.size
+        state.pendingAisleBodyIds = Array.from(pendingContentRef.current.keys())
+        state.contentCommitTimerArmed = true
+      })
+    }
+
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current)
+    }
+
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null
+      const snapshots = getPendingContentSnapshots()
+      pendingContentRef.current.clear()
+      applyContentSnapshots(snapshots)
+    }, 180)
+  }
+
   const commitCurrentEditorContent = () => {
     if (!isMainViewRef.current) return
     const currentEditor = editorRef.current
@@ -586,6 +683,7 @@ export const useEditorPersistence = ({
     buildStateWithLatestEditorContent,
     flushPendingContent,
     scheduleContentCommit,
+    scheduleLazyContentCommit,
     commitCurrentEditorContent,
     commitActiveEditorMarkdownNow,
     replaceActiveEditorMarkdown,

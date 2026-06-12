@@ -682,6 +682,46 @@ describe('table editing controls', () => {
     expect(viewAfter.state.selection.from).toBe(table.nodeSize + 1)
   })
 
+  it('moves from the end of a paragraph directly into the first cell of the next table', () => {
+    const before = paragraph('before')
+    const table = buildTableBlock()
+    const doc = buildDocWithBlocks([before, table])
+    const view: any = {
+      state: EditorState.create({
+        doc,
+        selection: TextSelection.create(doc, before.nodeSize - 1),
+      }),
+      dispatch(transaction: any) {
+        view.state = view.state.apply(transaction)
+      },
+      focus: () => undefined,
+    }
+
+    expect(moveSelectedTableBoundaryCaret(view, 'after')).toBe(true)
+    expect(getChildTypes(view.state.doc)).toEqual(['paragraph', 'table'])
+    expect(view.state.selection.from).toBe(before.nodeSize + getCellTextPosition(buildDoc(), 0, 0))
+  })
+
+  it('moves from the start of a paragraph directly into the last cell of the previous table', () => {
+    const table = buildTableBlock()
+    const after = paragraph('after')
+    const doc = buildDocWithBlocks([table, after])
+    const view: any = {
+      state: EditorState.create({
+        doc,
+        selection: TextSelection.create(doc, table.nodeSize + 1),
+      }),
+      dispatch(transaction: any) {
+        view.state = view.state.apply(transaction)
+      },
+      focus: () => undefined,
+    }
+
+    expect(moveSelectedTableBoundaryCaret(view, 'before')).toBe(true)
+    expect(getChildTypes(view.state.doc)).toEqual(['table', 'paragraph'])
+    expect(view.state.selection.from).toBe(getCellTextPosition(buildDoc(), 2, 1))
+  })
+
   it('inserts a paragraph between a selected table and adjacent non-text blocks', () => {
     const table = buildTableBlock()
     const rule = schema.nodes.thematicBreak.create()

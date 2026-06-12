@@ -2,6 +2,8 @@ export type AppStateSaveOptions = {
   preferSync?: boolean
   trigger?: string
   pendingEditorCount?: number
+  rendererSerializeDurationMs?: number
+  rendererSerializedBytes?: number
 }
 
 export type AppStateCommitOptions = AppStateSaveOptions & {

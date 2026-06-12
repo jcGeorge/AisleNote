@@ -8,6 +8,8 @@ import {
   getEditorFocusBoundarySaveOptions,
   getSnapshotEditorMarkdown,
   isEditorContentTargetCurrent,
+  materializePendingContentDraft,
+  normalizeLazyContentFallbackMarkdown,
   pendingContentMatchesTarget,
   resolveEditorFocusBoundaryFlushAction,
   shouldCollectMountedEditorSnapshotsForFocusBoundary,
@@ -61,6 +63,82 @@ describe('editor persistence snapshot helpers', () => {
     })
 
     expect(getSnapshotEditorMarkdown(editor, 'cached', getNormalizedEditorMarkdown)).toBe('cached')
+  })
+
+  it('materializes lazy pending content only when a snapshot is requested', () => {
+    const resolveMarkdown = vi.fn(() => 'fresh   draft')
+    const onMaterialized = vi.fn()
+    const pending = {
+      noteBodyId: 'body-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: null,
+      aisleId: 'aisle-a',
+      aisleBodyId: 'body-a-aisle',
+      markdown: 'cached draft',
+      resolveMarkdown,
+      onMaterialized,
+    }
+
+    expect(resolveMarkdown).not.toHaveBeenCalled()
+    expect(materializePendingContentDraft(pending, (markdown) => markdown.replace(/\s+/g, ' ').trim())).toEqual({
+      noteBodyId: 'body-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: null,
+      aisleId: 'aisle-a',
+      aisleBodyId: 'body-a-aisle',
+      markdown: 'fresh draft',
+    })
+    expect(resolveMarkdown).toHaveBeenCalledTimes(1)
+    expect(onMaterialized).toHaveBeenCalledWith('fresh draft')
+  })
+
+  it('keeps cached pending markdown if lazy materialization fails', () => {
+    const pending = {
+      noteBodyId: 'body-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: null,
+      aisleId: 'aisle-a',
+      aisleBodyId: 'body-a-aisle',
+      markdown: 'cached draft',
+      resolveMarkdown: vi.fn(() => {
+        throw new Error('editor unavailable')
+      }),
+    }
+
+    expect(materializePendingContentDraft(pending)).toEqual({
+      noteBodyId: 'body-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: null,
+      aisleId: 'aisle-a',
+      aisleBodyId: 'body-a-aisle',
+      markdown: 'cached draft',
+    })
+  })
+
+  it('skips lazy fallback normalization when the fallback is already canonical', () => {
+    const normalizeMarkdown = vi.fn((markdown: string) => `normalized:${markdown}`)
+
+    expect(normalizeLazyContentFallbackMarkdown(
+      '| [copy](https://lucide.dev/icons/files) |',
+      { fallbackAlreadyNormalized: true },
+      normalizeMarkdown,
+    )).toBe('| [copy](https://lucide.dev/icons/files) |')
+    expect(normalizeMarkdown).not.toHaveBeenCalled()
+  })
+
+  it('normalizes lazy fallbacks by default for non-canonical callers', () => {
+    const normalizeMarkdown = vi.fn((markdown: string) => `normalized:${markdown}`)
+
+    expect(normalizeLazyContentFallbackMarkdown(
+      '| [copy](https://lucide.dev/icons/files) |',
+      {},
+      normalizeMarkdown,
+    )).toBe('normalized:| [copy](https://lucide.dev/icons/files) |')
+    expect(normalizeMarkdown).toHaveBeenCalledTimes(1)
   })
 
   it('identifies stale pending content that should not overwrite a fresh active snapshot', () => {

@@ -30,8 +30,7 @@ import { importImageBlobAsAssetUrl } from '../markdown/image-asset-registry'
 import { withDefaultInsertedImageDisplayWidth } from './image-insertion'
 import { measureSlowOperation } from '../performance/performance-logging'
 import type { ToastTone, ViewMode } from '../types/app'
-import { prepareMarkdownForEditorDisplay, restoreEditorBlankParagraphs, setEditorMarkdownForDisplay } from './editor-markdown-display'
-import { markWysiwygLoadedUndoBoundary } from './prosemirror-utils'
+import { prepareMarkdownForEditorDisplay, restoreEditorDisplay, setEditorMarkdownForDisplay } from './editor-markdown-display'
 
 type UseLegacyEditorOptions = {
   viewMode: ViewMode
@@ -190,8 +189,7 @@ export function useLegacyEditor({
         }),
       },
     })
-    restoreEditorBlankParagraphs(editorRef.current, displayContent)
-    markWysiwygLoadedUndoBoundary(editorRef.current)
+    restoreEditorDisplay(editorRef.current, displayContent)
     installClearToolbarButton(editorMountRef.current, clearActiveNoteContent)
     const cleanupEditorSpellcheck = installEditorSpellcheck(editorMountRef.current)
     const cleanupToolbarAppTooltips = installToolbarAppTooltips(editorMountRef.current)

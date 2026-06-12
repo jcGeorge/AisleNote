@@ -105,6 +105,28 @@ describe('note preview plugin', () => {
     expect(createReadonlyNotePreviewWidgetElement).not.toHaveBeenCalled()
   })
 
+  it('reuses note preview decorations for unchanged document identity', () => {
+    const context = createPluginContext()
+    const payload = {
+      id: 'preview-id',
+      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+    }
+    const pluginFactory = createNotePreviewPlugin(context, {
+      sourceNoteBodyId: 'source-body',
+      getNotePreviewData: vi.fn(),
+      resolvePreviewToken: vi.fn(() => payload),
+      navigateToNoteLocation: vi.fn(),
+      deleteNotePreview: vi.fn(),
+    }).wysiwygPlugins[0]()
+    const doc = createTextDoc('Before ![Linked](Linked--123abc) after')
+
+    const firstDecorations = pluginFactory.props.decorations({ doc })
+    const secondDecorations = pluginFactory.props.decorations({ doc })
+
+    expect(secondDecorations).toBe(firstDecorations)
+    expect(context.pmView.DecorationSet.create).toHaveBeenCalledTimes(1)
+  })
+
   it('renders internal note image nodes as preview widgets and hides the image node', () => {
     const context = createPluginContext()
     const payload = {
@@ -231,10 +253,11 @@ describe('note preview plugin', () => {
 
   it('does not replace normal markdown note hyperlinks with widgets', () => {
     const context = createPluginContext()
+    const resolvePreviewToken = vi.fn(() => null)
     const pluginFactory = createNotePreviewPlugin(context, {
       sourceNoteBodyId: 'source-body',
       getNotePreviewData: vi.fn(),
-      resolvePreviewToken: vi.fn(() => null),
+      resolvePreviewToken,
       navigateToNoteLocation: vi.fn(),
       deleteNotePreview: vi.fn(),
     }).wysiwygPlugins[0]()
@@ -242,6 +265,7 @@ describe('note preview plugin', () => {
     const decorations = pluginFactory.props.decorations({ doc: createTextDoc('Before [Linked](Linked--123abc) after') })
 
     expect(decorations).toEqual([])
+    expect(resolvePreviewToken).not.toHaveBeenCalled()
   })
 
   it('leaves unresolved markdown preview references undecorated', () => {

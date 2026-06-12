@@ -106,6 +106,7 @@ function createStorageSaveMetrics() {
       manifestAssembly: 0,
       assetResolve: 0,
       fingerprint: 0,
+      expectedFileRebuild: 0,
       textWrites: 0,
       binaryWrites: 0,
       prune: 0,
@@ -115,8 +116,12 @@ function createStorageSaveMetrics() {
       generatedFiles: 0,
       generatedBytes: 0,
       textFiles: 0,
+      jsonFiles: 0,
+      mdFiles: 0,
       binaryFiles: 0,
       existingAssetFiles: 0,
+      expectedFiles: 0,
+      hashesComputed: 0,
       assetsReferenced: 0,
       assetsReadFromDisk: 0,
       assetsReused: 0,
@@ -808,7 +813,7 @@ export function createStorageFilesFingerprint(entries) {
   return createStorageFilesSnapshot(entries).fingerprint
 }
 
-export function createStorageFilesSnapshot(entries) {
+export function createStorageFilesSnapshot(entries, metrics = null) {
   const hash = createHash('sha256')
   hash.update('tabs-storage-files-v1\n')
   const files = Array.from(entries ?? [])
@@ -826,6 +831,7 @@ export function createStorageFilesSnapshot(entries) {
         }
       }
       const contents = getStorageFingerprintBuffer(entry)
+      if (metrics?.counts) metrics.counts.hashesComputed += 1
       return {
         path: normalizeStorageFingerprintPath(relativeFile),
         contentHash: createHash('sha256').update(contents).digest('hex'),
@@ -1054,9 +1060,13 @@ function getStorageFileEntryByteLength(entry) {
 function addStorageFileMapMetrics(metrics, fileMap, assetBank) {
   if (!metrics?.counts) return
   metrics.counts.generatedFiles = fileMap.size
-  for (const entry of fileMap.values()) {
+  for (const [relativeFile, entry] of fileMap.entries()) {
     metrics.counts.generatedBytes += getStorageFileEntryByteLength(entry)
-    if (isRecord(entry) && entry.kind === 'text') metrics.counts.textFiles += 1
+    if (isRecord(entry) && entry.kind === 'text') {
+      metrics.counts.textFiles += 1
+      if (String(relativeFile).endsWith('.json')) metrics.counts.jsonFiles += 1
+      if (String(relativeFile).endsWith('.md')) metrics.counts.mdFiles += 1
+    }
     else if (isRecord(entry) && entry.kind === 'binary') metrics.counts.binaryFiles += 1
     else if (isRecord(entry) && entry.kind === 'existing-file') metrics.counts.existingAssetFiles += 1
   }
@@ -1829,7 +1839,7 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
     fingerprintEntries.set(USER_SETTINGS_FILE_PATH, { kind: 'text', contents: appSettingsContents })
   }
   const storageSnapshot = measureSlowMainOperation('hybrid storage fingerprint', () =>
-    measureStorageSavePhase(metrics, 'fingerprint', () => createStorageFilesSnapshot(fingerprintEntries)),
+    measureStorageSavePhase(metrics, 'fingerprint', () => createStorageFilesSnapshot(fingerprintEntries, metrics)),
   )
 
   mkdirSync(tempRoot, { recursive: true })
@@ -1869,11 +1879,17 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
   )
   if (rootManifestWrite.changed) metrics.counts.filesChanged += 1
   else metrics.counts.filesSkipped += 1
-  const expectedFiles = new Set(fileMap.keys())
-  if (typeof options.userSettingsRoot === 'string' && path.resolve(options.userSettingsRoot) === path.resolve(tempRoot)) {
-    expectedFiles.add(USER_SETTINGS_FILE_PATH)
-  }
-  const expectedFileSetSignature = createExpectedFileSetSignature(expectedFiles)
+  const { expectedFiles, expectedFileSetSignature } = measureStorageSavePhase(metrics, 'expectedFileRebuild', () => {
+    const nextExpectedFiles = new Set(fileMap.keys())
+    if (typeof options.userSettingsRoot === 'string' && path.resolve(options.userSettingsRoot) === path.resolve(tempRoot)) {
+      nextExpectedFiles.add(USER_SETTINGS_FILE_PATH)
+    }
+    metrics.counts.expectedFiles = nextExpectedFiles.size
+    return {
+      expectedFiles: nextExpectedFiles,
+      expectedFileSetSignature: createExpectedFileSetSignature(nextExpectedFiles),
+    }
+  })
   const staleRootPruneResult = measureStorageSavePhase(metrics, 'prune', () =>
     pruneKnownStaleRootStoragePaths(tempRoot, expectedFiles),
   )

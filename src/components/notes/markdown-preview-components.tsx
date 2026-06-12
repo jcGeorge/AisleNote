@@ -10,7 +10,7 @@ import {
 } from 'react'
 import { BLOCK_INDENT_TOKEN, countBlockIndentLevels } from '../../markdown/markdown-utils'
 import { MediaPlayer } from '../../media/MediaPlayer'
-import { getMediaKindFromUrl } from '../../media/media-utils'
+import { getMediaKindFromUrl, isPotentialMediaUrl } from '../../media/media-utils'
 import { extractMarkdownTagRanges, TAG_TOKEN_CLASS_NAME } from '../../tags/tags.js'
 
 type MarkdownParagraphProps = HTMLAttributes<HTMLParagraphElement> & {
@@ -189,7 +189,7 @@ export function MarkdownPreviewLink({
   ...props
 }: MarkdownLinkProps) {
   void node
-  const kind = href ? getMediaKindFromUrl(href) : null
+  const kind = href && isPotentialMediaUrl(href) ? getMediaKindFromUrl(href) : null
   if (href && kind) {
     return <MediaPlayer src={href} kind={kind} label={getReactNodeText(children).trim()} />
   }

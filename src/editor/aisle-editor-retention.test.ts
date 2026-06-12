@@ -2,36 +2,28 @@ import { describe, expect, it } from 'vitest'
 import {
   buildRetainedAisleEditorIds,
   getAislePreviewMarkdown,
-  updateRecentAisleIds,
 } from './aisle-editor-retention'
 import type { PendingContent, ResolvedNoteAisle } from '../types/app'
 
 describe('aisle editor retention helpers', () => {
-  it('retains active, near-visible, adjacent, and recent aisles', () => {
+  it('retains only active and near-visible aisles', () => {
     const retained = buildRetainedAisleEditorIds({
       aisleIds: ['a', 'b', 'c', 'd', 'e', 'f'],
       activeAisleId: 'c',
       nearVisibleAisleIds: ['e'],
-      recentAisleIds: ['a', 'f'],
     })
 
-    expect(Array.from(retained).sort()).toEqual(['a', 'b', 'c', 'd', 'e', 'f'])
+    expect(Array.from(retained).sort()).toEqual(['c', 'e'])
   })
 
-  it('excludes far inactive aisles after the cache no longer retains them', () => {
+  it('excludes inactive aisles when they are not visible', () => {
     const retained = buildRetainedAisleEditorIds({
       aisleIds: ['a', 'b', 'c', 'd', 'e'],
       activeAisleId: 'a',
       nearVisibleAisleIds: [],
-      recentAisleIds: [],
     })
 
-    expect(Array.from(retained).sort()).toEqual(['a', 'b'])
-  })
-
-  it('maintains a most-recent aisle cache with a fixed size', () => {
-    expect(updateRecentAisleIds(['b', 'c'], 'a')).toEqual(['a', 'b'])
-    expect(updateRecentAisleIds(['a', 'b'], 'b')).toEqual(['b', 'a'])
+    expect(Array.from(retained).sort()).toEqual(['a'])
   })
 
   it('prefers pending and last editor markdown for fallback previews', () => {

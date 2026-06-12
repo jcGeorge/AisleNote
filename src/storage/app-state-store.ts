@@ -6,6 +6,18 @@ import { isNativeCapacitorRuntime } from '../platform/data-platform'
 import type { AppStateSaveOptions } from './persistence-debounce'
 
 export const APP_STATE_STORAGE_KEY = 'tabs:app-state-cache:v1'
+const SAVE_DIAGNOSTIC_THROTTLE_MS = 10_000
+const SAVE_METRICS_SLOW_THRESHOLD_MS = 50
+
+function nowMs(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now()
+}
+
+function roundMetricNumber(value: number): number {
+  return Math.round(value * 10) / 10
+}
 
 export interface AppStateStore {
   load(): string | null
@@ -133,6 +145,8 @@ class ElectronAppStateStore implements AppStateStore {
   private pendingAsyncSerializedState: string | null = null
   private pendingAsyncSaveOptions: AppStateSaveOptions | null = null
   private lastSavedSerializedState: string | null = null
+  private lastSaveDiagnosticAtByKey = new Map<string, number>()
+  private lastSaveMetricsDiagnosticAtByKey = new Map<string, number>()
 
   constructor() {
     window.__tabsGetAppStateRevision = () => this.revision
@@ -190,11 +204,14 @@ class ElectronAppStateStore implements AppStateStore {
     trigger: string,
     pendingEditorCount: number | undefined,
     queueDepth = 0,
+    options: AppStateSaveOptions = {},
   ) {
     return {
       trigger,
       mode,
       payloadBytes: serializedState.length,
+      rendererSerializeDurationMs: options.rendererSerializeDurationMs ?? null,
+      rendererSerializedBytes: options.rendererSerializedBytes ?? serializedState.length,
       queueDepth,
       pendingEditorCount: pendingEditorCount ?? null,
       revision: this.revision,
@@ -208,10 +225,47 @@ class ElectronAppStateStore implements AppStateStore {
     trigger: string,
     pendingEditorCount: number | undefined,
     queueDepth = 0,
+    options: AppStateSaveOptions = {},
   ) {
+    if (!this.shouldRecordSaveDiagnostic(event, mode, trigger)) return
     recordDiagnosticEvent('storage', event, {
-      details: this.getSaveDiagnosticsDetails(serializedState, mode, trigger, pendingEditorCount, queueDepth),
+      details: this.getSaveDiagnosticsDetails(serializedState, mode, trigger, pendingEditorCount, queueDepth, options),
     })
+  }
+
+  private shouldRecordSaveDiagnostic(event: string, mode: 'async' | 'sync' | 'skip', trigger: string): boolean {
+    if (event === 'app-state-save-start') return true
+    const key = `${event}:${mode}:${trigger}`
+    const currentTime = nowMs()
+    const lastRecordedAt = this.lastSaveDiagnosticAtByKey.get(key)
+    if (lastRecordedAt !== undefined && currentTime - lastRecordedAt < SAVE_DIAGNOSTIC_THROTTLE_MS) {
+      return false
+    }
+    this.lastSaveDiagnosticAtByKey.set(key, currentTime)
+    return true
+  }
+
+  private shouldRecordSaveMetricsDiagnostic(
+    result: ReturnType<NonNullable<Window['electronAPI']>['saveAppState']>,
+    mode: 'async' | 'sync',
+    trigger: string,
+    options: AppStateSaveOptions,
+    ipcDurationMs: number | null,
+  ): boolean {
+    const slowestKnownDurationMs = Math.max(
+      ipcDurationMs ?? 0,
+      result?.ok ? result.saveMetrics?.totalDurationMs ?? 0 : 0,
+      options.rendererSerializeDurationMs ?? 0,
+    )
+    if (slowestKnownDurationMs < SAVE_METRICS_SLOW_THRESHOLD_MS) return false
+    const key = `${mode}:${trigger}`
+    const currentTime = nowMs()
+    const lastRecordedAt = this.lastSaveMetricsDiagnosticAtByKey.get(key)
+    if (lastRecordedAt !== undefined && currentTime - lastRecordedAt < SAVE_DIAGNOSTIC_THROTTLE_MS) {
+      return false
+    }
+    this.lastSaveMetricsDiagnosticAtByKey.set(key, currentTime)
+    return true
   }
 
   private recordSaveMetricsDiagnostic(
@@ -221,11 +275,19 @@ class ElectronAppStateStore implements AppStateStore {
     trigger: string,
     pendingEditorCount: number | undefined,
     queueDepth = 0,
+    options: AppStateSaveOptions = {},
+    ipcDurationMs: number | null = null,
   ) {
     if (!result?.ok || !result.saveMetrics) return
+    if (!this.shouldRecordSaveMetricsDiagnostic(result, mode, trigger, options, ipcDurationMs)) return
     recordDiagnosticEvent('storage', 'app-state-save-metrics', {
       details: {
-        ...this.getSaveDiagnosticsDetails(serializedState, mode, trigger, pendingEditorCount, queueDepth),
+        ...this.getSaveDiagnosticsDetails(serializedState, mode, trigger, pendingEditorCount, queueDepth, options),
+        rendererSaveMetrics: {
+          serializeDurationMs: options.rendererSerializeDurationMs ?? null,
+          serializedBytes: options.rendererSerializedBytes ?? serializedState.length,
+          ipcDurationMs,
+        },
         saveMetrics: result.saveMetrics,
       },
     })
@@ -249,13 +311,27 @@ class ElectronAppStateStore implements AppStateStore {
             const saveOptions = this.pendingAsyncSaveOptions ?? {}
             this.pendingAsyncSerializedState = null
             this.pendingAsyncSaveOptions = null
+            if (serializedState === this.lastSavedSerializedState) {
+              this.recordSaveDiagnostic(
+                'app-state-save-skipped',
+                serializedState,
+                'skip',
+                saveOptions.trigger ?? 'duplicate-async-payload',
+                saveOptions.pendingEditorCount,
+                0,
+                saveOptions,
+              )
+              continue
+            }
             const payload = {
               serializedState,
               baseRevision: this.revision,
             }
+            const ipcStartedAt = nowMs()
             const result = await measureSlowAsyncOperation('electron async app-state save', () =>
               window.electronAPI!.saveAppStateAsync!(payload),
             )
+            const ipcDurationMs = roundMetricNumber(nowMs() - ipcStartedAt)
             if (saveEpoch !== this.syncSaveEpoch) return
             this.recordSaveMetricsDiagnostic(
               result,
@@ -263,6 +339,9 @@ class ElectronAppStateStore implements AppStateStore {
               'async',
               saveOptions.trigger ?? 'unknown',
               saveOptions.pendingEditorCount,
+              0,
+              saveOptions,
+              ipcDurationMs,
             )
             this.applySaveResult(result)
           }
@@ -277,6 +356,11 @@ class ElectronAppStateStore implements AppStateStore {
     if (this.savesBlockedByLoadFailure) return
     const trigger = options.trigger ?? 'unknown'
     if (serializedState === this.lastSavedSerializedState && this.pendingAsyncSerializedState === null) {
+      this.recordSaveDiagnostic('app-state-save-skipped', serializedState, 'skip', trigger, options.pendingEditorCount, 0, options)
+      return
+    }
+    if (!options.preferSync && serializedState === this.pendingAsyncSerializedState) {
+      this.recordSaveDiagnostic('app-state-save-skipped', serializedState, 'skip', trigger, options.pendingEditorCount, 1, options)
       return
     }
     const payload = {
@@ -294,6 +378,7 @@ class ElectronAppStateStore implements AppStateStore {
         trigger,
         options.pendingEditorCount,
         this.asyncSaveActive ? 1 : 0,
+        options,
       )
       this.runAsyncSaveQueue()
       return
@@ -303,9 +388,11 @@ class ElectronAppStateStore implements AppStateStore {
       this.syncSaveEpoch += 1
       this.pendingAsyncSerializedState = null
       this.pendingAsyncSaveOptions = null
-      this.recordSaveDiagnostic('app-state-save-start', serializedState, 'sync', trigger, options.pendingEditorCount)
+      this.recordSaveDiagnostic('app-state-save-start', serializedState, 'sync', trigger, options.pendingEditorCount, 0, options)
+      const ipcStartedAt = nowMs()
       const result = measureSlowOperation('electron sync app-state save', () => window.electronAPI?.saveAppState(payload))
-      this.recordSaveMetricsDiagnostic(result, serializedState, 'sync', trigger, options.pendingEditorCount)
+      const ipcDurationMs = roundMetricNumber(nowMs() - ipcStartedAt)
+      this.recordSaveMetricsDiagnostic(result, serializedState, 'sync', trigger, options.pendingEditorCount, 0, options, ipcDurationMs)
       this.applySaveResult(result)
     } catch {
       // Keep current behavior non-fatal until a dedicated error surface is added.

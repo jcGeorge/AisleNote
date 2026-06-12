@@ -14,7 +14,7 @@ import { NOTE_PREVIEW_EDITOR_HOST_CLASS } from './note-preview-dom'
 import { getWysiwygView, restoreEditorCursorSelection } from './prosemirror-utils'
 import {
   prepareMarkdownForEditorDisplay,
-  restoreEditorBlankParagraphs,
+  restoreEditorDisplay,
   setEditorMarkdownForDisplay,
 } from './editor-markdown-display'
 import { getHeadingOutlineFromDoc } from './heading-outline'
@@ -529,7 +529,7 @@ export function createReadonlyNotePreviewWidgetElement(
         thematicBreakShortcutPlugin,
       ],
     })
-    restoreEditorBlankParagraphs(editor, data.selectedAisle.markdown)
+    restoreEditorDisplay(editor, data.selectedAisle.markdown)
     const smartHeight = fitPreviewEditorHeight(editorHost, heightRem, () => data.selectedAisle?.markdown ?? '', editor)
     const view = getWysiwygView(editor)
     if (view?.setProps) {
@@ -810,7 +810,7 @@ export function createNotePreviewWidgetElement(
         ...referencePlugins,
       ],
     })
-    restoreEditorBlankParagraphs(editor, currentMarkdown)
+    restoreEditorDisplay(editor, currentMarkdown)
     const smartHeight = fitPreviewEditorHeight(editorHost, heightRem, () => currentMarkdown, editor)
     let currentStartKey = ''
     const schedulePreviewStartScroll = (nextData: NotePreviewData) => {

@@ -547,18 +547,23 @@ function splitMarkdownTopLevelChunks(markdown: string): MarkdownBlockChunk[] {
     currentKind = null
   }
 
-  lines.forEach((line) => {
+  let index = 0
+  while (index < lines.length) {
+    const line = lines[index]
+
     if (activeFence) {
       current.push(line)
       activeFence = isFenceBoundary(line, activeFence)
       if (!activeFence) pushCurrent()
-      return
+      index += 1
+      continue
     }
 
     if (isStandaloneBlankLineRunLine(line)) {
       pushCurrent()
       chunks.push({ lines: [''] })
-      return
+      index += 1
+      continue
     }
 
     const nextFence = isFenceBoundary(line, null)
@@ -567,20 +572,31 @@ function splitMarkdownTopLevelChunks(markdown: string): MarkdownBlockChunk[] {
       current = [line]
       currentKind = 'atomic'
       activeFence = nextFence
-      return
+      index += 1
+      continue
+    }
+
+    const table = readMarkdownTableCandidate(lines, index)
+    if (table) {
+      pushCurrent()
+      chunks.push({ lines: table.lines })
+      index = table.endIndex
+      continue
     }
 
     const nextKind = getMarkdownLineBlockKind(line)
     if (nextKind === 'atomic') {
       pushCurrent()
       chunks.push({ lines: [line] })
-      return
+      index += 1
+      continue
     }
 
     if (currentKind === 'list') {
       if (nextKind === 'list' || /^\s+/.test(line)) {
         current.push(line)
-        return
+        index += 1
+        continue
       }
       pushCurrent()
     }
@@ -589,12 +605,14 @@ function splitMarkdownTopLevelChunks(markdown: string): MarkdownBlockChunk[] {
       if (currentKind !== 'list') pushCurrent()
       currentKind = 'list'
       current.push(line)
-      return
+      index += 1
+      continue
     }
 
     currentKind = 'paragraph'
     current.push(line)
-  })
+    index += 1
+  }
   pushCurrent()
 
   return chunks

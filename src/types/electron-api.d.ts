@@ -19,6 +19,7 @@ type SaveAppStateMetrics = {
     manifestAssembly: number
     assetResolve: number
     fingerprint: number
+    expectedFileRebuild?: number
     textWrites: number
     binaryWrites: number
     prune: number
@@ -28,8 +29,12 @@ type SaveAppStateMetrics = {
     generatedFiles: number
     generatedBytes: number
     textFiles: number
+    jsonFiles?: number
+    mdFiles?: number
     binaryFiles: number
     existingAssetFiles: number
+    expectedFiles?: number
+    hashesComputed?: number
     assetsReferenced: number
     assetsReadFromDisk: number
     assetsReused: number
@@ -41,6 +46,10 @@ type SaveAppStateMetrics = {
     directoriesPruned: number
     aisleStorageCacheHits: number
     aisleStorageCacheMisses: number
+  }
+  mainProcess?: {
+    receiveToSaveStartMs: number
+    handlerDurationMs: number
   }
   pruneSkipped?: boolean
 }

@@ -43,6 +43,27 @@ import {
 
 const STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE = 'storage-notebook-recovered'
 
+function nowMs() {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now()
+}
+
+function roundMetricNumber(value) {
+  return Math.round(Number(value ?? 0) * 10) / 10
+}
+
+function attachMainProcessSaveMetrics(result, metrics) {
+  if (!result?.ok || !result.saveMetrics) return result
+  return {
+    ...result,
+    saveMetrics: {
+      ...result.saveMetrics,
+      mainProcess: metrics,
+    },
+  }
+}
+
 function createKnownNotebookStatus(userDataPath, activeProfileRootPath, notebookPath) {
   const normalizedNotebookPath = path.resolve(notebookPath)
   const defaultProfileRootPath = getDefaultStorageProfileRoot(userDataPath)
@@ -619,6 +640,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   }
 
   const handleSaveAppState = (payload, sourceWebContentsId) => {
+    const handlerStartedAt = nowMs()
     if (!coordinator.canWriteAppState()) {
       return {
         ok: false,
@@ -628,7 +650,13 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
         serializedState: coordinator.getLoadResult().serializedState,
       }
     }
-    return saveRevisionedState(payload, sourceWebContentsId)
+    const saveStartedAt = nowMs()
+    const result = saveRevisionedState(payload, sourceWebContentsId)
+    const handlerEndedAt = nowMs()
+    return attachMainProcessSaveMetrics(result, {
+      receiveToSaveStartMs: roundMetricNumber(saveStartedAt - handlerStartedAt),
+      handlerDurationMs: roundMetricNumber(handlerEndedAt - handlerStartedAt),
+    })
   }
 
   const getRendererSerializedStateForProfileMove = async (event) => {

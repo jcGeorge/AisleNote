@@ -36,41 +36,158 @@ export function restoreEditorBlankParagraphs(editor: Editor | null, markdown: st
   return measureSlowOperation('editor blank paragraph restoration', () => restoreEditorBlankParagraphsUnmeasured(editor, markdown))
 }
 
-function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown: string): boolean {
-  const blankPrepared = prepareBlankParagraphsForEditorDisplay(markdown)
-  if (!blankPrepared.blockKinds.includes('blank')) return false
+export type EditorDisplayRestoreResult = {
+  restored: boolean
+  viewReady: boolean
+}
 
+export function restoreEditorDisplay(editor: Editor | null, markdown: string): EditorDisplayRestoreResult {
   const view = getWysiwygView(editor)
-  const doc = view?.state?.doc
-  const paragraphType = view?.state?.schema?.nodes?.paragraph
-  if (!view?.dispatch || !doc || typeof doc.forEach !== 'function' || !paragraphType) return false
+  const viewReady = Boolean(view?.state?.doc)
+  const restored = viewReady ? restoreEditorBlankParagraphs(editor, markdown) : false
+  if (viewReady) {
+    markWysiwygLoadedUndoBoundary(editor)
+  }
+  return { restored, viewReady }
+}
 
-  const topLevelNodes: any[] = []
-  doc.forEach((node: any) => {
-    topLevelNodes.push(node)
+type TopLevelEditorNode = {
+  node: any
+  position: number
+  nodeSize: number
+  kind: 'blank' | 'content'
+}
+
+function createBlankParagraphNode(paragraphType: any) {
+  return paragraphType.createAndFill?.() ?? paragraphType.create()
+}
+
+function collectTopLevelEditorNodes(doc: any): TopLevelEditorNode[] {
+  const topLevelNodes: TopLevelEditorNode[] = []
+  let nextPosition = 0
+  doc.forEach((node: any, offset?: number) => {
+    const position = typeof offset === 'number' && Number.isFinite(offset) ? offset : nextPosition
+    const nodeSize = typeof node?.nodeSize === 'number' && Number.isFinite(node.nodeSize) ? node.nodeSize : 1
+    topLevelNodes.push({
+      node,
+      position,
+      nodeSize,
+      kind: isBlankParagraphNode(node) ? 'blank' : 'content',
+    })
+    nextPosition = position + nodeSize
   })
+  return topLevelNodes
+}
 
-  if (
-    topLevelNodes.length === blankPrepared.blockKinds.length &&
-    blankPrepared.blockKinds.every((kind, index) =>
-      kind === 'blank' ? isBlankParagraphNode(topLevelNodes[index]) : !isBlankParagraphNode(topLevelNodes[index]),
+function hasExpectedBlankParagraphLayout(topLevelNodes: TopLevelEditorNode[], blockKinds: string[]): boolean {
+  return (
+    topLevelNodes.length === blockKinds.length &&
+    blockKinds.every((kind, index) => topLevelNodes[index]?.kind === kind)
+  )
+}
+
+function getContentNodeCount(blockKinds: string[]) {
+  return blockKinds.filter((kind) => kind === 'content').length
+}
+
+function applyTargetedBlankParagraphRestore({
+  view,
+  doc,
+  paragraphType,
+  topLevelNodes,
+  blockKinds,
+}: {
+  view: any
+  doc: any
+  paragraphType: any
+  topLevelNodes: TopLevelEditorNode[]
+  blockKinds: string[]
+}): boolean {
+  if (typeof view.state?.tr?.insert !== 'function' || typeof view.state?.tr?.delete !== 'function') return false
+
+  try {
+    let tr = view.state.tr
+    let positionShift = 0
+    let currentIndex = 0
+    let changed = false
+
+    const deleteCurrentBlankNode = () => {
+      const current = topLevelNodes[currentIndex]
+      if (!current || current.kind !== 'blank') return false
+      tr = tr.delete(current.position + positionShift, current.position + current.nodeSize + positionShift)
+      positionShift -= current.nodeSize
+      currentIndex += 1
+      changed = true
+      return true
+    }
+
+    for (const expectedKind of blockKinds) {
+      let current = topLevelNodes[currentIndex]
+      if (expectedKind === 'content') {
+        while (current?.kind === 'blank') {
+          deleteCurrentBlankNode()
+          current = topLevelNodes[currentIndex]
+        }
+        if (!current || current.kind !== 'content') return false
+        currentIndex += 1
+        continue
+      }
+
+      if (expectedKind !== 'blank') return false
+      if (current?.kind === 'blank') {
+        currentIndex += 1
+        continue
+      }
+
+      const insertPosition = current
+        ? current.position + positionShift
+        : doc.content.size + positionShift
+      const blankParagraph = createBlankParagraphNode(paragraphType)
+      tr = tr.insert(insertPosition, blankParagraph)
+      positionShift += typeof blankParagraph?.nodeSize === 'number' && Number.isFinite(blankParagraph.nodeSize)
+        ? blankParagraph.nodeSize
+        : 1
+      changed = true
+    }
+
+    while (currentIndex < topLevelNodes.length) {
+      if (!deleteCurrentBlankNode()) return false
+    }
+
+    if (!changed) return false
+    view.dispatch(
+      tr
+        .setMeta('addToHistory', false)
+        .setMeta('blankParagraphRestore', true),
     )
-  ) {
+    return true
+  } catch {
     return false
   }
+}
 
-  const contentNodes = topLevelNodes.filter((node) => !isBlankParagraphNode(node))
-  const expectedContentCount = blankPrepared.blockKinds.filter((kind) => kind === 'content').length
-  if (contentNodes.length !== expectedContentCount) return false
-
+function applyFullBlankParagraphRestore({
+  view,
+  doc,
+  paragraphType,
+  topLevelNodes,
+  blockKinds,
+}: {
+  view: any
+  doc: any
+  paragraphType: any
+  topLevelNodes: TopLevelEditorNode[]
+  blockKinds: string[]
+}): boolean {
+  const contentNodes = topLevelNodes.filter((item) => item.kind === 'content').map((item) => item.node)
   let contentIndex = 0
-  const nextNodes = blankPrepared.blockKinds.map((kind) => {
+  const nextNodes = blockKinds.map((kind) => {
     if (kind === 'content') {
       const node = contentNodes[contentIndex]
       contentIndex += 1
       return node
     }
-    return paragraphType.createAndFill?.() ?? paragraphType.create()
+    return createBlankParagraphNode(paragraphType)
   })
 
   try {
@@ -86,11 +203,48 @@ function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown:
   }
 }
 
+function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown: string): boolean {
+  const blankPrepared = prepareBlankParagraphsForEditorDisplay(markdown)
+
+  const view = getWysiwygView(editor)
+  const doc = view?.state?.doc
+  const paragraphType = view?.state?.schema?.nodes?.paragraph
+  if (!view?.dispatch || !doc || typeof doc.forEach !== 'function' || !paragraphType) return false
+
+  const topLevelNodes = collectTopLevelEditorNodes(doc)
+  if (!blankPrepared.blockKinds.includes('blank') && topLevelNodes.every((item) => item.kind !== 'blank')) return false
+
+  if (hasExpectedBlankParagraphLayout(topLevelNodes, blankPrepared.blockKinds)) {
+    return false
+  }
+
+  const currentContentCount = topLevelNodes.filter((item) => item.kind === 'content').length
+  const expectedContentCount = getContentNodeCount(blankPrepared.blockKinds)
+  if (currentContentCount !== expectedContentCount) return false
+
+  if (applyTargetedBlankParagraphRestore({
+    view,
+    doc,
+    paragraphType,
+    topLevelNodes,
+    blockKinds: blankPrepared.blockKinds,
+  })) {
+    return true
+  }
+
+  return applyFullBlankParagraphRestore({
+    view,
+    doc,
+    paragraphType,
+    topLevelNodes,
+    blockKinds: blankPrepared.blockKinds,
+  })
+}
+
 export function setEditorMarkdownForDisplay(editor: Editor, markdown: string, cursorToEnd = false): void {
   measureSlowOperation('editor display markdown rewrite', () => {
     editor.setMarkdown(prepareMarkdownForEditorDisplay(markdown), cursorToEnd)
-    restoreEditorBlankParagraphs(editor, markdown)
-    markWysiwygLoadedUndoBoundary(editor)
+    restoreEditorDisplay(editor, markdown)
   })
 }
 

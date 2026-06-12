@@ -143,6 +143,25 @@ describe('media link plugin', () => {
     ])
   })
 
+  it('caches collected media ranges for the same document identity', () => {
+    const descendants = vi.fn((callback: (node: unknown, pos: number) => void) => {
+      callback(
+        {
+          isText: true,
+          text: 'Song',
+          marks: [linkMark('tabs-asset:///assets/song.mp3')],
+        },
+        1,
+      )
+    })
+    const doc = { descendants }
+
+    expect(collectMediaLinkRanges(doc)).toHaveLength(1)
+    expect(collectMediaLinkRanges(doc)).toHaveLength(1)
+
+    expect(descendants).toHaveBeenCalledTimes(1)
+  })
+
   it('creates media widgets while leaving source ranges represented as decorations', () => {
     const context = createPluginContext()
     const plugin = createMediaLinkPlugin(context).wysiwygPlugins[0]()
@@ -170,6 +189,18 @@ describe('media link plugin', () => {
       to: 5,
       attrs: { class: 'tabs-media-link-source-hidden' },
     })
+  })
+
+  it('reuses media decorations for unchanged document identity', () => {
+    const context = createPluginContext()
+    const plugin = createMediaLinkPlugin(context).wysiwygPlugins[0]()
+    const doc = createDoc([{ text: 'Clip', href: 'tabs-asset:///assets/clip.mp4' }])
+
+    const firstDecorations = plugin.props.decorations({ doc })
+    const secondDecorations = plugin.props.decorations({ doc })
+
+    expect(secondDecorations).toBe(firstDecorations)
+    expect(context.pmView.DecorationSet.create).toHaveBeenCalledTimes(1)
   })
 
   it('keeps media widget keys stable when text is inserted before them', () => {

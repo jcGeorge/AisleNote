@@ -16,6 +16,18 @@ export type EditorDisplayRewriteDiagnosticInput = {
   expectedDisplayMarkdown: string
 }
 
+export type EditorChangeCommitInput = {
+  isProgrammaticDisplayChange: boolean
+  currentCanonicalMarkdown: string
+  nextCanonicalMarkdown: string
+}
+
+export type LazyContentCommitFallbackInput = {
+  pendingMarkdown?: string | null
+  cachedMarkdown?: string | null
+  committedMarkdown: string
+}
+
 function getStableMarkdownLength(markdown: string): number {
   return String(markdown ?? '').length
 }
@@ -39,6 +51,23 @@ export function shouldApplyEditorDisplayRewrite({
   expectedCanonicalMarkdown: string
 }): boolean {
   return currentCanonicalMarkdown !== expectedCanonicalMarkdown
+}
+
+export function shouldScheduleContentCommitForEditorChange({
+  isProgrammaticDisplayChange,
+  currentCanonicalMarkdown,
+  nextCanonicalMarkdown,
+}: EditorChangeCommitInput): boolean {
+  if (!isProgrammaticDisplayChange) return true
+  return currentCanonicalMarkdown !== nextCanonicalMarkdown
+}
+
+export function chooseLazyContentCommitFallbackMarkdown({
+  pendingMarkdown,
+  cachedMarkdown,
+  committedMarkdown,
+}: LazyContentCommitFallbackInput): string {
+  return pendingMarkdown ?? cachedMarkdown ?? committedMarkdown
 }
 
 export function getEditorDisplayRewriteDiagnosticDetails({

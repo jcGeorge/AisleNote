@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  chooseLazyContentCommitFallbackMarkdown,
   getEditorDisplayRewriteDiagnosticDetails,
   getEditorMarkdownSyncSnapshot,
   shouldApplyEditorDisplayRewrite,
+  shouldScheduleContentCommitForEditorChange,
 } from './editor-markdown-sync'
 
 describe('editor markdown sync', () => {
@@ -55,5 +57,58 @@ describe('editor markdown sync', () => {
       canonicalMismatch: true,
       displayDiffersFromCanonical: true,
     })
+  })
+
+  it('does not schedule commits for unchanged programmatic display changes', () => {
+    expect(shouldScheduleContentCommitForEditorChange({
+      isProgrammaticDisplayChange: true,
+      currentCanonicalMarkdown: 'Intro\n\nBody',
+      nextCanonicalMarkdown: 'Intro\n\nBody',
+    })).toBe(false)
+  })
+
+  it('schedules commits for real user edits', () => {
+    expect(shouldScheduleContentCommitForEditorChange({
+      isProgrammaticDisplayChange: false,
+      currentCanonicalMarkdown: 'Intro',
+      nextCanonicalMarkdown: 'Intro',
+    })).toBe(true)
+  })
+
+  it('schedules explicit programmatic canonical markdown changes', () => {
+    expect(shouldScheduleContentCommitForEditorChange({
+      isProgrammaticDisplayChange: true,
+      currentCanonicalMarkdown: 'Intro',
+      nextCanonicalMarkdown: 'Intro updated',
+    })).toBe(true)
+  })
+
+  it('keeps repeated unchanged programmatic display repair non-dirty', () => {
+    const repair = {
+      isProgrammaticDisplayChange: true,
+      currentCanonicalMarkdown: '[link th](<link that remains--14eeb9>)',
+      nextCanonicalMarkdown: '[link th](<link that remains--14eeb9>)',
+    }
+
+    expect(shouldScheduleContentCommitForEditorChange(repair)).toBe(false)
+    expect(shouldScheduleContentCommitForEditorChange(repair)).toBe(false)
+  })
+
+  it('chooses lazy commit fallback markdown without display normalization', () => {
+    expect(chooseLazyContentCommitFallbackMarkdown({
+      pendingMarkdown: 'pending draft',
+      cachedMarkdown: 'cached',
+      committedMarkdown: 'committed',
+    })).toBe('pending draft')
+    expect(chooseLazyContentCommitFallbackMarkdown({
+      pendingMarkdown: null,
+      cachedMarkdown: 'cached',
+      committedMarkdown: 'committed',
+    })).toBe('cached')
+    expect(chooseLazyContentCommitFallbackMarkdown({
+      pendingMarkdown: undefined,
+      cachedMarkdown: null,
+      committedMarkdown: 'committed',
+    })).toBe('committed')
   })
 })

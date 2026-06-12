@@ -828,6 +828,18 @@ function getFirstTableCellInnerPositionAfterPosition(doc: any, position: number)
   return selectedNode && selectedPos >= 0 ? getCellInnerPosition(selectedNode, selectedPos, 0, 0) : null
 }
 
+function getLastTableCellInnerPosition(tableNode: any, tableStart: number): number | null {
+  const tableHead = tableNode?.child?.(0)
+  const tableBody = tableNode?.child?.(1)
+  const bodyRowCount = typeof tableBody?.childCount === 'number' ? tableBody.childCount : 0
+  if (bodyRowCount > 0) {
+    const row = tableBody.child(bodyRowCount - 1)
+    return getCellInnerPosition(tableNode, tableStart, bodyRowCount, Math.max(0, (row?.childCount ?? 1) - 1))
+  }
+  const headRow = tableHead?.childCount > 0 ? tableHead.child(0) : null
+  return headRow ? getCellInnerPosition(tableNode, tableStart, 0, Math.max(0, (headRow.childCount ?? 1) - 1)) : null
+}
+
 export function replaceSelectedTextWithTable(view: any): boolean {
   const state = view?.state
   const selection = state?.selection
@@ -879,9 +891,54 @@ function getTextBlockBoundarySelectionPosition(node: any, nodeStart: number, dir
   return direction === 'before' ? nodeStart + Math.max(1, node.nodeSize - 1) : nodeStart + 1
 }
 
+function getAdjacentTableCellPositionFromTextBlockBoundary(
+  state: any,
+  direction: TableBoundaryDirection,
+): number | null {
+  const selection = state?.selection
+  if (!selection?.empty) return null
+
+  const $from = selection.$from
+  if (!$from || findAncestorDepth($from, new Set(['table'])) !== null) return null
+
+  const textBlockDepth = $from.depth
+  const textBlock = $from.parent
+  if (textBlockDepth <= 0 || !textBlock?.isTextblock) return null
+
+  const textSize = typeof textBlock.content?.size === 'number' ? textBlock.content.size : 0
+  if (direction === 'after' && $from.parentOffset !== textSize) return null
+  if (direction === 'before' && $from.parentOffset !== 0) return null
+
+  const parentDepth = textBlockDepth - 1
+  const parentNode = $from.node(parentDepth)
+  const textBlockIndex = $from.index(parentDepth)
+  const tableIndex = direction === 'after' ? textBlockIndex + 1 : textBlockIndex - 1
+  if (tableIndex < 0 || tableIndex >= parentNode.childCount) return null
+
+  const tableNode = parentNode.child(tableIndex)
+  if (tableNode?.type?.name !== 'table') return null
+
+  const tableStart = direction === 'after'
+    ? $from.after(textBlockDepth)
+    : $from.before(textBlockDepth) - tableNode.nodeSize
+  return direction === 'after'
+    ? getCellInnerPosition(tableNode, tableStart, 0, 0)
+    : getLastTableCellInnerPosition(tableNode, tableStart)
+}
+
 export function moveSelectedTableBoundaryCaret(view: any, direction: TableBoundaryDirection): boolean {
   const state = view?.state
   if (!state || typeof view?.dispatch !== 'function') return false
+
+  const adjacentTableCellPosition = getAdjacentTableCellPositionFromTextBlockBoundary(state, direction)
+  if (adjacentTableCellPosition !== null) {
+    const tr = setSelectionNearPosition(state.tr, adjacentTableCellPosition, direction === 'before' ? -1 : 1)
+    view.dispatch(tr.setMeta('addToHistory', false).scrollIntoView())
+    if (typeof view.focus === 'function') {
+      view.focus()
+    }
+    return true
+  }
 
   const context = getSelectedTableBoundaryContext(state)
   if (!context) return false

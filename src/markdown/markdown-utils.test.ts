@@ -370,6 +370,188 @@ describe('markdown WYSIWYG blank line preservation', () => {
     })
   })
 
+  it('keeps adjacent paragraph and table blocks grouped for editor display', () => {
+    const markdown = [
+      'before',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      'after',
+    ].join('\n')
+
+    expect(prepareBlankParagraphsForEditorDisplay(markdown)).toEqual({
+      markdown: [
+        'before',
+        '',
+        '| A | B |',
+        '| --- | --- |',
+        '| C | D |',
+        '',
+        'after',
+      ].join('\n'),
+      blockKinds: ['content', 'content', 'content'],
+    })
+  })
+
+  it('keeps a single persisted blank around a table as a visible blank paragraph', () => {
+    const markdown = [
+      'before',
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      '',
+      'after',
+    ].join('\n')
+
+    expect(prepareBlankParagraphsForEditorDisplay(markdown)).toEqual({
+      markdown,
+      blockKinds: ['content', 'blank', 'content', 'blank', 'content'],
+    })
+  })
+
+  it('keeps extra blank rows around a table as visible blank paragraphs', () => {
+    const markdown = [
+      'before',
+      '',
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      '',
+      '',
+      'after',
+    ].join('\n')
+
+    expect(prepareBlankParagraphsForEditorDisplay(markdown)).toEqual({
+      markdown: [
+        'before',
+        '',
+        '| A | B |',
+        '| --- | --- |',
+        '| C | D |',
+        '',
+        'after',
+      ].join('\n'),
+      blockKinds: ['content', 'blank', 'blank', 'content', 'blank', 'blank', 'content'],
+    })
+  })
+
+  it('preserves explicit table spacing after WYSIWYG serialization', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', 'before'),
+        emptyParagraph(),
+        block('table', 'A B C D'),
+        emptyParagraph(),
+        block('paragraph', 'after'),
+      ]),
+      [
+        'before',
+        '',
+        '| A | B |',
+        '| --- | --- |',
+        '| C | D |',
+        '',
+        'after',
+      ].join('\n'),
+    )
+
+    expect(markdown).toBe([
+      'before',
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      '',
+      'after',
+    ].join('\n'))
+  })
+
+  it('preserves user-created blank paragraph nodes around a table', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', 'before'),
+        emptyParagraph(),
+        block('table', 'A B C D'),
+        emptyParagraph(),
+        block('paragraph', 'after'),
+      ]),
+      [
+        'before',
+        '',
+        '| A | B |',
+        '| --- | --- |',
+        '| C | D |',
+        '',
+        'after',
+      ].join('\n'),
+    )
+
+    expect(markdown).toBe([
+      'before',
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      '',
+      'after',
+    ].join('\n'))
+  })
+
+  it('preserves multiple visible blank paragraph nodes around a table', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', 'before'),
+        emptyParagraph(),
+        emptyParagraph(),
+        block('table', 'A B C D'),
+        emptyParagraph(),
+        emptyParagraph(),
+        block('paragraph', 'after'),
+      ]),
+      [
+        'before',
+        '',
+        '',
+        '| A | B |',
+        '| --- | --- |',
+        '| C | D |',
+        '',
+        '',
+        'after',
+      ].join('\n'),
+    )
+
+    expect(markdown).toBe([
+      'before',
+      '',
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      '',
+      '',
+      'after',
+    ].join('\n'))
+  })
+
+  it('does not add parser-only table spacing to persisted paragraph-table-paragraph markdown', () => {
+    expect(normalizeMarkdownForPersistence([
+      'before',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      'after',
+    ].join('\n'))).toBe([
+      'before',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      'after',
+    ].join('\n'))
+  })
+
   it('does not rewrite blank lines inside fenced code blocks', () => {
     const source = '```\none\n\ntwo\n```'
 

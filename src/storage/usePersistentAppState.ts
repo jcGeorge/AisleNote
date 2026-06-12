@@ -29,6 +29,16 @@ type PersistentAppStateController = {
 
 const MAX_AUTO_PURGE_TIMEOUT_MS = 2_147_483_647
 
+function nowMs(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now()
+}
+
+function roundMetricMs(value: number): number {
+  return Math.round(value * 10) / 10
+}
+
 function parsePersistedStateWithDeviceSettings(serializedState: string | null): AppState {
   return mergeLoadedSettings(parseSavedState(serializedState), loadDeviceSettingsRecord())
 }
@@ -51,10 +61,31 @@ export function usePersistentAppState(): PersistentAppStateController {
   const initialStateRef = useRef<AppState>(initialParsedState)
   const stateDirtySinceBootRef = useRef(false)
   const externallyAppliedStateRef = useRef<AppState | null>(null)
+  const lastSerializationMetricsRef = useRef<{ durationMs: number; payloadBytes: number } | null>(null)
+  const serializeAppState = useCallback((value: AppState) => {
+    const startedAt = nowMs()
+    const serializedState = measureSlowOperation('app-state serialization', () => JSON.stringify(value))
+    lastSerializationMetricsRef.current = {
+      durationMs: roundMetricMs(nowMs() - startedAt),
+      payloadBytes: serializedState.length,
+    }
+    return serializedState
+  }, [])
   const persistenceControllerRef = useRef(
     createPersistenceDebounceController<AppState>({
-      serialize: (value) => measureSlowOperation('app-state serialization', () => JSON.stringify(value)),
-      save: (serializedState, options) => appPersistenceService.saveSerializedState(serializedState, options),
+      serialize: serializeAppState,
+      save: (serializedState, options) => {
+        const serializationMetrics = lastSerializationMetricsRef.current
+        appPersistenceService.saveSerializedState(serializedState, {
+          ...options,
+          ...(serializationMetrics
+            ? {
+                rendererSerializeDurationMs: serializationMetrics.durationMs,
+                rendererSerializedBytes: serializationMetrics.payloadBytes,
+              }
+            : { rendererSerializedBytes: serializedState.length }),
+        })
+      },
     }),
   )
 
@@ -160,8 +191,17 @@ export function usePersistentAppState(): PersistentAppStateController {
     }
 
     persistenceControllerRef.current.cancel()
-    const serializedState = measureSlowOperation('app-state serialization', () => JSON.stringify(sanitizedState))
-    appPersistenceService.saveSerializedState(serializedState, options)
+    const serializedState = serializeAppState(sanitizedState)
+    const serializationMetrics = lastSerializationMetricsRef.current
+    appPersistenceService.saveSerializedState(serializedState, {
+      ...options,
+      ...(serializationMetrics
+        ? {
+            rendererSerializeDurationMs: serializationMetrics.durationMs,
+            rendererSerializedBytes: serializationMetrics.payloadBytes,
+          }
+        : { rendererSerializedBytes: serializedState.length }),
+    })
     if (options.flushQueue !== false) {
       await appPersistenceService.flushPendingSaves?.()
     }

@@ -1,6 +1,7 @@
 import { createMediaPlayerElement } from '../media/media-player-dom'
 import { stripMediaMetadataFromUrl } from '../media/media-metadata'
-import { getMediaKindFromUrl, type MediaKind } from '../media/media-utils'
+import { getMediaKindFromUrl, isPotentialMediaUrl, type MediaKind } from '../media/media-utils'
+import { measureSlowOperation } from '../performance/performance-logging'
 import { getLinkMarkAttrs } from './prosemirror-utils'
 
 export type MediaLinkRange = {
@@ -12,6 +13,8 @@ export type MediaLinkRange = {
 }
 
 export type MediaLinkDeleteDirection = 'backward' | 'forward'
+
+const mediaLinkRangeCache = new WeakMap<object, MediaLinkRange[]>()
 
 function getMediaRangeIdentity(range: Pick<MediaLinkRange, 'href' | 'kind' | 'label'>): string {
   return `${range.kind}:${stripMediaMetadataFromUrl(range.href)}:${range.label}`
@@ -86,7 +89,7 @@ function getTextNodeLinkMark(node: any): { href: string; title?: string } | null
   }
 }
 
-export function collectMediaLinkRanges(doc: any): MediaLinkRange[] {
+function collectMediaLinkRangesUncached(doc: any): MediaLinkRange[] {
   const ranges: MediaLinkRange[] = []
   if (!doc || typeof doc.descendants !== 'function') return ranges
 
@@ -94,6 +97,7 @@ export function collectMediaLinkRanges(doc: any): MediaLinkRange[] {
     if (!node?.isText || typeof node.text !== 'string') return true
     const linkMark = getTextNodeLinkMark(node)
     if (!linkMark) return true
+    if (!isPotentialMediaUrl(linkMark.href)) return true
     const kind = getMediaKindFromUrl(linkMark.href)
     if (!kind) return true
 
@@ -116,6 +120,18 @@ export function collectMediaLinkRanges(doc: any): MediaLinkRange[] {
   })
 
   return ranges
+}
+
+export function collectMediaLinkRanges(doc: any): MediaLinkRange[] {
+  if (!doc || typeof doc.descendants !== 'function') return []
+  if (typeof doc === 'object' || typeof doc === 'function') {
+    const cachedRanges = mediaLinkRangeCache.get(doc)
+    if (cachedRanges) return cachedRanges
+    const ranges = collectMediaLinkRangesUncached(doc)
+    mediaLinkRangeCache.set(doc, ranges)
+    return ranges
+  }
+  return collectMediaLinkRangesUncached(doc)
 }
 
 function getLinkMarkAttrsForMediaRange(view: any, range: MediaLinkRange, nextHref: string): Record<string, unknown> {
@@ -186,6 +202,8 @@ export function deleteAdjacentMediaLinkRange(view: any | null, direction: MediaL
 export function createMediaLinkPlugin(context: any) {
   const { Plugin } = context.pmState
   const { Decoration, DecorationSet } = context.pmView
+  let cachedDecorationDoc: any = null
+  let cachedDecorationSet: unknown = null
 
   return {
     wysiwygPlugins: [
@@ -193,42 +211,49 @@ export function createMediaLinkPlugin(context: any) {
         new Plugin({
           props: {
             decorations: (editorState: any) => {
-              const decorations: unknown[] = []
-              const mediaRangeIdentityCounts = new Map<string, number>()
-              for (const range of collectMediaLinkRanges(editorState.doc)) {
-                const rangeIdentity = getMediaRangeIdentity(range)
-                const occurrence = mediaRangeIdentityCounts.get(rangeIdentity) ?? 0
-                mediaRangeIdentityCounts.set(rangeIdentity, occurrence + 1)
-                decorations.push(
-                  Decoration.widget(
-                    range.from,
-                    (view: any, getPos?: () => number | undefined) => {
-                      let playerElement: HTMLElement | null = null
-                      playerElement = createMediaPlayerElement({
-                        kind: range.kind,
-                        src: range.href,
-                        label: range.label,
-                        sourceFrom: range.from,
-                        sourceTo: range.to,
-                        onSourceChange: (nextSrc) => {
-                          const currentRange =
-                            getMediaLinkRangeAtPosition(view?.state?.doc, getPos?.()) ??
-                            getMediaLinkRangeForPlayer(view, playerElement, range.href) ??
-                            range
-                          updateMediaLinkRangeUrl(view, currentRange, nextSrc)
-                        },
-                      })
-                      return playerElement
-                    },
-                    {
-                      key: `media-link-${rangeIdentity}-${occurrence}`,
-                      side: -1,
-                    },
-                  ),
-                )
-                decorations.push(Decoration.inline(range.from, range.to, { class: 'tabs-media-link-source-hidden' }))
-              }
-              return DecorationSet.create(editorState.doc, decorations)
+              const doc = editorState.doc
+              if (doc === cachedDecorationDoc && cachedDecorationSet) return cachedDecorationSet
+              const decorationSet = measureSlowOperation('media-link decorations', () => {
+                const decorations: unknown[] = []
+                const mediaRangeIdentityCounts = new Map<string, number>()
+                for (const range of collectMediaLinkRanges(doc)) {
+                  const rangeIdentity = getMediaRangeIdentity(range)
+                  const occurrence = mediaRangeIdentityCounts.get(rangeIdentity) ?? 0
+                  mediaRangeIdentityCounts.set(rangeIdentity, occurrence + 1)
+                  decorations.push(
+                    Decoration.widget(
+                      range.from,
+                      (view: any, getPos?: () => number | undefined) => {
+                        let playerElement: HTMLElement | null = null
+                        playerElement = createMediaPlayerElement({
+                          kind: range.kind,
+                          src: range.href,
+                          label: range.label,
+                          sourceFrom: range.from,
+                          sourceTo: range.to,
+                          onSourceChange: (nextSrc) => {
+                            const currentRange =
+                              getMediaLinkRangeAtPosition(view?.state?.doc, getPos?.()) ??
+                              getMediaLinkRangeForPlayer(view, playerElement, range.href) ??
+                              range
+                            updateMediaLinkRangeUrl(view, currentRange, nextSrc)
+                          },
+                        })
+                        return playerElement
+                      },
+                      {
+                        key: `media-link-${rangeIdentity}-${occurrence}`,
+                        side: -1,
+                      },
+                    ),
+                  )
+                  decorations.push(Decoration.inline(range.from, range.to, { class: 'tabs-media-link-source-hidden' }))
+                }
+                return DecorationSet.create(doc, decorations)
+              })
+              cachedDecorationDoc = doc
+              cachedDecorationSet = decorationSet
+              return decorationSet
             },
           },
         }),

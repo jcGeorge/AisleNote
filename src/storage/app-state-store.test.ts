@@ -241,6 +241,56 @@ describe('Electron app state store', () => {
     })
   })
 
+  it('skips duplicate async Electron payloads queued while the same save is in flight', async () => {
+    let resolveSave:
+      | ((value: {
+          ok: true
+          serializedState: string
+          revision: number
+        }) => void)
+      | undefined
+    const saveAppState = vi.fn()
+    const saveAppStateAsync = vi.fn(
+      (payload) =>
+        new Promise<{ ok: true; serializedState: string; revision: number }>((resolve) => {
+          resolveSave = () => resolve({
+            ok: true,
+            serializedState: payload.serializedState,
+            revision: 2,
+          })
+        }),
+    )
+    vi.stubGlobal('window', {
+      electronAPI: {
+        loadAppStateResult: () => ({
+          ok: true,
+          serializedState: '{"theme":"dawn"}',
+          source: 'hybrid',
+          revision: 1,
+        }),
+        saveAppState,
+        saveAppStateAsync,
+      },
+    })
+
+    const store = createAppStateStore()
+
+    expect(store.load()).toBe('{"theme":"dawn"}')
+    store.save('{"theme":"light"}')
+    await Promise.resolve()
+    await Promise.resolve()
+    store.save('{"theme":"light"}')
+    resolveSave?.({
+      ok: true,
+      serializedState: '{"theme":"light"}',
+      revision: 2,
+    })
+    await store.flush?.()
+
+    expect(saveAppState).not.toHaveBeenCalled()
+    expect(saveAppStateAsync).toHaveBeenCalledOnce()
+  })
+
   it('skips saves when the serialized state is unchanged and no async payload is pending', async () => {
     const saveAppState = vi.fn()
     const saveAppStateAsync = vi.fn()
@@ -299,7 +349,7 @@ describe('Electron app state store', () => {
 
   it('records save metrics diagnostics returned by Electron saves', async () => {
     const saveMetrics = {
-      totalDurationMs: 12,
+      totalDurationMs: 75,
       phases: {
         parseState: 1,
         buildFileMap: 2,
@@ -309,6 +359,7 @@ describe('Electron app state store', () => {
         manifestAssembly: 0,
         assetResolve: 0,
         fingerprint: 3,
+        expectedFileRebuild: 0,
         textWrites: 4,
         binaryWrites: 0,
         prune: 0,
@@ -318,8 +369,12 @@ describe('Electron app state store', () => {
         generatedFiles: 5,
         generatedBytes: 200,
         textFiles: 5,
+        jsonFiles: 3,
+        mdFiles: 2,
         binaryFiles: 0,
         existingAssetFiles: 0,
+        expectedFiles: 5,
+        hashesComputed: 5,
         assetsReferenced: 0,
         assetsReadFromDisk: 0,
         assetsReused: 0,
@@ -358,7 +413,13 @@ describe('Electron app state store', () => {
     const store = createAppStateStore()
 
     expect(store.load()).toBe('{"theme":"dawn"}')
-    store.save('{"theme":"light"}', { preferSync: true, trigger: 'test-trigger', pendingEditorCount: 2 })
+    store.save('{"theme":"light"}', {
+      preferSync: true,
+      trigger: 'test-trigger',
+      pendingEditorCount: 2,
+      rendererSerializeDurationMs: 3.4,
+      rendererSerializedBytes: 17,
+    })
     await Promise.resolve()
 
     expect(appendDiagnosticLogEntry).toHaveBeenCalledWith(expect.objectContaining({
@@ -368,8 +429,52 @@ describe('Electron app state store', () => {
         trigger: 'test-trigger',
         mode: 'sync',
         pendingEditorCount: 2,
+        rendererSerializeDurationMs: 3.4,
+        rendererSerializedBytes: 17,
+        rendererSaveMetrics: expect.objectContaining({
+          serializeDurationMs: 3.4,
+          serializedBytes: 17,
+          ipcDurationMs: expect.any(Number),
+        }),
         saveMetrics,
       }),
+    }))
+  })
+
+  it('does not record verbose save metrics diagnostics for fast Electron saves', async () => {
+    const appendDiagnosticLogEntry = vi.fn(async () => ({ ok: true }))
+    const saveAppState = vi.fn(() => ({
+      ok: true,
+      serializedState: '{"theme":"light"}',
+      revision: 2,
+      saveMetrics: {
+        totalDurationMs: 12,
+      },
+    }))
+    vi.stubGlobal('window', {
+      electronAPI: {
+        loadAppStateResult: () => ({
+          ok: true,
+          serializedState: '{"theme":"dawn"}',
+          source: 'hybrid',
+          revision: 1,
+        }),
+        saveAppState,
+        appendDiagnosticLogEntry,
+        listDiagnosticLogDays: vi.fn(),
+        readDiagnosticLogEntries: vi.fn(),
+      },
+    })
+
+    const store = createAppStateStore()
+
+    expect(store.load()).toBe('{"theme":"dawn"}')
+    store.save('{"theme":"light"}', { preferSync: true, trigger: 'fast-save' })
+    await Promise.resolve()
+
+    expect(appendDiagnosticLogEntry).not.toHaveBeenCalledWith(expect.objectContaining({
+      area: 'storage',
+      event: 'app-state-save-metrics',
     }))
   })
 

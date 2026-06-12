@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -35,6 +36,7 @@ import {
   scheduleNoteWorkspaceArrangeExit,
   shouldExitArrangeModeFromNoteWorkspacePointer,
 } from './note-workspace-events'
+import { isMarkdownPreviewLikelyExpensive } from './note-workspace-preview'
 
 const transformAislePreviewUrl = (url: string, key: string) => {
   if (key === 'href' && /^tabs-asset:/i.test(url)) return url
@@ -101,6 +103,8 @@ type NoteWorkspaceProps = {
   onResetAisleWidth?: (aisleId: string) => void
   onAisleWidthDragCommitted?: () => void
   mountedAisleIds: Set<string>
+  suppressActiveAislePreviewFallback?: boolean
+  deferInactivePreviewFallbacks?: boolean
   getPreviewMarkdownForAisle: (aisle: ResolvedNoteAisle) => string
   onCloseTableOfContentsAisle?: (aisleId: string) => void
   onSelectTableOfContentsHeading?: (aisleId: string, headingKey: string) => void
@@ -246,6 +250,8 @@ export function NoteWorkspace({
   onResetAisleWidth = () => undefined,
   onAisleWidthDragCommitted = () => undefined,
   mountedAisleIds,
+  suppressActiveAislePreviewFallback = false,
+  deferInactivePreviewFallbacks = false,
   getPreviewMarkdownForAisle,
   onCloseTableOfContentsAisle = () => undefined,
   onSelectTableOfContentsHeading = () => undefined,
@@ -267,6 +273,44 @@ export function NoteWorkspace({
     moved: boolean
   } | null>(null)
   const isSplitWorkspace = aisles.length > 1
+  const inactivePreviewHydrationKey = `${noteBodyId}\n${aisles.map((aisle) => aisle.id).join('\n')}`
+  const [hydratedInactivePreviewKey, setHydratedInactivePreviewKey] = useState('')
+  const inactivePreviewsHydrated = hydratedInactivePreviewKey === inactivePreviewHydrationKey
+
+  useEffect(() => {
+    if (!deferInactivePreviewFallbacks) {
+      setHydratedInactivePreviewKey(inactivePreviewHydrationKey)
+      return
+    }
+
+    setHydratedInactivePreviewKey('')
+    let cancelled = false
+    let timeoutId: number | null = null
+    let frameId: number | null = null
+    const idleWindow = window as unknown as {
+      requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
+      cancelIdleCallback?: (handle: number) => void
+    }
+    const hydrate = () => {
+      if (!cancelled) setHydratedInactivePreviewKey(inactivePreviewHydrationKey)
+    }
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      const idleId = idleWindow.requestIdleCallback(hydrate, { timeout: 250 })
+      return () => {
+        cancelled = true
+        idleWindow.cancelIdleCallback?.(idleId)
+      }
+    }
+    frameId = window.requestAnimationFrame(() => {
+      timeoutId = window.setTimeout(hydrate, 0)
+    })
+    return () => {
+      cancelled = true
+      if (frameId !== null) window.cancelAnimationFrame(frameId)
+      if (timeoutId !== null) window.clearTimeout(timeoutId)
+    }
+  }, [deferInactivePreviewFallbacks, inactivePreviewHydrationKey])
+
   const setAisleScrollRef = useCallback(
     (node: HTMLDivElement | null) => {
       setAisleScrollNode((currentNode) => (currentNode === node ? currentNode : node))
@@ -365,7 +409,16 @@ export function NoteWorkspace({
         {aisles.map((aisle, index) => {
           const editorKey = buildAisleEditorKey(noteBodyId, aisle.id)
           const editorMounted = mountedAisleIds.has(aisle.id)
-          const previewMarkdown = editorMounted ? '' : getPreviewMarkdownForAisle(aisle)
+          const editorMountPending = suppressActiveAislePreviewFallback && !editorMounted && aisle.id === activeAisleId
+          const previewMarkdown = editorMounted || editorMountPending ? '' : getPreviewMarkdownForAisle(aisle)
+          const previewHydrationPending =
+            deferInactivePreviewFallbacks &&
+            !inactivePreviewsHydrated &&
+            !editorMounted &&
+            !editorMountPending &&
+            aisle.id !== activeAisleId &&
+            isMarkdownPreviewLikelyExpensive(previewMarkdown)
+          const renderedPreviewMarkdown = previewHydrationPending ? '' : previewMarkdown
           const tableOfContentsHeadings = tableOfContentsHeadingsByAisle[aisle.id] ?? []
           const tableOfContentsLinks = tableOfContentsLinksByAisle[aisle.id] ?? []
           const tableOfContentsOpen =
@@ -469,17 +522,21 @@ export function NoteWorkspace({
                 ) : (
                   <div
                     key={`${editorKey}:preview`}
-                    className="toast-editor-host aisle-editor-preview-fallback"
+                    className={`toast-editor-host aisle-editor-preview-fallback ${
+                      editorMountPending ? 'is-editor-mount-pending' : ''
+                    } ${
+                      previewHydrationPending ? 'is-preview-hydration-pending' : ''
+                    }`}
                     data-aisle-host-mode="preview"
                     aria-hidden="true"
                   >
-                    {previewMarkdown.trim().length > 0 ? (
+                    {renderedPreviewMarkdown.trim().length > 0 ? (
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         urlTransform={transformAislePreviewUrl}
                         components={noteWorkspacePreviewMarkdownComponents}
                       >
-                        {previewMarkdown}
+                        {renderedPreviewMarkdown}
                       </ReactMarkdown>
                     ) : null}
                   </div>

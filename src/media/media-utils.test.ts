@@ -10,6 +10,7 @@ import {
   getMediaKindFromUrl,
   getMediaSeekTime,
   getMediaSliderDisplayValue,
+  isPotentialMediaUrl,
 } from './media-utils'
 
 describe('media utils', () => {
@@ -27,6 +28,14 @@ describe('media utils', () => {
     expect(getMediaKindFromUrl('https://example.com/movie.mp4?x=1')).toBe('video')
     expect(getMediaKindFromUrl('assets/clip.webm#t=12')).toBe('video')
     expect(getMediaKindFromUrl('assets/report.pdf')).toBeNull()
+  })
+
+  it('cheaply rejects ordinary external links before media parsing work', () => {
+    expect(isPotentialMediaUrl('https://lucide.dev/icons/table-of-contents')).toBe(false)
+    expect(isPotentialMediaUrl('https://example.com/docs')).toBe(false)
+    expect(isPotentialMediaUrl('https://example.com/song.mp3')).toBe(true)
+    expect(isPotentialMediaUrl('data:audio/mpeg;base64,abc')).toBe(true)
+    expect(isPotentialMediaUrl(buildAssetUrl('assets/registered-media'))).toBe(true)
   })
 
   it('detects the supported media extension allowlist', () => {

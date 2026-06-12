@@ -24,6 +24,7 @@ export const MEDIA_LOAD_ERROR_TEXT = 'Could not load media.'
 
 const AUDIO_EXTENSIONS = new Set(['aac', 'flac', 'm4a', 'mp3', 'oga', 'ogg', 'opus', 'wav', 'weba'])
 const VIDEO_EXTENSIONS = new Set(['m4v', 'mov', 'mp4', 'ogv', 'webm'])
+const MEDIA_URL_HINT_RE = /(?:^data:(?:audio|video)\/|^tabs-asset:|#tabs-media=|\.(?:aac|flac|m4a|mp3|oga|ogg|opus|wav|weba|m4v|mov|mp4|ogv|webm)(?:[?#]|$))/i
 
 export function getMediaKindFromMimeType(mimeType: string): MediaKind | null {
   const normalized = mimeType.trim().toLowerCase()
@@ -36,6 +37,13 @@ export function getMediaKindFromFile(file: MediaFileLike): MediaKind | null {
   const mimeKind = file.type ? getMediaKindFromMimeType(file.type) : null
   if (mimeKind) return mimeKind
   return file.name ? getMediaKindFromUrl(file.name) : null
+}
+
+export function isPotentialMediaUrl(url: string): boolean {
+  const source = String(url ?? '').trim()
+  if (!source) return false
+  if (/^tabs-asset:/i.test(source)) return true
+  return MEDIA_URL_HINT_RE.test(source)
 }
 
 function getExtensionFromUrl(value: string): string {
@@ -56,7 +64,9 @@ function getExtensionFromUrl(value: string): string {
 }
 
 export function getMediaKindFromUrl(url: string): MediaKind | null {
-  const source = stripMediaMetadataFromUrl(String(url ?? '').trim())
+  const rawSource = String(url ?? '').trim()
+  if (!isPotentialMediaUrl(rawSource)) return null
+  const source = stripMediaMetadataFromUrl(rawSource)
   if (!source) return null
 
   const dataMimeMatch = source.match(/^data:([^;,]+)/i)

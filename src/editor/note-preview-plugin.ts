@@ -11,6 +11,7 @@ import {
   type NotePreviewReferencePayload,
   type NotePreviewSourceRange,
 } from '../notes/note-references'
+import { measureSlowOperation } from '../performance/performance-logging'
 
 type NotePreviewPluginOptions = NotePreviewWidgetOptions & {
   resolvePreviewToken: (token: string) => NotePreviewReferencePayload | null
@@ -130,6 +131,7 @@ function createNotePreviewDecorations({
     }
 
     if (!node.isText || typeof node.text !== 'string') return true
+    if (!node.text.includes('![')) return true
     for (const match of node.text.matchAll(NOTE_PREVIEW_REFERENCE_RE)) {
       const payload = options.resolvePreviewToken(match[0])
       if (!payload) continue
@@ -159,19 +161,28 @@ export function createNotePreviewPlugin(context: any, options: NotePreviewPlugin
   const { Plugin } = context.pmState
   const { Decoration, DecorationSet } = context.pmView
   const renderMode = options.renderMode ?? 'editor'
+  let cachedDecorationDoc: any = null
+  let cachedDecorationSet: unknown = null
   return {
     wysiwygPlugins: [
       () =>
         new Plugin({
           props: {
             decorations: (editorState: any) => {
-              return createNotePreviewDecorations({
-                doc: editorState.doc,
-                Decoration,
-                DecorationSet,
-                options,
-                renderMode,
+              const doc = editorState.doc
+              if (doc === cachedDecorationDoc && cachedDecorationSet) return cachedDecorationSet
+              const decorationSet = measureSlowOperation('note-preview decorations', () => {
+                return createNotePreviewDecorations({
+                  doc,
+                  Decoration,
+                  DecorationSet,
+                  options,
+                  renderMode,
+                })
               })
+              cachedDecorationDoc = doc
+              cachedDecorationSet = decorationSet
+              return decorationSet
             },
           },
         }),

@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { BLOCK_INDENT_TOKEN } from '../../markdown/markdown-utils'
 import { NoteWorkspace } from './NoteWorkspace'
+import { isMarkdownPreviewLikelyExpensive } from './note-workspace-preview'
 import {
   getAisleEditorKeyFromNoteWorkspacePointerTarget,
   shouldExitArrangeModeFromNoteWorkspacePointer,
@@ -23,6 +24,8 @@ function renderWorkspace(
     linkedAisleIds?: Set<string>
     wholeNoteLinked?: boolean
     aisleWidths?: Record<string, number>
+    suppressActiveAislePreviewFallback?: boolean
+    deferInactivePreviewFallbacks?: boolean
     scratchpadAisleControls?: {
       canDeleteActiveAisle: boolean
       onAddAisleLeft: () => void
@@ -48,6 +51,8 @@ function renderWorkspace(
       imageToolsOverlay={null}
       tableControlsOverlay={null}
       mountedAisleIds={mountedAisleIds}
+      suppressActiveAislePreviewFallback={options.suppressActiveAislePreviewFallback}
+      deferInactivePreviewFallbacks={options.deferInactivePreviewFallbacks}
       getPreviewMarkdownForAisle={(aisle) => aisle.markdown}
       onRootChange={() => undefined}
       onAisleScroll={() => undefined}
@@ -77,6 +82,59 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).not.toContain('data-aisle-editor-key="body-1::b" class="toast-editor-host"')
     expect(html).toContain('aisle-editor-preview-fallback')
     expect(html).toContain('<strong>preview</strong>')
+  })
+
+  it('does not render markdown fallback for the active aisle while its editor mount is pending', () => {
+    const html = renderWorkspace(new Set(['b']), {
+      activeAisleId: 'a',
+      suppressActiveAislePreviewFallback: true,
+    })
+
+    expect(html).toContain('is-editor-mount-pending')
+    expect(html).not.toContain('>active</')
+    expect(html).toContain('<p>far</p>')
+  })
+
+  it('defers inactive heavy table-link previews on the first workspace render', () => {
+    const heavyMarkdown = [
+      '| [copy](https://lucide.dev/icons/files) | |',
+      '| --- | --- |',
+      '| [tableOfContents](https://lucide.dev/icons/table-of-contents) | |',
+      '| [aisles](https://lucide.dev/icons/shelving-unit) | |',
+      '| [findReplace](https://lucide.dev/icons/search) | |',
+      '| [undo](https://lucide.dev/icons/undo) | |',
+      '| [redo](https://lucide.dev/icons/redo) | |',
+      '| [heading](https://lucide.dev/icons/heading) | |',
+      '| [bold](https://lucide.dev/icons/bold) | |',
+    ].join('\n')
+    const html = renderWorkspace(new Set(['active']), {
+      activeAisleId: 'active',
+      deferInactivePreviewFallbacks: true,
+      aisles: [
+        { id: 'heavy', aisleBodyId: 'heavy', markdown: heavyMarkdown },
+        { id: 'image', aisleBodyId: 'image', markdown: '![Diagram](data:image/png;base64,abc)' },
+        { id: 'active', aisleBodyId: 'active', markdown: 'active' },
+      ],
+    })
+
+    expect(html).toContain('is-preview-hydration-pending')
+    expect(html).not.toContain('tableOfContents')
+    expect(html).toContain('src="data:image/png;base64,abc"')
+    expect(html).toContain('data-aisle-host-mode="editor"')
+  })
+
+  it('classifies link-heavy markdown previews as expensive without flagging image-only previews', () => {
+    expect(isMarkdownPreviewLikelyExpensive([
+      '| [copy](https://lucide.dev/icons/files) | |',
+      '| --- | --- |',
+      '| [tableOfContents](https://lucide.dev/icons/table-of-contents) | |',
+      '| [aisles](https://lucide.dev/icons/shelving-unit) | |',
+      '| [findReplace](https://lucide.dev/icons/search) | |',
+      '| [undo](https://lucide.dev/icons/undo) | |',
+      '| [redo](https://lucide.dev/icons/redo) | |',
+      '| [heading](https://lucide.dev/icons/heading) | |',
+    ].join('\n'))).toBe(true)
+    expect(isMarkdownPreviewLikelyExpensive('![Diagram](data:image/png;base64,abc)')).toBe(false)
   })
 
   it('marks editor and preview hosts as separate DOM ownership modes', () => {

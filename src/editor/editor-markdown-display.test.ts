@@ -7,16 +7,26 @@ import {
   setEditorMarkdownForDisplay,
 } from './editor-markdown-display'
 
-function textBlock(typeName: string, textContent = '') {
+function textBlock(typeName: string, textContent = '', extra: Record<string, unknown> = {}) {
   return {
     type: { name: typeName },
     textContent,
     childCount: textContent ? 1 : 0,
+    nodeSize: 1,
     child: () => ({ isText: true, text: textContent, textContent }),
+    ...extra,
   }
 }
 
 function fakeEditorWithBlocks(blocks: any[]) {
+  const deleteRange = vi.fn(function deleteRange(from: number, to: number) {
+    tr.deletedRanges.push([from, to])
+    return tr
+  })
+  const insert = vi.fn(function insert(position: number, node: any) {
+    tr.insertedNodes.push({ position, node })
+    return tr
+  })
   const replaceWith = vi.fn(function replaceWith(_from: number, _to: number, nodes: any[]) {
     tr.replacedWith = nodes
     return tr
@@ -27,6 +37,10 @@ function fakeEditorWithBlocks(blocks: any[]) {
   })
   const tr: any = {
     meta: {},
+    deletedRanges: [],
+    insertedNodes: [],
+    delete: deleteRange,
+    insert,
     replacedWith: null,
     replaceWith,
     setMeta,
@@ -48,7 +62,13 @@ function fakeEditorWithBlocks(blocks: any[]) {
           tr,
           doc: {
             content: { size: blocks.length },
-            forEach: (visitor: (node: any) => void) => blocks.forEach(visitor),
+            forEach: (visitor: (node: any, offset: number) => void) => {
+              let offset = 0
+              blocks.forEach((node) => {
+                visitor(node, offset)
+                offset += typeof node.nodeSize === 'number' ? node.nodeSize : 1
+              })
+            },
             nodesBetween: (_from: number, _to: number, visitor: (node: any, position: number) => void) => {
               blocks.forEach((node, index) => visitor(node, index))
             },
@@ -118,8 +138,39 @@ describe('editor markdown display helpers', () => {
     setEditorMarkdownForDisplay(editor, `one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)
 
     expect(editor.setMarkdown).toHaveBeenCalledWith('one\n\ntwo', false)
-    expect(tr.replacedWith.map((node: any) => node.textContent)).toEqual(['one', '', 'two'])
+    expect(tr.replaceWith).not.toHaveBeenCalled()
+    expect(tr.insertedNodes.map((entry: any) => [entry.position, entry.node.textContent])).toEqual([[1, '']])
     expect(tr.meta.addToHistory).toBe(false)
+    expect(dispatch).toHaveBeenCalled()
+  })
+
+  it('restores blank paragraphs without replacing hyperlink content nodes', () => {
+    const linkMark = { type: { name: 'link' }, attrs: { href: 'https://example.com' } }
+    const { editor, tr, dispatch } = fakeEditorWithBlocks([
+      textBlock('paragraph', 'one', { marks: [linkMark] }),
+      textBlock('paragraph', 'two', { marks: [linkMark] }),
+    ])
+
+    expect(restoreEditorBlankParagraphs(editor, `one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)).toBe(true)
+
+    expect(tr.replaceWith).not.toHaveBeenCalled()
+    expect(tr.insertedNodes).toHaveLength(1)
+    expect(tr.insertedNodes[0].position).toBe(1)
+    expect(dispatch).toHaveBeenCalled()
+  })
+
+  it('deletes extra blank paragraphs without replacing surrounding content', () => {
+    const { editor, tr, dispatch } = fakeEditorWithBlocks([
+      textBlock('paragraph', 'one'),
+      textBlock('paragraph'),
+      textBlock('paragraph'),
+      textBlock('paragraph', 'two'),
+    ])
+
+    expect(restoreEditorBlankParagraphs(editor, `one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)).toBe(true)
+
+    expect(tr.replaceWith).not.toHaveBeenCalled()
+    expect(tr.deletedRanges).toEqual([[2, 3]])
     expect(dispatch).toHaveBeenCalled()
   })
 
@@ -142,6 +193,43 @@ describe('editor markdown display helpers', () => {
       '| --- | --- |',
       '| C | D |',
     ].join('\n'), false)
+  })
+
+  it('deletes parser-only blank paragraphs inserted before a table', () => {
+    const { editor, tr, dispatch } = fakeEditorWithBlocks([
+      textBlock('paragraph', 'before'),
+      textBlock('paragraph'),
+      textBlock('table', 'A B C D'),
+    ])
+
+    expect(restoreEditorBlankParagraphs(editor, [
+      'before',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+    ].join('\n'))).toBe(true)
+
+    expect(tr.deletedRanges).toEqual([[1, 2]])
+    expect(tr.insertedNodes).toHaveLength(0)
+    expect(dispatch).toHaveBeenCalled()
+  })
+
+  it('keeps explicit blank paragraphs before a table when markdown contains the blank', () => {
+    const { editor, dispatch } = fakeEditorWithBlocks([
+      textBlock('paragraph', 'before'),
+      textBlock('paragraph'),
+      textBlock('table', 'A B C D'),
+    ])
+
+    expect(restoreEditorBlankParagraphs(editor, [
+      'before',
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+    ].join('\n'))).toBe(false)
+
+    expect(dispatch).not.toHaveBeenCalled()
   })
 
   it('does not restore blank paragraphs when content block counts do not match', () => {

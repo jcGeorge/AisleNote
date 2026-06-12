@@ -3054,6 +3054,7 @@ export function useAppController(): AppController {
     normalizeEditorMarkdownForPersistence,
     normalizeEditorMarkdownForDisplay,
     scheduleContentCommit,
+    scheduleLazyContentCommit: editorPersistence.scheduleLazyContentCommit,
     registerMountedEditorSnapshotProvider,
     commitCurrentEditorContent,
     pushToast,
@@ -7076,6 +7077,8 @@ export function useAppController(): AppController {
               onResetAisleWidth={resetAisleWidth}
               onAisleWidthDragCommitted={() => showTip('aisle-width-reset')}
               mountedAisleIds={mountedAisleIds}
+              suppressActiveAislePreviewFallback
+              deferInactivePreviewFallbacks
               getPreviewMarkdownForAisle={getPreviewMarkdownForAisle}
               onCloseTableOfContentsAisle={closeTableOfContentsAisle}
               onSelectTableOfContentsHeading={selectTableOfContentsHeading}
