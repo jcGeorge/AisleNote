@@ -16,11 +16,22 @@ import {
 } from '../settings/defaults'
 import { projectActiveDomainState } from '../state/domains'
 import { normalizeTipIds } from '../tips/tips'
-import type { AppState, DataSettingsSection, ViewMode, VisualsSettingsSection } from '../types/app'
+import type {
+  AboutSection,
+  AppState,
+  DataSettingsSection,
+  MessagesSection,
+  ViewMode,
+  VisualsSettingsSection,
+} from '../types/app'
 
 export const DEVICE_SETTINGS_STORAGE_KEY = 'tabs:device-settings:v1'
 
 const VIEW_MODES: ViewMode[] = ['main', 'trash', 'settings', 'messages', 'about']
+const ET_CETERA_VIEW_MODES = ['settings', 'messages', 'about'] as const
+const MESSAGES_SECTIONS: MessagesSection[] = ['inbox', 'toast-history', 'diagnostics', 'editor-dev']
+const ABOUT_SECTIONS: AboutSection[] = ['home', 'donation']
+export type DeviceEtCeteraViewMode = typeof ET_CETERA_VIEW_MODES[number]
 
 export type DeviceLastOpened = {
   domainId: string
@@ -47,6 +58,9 @@ export type DeviceSettings = {
   captureDiagnostics: boolean
   lastFindQuery: string
   tagAutocompleteRecentKeys: string[]
+  lastEtCeteraViewMode: DeviceEtCeteraViewMode
+  messagesSection: MessagesSection
+  aboutSection: AboutSection
 }
 
 export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
@@ -65,6 +79,9 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
   captureDiagnostics: true,
   lastFindQuery: '',
   tagAutocompleteRecentKeys: [],
+  lastEtCeteraViewMode: 'settings',
+  messagesSection: 'inbox',
+  aboutSection: 'home',
 }
 
 export type DeviceSettingsLoadResult = {
@@ -94,6 +111,24 @@ function normalizeDeviceLastOpened(raw: unknown): DeviceLastOpened | null {
 
 function normalizeDeviceViewMode(raw: unknown): ViewMode {
   return typeof raw === 'string' && VIEW_MODES.includes(raw as ViewMode) ? (raw as ViewMode) : 'main'
+}
+
+function normalizeDeviceEtCeteraViewMode(raw: unknown): DeviceEtCeteraViewMode {
+  return typeof raw === 'string' && ET_CETERA_VIEW_MODES.includes(raw as DeviceEtCeteraViewMode)
+    ? (raw as DeviceEtCeteraViewMode)
+    : DEFAULT_DEVICE_SETTINGS.lastEtCeteraViewMode
+}
+
+function normalizeMessagesSection(raw: unknown): MessagesSection {
+  return typeof raw === 'string' && MESSAGES_SECTIONS.includes(raw as MessagesSection)
+    ? (raw as MessagesSection)
+    : DEFAULT_DEVICE_SETTINGS.messagesSection
+}
+
+function normalizeAboutSection(raw: unknown): AboutSection {
+  return typeof raw === 'string' && ABOUT_SECTIONS.includes(raw as AboutSection)
+    ? (raw as AboutSection)
+    : DEFAULT_DEVICE_SETTINGS.aboutSection
 }
 
 function normalizeDeviceSettingsValue(raw: unknown): DeviceSettings {
@@ -133,6 +168,9 @@ function normalizeDeviceSettingsValue(raw: unknown): DeviceSettings {
         : DEFAULT_DEVICE_SETTINGS.captureDiagnostics,
     lastFindQuery: typeof obj.lastFindQuery === 'string' ? obj.lastFindQuery : DEFAULT_DEVICE_SETTINGS.lastFindQuery,
     tagAutocompleteRecentKeys: normalizeTagAutocompleteRecentKeys(obj.tagAutocompleteRecentKeys),
+    lastEtCeteraViewMode: normalizeDeviceEtCeteraViewMode(obj.lastEtCeteraViewMode),
+    messagesSection: normalizeMessagesSection(obj.messagesSection),
+    aboutSection: normalizeAboutSection(obj.aboutSection),
   }
 }
 

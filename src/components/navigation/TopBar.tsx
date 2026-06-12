@@ -393,6 +393,17 @@ export function TopBar({
               >
                 diagnostics{diagnosticLogCount > 0 ? ` (${diagnosticLogCount})` : ''}
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={messagesSection === 'editor-dev'}
+                className={`btn btn-sm ${
+                  messagesSection === 'editor-dev' ? 'btn-primary' : 'btn-outline-secondary'
+                } tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn`}
+                onClick={() => onMessagesSectionChange('editor-dev')}
+              >
+                editor dev
+              </button>
             </>
           )}
 

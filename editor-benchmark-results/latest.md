@@ -1,17 +1,17 @@
 # Replacement Editor Benchmark
 
-Generated: 2026-06-12T05:33:32.106Z
+Generated: 2026-06-12T20:31:16.317Z
 Fixture: small Markdown table with external lucide.dev links
 
 ## Raw Numbers
 
 | Candidate | OK | Mount ms | Rendered table/links | Focus out ms | Type out p50/p95/max | Focus in ms | Type in p50/p95/max | Serialize ms | Destroy ms | Remount ms | Switch p50/p95/max | Long tasks | Round trip |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Toast UI Editor baseline | yes | 28.6 | 2/50 | 2.3 | 14.5/18.5/20.3 | 0.9 | 15/19/26 | 3 | 2.3 | 10.8 | 1.8/2.9/2.9 | 0 / 0ms | pass |
-| CodeMirror 6 Markdown | yes | 12 | 0/0 | 16.3 | 14.5/26.4/33.2 | 1.1 | 14.2/27.5/29.5 | 0.9 | 3 | 4.1 | 4/6.7/6.7 | 0 / 0ms | pass |
-| MDXEditor minimal WYSIWYG | yes | 82.1 | 1/25 | 1.9 | 14.1/27/29.6 | 19.8 | 14.6/27.1/27.7 | 1.7 | 7 | 48.1 | 18.9/67.1/67.1 | 2 / 135ms | pass |
-| Lexical direct minimal rich editor | yes | 10.6 | 0/25 | 1.1 | 14.1/27/29.6 | 0.5 | 14.6/27.4/28.5 | 1.3 | 0.9 | 15.3 | 0.4/0.8/0.8 | 0 / 0ms | fail |
-| Tiptap minimal Markdown | yes | 17.2 | 1/25 | 1.9 | 14.6/28.4/30.7 | 0.6 | 14.1/27/27.5 | 1.8 | 0.8 | 5.6 | 0.6/1/1 | 0 / 0ms | pass |
+| Toast UI Editor baseline | yes | 25.2 | 2/50 | 1.4 | 15.1/17.9/19.3 | 1.7 | 14.8/19.7/21.1 | 1.9 | 2 | 13.7 | 1.1/4.2/4.2 | 0 / 0ms | pass |
+| CodeMirror 6 Markdown | yes | 8.9 | 0/0 | 7.8 | 11.5/26.5/27.4 | 1.2 | 13.7/27.2/27.5 | 0.6 | 1.2 | 2.1 | 0.8/4.1/4.1 | 0 / 0ms | pass |
+| MDXEditor minimal WYSIWYG | yes | 81.6 | 1/25 | 1.3 | 13.4/26.3/26.4 | 24.9 | 12.5/26.4/26.7 | 0.6 | 4.5 | 52.5 | 18/21.1/21.1 | 1 / 67ms | pass |
+| Lexical direct minimal rich editor | yes | 11.4 | 0/25 | 0.7 | 13.6/26.3/26.4 | 0.6 | 14.6/27.1/28.6 | 1.3 | 0.9 | 7.9 | 0.4/0.8/0.8 | 0 / 0ms | fail |
+| Tiptap minimal Markdown | yes | 17.1 | 1/25 | 2.1 | 12.8/26.4/26.8 | 0.4 | 13.2/26.4/28.2 | 2.3 | 0.9 | 13.1 | 0.6/1.1/1.1 | 0 / 0ms | pass |
 
 ## Candidates Tested
 

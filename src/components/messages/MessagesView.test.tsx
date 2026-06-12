@@ -98,6 +98,29 @@ describe('MessagesView', () => {
     expect(html).not.toContain('duplicate files de-coupled')
   })
 
+  it('renders editor dev controls as a messages child section', () => {
+    const html = renderToStaticMarkup(
+      <MessagesView
+        section="editor-dev"
+        messages={[message]}
+        toastHistory={toastHistory}
+        onDismissMessage={vi.fn()}
+        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenLocation={vi.fn()}
+      />,
+    )
+
+    expect(html).toContain('editor diagnostics')
+    expect(html).toContain('id="messages-editor-ablation-mode"')
+    expect(html).not.toContain('<option value="mdxeditor">')
+    expect(html).toContain('<option value="toast-only">Toast only</option>')
+    expect(html).toContain('<option value="toast-retain-current-previous">Full editor retain previous aisle</option>')
+    expect(html).toContain('Toast UI remains the default until a replacement proves out')
+    expect(html).toContain('reload app')
+    expect(html).not.toContain('No inbox messages.')
+    expect(html).not.toContain('toast history')
+  })
+
   it('renders duplicate decouple details and location actions', () => {
     const html = renderToStaticMarkup(
       <MessagesView

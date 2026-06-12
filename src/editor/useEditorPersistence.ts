@@ -7,7 +7,9 @@ import { applyAutoPurgeToAppState, applyMarkdownToAppState } from '../state/app-
 import { SCRATCHPAD_CONTENT_TARGET_ID, normalizeScratchpadState } from '../state/scratchpad'
 import { appPersistenceService } from '../storage/app-persistence-service'
 import type { AppStateSaveOptions } from '../storage/persistence-debounce'
+import { markEditorContentStateMutation } from '../storage/persistence-scheduling'
 import type { AppState, NoteBody, PendingContent } from '../types/app'
+import { isCodeMirrorMarkdownEditor } from './codemirror-markdown-editor'
 import { setEditorMarkdownForDisplay } from './editor-markdown-display'
 import {
   getAisleEditorPerfNow,
@@ -73,6 +75,7 @@ export type EditorFocusBoundaryEvent = 'blur' | 'visibilitychange' | 'beforeunlo
 export type EditorFocusBoundaryFlushAction = 'schedule' | 'force' | 'ignore'
 
 export const EDITOR_FOCUS_BOUNDARY_FLUSH_DELAY_MS = 60
+export const EDITOR_PENDING_CONTENT_COMMIT_DELAY_MS = 30_000
 
 export function resolveEditorFocusBoundaryFlushAction(
   eventName: EditorFocusBoundaryEvent,
@@ -97,9 +100,8 @@ export function getEditorFocusBoundarySaveOptions(
 
 export function shouldCollectMountedEditorSnapshotsForFocusBoundary(
   eventName: EditorFocusBoundaryEvent,
-  pendingEditorCount = 0,
 ): boolean {
-  return eventName === 'beforeunload' || eventName === 'pagehide' || pendingEditorCount > 0
+  return eventName === 'beforeunload' || eventName === 'pagehide'
 }
 
 export function shouldPersistFocusBoundarySnapshot({
@@ -320,6 +322,9 @@ export const useEditorPersistence = ({
     setState((previous) => {
       const applyStartedAt = shouldMeasurePerf ? getAisleEditorPerfNow() : 0
       const nextState = applyEditorContentSnapshotsToState(previous, snapshots)
+      if (nextState !== previous) {
+        markEditorContentStateMutation()
+      }
       if (shouldMeasurePerf) {
         const applyDurationMs = getAisleEditorPerfNow() - applyStartedAt
         withAisleEditorPerfState((state) => {
@@ -394,7 +399,7 @@ export const useEditorPersistence = ({
     const pendingEditorCount = pendingContentRef.current.size
     const previousState = stateRef.current
     const latestState = buildStateWithLatestEditorContent({
-      includeMountedEditors: shouldCollectMountedEditorSnapshotsForFocusBoundary(eventName, pendingEditorCount),
+      includeMountedEditors: shouldCollectMountedEditorSnapshotsForFocusBoundary(eventName),
     })
     const stateChanged = latestState !== previousState
     pendingContentRef.current.clear()
@@ -482,7 +487,7 @@ export const useEditorPersistence = ({
       const snapshots = getPendingContentSnapshots()
       pendingContentRef.current.clear()
       applyContentSnapshots(snapshots)
-    }, 180)
+    }, EDITOR_PENDING_CONTENT_COMMIT_DELAY_MS)
   }
 
   const scheduleLazyContentCommit = (
@@ -535,7 +540,7 @@ export const useEditorPersistence = ({
       const snapshots = getPendingContentSnapshots()
       pendingContentRef.current.clear()
       applyContentSnapshots(snapshots)
-    }, 180)
+    }, EDITOR_PENDING_CONTENT_COMMIT_DELAY_MS)
   }
 
   const commitCurrentEditorContent = () => {
@@ -585,7 +590,13 @@ export const useEditorPersistence = ({
     lastEditorMarkdownRef.current = normalized
     lastEditorMarkdownByAisleRef.current.set(activeAisleBodyId, normalized)
     const currentEditor = editorRef.current
-    if (currentEditor) setEditorMarkdownForDisplay(currentEditor, normalized)
+    if (currentEditor) {
+      if (isCodeMirrorMarkdownEditor(currentEditor)) {
+        currentEditor.setMarkdown(normalized, false)
+      } else {
+        setEditorMarkdownForDisplay(currentEditor, normalized)
+      }
+    }
     if (currentEditor) {
       commitActiveEditorMarkdownNow(currentEditor)
       return

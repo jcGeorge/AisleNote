@@ -10,6 +10,12 @@ export type AppStateCommitOptions = AppStateSaveOptions & {
   flushQueue?: boolean
 }
 
+export type AppStateScheduleOptions = {
+  debounceMs?: number
+  maxWaitMs?: number
+  saveOptions?: AppStateSaveOptions
+}
+
 type TimeoutId = ReturnType<typeof setTimeout>
 
 type PersistenceDebounceOptions<T> = {
@@ -23,6 +29,8 @@ type PersistenceDebounceOptions<T> = {
 
 export const APP_STATE_PERSISTENCE_DEBOUNCE_MS = 1500
 export const APP_STATE_PERSISTENCE_MAX_WAIT_MS = 5000
+export const APP_STATE_EDITOR_CONTENT_PERSISTENCE_DEBOUNCE_MS = 10_000
+export const APP_STATE_EDITOR_CONTENT_PERSISTENCE_MAX_WAIT_MS = 30_000
 
 export function createPersistenceDebounceController<T>({
   debounceMs = APP_STATE_PERSISTENCE_DEBOUNCE_MS,
@@ -33,8 +41,10 @@ export function createPersistenceDebounceController<T>({
   clearTimeoutFn = (timeoutId) => clearTimeout(timeoutId),
 }: PersistenceDebounceOptions<T>) {
   let pendingValue: T | null = null
+  let pendingSaveOptions: AppStateSaveOptions = {}
   let quietTimer: TimeoutId | null = null
   let maxWaitTimer: TimeoutId | null = null
+  let activeMaxWaitMs: number | null = null
 
   const clearQuietTimer = () => {
     if (quietTimer === null) return
@@ -46,6 +56,7 @@ export function createPersistenceDebounceController<T>({
     if (maxWaitTimer === null) return
     clearTimeoutFn(maxWaitTimer)
     maxWaitTimer = null
+    activeMaxWaitMs = null
   }
 
   const savePending = (options: AppStateSaveOptions, clearPending: boolean) => {
@@ -53,6 +64,7 @@ export function createPersistenceDebounceController<T>({
     save(serialize(pendingValue), options)
     if (!clearPending) return
     pendingValue = null
+    pendingSaveOptions = {}
     clearQuietTimer()
     clearMaxWaitTimer()
   }
@@ -61,23 +73,30 @@ export function createPersistenceDebounceController<T>({
     savePending(options, true)
   }
 
-  const schedule = (value: T) => {
+  const schedule = (value: T, options: AppStateScheduleOptions = {}) => {
+    const scheduleDebounceMs = options.debounceMs ?? debounceMs
+    const scheduleMaxWaitMs = options.maxWaitMs ?? maxWaitMs
     pendingValue = value
+    pendingSaveOptions = options.saveOptions ?? {}
     clearQuietTimer()
     quietTimer = setTimeoutFn(() => {
-      savePending({}, true)
-    }, debounceMs)
+      savePending(pendingSaveOptions, true)
+    }, scheduleDebounceMs)
 
-    if (maxWaitTimer === null) {
+    if (maxWaitTimer === null || activeMaxWaitMs !== scheduleMaxWaitMs) {
+      clearMaxWaitTimer()
+      activeMaxWaitMs = scheduleMaxWaitMs
       maxWaitTimer = setTimeoutFn(() => {
         maxWaitTimer = null
-        savePending({}, false)
-      }, maxWaitMs)
+        activeMaxWaitMs = null
+        savePending(pendingSaveOptions, false)
+      }, scheduleMaxWaitMs)
     }
   }
 
   const cancel = () => {
     pendingValue = null
+    pendingSaveOptions = {}
     clearQuietTimer()
     clearMaxWaitTimer()
   }

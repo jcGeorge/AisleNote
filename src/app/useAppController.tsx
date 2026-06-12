@@ -180,6 +180,7 @@ import {
   type WysiwygHistoryResult,
 } from '../editor/prosemirror-utils'
 import { useAisleEditors } from '../editor/useAisleEditors'
+import { isCodeMirrorMarkdownEditor } from '../editor/codemirror-markdown-editor'
 import { useEditorDomEvents } from '../editor/useEditorDomEvents'
 import { useEditorPersistence } from '../editor/useEditorPersistence'
 import { useEditorToolbarLayer } from '../editor/useEditorToolbarLayer'
@@ -388,6 +389,7 @@ import {
   saveDeviceLastOpened,
   savePartialDeviceSettings,
   shouldRestoreScratchpadWorkspace,
+  type DeviceEtCeteraViewMode,
   type DeviceSettings,
 } from '../storage/device-settings-store'
 import { useStorageProfileController } from '../storage/useStorageProfileController'
@@ -453,7 +455,7 @@ import type {
 } from '../types/app'
 import type { ElectronNoteRevealPayload } from '../types/electron-api'
 
-type EtCeteraViewMode = Extract<ViewMode, 'about' | 'messages' | 'settings'>
+type EtCeteraViewMode = DeviceEtCeteraViewMode
 
 function isEtCeteraViewMode(viewMode: ViewMode): viewMode is EtCeteraViewMode {
   return viewMode === 'about' || viewMode === 'messages' || viewMode === 'settings'
@@ -582,7 +584,9 @@ export function useAppController(): AppController {
   const { state, setState, stateRef, flushPendingPersistence, commitAppStateNow } = usePersistentAppState()
   const [viewMode, setViewMode] = useState<ViewMode>(() => initialDeviceSettingsRef.current?.lastOpened?.viewMode ?? 'main')
   const lastEtCeteraViewModeRef = useRef<EtCeteraViewMode>(
-    isEtCeteraViewMode(viewMode) ? viewMode : 'settings',
+    isEtCeteraViewMode(viewMode)
+      ? viewMode
+      : initialDeviceSettingsRef.current?.lastEtCeteraViewMode ?? 'settings',
   )
   const [scratchpadActive, setScratchpadActive] = useState(() =>
     shouldRestoreScratchpadWorkspace(initialDeviceSettingsRef.current?.lastOpened),
@@ -623,8 +627,12 @@ export function useAppController(): AppController {
     useState<{ targetId: string; position: ArrangeInsertPosition | null } | null>(null)
   const isMacPlatform = typeof navigator !== 'undefined' ? /mac/i.test(navigator.platform) : false
   const [menuOpen, setMenuOpen] = useState(false)
-  const [messagesSection, setMessagesSection] = useState<MessagesSection>('inbox')
-  const [aboutSection, setAboutSection] = useState<AboutSection>('home')
+  const [messagesSection, setMessagesSectionState] = useState<MessagesSection>(
+    () => initialDeviceSettingsRef.current?.messagesSection ?? 'inbox',
+  )
+  const [aboutSection, setAboutSectionState] = useState<AboutSection>(
+    () => initialDeviceSettingsRef.current?.aboutSection ?? 'home',
+  )
   const [diagnosticLogDays, setDiagnosticLogDays] = useState<string[]>([])
   const [selectedDiagnosticDay, setSelectedDiagnosticDay] = useState<string>('')
   const [diagnosticLogEntries, setDiagnosticLogEntries] = useState<DiagnosticLogEntry[]>([])
@@ -652,8 +660,19 @@ export function useAppController(): AppController {
   useEffect(() => {
     if (isEtCeteraViewMode(viewMode)) {
       lastEtCeteraViewModeRef.current = viewMode
+      savePartialDeviceSettings({ lastEtCeteraViewMode: viewMode })
     }
   }, [viewMode])
+
+  const setMessagesSection = useCallback((section: MessagesSection) => {
+    setMessagesSectionState(section)
+    savePartialDeviceSettings({ messagesSection: section, lastEtCeteraViewMode: 'messages' })
+  }, [])
+
+  const setAboutSection = useCallback((section: AboutSection) => {
+    setAboutSectionState(section)
+    savePartialDeviceSettings({ aboutSection: section, lastEtCeteraViewMode: 'about' })
+  }, [])
 
   const editorMountRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<Editor | null>(null)
@@ -4890,7 +4909,11 @@ export function useAppController(): AppController {
       // If the editor cannot be read, still push the known replacement result into it.
     }
     normalizingAisleIdsRef.current.add(activeAisle.id)
-    setEditorMarkdownForDisplay(currentEditor, nextMarkdown, false)
+    if (isCodeMirrorMarkdownEditor(currentEditor)) {
+      currentEditor.setMarkdown(nextMarkdown, false)
+    } else {
+      setEditorMarkdownForDisplay(currentEditor, nextMarkdown, false)
+    }
   }
 
   const applyFindReplacement = (mode: 'current' | 'all') => {

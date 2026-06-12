@@ -14,6 +14,103 @@
   height: auto;
 }
 
+.tabs-mdxeditor-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  display: flex;
+  background: var(--editor-bg);
+  color: var(--editor-text);
+}
+
+.tabs-mdxeditor-react-root {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.tabs-mdxeditor-host .tabs-mdxeditor,
+.tabs-mdxeditor-host .mdxeditor,
+.tabs-mdxeditor-host .mdxeditor-root-contenteditable,
+.tabs-mdxeditor-host .mdxeditor-rich-text-editor {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: var(--editor-bg) !important;
+  color: var(--editor-text) !important;
+}
+
+.tabs-mdxeditor-host .tabs-mdxeditor-content {
+  min-height: 100%;
+  outline: none !important;
+  caret-color: var(--editor-text);
+}
+
+.tabs-mdxeditor-host [contenteditable='true']:focus,
+.tabs-mdxeditor-host [contenteditable='true']:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.tabs-mdxeditor-host .mdxeditor-toolbar,
+.tabs-mdxeditor-host [role='toolbar'] {
+  display: none !important;
+}
+
+.tabs-mdxeditor-loading {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 1rem 1.125rem;
+  background: var(--editor-bg);
+  color: var(--editor-muted-text);
+  font-size: var(--ui-font-muted);
+}
+
+.tabs-codemirror-host,
+.tabs-codemirror-host .cm-editor {
+  height: 100%;
+  min-height: 0;
+}
+
+.tabs-codemirror-host .cm-editor {
+  background: var(--editor-bg);
+  color: var(--editor-text);
+  font-size: calc(1rem * var(--note-font-scale, 1));
+  border: 0;
+  outline: none;
+}
+
+.tabs-codemirror-host .cm-scroller {
+  font-family: inherit;
+  line-height: 1.55;
+}
+
+.tabs-codemirror-host .cm-content {
+  padding: 1rem 1.125rem;
+}
+
+.tabs-codemirror-host .cm-gutters {
+  background: color-mix(in srgb, var(--editor-bg) 94%, var(--app-border));
+  color: var(--muted-text);
+  border-right: 1px solid var(--app-border);
+}
+
+.tabs-codemirror-host .cm-activeLine,
+.tabs-codemirror-host .cm-activeLineGutter {
+  background: color-mix(in srgb, var(--accent-soft) 34%, transparent);
+}
+
+.tabs-codemirror-host .cm-focused {
+  outline: none;
+}
+
 .aisle-editor-preview-fallback {
   overflow: auto;
   padding: 1rem 1.125rem;

@@ -94,6 +94,31 @@ describe('editor persistence snapshot helpers', () => {
     expect(onMaterialized).toHaveBeenCalledWith('fresh draft')
   })
 
+  it('uses direct pending markdown without invoking lazy materialization hooks', () => {
+    const onMaterialized = vi.fn()
+    const pending = {
+      noteBodyId: 'body-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: null,
+      aisleId: 'aisle-a',
+      aisleBodyId: 'body-a-aisle',
+      markdown: 'direct draft',
+      onMaterialized,
+    }
+
+    expect(materializePendingContentDraft(pending)).toEqual({
+      noteBodyId: 'body-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: null,
+      aisleId: 'aisle-a',
+      aisleBodyId: 'body-a-aisle',
+      markdown: 'direct draft',
+    })
+    expect(onMaterialized).not.toHaveBeenCalled()
+  })
+
   it('keeps cached pending markdown if lazy materialization fails', () => {
     const pending = {
       noteBodyId: 'body-a',
@@ -346,13 +371,11 @@ describe('editor persistence snapshot helpers', () => {
     })
   })
 
-  it('only collects mounted editor snapshots on focus boundaries when content is pending or the page is exiting', () => {
-    expect(shouldCollectMountedEditorSnapshotsForFocusBoundary('blur', 0)).toBe(false)
-    expect(shouldCollectMountedEditorSnapshotsForFocusBoundary('visibilitychange', 0)).toBe(false)
-    expect(shouldCollectMountedEditorSnapshotsForFocusBoundary('blur', 1)).toBe(true)
-    expect(shouldCollectMountedEditorSnapshotsForFocusBoundary('visibilitychange', 1)).toBe(true)
-    expect(shouldCollectMountedEditorSnapshotsForFocusBoundary('beforeunload', 0)).toBe(true)
-    expect(shouldCollectMountedEditorSnapshotsForFocusBoundary('pagehide', 0)).toBe(true)
+  it('only collects mounted editor snapshots on focus boundaries when the page is exiting', () => {
+    expect(shouldCollectMountedEditorSnapshotsForFocusBoundary('blur')).toBe(false)
+    expect(shouldCollectMountedEditorSnapshotsForFocusBoundary('visibilitychange')).toBe(false)
+    expect(shouldCollectMountedEditorSnapshotsForFocusBoundary('beforeunload')).toBe(true)
+    expect(shouldCollectMountedEditorSnapshotsForFocusBoundary('pagehide')).toBe(true)
   })
 
   it('skips no-op blur and visibility saves while keeping pending and exit saves conservative', () => {

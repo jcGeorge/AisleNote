@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type {
   DiagnosticLogDisplayLimit,
   DiagnosticLogEntry,
@@ -10,6 +11,22 @@ import {
   DIAGNOSTIC_LOG_MODES,
   orderDiagnosticEntriesForDisplay,
 } from '../../diagnostics/diagnostic-log'
+import {
+  EDITOR_ABLATION_MODE_LABELS,
+  EDITOR_ABLATION_MODES,
+  parseEditorAblationMode,
+  readEditorAblationMode,
+  writeEditorAblationMode,
+  type EditorAblationMode,
+} from '../../editor/editor-ablation'
+import {
+  EDITOR_CORE_MODE_LABELS,
+  EDITOR_CORE_MODES,
+  parseEditorCoreMode,
+  readEditorCoreMode,
+  writeEditorCoreMode,
+  type EditorCoreMode,
+} from '../../editor/editor-core'
 import type { AppMessage, MessagesSection, NoteLocation, ToastHistoryEntry } from '../../types/app'
 import { orderToastHistoryForDisplay } from '../overlays/toast-stack'
 
@@ -93,6 +110,105 @@ function getRecoveryFolderActionLabel(message: AppMessage) {
     (message.activeNotebookPath === undefined ||
       (message.failedNotebookPath !== undefined && message.failedNotebookPath === message.activeNotebookPath))
   return localNotebookWasTheFailedFolder ? 'open local notebook folder' : 'open previous notebook folder'
+}
+
+const EDITOR_ABLATION_MODE_DESCRIPTIONS: Record<EditorAblationMode, string> = {
+  off: 'Normal production editor path with mount blank restoration removed from the hot path.',
+  'toast-only': 'Toast UI only: no app plugins, toolbar items, DOM installers, image hook, or blank restore.',
+  'toast-blank-restore': 'Toast UI plus display preparation and blank restore only.',
+  'toast-core-plugins': 'Toast UI plus core formatting, list, code, and table-like editor plugins only.',
+  'toast-special-plugins': 'Current production path except media-link and note-preview plugins are disabled.',
+  'toast-full-no-restore': 'Current production path with mount blank restoration skipped.',
+  'toast-retain-current-previous': 'Current production path retaining the active and previous aisle editor.',
+}
+
+const EDITOR_CORE_MODE_DESCRIPTIONS: Record<EditorCoreMode, string> = {
+  auto: 'Uses the current safe default editor core. Toast UI remains the default until a replacement proves out.',
+  toast: 'Forces the current Toast UI editor core for every aisle.',
+  mdxeditor: 'Experimental replacement core. Faster in some cases, but app-specific tags, media, find, and toolbar parity are incomplete.',
+  codemirror: 'Forces the fast source-Markdown CodeMirror editor core for every aisle.',
+}
+
+function EditorDevMessagesSection() {
+  const [mode, setMode] = useState<EditorAblationMode>(() => readEditorAblationMode())
+  const [editorCoreMode, setEditorCoreMode] = useState<EditorCoreMode>(() => readEditorCoreMode())
+  const [status, setStatus] = useState('')
+
+  const handleModeChange = (nextMode: EditorAblationMode) => {
+    const wrote = writeEditorAblationMode(nextMode)
+    setMode(nextMode)
+    setStatus(wrote ? 'Reload the app to apply this editor diagnostic mode.' : 'Could not save editor diagnostic mode.')
+  }
+
+  const handleEditorCoreModeChange = (nextMode: EditorCoreMode) => {
+    const wrote = writeEditorCoreMode(nextMode)
+    setEditorCoreMode(nextMode)
+    setStatus(wrote ? 'Reload the app to apply this editor core.' : 'Could not save editor core mode.')
+  }
+
+  const reloadApp = () => {
+    if (typeof window !== 'undefined') {
+      window.location.reload()
+    }
+  }
+
+  return (
+    <div className="messages-list editor-dev-messages-list">
+      <article className="message-card editor-dev-card">
+        <div className="message-card-header">
+          <div>
+            <h3>editor diagnostics</h3>
+            <p>
+              These modes isolate the production editor path without changing notebook files. Select a mode, reload,
+              then reproduce the slow aisle.
+            </p>
+          </div>
+        </div>
+        <div className="settings-hotkey-row">
+          <label className="settings-hotkey-label" htmlFor="messages-editor-core-mode">
+            editor core
+          </label>
+          <select
+            id="messages-editor-core-mode"
+            className="settings-select-input"
+            value={editorCoreMode}
+            onChange={(event) => handleEditorCoreModeChange(parseEditorCoreMode(event.target.value))}
+          >
+            {EDITOR_CORE_MODES.map((option) => (
+              <option key={option} value={option}>
+                {EDITOR_CORE_MODE_LABELS[option]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="settings-help">{EDITOR_CORE_MODE_DESCRIPTIONS[editorCoreMode]}</p>
+        <div className="settings-hotkey-row">
+          <label className="settings-hotkey-label" htmlFor="messages-editor-ablation-mode">
+            editor diagnostic mode
+          </label>
+          <select
+            id="messages-editor-ablation-mode"
+            className="settings-select-input"
+            value={mode}
+            onChange={(event) => handleModeChange(parseEditorAblationMode(event.target.value))}
+          >
+            {EDITOR_ABLATION_MODES.map((option) => (
+              <option key={option} value={option}>
+                {EDITOR_ABLATION_MODE_LABELS[option]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="settings-help">{EDITOR_ABLATION_MODE_DESCRIPTIONS[mode]}</p>
+        <div className="settings-page-actions">
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={reloadApp}>
+            reload app
+          </button>
+        </div>
+        {status ? <p className="settings-help">{status}</p> : null}
+      </article>
+    </div>
+  )
 }
 
 export function MessagesView({
@@ -278,6 +394,8 @@ export function MessagesView({
               </>
             )}
           </div>
+        ) : section === 'editor-dev' ? (
+          <EditorDevMessagesSection />
         ) : section === 'toast-history' ? (
           toastHistory.length === 0 ? (
             <p className="messages-empty">No toast history.</p>

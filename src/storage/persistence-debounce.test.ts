@@ -109,4 +109,71 @@ describe('createPersistenceDebounceController', () => {
     expect(save).toHaveBeenCalledOnce()
     expect(JSON.parse(save.mock.calls[0][0]).noteBodies[0].aisles[0].markdown).toContain('\n19')
   })
+
+  it('supports a slower schedule profile for editor content saves', () => {
+    vi.useFakeTimers()
+    const serialize = vi.fn((value: { body: string }) => JSON.stringify(value))
+    const save = vi.fn()
+    const controller = createPersistenceDebounceController({
+      debounceMs: 1_000,
+      maxWaitMs: 5_000,
+      serialize,
+      save,
+    })
+
+    controller.schedule(
+      { body: 'typed' },
+      {
+        debounceMs: 10_000,
+        maxWaitMs: 30_000,
+        saveOptions: { trigger: 'editor-content-idle' },
+      },
+    )
+    vi.advanceTimersByTime(9_999)
+
+    expect(save).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(1)
+
+    expect(save).toHaveBeenCalledOnce()
+    expect(save).toHaveBeenCalledWith('{"body":"typed"}', { trigger: 'editor-content-idle' })
+  })
+
+  it('shortens a pending max-wait timer when a later schedule uses the normal profile', () => {
+    vi.useFakeTimers()
+    const serialize = vi.fn((value: { body: string }) => JSON.stringify(value))
+    const save = vi.fn()
+    const controller = createPersistenceDebounceController({
+      debounceMs: 10_000,
+      maxWaitMs: 30_000,
+      serialize,
+      save,
+    })
+
+    controller.schedule(
+      { body: 'editor draft' },
+      {
+        debounceMs: 10_000,
+        maxWaitMs: 30_000,
+        saveOptions: { trigger: 'editor-content-idle' },
+      },
+    )
+    vi.advanceTimersByTime(500)
+    controller.schedule(
+      { body: 'structural update' },
+      {
+        debounceMs: 1_000,
+        maxWaitMs: 5_000,
+        saveOptions: { trigger: 'app-state-idle' },
+      },
+    )
+    vi.advanceTimersByTime(999)
+
+    expect(save).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(1)
+
+    expect(save).toHaveBeenCalledOnce()
+    expect(save).toHaveBeenCalledWith('{"body":"structural update"}', { trigger: 'app-state-idle' })
+  })
 })

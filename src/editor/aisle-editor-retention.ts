@@ -7,12 +7,16 @@ export type AisleEditorRetentionInput = {
   aisleIds: string[]
   activeAisleId: string
   nearVisibleAisleIds?: Iterable<string>
+  recentAisleIds?: Iterable<string>
+  retainNearVisibleAisles?: boolean
 }
 
 export function buildRetainedAisleEditorIds({
   aisleIds,
   activeAisleId,
   nearVisibleAisleIds = [],
+  recentAisleIds = [],
+  retainNearVisibleAisles = false,
 }: AisleEditorRetentionInput): Set<string> {
   const validIds = new Set(aisleIds)
   const retainedIds = new Set<string>()
@@ -25,7 +29,13 @@ export function buildRetainedAisleEditorIds({
     addIfValid(activeAisleId)
   }
 
-  for (const aisleId of nearVisibleAisleIds) {
+  if (retainNearVisibleAisles) {
+    for (const aisleId of nearVisibleAisleIds) {
+      addIfValid(aisleId)
+    }
+  }
+
+  for (const aisleId of recentAisleIds) {
     addIfValid(aisleId)
   }
 

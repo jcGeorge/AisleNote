@@ -4,6 +4,10 @@ import { Editor } from '@toast-ui/editor'
 import { TextSelection } from 'prosemirror-state'
 import { buildAisleEditorKey, getAisleIdFromAisleEditorKey, type AisleEditorMeta } from './aisle-editor'
 import {
+  createCodeMirrorMarkdownEditor,
+  isCodeMirrorMarkdownEditor,
+} from './codemirror-markdown-editor'
+import {
   AISLE_ACTIVATION_WARNING_THRESHOLD_MS,
   createAisleActivationDiagnosticSummary,
   mergeAisleActivationDiagnosticSummary,
@@ -76,6 +80,14 @@ import {
   buildRetainedAisleEditorIds,
   getAislePreviewMarkdown,
 } from './aisle-editor-retention'
+import {
+  createEditorAblationPolicy,
+  isEditorAblationActive,
+  measureEditorAblationOperation,
+  readEditorAblationMode,
+  type EditorAblationPolicy,
+} from './editor-ablation'
+import { readEditorCoreMode, resolveActiveEditorCore } from './editor-core'
 import type { HeadingCollapseState, NoteNavigationTarget, ResolvedNoteAisle, ToastTone, ViewMode } from '../types/app'
 import type { NotePreviewDeleteRequest, NotePreviewReferencePayload, ResolvedMarkdownNoteReference } from '../notes/note-references'
 import { getAisleBodyId } from '../notes/aisle-body-state'
@@ -178,6 +190,8 @@ type PendingLinkScroll = {
   linkKey: string
 }
 
+const AISLE_EDITOR_RECENT_RETAIN_LIMIT = 3
+
 type DevAisleEditorMountState = {
   noteBodyId: string
   mountedEditorCount: number
@@ -241,6 +255,16 @@ export function useAisleEditors({
   const aislePaneRootsRef = useRef<Map<string, HTMLElement>>(new Map())
   const aisleEditorMetaRef = useRef<Map<string, AisleEditorMeta>>(new Map())
   const [nearVisibleAisleIds, setNearVisibleAisleIds] = useState<Set<string>>(() => new Set())
+  const [recentRetainedAisleIds, setRecentRetainedAisleIds] = useState<string[]>([])
+  const editorAblationMode = readEditorAblationMode()
+  const editorCoreMode = readEditorCoreMode()
+  const editorAblationPolicy = useMemo(
+    () => createEditorAblationPolicy(editorAblationMode),
+    [editorAblationMode],
+  )
+  const editorAblationActive = isEditorAblationActive(editorAblationMode)
+  const mountedEditorAblationModeRef = useRef(editorAblationMode)
+  const mountedEditorCoreModeRef = useRef(editorCoreMode)
   const activationDiagnosticFrameRef = useRef<number | null>(null)
   const activationDiagnosticSummariesRef = useRef<Map<string, AisleActivationDiagnosticSummary>>(new Map())
   const recentPointerActivationRef = useRef<{ editorKey: string; at: number } | null>(null)
@@ -285,7 +309,7 @@ export function useAisleEditors({
       state.mountedEditorCount = mountedAisleIds.length
       state.mountedEditorCountByAisleBodyId = { ...mountedEditorCountByAisleBodyId }
       state.visibleAisleIds = [...visibleMountedAisleIds]
-      state.recentAisleIds = []
+      state.recentAisleIds = [...recentRetainedAisleIds]
     })
   }
   const clearDevAisleEditorMountState = () => {
@@ -312,8 +336,16 @@ export function useAisleEditors({
         aisleIds: activeAisleIds,
         activeAisleId: activeAisleId || resolvedActiveAisleId,
         nearVisibleAisleIds,
+        recentAisleIds: recentRetainedAisleIds.slice(0, AISLE_EDITOR_RECENT_RETAIN_LIMIT),
+        retainNearVisibleAisles: false,
       }),
-    [activeAisleId, activeAisleIds, nearVisibleAisleIds, resolvedActiveAisleId],
+    [
+      activeAisleId,
+      activeAisleIds,
+      nearVisibleAisleIds,
+      recentRetainedAisleIds,
+      resolvedActiveAisleId,
+    ],
   )
   const mountedAisleIdsKey = useMemo(() => activeAisleIds.filter((aisleId) => mountedAisleIds.has(aisleId)).join('\n'), [
     activeAisleIds,
@@ -325,6 +357,51 @@ export function useAisleEditors({
   const getAisleBodyIdForAisleId = (aisleId: string) => {
     const aisle = getAisleById(aisleId)
     return aisle ? getAisleBodyId(aisle) : aisleId
+  }
+
+  const getEditorAblationDiagnosticDetails = (policy: EditorAblationPolicy = editorAblationPolicy) => ({
+    ablationMode: policy.mode,
+    pluginGroups: {
+      corePlugins: policy.includeCorePlugins,
+      specialLinkPlugins: policy.includeSpecialLinkPlugins,
+      structuralPlugins: policy.includeStructuralPlugins,
+      domInstallers: policy.includeDomInstallers,
+      imageHook: policy.includeImageHook,
+      toolbarItems: policy.includeToolbarItems,
+      displayPreparation: policy.useDisplayPreparation,
+      mountBlankRestore: policy.runMountBlankRestore,
+      retainPreviousAisle: policy.retainPreviousAisle,
+    },
+  })
+
+  const recordEditorAblationDiagnostic = (
+    event: 'mount' | 'change' | 'switch',
+    input: {
+      durationMs?: number
+      aisleId?: string
+      details?: Record<string, unknown>
+    },
+  ) => {
+    if (!editorAblationActive) return
+    recordDiagnosticEvent('aisle-editor', `ablation-${event}`, {
+      level: input.durationMs && input.durationMs >= 50 ? 'warning' : 'info',
+      durationMs: input.durationMs,
+      details: {
+        ...getEditorAblationDiagnosticDetails(),
+        aisleId: input.aisleId,
+        aisleBodyId: input.aisleId ? getAisleBodyIdForAisleId(input.aisleId) : undefined,
+        mountedEditorCount: aisleEditorMetaRef.current.size,
+        ...(input.details ?? {}),
+      },
+    })
+  }
+
+  const rememberRecentRetainedAisle = (previousAisleId: string, nextAisleId: string) => {
+    if (!previousAisleId || previousAisleId === nextAisleId || !activeAisleIds.includes(previousAisleId)) return
+    setRecentRetainedAisleIds((currentAisleIds) => [
+      previousAisleId,
+      ...currentAisleIds.filter((aisleId) => aisleId !== previousAisleId && aisleId !== nextAisleId),
+    ].slice(0, AISLE_EDITOR_RECENT_RETAIN_LIMIT))
   }
 
   const getCachedMarkdownForAisle = (aisleId: string) => {
@@ -462,7 +539,11 @@ export function useAisleEditors({
       lastEditorMarkdownRef.current = expectedCanonicalMarkdown
     }
     markProgrammaticAisleMarkdown(meta.aisleId, expectedCanonicalMarkdown)
-    setEditorMarkdownForDisplay(meta.editor, expectedDisplayMarkdown)
+    if (isCodeMirrorMarkdownEditor(meta.editor)) {
+      meta.editor.setMarkdown(expectedCanonicalMarkdown, false)
+    } else {
+      setEditorMarkdownForDisplay(meta.editor, expectedDisplayMarkdown)
+    }
     window.setTimeout(() => clearProgrammaticAisleMarkdown(meta.aisleId, expectedCanonicalMarkdown), 0)
   }
 
@@ -470,6 +551,9 @@ export function useAisleEditors({
     const pending = getPendingContentForAisle(aisle)
     return getMarkdownSyncSnapshot(pending?.markdown ?? getCachedMarkdownForAisle(aisle.id) ?? aisle.markdown)
   }
+
+  const getLatestRawMarkdownForAisle = (aisle: ResolvedNoteAisle) =>
+    getPendingContentForAisle(aisle)?.markdown ?? getCachedMarkdownForAisle(aisle.id) ?? aisle.markdown
 
   const getCurrentCanonicalMarkdownForAisle = (aisleId: string) => {
     const aisle = getAisleById(aisleId)
@@ -523,6 +607,18 @@ export function useAisleEditors({
     const previousAisleId = activeAisleIdRef.current
     const requestedAisleId = getAisleIdFromAisleEditorKey(editorKey)
     const source = options.source ?? 'programmatic'
+    let switchAwayDurationMs: number | undefined
+    let switchAwayHadPendingContent: boolean | undefined
+    const runSwitchAwayPreparation = (fromAisleId: string) => {
+      const sourceAisle = getAisleById(fromAisleId)
+      switchAwayHadPendingContent = sourceAisle ? Boolean(getPendingContentForAisle(sourceAisle)) : false
+      const switchAwayStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      saveActiveCursorLocation()
+      flushPendingContent()
+      clearMultiLineEdit(false)
+      closeImageToolsRef.current()
+      switchAwayDurationMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - switchAwayStartedAt
+    }
     const shouldLogActivation = Boolean(
       options.source ||
       options.focus ||
@@ -540,6 +636,21 @@ export function useAisleEditors({
         focus: options.focus === true,
         flushPrevious: options.flushPrevious === true,
         mountedEditorCount: aisleEditorMetaRef.current.size,
+      })
+      recordEditorAblationDiagnostic('switch', {
+        aisleId,
+        durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+        details: {
+          previousAisleId,
+          requestedAisleId: aisleId,
+          source,
+          result,
+          focusRequested: options.focus === true,
+          flushPreviousRequested: options.flushPrevious === true,
+          reusedMountedEditor: result !== 'deferred-mount',
+          switchAwayDurationMs,
+          switchAwayHadPendingContent,
+        },
       })
     }
     if (isPendingCreatedRenameActive() && !options.allowDuringPendingRename) {
@@ -580,11 +691,9 @@ export function useAisleEditors({
         pendingFocusToAisleIdRef.current = null
       }
       if (activeAisleIdRef.current !== aisleId && options.flushPrevious) {
-        saveActiveCursorLocation()
-        flushPendingContent()
-        clearMultiLineEdit(false)
-        closeImageToolsRef.current()
+        runSwitchAwayPreparation(activeAisleIdRef.current)
       }
+      rememberRecentRetainedAisle(activeAisleIdRef.current, aisleId)
       activeAisleIdRef.current = aisleId
       activeEditorAisleIdRef.current = ''
       setActiveAisleId(aisleId)
@@ -616,13 +725,11 @@ export function useAisleEditors({
     }
 
     if (switchingAisle && options.flushPrevious) {
-      saveActiveCursorLocation()
-      flushPendingContent()
-      clearMultiLineEdit(false)
-      closeImageToolsRef.current()
+      runSwitchAwayPreparation(activeAisleIdRef.current)
     }
 
     editorRef.current = meta.editor
+    rememberRecentRetainedAisle(activeAisleIdRef.current, meta.aisleId)
     activeAisleIdRef.current = meta.aisleId
     activeEditorAisleIdRef.current = meta.aisleId
     multiLineCursorPluginKeyRef.current = meta.pluginKey
@@ -797,71 +904,101 @@ export function useAisleEditors({
     )
   }
 
-  const handleAisleEditorChange = (editorKey: string, aisleId: string, editor: Editor) => measureSlowOperation(`aisle editor change:${aisleId}`, () => {
-    if (!isMainViewRef.current) return
-    if (import.meta.env?.DEV) {
-      const now = getAisleEditorPerfNow()
-      withAisleEditorPerfState((state) => {
-        state.editorChangeCount += 1
-        state.lastEditorChangeAt = now
-        state.activeAisleId = aisleId
-        state.activeAisleBodyId = getAisleBodyIdForAisleId(aisleId)
-        state.lastPendingUpdateAt = now
-      })
-    }
+  const handleAisleEditorChange = (
+    editorKey: string,
+    aisleId: string,
+    editor: Editor,
+    knownMarkdown?: string,
+  ) => {
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+    return measureSlowOperation(`aisle editor change:${aisleId}`, () => {
+      try {
+        if (!isMainViewRef.current) return
+        if (import.meta.env?.DEV) {
+          const now = getAisleEditorPerfNow()
+          withAisleEditorPerfState((state) => {
+            state.editorChangeCount += 1
+            state.lastEditorChangeAt = now
+            state.activeAisleId = aisleId
+            state.activeAisleBodyId = getAisleBodyIdForAisleId(aisleId)
+            state.lastPendingUpdateAt = now
+          })
+        }
 
-    const expectedProgrammaticMarkdown = consumeProgrammaticAisleMarkdown(aisleId)
-    if (expectedProgrammaticMarkdown !== null) {
-      recordDiagnosticEvent('editor', 'programmatic-change-suppressed', {
-        details: {
-          aisleId,
-          aisleBodyId: getAisleBodyIdForAisleId(aisleId),
-        },
-      })
-      commitKnownProgrammaticMarkdown(aisleId, expectedProgrammaticMarkdown)
-      return
-    }
+        const expectedProgrammaticMarkdown = consumeProgrammaticAisleMarkdown(aisleId)
+        if (expectedProgrammaticMarkdown !== null) {
+          recordDiagnosticEvent('editor', 'programmatic-change-suppressed', {
+            details: {
+              aisleId,
+              aisleBodyId: getAisleBodyIdForAisleId(aisleId),
+            },
+          })
+          commitKnownProgrammaticMarkdown(aisleId, expectedProgrammaticMarkdown)
+          return
+        }
 
-    cancelPendingBlankRestore(aisleId)
-    if (normalizingAisleIdsRef.current.has(aisleId)) {
-      normalizingAisleIdsRef.current.delete(aisleId)
-      const expectedMarkdown = getCachedMarkdownForAisle(aisleId) ?? lastEditorMarkdownRef.current
-      if (expectedMarkdown) {
-        commitKnownProgrammaticMarkdown(aisleId, expectedMarkdown)
-        return
-      }
-    }
-
-    if (normalizingContentRef.current && activeAisleIdRef.current === aisleId) {
-      normalizingContentRef.current = false
-      commitKnownProgrammaticMarkdown(aisleId, lastEditorMarkdownRef.current)
-      return
-    }
-
-    activateAisleEditor(editorKey)
-    closeImageToolsIfSelectedImageMissingRef.current()
-
-    scheduleLazyContentCommit(
-      editor,
-      getLazyContentCommitFallbackMarkdownForAisle(aisleId),
-      activeSpaceIdRef.current,
-      activeTabIdRef.current,
-      activeSubTabIdRef.current,
-      aisleId,
-      {
-        aisleBodyId: getAisleBodyIdForAisleId(aisleId),
-        noteBodyId: activeNoteBodyIdRef.current,
-        fallbackAlreadyNormalized: true,
-        onMaterialized: (markdown) => {
-          if (activeAisleIdRef.current === aisleId) {
-            lastEditorMarkdownRef.current = markdown
+        cancelPendingBlankRestore(aisleId)
+        if (normalizingAisleIdsRef.current.has(aisleId)) {
+          normalizingAisleIdsRef.current.delete(aisleId)
+          const expectedMarkdown = getCachedMarkdownForAisle(aisleId) ?? lastEditorMarkdownRef.current
+          if (expectedMarkdown) {
+            commitKnownProgrammaticMarkdown(aisleId, expectedMarkdown)
+            return
           }
-          cacheMarkdownForAisleBody(aisleId, markdown)
-          syncMountedLinkedAisleEditors(aisleId, markdown)
-        },
-      },
-    )
-  })
+        }
+
+        if (normalizingContentRef.current && activeAisleIdRef.current === aisleId) {
+          normalizingContentRef.current = false
+          commitKnownProgrammaticMarkdown(aisleId, lastEditorMarkdownRef.current)
+          return
+        }
+
+        activateAisleEditor(editorKey)
+        closeImageToolsIfSelectedImageMissingRef.current()
+
+        if (isCodeMirrorMarkdownEditor(editor) && typeof knownMarkdown === 'string') {
+          scheduleContentCommit(
+            knownMarkdown,
+            activeSpaceIdRef.current,
+            activeTabIdRef.current,
+            activeSubTabIdRef.current,
+            aisleId,
+            { aisleBodyId: getAisleBodyIdForAisleId(aisleId), noteBodyId: activeNoteBodyIdRef.current },
+          )
+        } else {
+          scheduleLazyContentCommit(
+            editor,
+            getLazyContentCommitFallbackMarkdownForAisle(aisleId),
+            activeSpaceIdRef.current,
+            activeTabIdRef.current,
+            activeSubTabIdRef.current,
+            aisleId,
+            {
+              aisleBodyId: getAisleBodyIdForAisleId(aisleId),
+              noteBodyId: activeNoteBodyIdRef.current,
+              fallbackAlreadyNormalized: true,
+              onMaterialized: (markdown) => {
+                if (activeAisleIdRef.current === aisleId) {
+                  lastEditorMarkdownRef.current = markdown
+                }
+                cacheMarkdownForAisleBody(aisleId, markdown)
+                syncMountedLinkedAisleEditors(aisleId, markdown)
+              },
+            },
+          )
+        }
+      } finally {
+        recordEditorAblationDiagnostic('change', {
+          aisleId,
+          durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+          details: {
+            editorKey,
+            pendingContentCount: pendingContentRef.current.size,
+          },
+        })
+      }
+    })
+  }
 
   const commitAisleEditorMarkdown = (aisleId: string, committedEditor: Editor) => {
     const markdown = getNormalizedEditorMarkdown(committedEditor)
@@ -1017,6 +1154,18 @@ export function useAisleEditors({
   }, [viewMode, activeNoteBodyId, activeAisleIds, aisleScrollRef, resolvedActiveAisleId])
 
   useEffect(() => {
+    if (
+      mountedEditorAblationModeRef.current !== editorAblationMode ||
+      mountedEditorCoreModeRef.current !== editorCoreMode
+    ) {
+      Array.from(aisleEditorMetaRef.current.keys()).forEach((editorKey) =>
+        destroyAisleEditor(editorKey, { captureContent: true }),
+      )
+      mountedEditorAblationModeRef.current = editorAblationMode
+      mountedEditorCoreModeRef.current = editorCoreMode
+      setRecentRetainedAisleIds([])
+    }
+
     if (viewMode !== 'main' || !activeNoteBodyId) {
       destroyAllAisleEditors()
       return
@@ -1039,20 +1188,17 @@ export function useAisleEditors({
       const root = aisleEditorRootsRef.current.get(editorKey)
       if (!root || aisleEditorMetaRef.current.has(editorKey)) continue
 
-      const initialMarkdown = getLatestMarkdownForAisle(aisle)
+      const initialMarkdown = editorAblationPolicy.useDisplayPreparation
+        ? getLatestMarkdownForAisle(aisle)
+        : {
+            canonicalMarkdown: getLatestRawMarkdownForAisle(aisle),
+            displayMarkdown: getLatestRawMarkdownForAisle(aisle),
+          }
+      const activeEditorCore = resolveActiveEditorCore(editorCoreMode, initialMarkdown.canonicalMarkdown)
       let pluginKey: unknown = null
-      const editor = measureSlowOperation(`aisle editor Toast UI constructor:${aisle.id}`, () => new Editor({
-        el: root,
-        initialValue: prepareMarkdownForEditorDisplay(initialMarkdown.displayMarkdown),
-        initialEditType: 'wysiwyg',
-        previewStyle: 'tab',
-        hideModeSwitch: true,
-        customHTMLSanitizer: sanitizeEditorHtml,
-        toolbarItems: EDITOR_TOOLBAR_ITEMS,
-        height: '100%',
-        autofocus: false,
-        usageStatistics: false,
-        plugins: [
+      const editorPlugins: any[] = []
+      if (activeEditorCore === 'toast' && editorAblationPolicy.includeCorePlugins) {
+        editorPlugins.push(
           listMarkerPlugin,
           blockIndentPlugin,
           annotationLinePlugin,
@@ -1060,43 +1206,78 @@ export function useAisleEditors({
           highlightPlugin,
           codeBlockBacktickShortcutPlugin,
           terminalBlockLandingPlugin,
-          createMediaLinkPlugin,
-          createCodeBlockControlsPlugin({ pushToast }),
-          (context: any) =>
-            headingCollapsePlugin(context, {
-              aisleId: aisle.id,
-              getCollapsedHeadingKeys: (targetAisleId) =>
-                getCollapsedHeadingKeysForAisle(headingCollapseStateRef.current, activeNoteBodyId, targetAisleId),
-              getMarkdown: (targetAisleId) =>
-                normalizeEditorMarkdownForDisplay(
-                  getCachedMarkdownForAisle(targetAisleId) ??
-                  normalizeMarkdownForPersistence(getAisleById(targetAisleId)?.markdown ?? aisle.markdown),
-                ),
-              onToggleHeading: onToggleHeadingCollapse,
-              onExpandHeading: onExpandHeadingCollapse,
-            }),
+        )
+      }
+      if (activeEditorCore === 'toast' && editorAblationPolicy.includeSpecialLinkPlugins) {
+        editorPlugins.push(createMediaLinkPlugin)
+      }
+      if (activeEditorCore === 'toast' && editorAblationPolicy.includeCorePlugins) {
+        editorPlugins.push(createCodeBlockControlsPlugin({ pushToast }))
+      }
+      if (activeEditorCore === 'toast' && editorAblationPolicy.includeStructuralPlugins) {
+        editorPlugins.push((context: any) =>
+          headingCollapsePlugin(context, {
+            aisleId: aisle.id,
+            getCollapsedHeadingKeys: (targetAisleId) =>
+              getCollapsedHeadingKeysForAisle(headingCollapseStateRef.current, activeNoteBodyId, targetAisleId),
+            getMarkdown: (targetAisleId) =>
+              normalizeEditorMarkdownForDisplay(
+                getCachedMarkdownForAisle(targetAisleId) ??
+                normalizeMarkdownForPersistence(getAisleById(targetAisleId)?.markdown ?? aisle.markdown),
+              ),
+            onToggleHeading: onToggleHeadingCollapse,
+            onExpandHeading: onExpandHeadingCollapse,
+          }))
+      }
+      if (activeEditorCore === 'toast' && editorAblationPolicy.includeCorePlugins) {
+        editorPlugins.push(
           uncheckedTaskEnterPlugin,
           headingSpaceShortcutPlugin,
           thematicBreakShortcutPlugin,
-          (context: any) =>
-            createNotePreviewPlugin(context, {
-              sourceNoteBodyId: activeNoteBodyId,
-              getNotePreviewData,
-              resolvePreviewToken,
-              navigateToNoteLocation,
-              deleteNotePreview,
-              openNotePreviewContextMenu,
-            }),
-          (context: any) =>
-            multiLineSelectionShortcutPlugin({
-              ...context,
-              onExpand: tryExpandMultilineSelection,
-              onPluginKeyReady: (nextPluginKey) => {
-                pluginKey = nextPluginKey
-              },
-            }),
-        ],
-        hooks: {
+        )
+      }
+      if (activeEditorCore === 'toast' && editorAblationPolicy.includeSpecialLinkPlugins) {
+        editorPlugins.push((context: any) =>
+          createNotePreviewPlugin(context, {
+            sourceNoteBodyId: activeNoteBodyId,
+            getNotePreviewData,
+            resolvePreviewToken,
+            navigateToNoteLocation,
+            deleteNotePreview,
+            openNotePreviewContextMenu,
+          }))
+      }
+      if (activeEditorCore === 'toast' && editorAblationPolicy.includeStructuralPlugins) {
+        editorPlugins.push((context: any) =>
+          multiLineSelectionShortcutPlugin({
+            ...context,
+            onExpand: tryExpandMultilineSelection,
+            onPluginKeyReady: (nextPluginKey) => {
+              pluginKey = nextPluginKey
+            },
+          }))
+      }
+      const editorOptions: any = {
+        el: root,
+        initialValue: editorAblationPolicy.useDisplayPreparation
+          ? prepareMarkdownForEditorDisplay(initialMarkdown.displayMarkdown)
+          : initialMarkdown.canonicalMarkdown,
+        initialEditType: 'wysiwyg',
+        previewStyle: 'tab',
+        hideModeSwitch: true,
+        customHTMLSanitizer: sanitizeEditorHtml,
+        toolbarItems: editorAblationPolicy.includeToolbarItems ? EDITOR_TOOLBAR_ITEMS : [],
+        height: '100%',
+        autofocus: false,
+        usageStatistics: false,
+        plugins: editorPlugins,
+        events: {
+          change: () => handleAisleEditorChange(editorKey, aisle.id, editor),
+          focus: () => activateEditorFromFocus(editorKey),
+        },
+      }
+      if (activeEditorCore === 'toast' && editorAblationPolicy.includeImageHook) {
+        editorOptions.hooks = {
           addImageBlobHook: (blob: Blob | File, callback: (url: string, text?: string) => void) => {
             void importImageBlobAsAssetUrl(blob, blob instanceof File ? blob.name : 'image').then((assetUrl) => {
               if (!assetUrl) {
@@ -1109,32 +1290,58 @@ export function useAisleEditors({
               })
             })
           },
-        },
-        events: {
-          change: () => handleAisleEditorChange(editorKey, aisle.id, editor),
-          focus: () => activateEditorFromFocus(editorKey),
-        },
-      }))
+        }
+      }
+      let mountedEditor: Editor | null = null
+      const constructorMeasurement = measureEditorAblationOperation(() => {
+        if (activeEditorCore === 'codemirror') {
+          return measureSlowOperation(`aisle editor CodeMirror constructor:${aisle.id}`, () =>
+            createCodeMirrorMarkdownEditor({
+              root,
+              markdown: initialMarkdown.canonicalMarkdown,
+              onChange: (markdown) => {
+                if (mountedEditor) handleAisleEditorChange(editorKey, aisle.id, mountedEditor, markdown)
+              },
+              onFocus: () => activateEditorFromFocus(editorKey),
+            }))
+        }
+        return measureSlowOperation(`aisle editor Toast UI constructor:${aisle.id}`, () => new Editor(editorOptions))
+      })
+      const editor = constructorMeasurement.result
+      mountedEditor = editor
       const activateFromFocus = () => activateEditorFromFocus(editorKey, getAisleActivationNow())
       const activateFromPointer = () => activateEditorFromPointer(editorKey, getAisleActivationNow())
       root.addEventListener('focusin', activateFromFocus)
       root.addEventListener('pointerdown', activateFromPointer, true)
-      const cleanupImageDisplayMetadataSync = installImageDisplayMetadataSync(root)
-      const cleanupEditorSpellcheck = installEditorSpellcheck(root)
-      const cleanupToolbarAppTooltips = installToolbarAppTooltips(root)
-      const cleanupHeadingPopupActiveState = installHeadingPopupActiveState(root, () => editor)
-      const cleanupCompletedTaskCheckboxBehavior = installCompletedTaskCheckboxBehavior(
-        root,
-        () => editor,
-        trackCompletedTaskQuickDelete,
-        (committedEditor) => commitAisleEditorMarkdown(aisle.id, committedEditor),
-      )
-      const cleanupTaskTextReorderBehavior = installTaskTextReorderBehavior(root, () => editor, {
-        onReorderCommitted: (committedEditor) => {
-          pendingCursorRestoreRef.current = null
-          commitAisleEditorMarkdown(aisle.id, committedEditor)
-        },
-      })
+      const noopCleanup = () => {}
+      const cleanupImageDisplayMetadataSync = activeEditorCore === 'toast' && editorAblationPolicy.includeDomInstallers
+        ? installImageDisplayMetadataSync(root)
+        : noopCleanup
+      const cleanupEditorSpellcheck = activeEditorCore === 'toast' && editorAblationPolicy.includeDomInstallers
+        ? installEditorSpellcheck(root)
+        : noopCleanup
+      const cleanupToolbarAppTooltips = activeEditorCore === 'toast' && editorAblationPolicy.includeDomInstallers
+        ? installToolbarAppTooltips(root)
+        : noopCleanup
+      const cleanupHeadingPopupActiveState = activeEditorCore === 'toast' && editorAblationPolicy.includeDomInstallers
+        ? installHeadingPopupActiveState(root, () => editor)
+        : noopCleanup
+      const cleanupCompletedTaskCheckboxBehavior = activeEditorCore === 'toast' && editorAblationPolicy.includeDomInstallers
+        ? installCompletedTaskCheckboxBehavior(
+            root,
+            () => editor,
+            trackCompletedTaskQuickDelete,
+            (committedEditor) => commitAisleEditorMarkdown(aisle.id, committedEditor),
+          )
+        : noopCleanup
+      const cleanupTaskTextReorderBehavior = activeEditorCore === 'toast' && editorAblationPolicy.includeDomInstallers
+        ? installTaskTextReorderBehavior(root, () => editor, {
+            onReorderCommitted: (committedEditor) => {
+              pendingCursorRestoreRef.current = null
+              commitAisleEditorMarkdown(aisle.id, committedEditor)
+            },
+          })
+        : noopCleanup
 
       aisleEditorMetaRef.current.set(editorKey, {
         editor,
@@ -1175,11 +1382,18 @@ export function useAisleEditors({
       cacheMarkdownForAisleBody(aisle.id, initialMarkdown.canonicalMarkdown)
 
       const focusAfterRestore = pendingFocusAfterMountAisleIdRef.current === aisle.id
+      let mountBlankRestoreDurationMs = 0
+      let mountBlankRestoreSkipped = activeEditorCore !== 'toast' || !editorAblationPolicy.runMountBlankRestore
       const runMountBlankRestore = (label: string) => {
-        const result = measureSlowOperation(label, () => {
+        if (activeEditorCore !== 'toast' || !editorAblationPolicy.runMountBlankRestore) {
+          return { restored: false, viewReady: true }
+        }
+        const measurement = measureEditorAblationOperation(() => measureSlowOperation(label, () => {
           markProgrammaticAisleMarkdown(aisle.id, initialMarkdown.canonicalMarkdown)
           return restoreEditorDisplay(editor, initialMarkdown.displayMarkdown)
-        })
+        }))
+        mountBlankRestoreDurationMs += measurement.durationMs
+        const result = measurement.result
         if (result.restored) {
           window.setTimeout(() => clearProgrammaticAisleMarkdown(aisle.id, initialMarkdown.canonicalMarkdown), 0)
         } else {
@@ -1189,11 +1403,26 @@ export function useAisleEditors({
       }
       const immediateRestoreResult = runMountBlankRestore(`aisle editor mount blank restore:${aisle.id}:immediate`)
       const retryBlankRestoreAfterPaint = !immediateRestoreResult.viewReady
+      recordEditorAblationDiagnostic('mount', {
+        aisleId: aisle.id,
+        durationMs: constructorMeasurement.durationMs + mountBlankRestoreDurationMs,
+        details: {
+          editorKey,
+          newlyConstructed: true,
+          constructorDurationMs: constructorMeasurement.durationMs,
+          mountBlankRestoreDurationMs,
+          mountBlankRestoreSkipped,
+          mountBlankRestoreRetryScheduled: retryBlankRestoreAfterPaint,
+          pluginCount: editorPlugins.length,
+          editorCore: activeEditorCore,
+        },
+      })
       const restoreFrameId = window.requestAnimationFrame(() => {
         pendingBlankRestoreFrameRef.current.delete(aisle.id)
         const mountedMeta = aisleEditorMetaRef.current.get(editorKey)
         if (!mountedMeta || mountedMeta.editor !== editor) return
         if (retryBlankRestoreAfterPaint) {
+          mountBlankRestoreSkipped = false
           runMountBlankRestore(`aisle editor mount blank restore:${aisle.id}`)
         }
         if (focusAfterRestore && pendingFocusAfterMountAisleIdRef.current === aisle.id) {
@@ -1213,16 +1442,17 @@ export function useAisleEditors({
     if (aisleEditorMetaRef.current.has(activeEditorKey)) {
       activateAisleEditor(activeEditorKey)
     }
-  }, [viewMode, activeNoteBodyId, activeNoteAisles, resolvedActiveAisleId, mountedAisleIdsKey])
+  }, [viewMode, activeNoteBodyId, activeNoteAisles, resolvedActiveAisleId, mountedAisleIdsKey, editorAblationMode, editorCoreMode])
 
   useEffect(() => {
+    if (!editorAblationPolicy.includeStructuralPlugins) return
     if (viewMode !== 'main' || !activeNoteBodyId) return
     aisleEditorMetaRef.current.forEach((meta) => {
       const view = getWysiwygView(meta.editor)
       if (!view?.state?.tr) return
       view.dispatch(view.state.tr.setMeta('headingCollapseRefresh', true).setMeta('addToHistory', false))
     })
-  }, [viewMode, activeNoteBodyId, headingCollapseState])
+  }, [viewMode, activeNoteBodyId, editorAblationPolicy.includeStructuralPlugins, headingCollapseState])
 
   useEffect(() => {
     if (!import.meta.env?.DEV) return
@@ -1231,7 +1461,7 @@ export function useAisleEditors({
       return
     }
     emitDevAisleEditorMountState()
-  }, [viewMode, activeNoteBodyId, mountedAisleIds, nearVisibleAisleIds, activeAisleIds])
+  }, [viewMode, activeNoteBodyId, mountedAisleIds, nearVisibleAisleIds, activeAisleIds, recentRetainedAisleIds])
 
   useEffect(() => {
     return () => {

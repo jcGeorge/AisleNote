@@ -100,10 +100,61 @@
   tab-size: 4 !important;
 }
 
+.tabs-mdxeditor-content {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
+  padding-inline: 0.3125rem !important;
+  overflow-wrap: anywhere;
+  background: var(--editor-bg) !important;
+  color: var(--editor-text) !important;
+  font-size: calc(1rem * var(--note-font-scale, 1)) !important;
+  line-height: 1.55 !important;
+}
+
+.tabs-mdxeditor-content p,
+.tabs-mdxeditor-content li,
+.tabs-mdxeditor-content span,
+.tabs-mdxeditor-content div,
+.tabs-mdxeditor-content strong,
+.tabs-mdxeditor-content em,
+.tabs-mdxeditor-content code,
+.tabs-mdxeditor-content blockquote,
+.tabs-mdxeditor-content th,
+.tabs-mdxeditor-content td,
+.tabs-mdxeditor-content a {
+  font-size: inherit !important;
+}
+
+.tabs-mdxeditor-content p,
+.tabs-mdxeditor-content li {
+  white-space: pre-wrap !important;
+  tab-size: 4 !important;
+}
+
 .toastui-editor-contents table,
 .toastui-editor .ProseMirror table {
   border-collapse: collapse !important;
   border: 1px solid var(--editor-table-grid-border) !important;
+}
+
+.tabs-mdxeditor-content table {
+  border-collapse: collapse !important;
+  border: 1px solid var(--editor-table-grid-border) !important;
+  margin: 0.35em 0 !important;
+}
+
+.tabs-mdxeditor-content table[class*='_tableEditor'] > thead,
+.tabs-mdxeditor-content table[class*='_tableEditor'] > tfoot,
+.tabs-mdxeditor-content table[class*='_tableEditor'] [data-tool-cell='true'],
+.tabs-mdxeditor-content table[class*='_tableEditor'] [class*='_toolCell'] {
+  display: none !important;
+}
+
+.tabs-mdxeditor-content table[class*='_tableEditor'] colgroup > col:first-child,
+.tabs-mdxeditor-content table[class*='_tableEditor'] colgroup > col:last-child {
+  display: none !important;
+  width: 0 !important;
 }
 
 .toastui-editor-contents th,
@@ -113,8 +164,23 @@
   border: 1px solid var(--editor-table-grid-border) !important;
 }
 
+.tabs-mdxeditor-content th,
+.tabs-mdxeditor-content td {
+  border: 1px solid var(--editor-table-grid-border) !important;
+  background: var(--editor-bg) !important;
+  color: var(--editor-text) !important;
+  padding: 0.18em 0.42em !important;
+  vertical-align: top !important;
+}
+
 .toastui-editor-contents th,
 .toastui-editor .ProseMirror th {
+  font-style: inherit !important;
+  font-weight: inherit !important;
+  text-align: inherit !important;
+}
+
+.tabs-mdxeditor-content th {
   font-style: inherit !important;
   font-weight: inherit !important;
   text-align: inherit !important;
@@ -167,6 +233,47 @@
 
 .toastui-editor-contents blockquote > :last-child,
 .toastui-editor .ProseMirror blockquote > :last-child {
+  margin-bottom: 0 !important;
+}
+
+.tabs-mdxeditor-content blockquote {
+  position: relative !important;
+  background: var(--editor-blockquote-bg) !important;
+  border: 0 !important;
+  color: var(--editor-blockquote-text) !important;
+  font-size: inherit !important;
+  margin: 0.18em 0 !important;
+  padding: 0.08em 0 0.08em 0.95rem !important;
+}
+
+.tabs-mdxeditor-content blockquote::before {
+  content: '';
+  position: absolute;
+  left: 0.18rem;
+  top: 0.12em;
+  bottom: 0.12em;
+  width: 0.3rem;
+  min-height: 1.15em;
+  border-radius: 0.08rem;
+  background: var(--editor-blockquote-border) !important;
+  pointer-events: none;
+}
+
+.tabs-mdxeditor-content blockquote p,
+.tabs-mdxeditor-content blockquote li,
+.tabs-mdxeditor-content blockquote span,
+.tabs-mdxeditor-content blockquote strong,
+.tabs-mdxeditor-content blockquote em {
+  background: transparent !important;
+  color: inherit !important;
+  font-size: inherit !important;
+}
+
+.tabs-mdxeditor-content blockquote > :first-child {
+  margin-top: 0 !important;
+}
+
+.tabs-mdxeditor-content blockquote > :last-child {
   margin-bottom: 0 !important;
 }
 
@@ -711,6 +818,12 @@
   text-underline-offset: 0.16em;
 }
 
+.tabs-mdxeditor-content a {
+  color: var(--editor-link-text) !important;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
 .toastui-editor .ProseMirror .toastui-editor-md-link,
 .toastui-editor-contents .toastui-editor-md-link {
   cursor: pointer !important;
@@ -720,6 +833,11 @@
 .toastui-editor .ProseMirror a:focus-visible,
 .toastui-editor-contents a:hover,
 .toastui-editor-contents a:focus-visible {
+  color: var(--editor-link-hover-text) !important;
+}
+
+.tabs-mdxeditor-content a:hover,
+.tabs-mdxeditor-content a:focus-visible {
   color: var(--editor-link-hover-text) !important;
 }
 
@@ -1259,6 +1377,37 @@
   font-size: calc(0.86rem * var(--note-font-scale, 1)) !important;
 }
 
+.tabs-mdxeditor-content h1 {
+  font-size: calc(1.35rem * var(--note-font-scale, 1)) !important;
+  margin: 0.6rem 0 0.45rem !important;
+  border-bottom: 0 !important;
+  padding-bottom: 0 !important;
+  color: var(--editor-heading-text) !important;
+}
+
+.tabs-mdxeditor-content h2 {
+  font-size: calc(1.2rem * var(--note-font-scale, 1)) !important;
+  border-bottom: 0 !important;
+  padding-bottom: 0 !important;
+  color: var(--editor-heading-text) !important;
+}
+
+.tabs-mdxeditor-content h3 {
+  font-size: calc(1.08rem * var(--note-font-scale, 1)) !important;
+}
+
+.tabs-mdxeditor-content h4 {
+  font-size: calc(1rem * var(--note-font-scale, 1)) !important;
+}
+
+.tabs-mdxeditor-content h5 {
+  font-size: calc(0.92rem * var(--note-font-scale, 1)) !important;
+}
+
+.tabs-mdxeditor-content h6 {
+  font-size: calc(0.86rem * var(--note-font-scale, 1)) !important;
+}
+
 .toastui-editor-contents h3,
 .toastui-editor-contents h4,
 .toastui-editor-contents h5,
@@ -1269,6 +1418,13 @@
 .toastui-editor .ProseMirror h4,
 .toastui-editor .ProseMirror h5,
 .toastui-editor .ProseMirror h6 {
+  color: var(--editor-heading-text) !important;
+}
+
+.tabs-mdxeditor-content h3,
+.tabs-mdxeditor-content h4,
+.tabs-mdxeditor-content h5,
+.tabs-mdxeditor-content h6 {
   color: var(--editor-heading-text) !important;
 }
 
@@ -1290,6 +1446,15 @@
 .aisle-editor-preview-fallback > h4:first-child,
 .aisle-editor-preview-fallback > h5:first-child,
 .aisle-editor-preview-fallback > h6:first-child {
+  margin-top: 0 !important;
+}
+
+.note-aisle-editor-shell .tabs-mdxeditor-content > h1:first-child,
+.note-aisle-editor-shell .tabs-mdxeditor-content > h2:first-child,
+.note-aisle-editor-shell .tabs-mdxeditor-content > h3:first-child,
+.note-aisle-editor-shell .tabs-mdxeditor-content > h4:first-child,
+.note-aisle-editor-shell .tabs-mdxeditor-content > h5:first-child,
+.note-aisle-editor-shell .tabs-mdxeditor-content > h6:first-child {
   margin-top: 0 !important;
 }
 
@@ -1411,6 +1576,22 @@
 
 .toastui-editor .ProseMirror code,
 .toastui-editor-contents code {
+  background: var(--editor-code-bg) !important;
+  color: var(--editor-text) !important;
+}
+
+.tabs-mdxeditor-content pre {
+  background: var(--editor-pre-bg) !important;
+  border: 1px solid var(--editor-pre-border) !important;
+  color: var(--editor-text) !important;
+}
+
+.tabs-mdxeditor-content pre code {
+  background: transparent !important;
+  color: var(--editor-text) !important;
+}
+
+.tabs-mdxeditor-content code {
   background: var(--editor-code-bg) !important;
   color: var(--editor-text) !important;
 }

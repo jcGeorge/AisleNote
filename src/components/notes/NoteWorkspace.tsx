@@ -411,14 +411,22 @@ export function NoteWorkspace({
           const editorMounted = mountedAisleIds.has(aisle.id)
           const editorMountPending = suppressActiveAislePreviewFallback && !editorMounted && aisle.id === activeAisleId
           const previewMarkdown = editorMounted || editorMountPending ? '' : getPreviewMarkdownForAisle(aisle)
+          const previewLikelyExpensive = isMarkdownPreviewLikelyExpensive(previewMarkdown)
           const previewHydrationPending =
             deferInactivePreviewFallbacks &&
-            !inactivePreviewsHydrated &&
             !editorMounted &&
             !editorMountPending &&
             aisle.id !== activeAisleId &&
-            isMarkdownPreviewLikelyExpensive(previewMarkdown)
-          const renderedPreviewMarkdown = previewHydrationPending ? '' : previewMarkdown
+            previewLikelyExpensive &&
+            !inactivePreviewsHydrated
+          const previewSuppressed =
+            deferInactivePreviewFallbacks &&
+            !editorMounted &&
+            !editorMountPending &&
+            aisle.id !== activeAisleId &&
+            !inactivePreviewsHydrated &&
+            previewLikelyExpensive
+          const renderedPreviewMarkdown = previewSuppressed ? '' : previewMarkdown
           const tableOfContentsHeadings = tableOfContentsHeadingsByAisle[aisle.id] ?? []
           const tableOfContentsLinks = tableOfContentsLinksByAisle[aisle.id] ?? []
           const tableOfContentsOpen =

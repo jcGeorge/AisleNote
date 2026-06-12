@@ -16,7 +16,13 @@ import {
   saveDeviceSettings,
 } from './device-settings-store'
 import { createPersistenceDebounceController } from './persistence-debounce'
-import type { AppStateCommitOptions, AppStateSaveOptions } from './persistence-debounce'
+import {
+  APP_STATE_EDITOR_CONTENT_PERSISTENCE_DEBOUNCE_MS,
+  APP_STATE_EDITOR_CONTENT_PERSISTENCE_MAX_WAIT_MS,
+  type AppStateCommitOptions,
+  type AppStateSaveOptions,
+} from './persistence-debounce'
+import { getEditorContentStateMutationVersion } from './persistence-scheduling'
 
 type PersistentAppStateController = {
   state: AppState
@@ -61,6 +67,7 @@ export function usePersistentAppState(): PersistentAppStateController {
   const initialStateRef = useRef<AppState>(initialParsedState)
   const stateDirtySinceBootRef = useRef(false)
   const externallyAppliedStateRef = useRef<AppState | null>(null)
+  const lastEditorContentStateMutationVersionRef = useRef(getEditorContentStateMutationVersion())
   const lastSerializationMetricsRef = useRef<{ durationMs: number; payloadBytes: number } | null>(null)
   const serializeAppState = useCallback((value: AppState) => {
     const startedAt = nowMs()
@@ -161,6 +168,10 @@ export function usePersistentAppState(): PersistentAppStateController {
 
     stateRef.current = sanitizedState
     saveDeviceSettingsForState(sanitizedState)
+    const editorContentStateMutationVersion = getEditorContentStateMutationVersion()
+    const changedFromEditorContent =
+      editorContentStateMutationVersion !== lastEditorContentStateMutationVersionRef.current
+    lastEditorContentStateMutationVersionRef.current = editorContentStateMutationVersion
     if (externallyAppliedStateRef.current === sanitizedState) {
       externallyAppliedStateRef.current = null
       stateDirtySinceBootRef.current = false
@@ -168,7 +179,22 @@ export function usePersistentAppState(): PersistentAppStateController {
     }
     stateDirtySinceBootRef.current = sanitizedState !== initialStateRef.current
     if (!storageHydrated || !stateDirtySinceBootRef.current) return
-    persistenceControllerRef.current.schedule(sanitizedState)
+    persistenceControllerRef.current.schedule(
+      sanitizedState,
+      changedFromEditorContent
+        ? {
+            debounceMs: APP_STATE_EDITOR_CONTENT_PERSISTENCE_DEBOUNCE_MS,
+            maxWaitMs: APP_STATE_EDITOR_CONTENT_PERSISTENCE_MAX_WAIT_MS,
+            saveOptions: {
+              trigger: 'editor-content-idle',
+            },
+          }
+        : {
+            saveOptions: {
+              trigger: 'app-state-idle',
+            },
+          },
+    )
   }, [setState, state, storageHydrated])
 
   const flushPendingPersistence = async (options: AppStateSaveOptions = { preferSync: true }) => {

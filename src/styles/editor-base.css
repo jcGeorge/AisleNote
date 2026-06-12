@@ -15,6 +15,15 @@
   color: var(--editor-text) !important;
 }
 
+.tabs-mdxeditor-host,
+.tabs-mdxeditor-host .mdxeditor,
+.tabs-mdxeditor-host .mdxeditor-root-contenteditable,
+.tabs-mdxeditor-host .mdxeditor-rich-text-editor,
+.tabs-mdxeditor-content {
+  background-color: var(--editor-bg) !important;
+  color: var(--editor-text) !important;
+}
+
 .toastui-editor-defaultUI {
   border: 0 !important;
   border-radius: 0 !important;

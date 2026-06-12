@@ -7,8 +7,9 @@ const appControllerSource = readFileSync(join(dirname(fileURLToPath(import.meta.
 
 describe('et cetera navigation', () => {
   it('remembers the last utility parent and routes the settings shortcut through et cetera', () => {
-    expect(appControllerSource).toContain("type EtCeteraViewMode = Extract<ViewMode, 'about' | 'messages' | 'settings'>")
+    expect(appControllerSource).toContain('type EtCeteraViewMode = DeviceEtCeteraViewMode')
     expect(appControllerSource).toContain('const lastEtCeteraViewModeRef = useRef<EtCeteraViewMode>')
+    expect(appControllerSource).toContain("savePartialDeviceSettings({ lastEtCeteraViewMode: viewMode })")
     expect(appControllerSource).toContain('const openEtCeteraView = () => {')
     expect(appControllerSource).toContain('const targetViewMode = lastEtCeteraViewModeRef.current')
     expect(appControllerSource).toContain('openSettings: openEtCeteraView')

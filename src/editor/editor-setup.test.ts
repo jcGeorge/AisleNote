@@ -77,7 +77,7 @@ describe('imperative editor toolbar tooltips', () => {
     )
     expect(editorSetupSource).toContain("button.removeAttribute('title')")
     expect(legacyEditorSource).toContain('const cleanupToolbarAppTooltips = installToolbarAppTooltips(editorMountRef.current)')
-    expect(aisleEditorsSource).toContain('const cleanupToolbarAppTooltips = installToolbarAppTooltips(root)')
+    expect(aisleEditorsSource).toContain('installToolbarAppTooltips(root)')
   })
 
   it('does not bind app-created toolbar buttons to the Toast UI internal tooltip', () => {
@@ -108,7 +108,7 @@ describe('imperative editor toolbar tooltips', () => {
     )
     expect(legacyEditorSource).toContain('const cleanupEditorSpellcheck = installEditorSpellcheck(editorMountRef.current)')
     expect(legacyEditorSource).toContain('cleanupEditorSpellcheck()')
-    expect(aisleEditorsSource).toContain('const cleanupEditorSpellcheck = installEditorSpellcheck(root)')
+    expect(aisleEditorsSource).toContain('installEditorSpellcheck(root)')
     expect(aisleEditorsSource).toContain('cleanupEditorSpellcheck()')
   })
 })
