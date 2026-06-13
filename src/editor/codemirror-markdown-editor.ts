@@ -1,6 +1,6 @@
 import { defaultKeymap, history, historyKeymap, redo, undo } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
-import { EditorSelection, EditorState, StateField } from '@codemirror/state'
+import { EditorSelection, EditorState } from '@codemirror/state'
 import {
   Decoration,
   type DecorationSet,
@@ -41,6 +41,8 @@ const EMPHASIS_RE = /(^|[^*])\*([^*\n]+)\*(?!\*)/g
 const STRIKE_RE = /~~([^~\n]+)~~/g
 const HORIZONTAL_RULE_RE = /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/
 const FENCE_RE = /^[ \t]{0,3}(`{3,}|~{3,})/
+const CODEMIRROR_MARKDOWN_CHANGE_DEBOUNCE_MS = 450
+const CODEMIRROR_TABLE_PREVIEW_CONTEXT_LINE_COUNT = 80
 
 export type RenderedMarkdownLine = {
   from: number
@@ -710,34 +712,6 @@ function createDecorationFromReplacement(replacement: RenderedMarkdownReplacemen
   return Decoration.replace({})
 }
 
-function collectRenderedMarkdownLinesFromState(state: EditorState): RenderedMarkdownLine[] {
-  const lines: RenderedMarkdownLine[] = []
-  let fenceState = { inFence: false, fenceMarker: '' }
-  for (let number = 1; number <= state.doc.lines; number += 1) {
-    const line = state.doc.line(number)
-    const fenceMatch = line.text.match(FENCE_RE)
-    const isInsideFence = fenceState.inFence
-    lines.push({
-      from: line.from,
-      to: line.to,
-      number: line.number,
-      text: line.text,
-      isInsideFence,
-      isFenceBoundary: Boolean(fenceMatch),
-    })
-    if (fenceMatch) {
-      const marker = fenceMatch[1]
-      const markerChar = marker[0]
-      if (!fenceState.inFence) {
-        fenceState = { inFence: true, fenceMarker: markerChar }
-      } else if (markerChar === fenceState.fenceMarker) {
-        fenceState = { inFence: false, fenceMarker: '' }
-      }
-    }
-  }
-  return lines
-}
-
 export function getRenderedMarkdownTableCellParts(source: string): RenderedMarkdownTableCellPart[] {
   const normalized = String(source ?? '')
   const parts: RenderedMarkdownTableCellPart[] = []
@@ -832,13 +806,22 @@ function createCodeMirrorTablePreviewDecorationSet(
   return Decoration.set(ranges, true)
 }
 
+function getCodeMirrorVisibleRanges(view: EditorView) {
+  return view.visibleRanges.map((range) => ({ from: range.from, to: range.to }))
+}
+
 function buildCodeMirrorTablePreviewState(
-  state: EditorState,
+  view: EditorView,
   diagnosticAisleId?: string,
 ): CodeMirrorTablePreviewState {
   return measureCodeMirrorOperation('aisle editor CodeMirror table widget rebuild', diagnosticAisleId, () => {
-    const blocks = buildRenderedMarkdownTableBlockPlanFromLines(collectRenderedMarkdownLinesFromState(state))
-    const selectionRanges = getCodeMirrorSelectionRanges(state)
+    const selectionRanges = getCodeMirrorSelectionRanges(view.state)
+    const visibleRanges = getCodeMirrorVisibleRanges(view)
+    const blocks = buildRenderedMarkdownTableBlockPlanFromLines(collectBufferedRenderedMarkdownLines(view))
+      .filter((block) =>
+        rangeIntersectsPointOrRange(block.from, block.to, visibleRanges)
+        || rangeIntersectsPointOrRange(block.from, block.to, selectionRanges),
+      )
     return {
       blocks,
       editableTableKey: getRenderedMarkdownEditableTableKey(blocks, selectionRanges),
@@ -848,22 +831,34 @@ function buildCodeMirrorTablePreviewState(
 }
 
 function createCodeMirrorTablePreviewDecorations(diagnosticAisleId?: string) {
-  return StateField.define<CodeMirrorTablePreviewState>({
-    create: (state) => buildCodeMirrorTablePreviewState(state, diagnosticAisleId),
-    update: (current, transaction) => {
-      if (transaction.docChanged) return buildCodeMirrorTablePreviewState(transaction.state, diagnosticAisleId)
-      if (!transaction.selection) return current
-      const selectionRanges = getCodeMirrorSelectionRanges(transaction.state)
-      const editableTableKey = getRenderedMarkdownEditableTableKey(current.blocks, selectionRanges)
-      if (editableTableKey === current.editableTableKey) return current
-      return measureCodeMirrorOperation('aisle editor CodeMirror table widget rebuild', diagnosticAisleId, () => ({
-        blocks: current.blocks,
-        editableTableKey,
-        decorations: createCodeMirrorTablePreviewDecorationSet(current.blocks, selectionRanges),
-      }))
+  return ViewPlugin.fromClass(
+    class {
+      previewState: CodeMirrorTablePreviewState
+
+      constructor(view: EditorView) {
+        this.previewState = buildCodeMirrorTablePreviewState(view, diagnosticAisleId)
+      }
+
+      update(update: ViewUpdate) {
+        if (update.docChanged || update.viewportChanged) {
+          this.previewState = buildCodeMirrorTablePreviewState(update.view, diagnosticAisleId)
+          return
+        }
+        if (!update.selectionSet) return
+        const selectionRanges = getCodeMirrorSelectionRanges(update.state)
+        const editableTableKey = getRenderedMarkdownEditableTableKey(this.previewState.blocks, selectionRanges)
+        if (editableTableKey === this.previewState.editableTableKey) return
+        this.previewState = measureCodeMirrorOperation('aisle editor CodeMirror table widget rebuild', diagnosticAisleId, () => ({
+          blocks: this.previewState.blocks,
+          editableTableKey,
+          decorations: createCodeMirrorTablePreviewDecorationSet(this.previewState.blocks, selectionRanges),
+        }))
+      }
     },
-    provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
-  })
+    {
+      decorations: (plugin) => plugin.previewState.decorations,
+    },
+  )
 }
 
 function getFenceStateBeforeLine(view: EditorView, lineNumber: number) {
@@ -920,6 +915,63 @@ function collectVisibleRenderedMarkdownLines(view: EditorView): RenderedMarkdown
         }
       }
       position = line.to + 1
+    }
+  }
+  return lines
+}
+
+function collectBufferedRenderedMarkdownLines(
+  view: EditorView,
+  contextLineCount = CODEMIRROR_TABLE_PREVIEW_CONTEXT_LINE_COUNT,
+): RenderedMarkdownLine[] {
+  const lineRanges = view.visibleRanges
+    .map((visibleRange) => {
+      const fromLine = view.state.doc.lineAt(visibleRange.from).number
+      const toLine = view.state.doc.lineAt(Math.max(visibleRange.from, Math.min(visibleRange.to, view.state.doc.length))).number
+      return {
+        from: Math.max(1, fromLine - contextLineCount),
+        to: Math.min(view.state.doc.lines, toLine + contextLineCount),
+      }
+    })
+    .sort((left, right) => left.from - right.from || left.to - right.to)
+
+  const mergedLineRanges: Array<{ from: number; to: number }> = []
+  for (const lineRange of lineRanges) {
+    const previous = mergedLineRanges.at(-1)
+    if (previous && lineRange.from <= previous.to + 1) {
+      previous.to = Math.max(previous.to, lineRange.to)
+      continue
+    }
+    mergedLineRanges.push({ ...lineRange })
+  }
+
+  const lines: RenderedMarkdownLine[] = []
+  const seenLineNumbers = new Set<number>()
+  for (const lineRange of mergedLineRanges) {
+    let fenceState = getFenceStateBeforeLine(view, lineRange.from)
+    for (let lineNumber = lineRange.from; lineNumber <= lineRange.to; lineNumber += 1) {
+      if (seenLineNumbers.has(lineNumber)) continue
+      seenLineNumbers.add(lineNumber)
+      const line = view.state.doc.line(lineNumber)
+      const fenceMatch = line.text.match(FENCE_RE)
+      const isInsideFence = fenceState.inFence
+      lines.push({
+        from: line.from,
+        to: line.to,
+        number: line.number,
+        text: line.text,
+        isInsideFence,
+        isFenceBoundary: Boolean(fenceMatch),
+      })
+      if (fenceMatch) {
+        const marker = fenceMatch[1]
+        const markerChar = marker[0]
+        if (!fenceState.inFence) {
+          fenceState = { inFence: true, fenceMarker: markerChar }
+        } else if (markerChar === fenceState.fenceMarker) {
+          fenceState = { inFence: false, fenceMarker: '' }
+        }
+      }
     }
   }
   return lines
@@ -985,6 +1037,25 @@ export function createCodeMirrorMarkdownEditor({
 }: CodeMirrorMarkdownEditorOptions): Editor {
   const mountStartedAt = nowMs()
   let firstFocusRecorded = false
+  let pendingChangeState: EditorState | null = null
+  let pendingChangeTimer: ReturnType<typeof setTimeout> | null = null
+  const flushPendingCodeMirrorChange = (reason: string) => {
+    if (pendingChangeTimer !== null) {
+      clearTimeout(pendingChangeTimer)
+      pendingChangeTimer = null
+    }
+    const state = pendingChangeState
+    pendingChangeState = null
+    if (!state) return
+    measureCodeMirrorOperation(`aisle editor CodeMirror change handler:${reason}`, diagnosticAisleId, () => {
+      onChange(state.doc.toString())
+    })
+  }
+  const scheduleCodeMirrorChange = (state: EditorState) => {
+    pendingChangeState = state
+    if (pendingChangeTimer !== null) clearTimeout(pendingChangeTimer)
+    pendingChangeTimer = setTimeout(() => flushPendingCodeMirrorChange('debounced'), CODEMIRROR_MARKDOWN_CHANGE_DEBOUNCE_MS)
+  }
   root.classList.add('tabs-codemirror-host')
   const view = new EditorView({
     parent: root,
@@ -1002,9 +1073,7 @@ export function createCodeMirrorMarkdownEditor({
         createCodeMirrorLiveDecorations(diagnosticAisleId),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
-            measureCodeMirrorOperation('aisle editor CodeMirror change handler', diagnosticAisleId, () => {
-              onChange(update.state.doc.toString())
-            })
+            scheduleCodeMirrorChange(update.state)
           }
           if (update.focusChanged && update.view.hasFocus) {
             if (!firstFocusRecorded) {
@@ -1015,6 +1084,9 @@ export function createCodeMirrorMarkdownEditor({
               )
             }
             onFocus()
+          }
+          if (update.focusChanged && !update.view.hasFocus) {
+            flushPendingCodeMirrorChange('blur')
           }
         }),
       ],
@@ -1067,14 +1139,19 @@ export function createCodeMirrorMarkdownEditor({
       return restoreCodeMirrorSelection(view, { anchor: position, head: position })
     },
     destroy: () => {
+      flushPendingCodeMirrorChange('destroy')
       root.classList.remove('tabs-codemirror-host')
       view.destroy()
     },
     getCursorSelection: () => getCodeMirrorCursorSelection(view),
     getDocSize: () => getCodeMirrorDocSize(view),
-    getMarkdown: () => view.state.doc.toString(),
+    getMarkdown: () => {
+      flushPendingCodeMirrorChange('snapshot')
+      return view.state.doc.toString()
+    },
     restoreCursorSelection: (selection, options) => restoreCodeMirrorSelection(view, selection, options),
     setMarkdown: (nextMarkdown: string, cursorToEnd = false) => {
+      flushPendingCodeMirrorChange('set-markdown')
       const next = String(nextMarkdown ?? '')
       const position = cursorToEnd ? next.length : Math.min(view.state.selection.main.from, next.length)
       view.dispatch({

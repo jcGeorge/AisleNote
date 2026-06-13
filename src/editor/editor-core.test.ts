@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   EDITOR_CORE_LOCAL_STORAGE_KEY,
+  USER_FACING_EDITOR_RENDERERS,
+  USER_SELECTABLE_EDITOR_CORE_MODES,
   getEditorCoreModeForRenderer,
   getRendererForEditorCoreMode,
   isMarkdownLikelyToastHeavy,
@@ -34,24 +36,25 @@ describe('editor core selection', () => {
     ].join('\n')
 
     expect(isMarkdownLikelyToastHeavy(markdown)).toBe(true)
-    expect(resolveActiveEditorCore('auto', markdown)).toBe('codemirror')
+    expect(resolveActiveEditorCore('auto', markdown)).toBe('lexical')
   })
 
-  it('uses CodeMirror Live as the auto-mode product default', () => {
-    expect(resolveActiveEditorCore('auto', '# Note\n\nA normal paragraph.')).toBe('codemirror')
-    expect(resolveActiveEditorCore('codemirror-live', '# Note')).toBe('codemirror')
+  it('uses Lexical as the auto-mode and legacy CodeMirror fallback product default', () => {
+    expect(resolveActiveEditorCore('auto', '# Note\n\nA normal paragraph.')).toBe('lexical')
+    expect(resolveActiveEditorCore('codemirror-live', '# Note')).toBe('lexical')
     expect(resolveActiveEditorCore('toast', '| [x](https://example.com) |\n| --- |')).toBe('toast')
-    expect(resolveActiveEditorCore('codemirror', '# Note')).toBe('codemirror')
+    expect(resolveActiveEditorCore('codemirror', '# Note')).toBe('lexical')
     expect(resolveActiveEditorCore('lexical', '| copy |\n| --- |')).toBe('lexical')
   })
 
   it('maps user-facing renderer choices to persisted editor core modes', () => {
-    expect(getRendererForEditorCoreMode('auto')).toBe('codemirror')
-    expect(getRendererForEditorCoreMode('codemirror-live')).toBe('codemirror')
-    expect(getRendererForEditorCoreMode('codemirror')).toBe('codemirror')
+    expect(USER_FACING_EDITOR_RENDERERS).toEqual(['toast', 'lexical'])
+    expect(USER_SELECTABLE_EDITOR_CORE_MODES).toEqual(['toast', 'lexical'])
+    expect(getRendererForEditorCoreMode('auto')).toBe('lexical')
+    expect(getRendererForEditorCoreMode('codemirror-live')).toBe('lexical')
+    expect(getRendererForEditorCoreMode('codemirror')).toBe('lexical')
     expect(getRendererForEditorCoreMode('lexical')).toBe('lexical')
     expect(getRendererForEditorCoreMode('toast')).toBe('toast')
-    expect(getEditorCoreModeForRenderer('codemirror')).toBe('codemirror-live')
     expect(getEditorCoreModeForRenderer('lexical')).toBe('lexical')
     expect(getEditorCoreModeForRenderer('toast')).toBe('toast')
   })
@@ -65,27 +68,32 @@ describe('editor core selection', () => {
       removeItem: (key: string) => removals.push(key),
     }
 
-    expect(readEditorCoreMode(storage)).toBe('codemirror-live')
+    expect(readEditorCoreMode(storage)).toBe('lexical')
     expect(writeEditorCoreMode('codemirror-live', storage)).toBe(true)
     expect(writeEditorCoreMode('lexical', storage)).toBe(true)
     expect(writeEditorCoreMode('toast', storage)).toBe(true)
     expect(writeEditorCoreMode('auto', storage)).toBe(true)
     expect(writes).toEqual([
-      [EDITOR_CORE_LOCAL_STORAGE_KEY, 'codemirror-live'],
+      [EDITOR_CORE_LOCAL_STORAGE_KEY, 'lexical'],
+      [EDITOR_CORE_LOCAL_STORAGE_KEY, 'lexical'],
       [EDITOR_CORE_LOCAL_STORAGE_KEY, 'lexical'],
       [EDITOR_CORE_LOCAL_STORAGE_KEY, 'toast'],
+      [EDITOR_CORE_LOCAL_STORAGE_KEY, 'lexical'],
     ])
-    expect(removals).toEqual([EDITOR_CORE_LOCAL_STORAGE_KEY])
+    expect(removals).toEqual([])
   })
 
-  it('clears stale MDXEditor settings while falling back to auto', () => {
+  it('clears stale MDXEditor settings while falling back to Lexical', () => {
+    const writes: Array<[string, string]> = []
     const removals: string[] = []
     const storage = {
       getItem: (key: string) => key === EDITOR_CORE_LOCAL_STORAGE_KEY ? 'mdxeditor' : null,
+      setItem: (key: string, value: string) => writes.push([key, value]),
       removeItem: (key: string) => removals.push(key),
     }
 
-    expect(readEditorCoreMode(storage)).toBe('auto')
+    expect(readEditorCoreMode(storage)).toBe('lexical')
     expect(removals).toEqual([EDITOR_CORE_LOCAL_STORAGE_KEY])
+    expect(writes).toEqual([[EDITOR_CORE_LOCAL_STORAGE_KEY, 'lexical']])
   })
 })

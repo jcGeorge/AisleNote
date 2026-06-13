@@ -144,14 +144,6 @@ export function NavigationRailControls({
                 </button>
                 <button
                   type="button"
-                  className={`menu-item menu-renderer-item ${selectedRenderer === 'codemirror' ? 'is-selected' : ''}`}
-                  aria-pressed={selectedRenderer === 'codemirror'}
-                  onClick={() => onSelectRenderer('codemirror')}
-                >
-                  CodeMirror
-                </button>
-                <button
-                  type="button"
                   className={`menu-item menu-renderer-item ${selectedRenderer === 'lexical' ? 'is-selected' : ''}`}
                   aria-pressed={selectedRenderer === 'lexical'}
                   onClick={() => onSelectRenderer('lexical')}

@@ -180,10 +180,11 @@ export function formatMarkdownNoteReferenceDestination(target) {
 export function parseMarkdownNoteReferenceDestination(destination) {
   const normalized = String(destination ?? '').trim()
   if (!normalized) return ''
-  const unwrap = (value) => value.startsWith('<') && value.endsWith('>')
-    ? value.slice(1, -1).replace(/\\>/g, '>').trim()
-    : value
-  const unwrapped = unwrap(normalized)
+  let unwrapped = normalized
+  for (let unwrapCount = 0; unwrapCount < 3; unwrapCount += 1) {
+    if (!unwrapped.startsWith('<') || !unwrapped.endsWith('>')) break
+    unwrapped = unwrapped.slice(1, -1).replace(/\\>/g, '>').trim()
+  }
   try {
     return decodeURIComponent(unwrapped)
   } catch {

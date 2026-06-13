@@ -99,6 +99,7 @@ import { getAisleBodyId } from '../notes/aisle-body-state'
 import type { PendingCursorRestore } from './useNoteCursorPersistence'
 import {
   getSnapshotEditorMarkdown,
+  shouldUseCachedReadonlyLexicalSnapshot,
   type EditorContentSnapshot,
   type FlushPendingContentOptions,
   type KnownMarkdownDraftCommitOptions,
@@ -110,6 +111,10 @@ import {
 type AisleActivationClientPoint = {
   clientX: number
   clientY: number
+}
+
+function countMarkdownLinks(markdown: string): number {
+  return String(markdown ?? '').match(/\[[^\]\n]+\]\((?:https?:\/\/|#tabs-note\/)[^)]+\)/gi)?.length ?? 0
 }
 
 type ActivateAisleEditorOptions = {
@@ -484,6 +489,53 @@ export function useAisleEditors({
   const isMountedMetaCurrentActiveAisle = (meta: AisleEditorMeta) =>
     activeNoteBodyIdRef.current === meta.noteBodyId && activeAisleIdRef.current === meta.aisleId
 
+  const getEditorCoreForMeta = (meta: AisleEditorMeta | undefined, editor: Editor) => {
+    if (meta?.editorCore) return meta.editorCore
+    if (isLexicalMarkdownEditor(editor)) return 'lexical'
+    if (isCodeMirrorMarkdownEditor(editor)) return 'codemirror'
+    return 'toast'
+  }
+
+  const getSnapshotMarkdownForMeta = (meta: AisleEditorMeta): string => {
+    const cachedMarkdown = getCachedMarkdownForAisleBodyId(meta.aisleBodyId)
+    if (typeof cachedMarkdown === 'string' && shouldUseCachedReadonlyLexicalSnapshot(meta.editor, cachedMarkdown)) {
+      return cachedMarkdown
+    }
+    return getSnapshotEditorMarkdown(meta.editor, cachedMarkdown ?? '', getNormalizedEditorMarkdown)
+  }
+
+  const recordHotPathDiagnostic = (
+    event: string,
+    {
+      aisleId,
+      editorCore,
+      markdown,
+      durationMs,
+      details = {},
+    }: {
+      aisleId?: string
+      editorCore?: string
+      markdown?: string
+      durationMs: number
+      details?: Record<string, unknown>
+    },
+  ) => {
+    if (!import.meta.env?.DEV) return
+    const linkCount = typeof markdown === 'string' ? countMarkdownLinks(markdown) : 0
+    if (durationMs < 16 && linkCount < 8) return
+    recordDiagnosticEvent('editor', event, {
+      level: durationMs >= 50 ? 'warning' : 'info',
+      durationMs,
+      details: {
+        aisleId,
+        editorCore,
+        linkCount,
+        mountedEditorCount: aisleEditorMetaRef.current.size,
+        ...details,
+      },
+    })
+  }
+
   const syncLexicalEditableStates = (activeEditorKey: string) => {
     aisleEditorMetaRef.current.forEach((meta, editorKey) => {
       if (!isLexicalMarkdownEditor(meta.editor)) return
@@ -657,21 +709,35 @@ export function useAisleEditors({
     })
 
   const syncMountedLinkedAisleEditors = (sourceAisleId: string, markdown: string, sourceAisleBodyId?: string) => {
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+    let linkedRewriteCount = 0
     if (!hasMountedLinkedAisleEditor({
       sourceAisleId,
       mountedAisleIds: Array.from(aisleEditorMetaRef.current.values(), (meta) => meta.aisleId),
       getAisleBodyIdForAisleId,
-    })) return
+    })) {
+      recordHotPathDiagnostic('linked-aisle-sync', {
+        aisleId: sourceAisleId,
+        markdown,
+        durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+        details: {
+          linkedRewriteCount,
+          skipped: true,
+        },
+      })
+      return
+    }
     const linkedSourceAisleBodyId = sourceAisleBodyId ?? getAisleBodyIdForAisleId(sourceAisleId)
     const expected = getMarkdownSyncSnapshot(markdown)
     aisleEditorMetaRef.current.forEach((meta) => {
       if (meta.aisleId === sourceAisleId) return
       if (meta.aisleBodyId !== linkedSourceAisleBodyId) return
-      const currentMarkdown = getCachedMarkdownForAisleBodyId(meta.aisleBodyId) ?? getNormalizedEditorMarkdown(meta.editor)
+      const currentMarkdown = getSnapshotMarkdownForMeta(meta)
       if (!shouldApplyEditorDisplayRewrite({
         currentCanonicalMarkdown: currentMarkdown,
         expectedCanonicalMarkdown: expected.canonicalMarkdown,
       })) return
+      linkedRewriteCount += 1
       applyEditorDisplayRewrite({
         meta,
         reason: 'linked-aisle-sync',
@@ -679,6 +745,14 @@ export function useAisleEditors({
         expectedCanonicalMarkdown: expected.canonicalMarkdown,
         expectedDisplayMarkdown: expected.displayMarkdown,
       })
+    })
+    recordHotPathDiagnostic('linked-aisle-sync', {
+      aisleId: sourceAisleId,
+      markdown,
+      durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+      details: {
+        linkedRewriteCount,
+      },
     })
   }
 
@@ -1114,9 +1188,21 @@ export function useAisleEditors({
           )
         }
       } finally {
+        const durationMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt
+        recordHotPathDiagnostic('change-hot-path', {
+          aisleId,
+          editorCore: getEditorCoreForMeta(aisleEditorMetaRef.current.get(editorKey), editor),
+          markdown: knownMarkdown,
+          durationMs,
+          details: {
+            editorKey,
+            pendingContentCount: pendingContentRef.current.size,
+            knownMarkdown: typeof knownMarkdown === 'string',
+          },
+        })
         recordEditorAblationDiagnostic('change', {
           aisleId,
-          durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+          durationMs,
           details: {
             editorKey,
             pendingContentCount: pendingContentRef.current.size,
@@ -1147,9 +1233,7 @@ export function useAisleEditors({
   }
 
   const captureAisleEditorContent = (meta: AisleEditorMeta) => measureSlowOperation(`aisle editor content capture:${meta.aisleId}`, () => {
-    const cachedMarkdown = getCachedMarkdownForAisleBodyId(meta.aisleBodyId)
-    const fallbackMarkdown = cachedMarkdown ?? ''
-    const markdown = getSnapshotEditorMarkdown(meta.editor, fallbackMarkdown, getNormalizedEditorMarkdown)
+    const markdown = getSnapshotMarkdownForMeta(meta)
     cacheMarkdownForAisleBodyId(meta.aisleBodyId, markdown)
     if (isMountedMetaCurrentActiveAisle(meta)) {
       lastEditorMarkdownRef.current = markdown
@@ -1168,9 +1252,7 @@ export function useAisleEditors({
     if (viewMode !== 'main' || !activeNoteBodyIdRef.current) return []
     const snapshots: EditorContentSnapshot[] = []
     aisleEditorMetaRef.current.forEach((meta) => {
-      const cachedMarkdown = getCachedMarkdownForAisleBodyId(meta.aisleBodyId)
-      const fallbackMarkdown = cachedMarkdown ?? ''
-      const markdown = getSnapshotEditorMarkdown(meta.editor, fallbackMarkdown, getNormalizedEditorMarkdown)
+      const markdown = getSnapshotMarkdownForMeta(meta)
       cacheMarkdownForAisleBodyId(meta.aisleBodyId, markdown)
       if (isMountedMetaCurrentActiveAisle(meta)) {
         lastEditorMarkdownRef.current = markdown
@@ -1442,6 +1524,15 @@ export function useAisleEditors({
               root,
               markdown: initialMarkdown.canonicalMarkdown,
               editable: aisle.id === (activeAisleIdRef.current || resolvedActiveAisleId),
+              notePreviewOptions: {
+                sourceNoteBodyId: activeNoteBodyId,
+                getNotePreviewData,
+                resolvePreviewToken,
+                navigateToNoteLocation,
+                deleteNotePreview,
+                openNotePreviewContextMenu,
+              },
+              pushToast,
               onChange: (markdown) => {
                 if (mountedEditor) handleAisleEditorChange(editorKey, aisle.id, mountedEditor, markdown)
               },

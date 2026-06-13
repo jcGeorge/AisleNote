@@ -21,6 +21,18 @@ describe('aisle editor activation', () => {
     expect(useAisleEditorsSource).toContain('editable: aisle.id === (activeAisleIdRef.current || resolvedActiveAisleId)')
   })
 
+  it('uses cached Markdown for clean read-only Lexical snapshots', () => {
+    expect(useAisleEditorsSource).toContain('shouldUseCachedReadonlyLexicalSnapshot')
+    expect(useAisleEditorsSource).toContain('const getSnapshotMarkdownForMeta = (meta: AisleEditorMeta): string')
+    expect(useAisleEditorsSource).toContain('return getSnapshotEditorMarkdown(meta.editor, cachedMarkdown ?? \'\', getNormalizedEditorMarkdown)')
+  })
+
+  it('records link-heavy editor hot-path diagnostics without changing renderer behavior', () => {
+    expect(useAisleEditorsSource).toContain("recordDiagnosticEvent('editor', event")
+    expect(useAisleEditorsSource).toContain("recordHotPathDiagnostic('change-hot-path'")
+    expect(useAisleEditorsSource).toContain("recordHotPathDiagnostic('linked-aisle-sync'")
+  })
+
   it('uses the fast path only when the current mounted aisle is already active', () => {
     expect(
       shouldUseFastSameAisleActivation({

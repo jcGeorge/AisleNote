@@ -49,7 +49,7 @@ function renderMenuWithRenderer() {
       viewMode="main"
       spaceRailVisible={false}
       domainRailVisible={false}
-      selectedRenderer="codemirror"
+      selectedRenderer="lexical"
       onCloseAction={noop}
       onSetMenuOpen={vi.fn()}
       onToggleSpaceRail={noop}
@@ -106,14 +106,14 @@ describe('NavigationRailControls', () => {
     expect(html).not.toContain('messages (')
   })
 
-  it('renders the renderer menu section with Toast, CodeMirror, and Lexical choices when supplied', () => {
+  it('renders the renderer menu section with Toast and Lexical choices when supplied', () => {
     const html = renderMenuWithRenderer()
 
     expect(html).toContain('aria-label="renderer"')
     expect(html).toContain('>Toast<')
-    expect(html).toContain('>CodeMirror<')
+    expect(html).not.toContain('>CodeMirror<')
     expect(html).toContain('>Lexical<')
-    expect(html.match(/menu-renderer-item/g)?.length).toBe(3)
+    expect(html.match(/menu-renderer-item/g)?.length).toBe(2)
     expect(html).toContain('aria-pressed="true"')
     expect(html).toContain('reloads on change')
   })

@@ -49,6 +49,15 @@ export function getSnapshotEditorMarkdown(
   }
 }
 
+export function shouldUseCachedReadonlyLexicalSnapshot(editor: Editor | null, cachedMarkdown: string | undefined): boolean {
+  return (
+    typeof cachedMarkdown === 'string' &&
+    isLexicalMarkdownEditor(editor) &&
+    !editor.isEditable() &&
+    !editor.hasPendingMarkdownChanges()
+  )
+}
+
 export type EditorContentTarget = {
   noteBodyId?: string | null
   spaceId: string

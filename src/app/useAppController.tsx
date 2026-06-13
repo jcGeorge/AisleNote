@@ -7172,8 +7172,8 @@ export function useAppController(): AppController {
               onAisleWidthDragCommitted={() => showTip('aisle-width-reset')}
               mountedAisleIds={mountedAisleIds}
               suppressActiveAislePreviewFallback
-              deferInactivePreviewFallbacks={selectedRenderer === 'codemirror' || activeNoteAisles.length > 4}
-              inactivePreviewRenderer={selectedRenderer === 'codemirror' ? 'codemirror' : 'markdown'}
+              deferInactivePreviewFallbacks={activeNoteAisles.length > 4}
+              inactivePreviewRenderer="markdown"
               getPreviewMarkdownForAisle={getPreviewMarkdownForAisle}
               onCloseTableOfContentsAisle={closeTableOfContentsAisle}
               onSelectTableOfContentsHeading={selectTableOfContentsHeading}

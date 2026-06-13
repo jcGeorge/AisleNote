@@ -22,7 +22,7 @@ import {
 } from '../../editor/editor-ablation'
 import {
   EDITOR_CORE_MODE_LABELS,
-  EDITOR_CORE_MODES,
+  USER_SELECTABLE_EDITOR_CORE_MODES,
   parseEditorCoreMode,
   readEditorCoreMode,
   writeEditorCoreMode,
@@ -124,10 +124,10 @@ const EDITOR_ABLATION_MODE_DESCRIPTIONS: Record<EditorAblationMode, string> = {
 }
 
 const EDITOR_CORE_MODE_DESCRIPTIONS: Record<EditorCoreMode, string> = {
-  auto: 'Uses the current product default editor core. CodeMirror Live is the default; Toast remains available as a fallback.',
+  auto: 'Legacy automatic mode. This now resolves to Lexical.',
   toast: 'Forces the current Toast UI editor core for every aisle.',
-  'codemirror-live': 'Forces the CodeMirror Live Markdown editor core.',
-  codemirror: 'Forces the diagnostic source-Markdown CodeMirror editor core.',
+  'codemirror-live': 'Legacy CodeMirror mode. This now resolves to Lexical.',
+  codemirror: 'Legacy CodeMirror source mode. This now resolves to Lexical.',
   lexical: 'Forces the experimental Lexical rich Markdown editor core.',
 }
 
@@ -192,7 +192,7 @@ function EditorDevMessagesSection() {
             value={editorCoreMode}
             onChange={(event) => handleEditorCoreModeChange(parseEditorCoreMode(event.target.value))}
           >
-            {EDITOR_CORE_MODES.map((option) => (
+            {USER_SELECTABLE_EDITOR_CORE_MODES.map((option) => (
               <option key={option} value={option}>
                 {EDITOR_CORE_MODE_LABELS[option]}
               </option>

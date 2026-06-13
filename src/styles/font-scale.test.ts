@@ -407,6 +407,52 @@ describe('CodeMirror editor spacing', () => {
   })
 })
 
+describe('Lexical editor parity styles', () => {
+  it('renders app-owned list, task, annotation, highlight, table, and preview classes', () => {
+    const css = readStyle('editor-shell.css')
+    const listRule = extractRule(css, '.tabs-lexical-editor .tabs-lexical-list')
+    const bulletMarkerRule = extractRule(
+      css,
+      '.tabs-lexical-editor .tabs-lexical-bullet-list > .tabs-lexical-list-item:not(.task-list-item)::before',
+    )
+    const taskMarkerRule = extractRule(css, '.tabs-lexical-editor .tabs-lexical-task-list-item::before')
+    const highlightRule = extractRule(css, '.tabs-lexical-editor .tabs-rendered-markdown-highlight')
+    const codeRule = extractRule(css, '.tabs-lexical-editor .tabs-lexical-code-block')
+    const tableHeaderRule = extractRule(css, '.tabs-lexical-editor .tabs-lexical-table-header-cell')
+    const annotationRule = extractRule(css, '.tabs-lexical-editor .tabs-annotation-line')
+    const previewRule = extractRule(css, '.tabs-lexical-note-preview')
+
+    expect(listRule).toContain('list-style: none;')
+    expect(bulletMarkerRule).toContain('border-radius: 50%;')
+    expect(css).toContain(
+      ".tabs-lexical-editor .tabs-lexical-bullet-list > .tabs-lexical-list-item[data-tabs-list-item-marker='dash']",
+    )
+    expect(css).toContain('height: 2px;')
+    expect(taskMarkerRule).toContain('border: 1px solid')
+    expect(highlightRule).toContain('box-shadow: none;')
+    expect(codeRule).toContain('background: var(--editor-pre-bg);')
+    expect(tableHeaderRule).toContain('font-weight: inherit;')
+    expect(annotationRule).toContain('padding-left: 2.4rem;')
+    expect(previewRule).toContain('display: inline-flex;')
+    expect(css).toContain('.tabs-lexical-note-preview-title')
+  })
+})
+
+describe('editor link affordances', () => {
+  it('shows clickable rendered links with a pointer cursor and hover color', () => {
+    const css = readStyle('editor-shell.css')
+    const renderedLinkRule = extractRule(css, '.tabs-rendered-markdown-surface .tabs-rendered-markdown-link')
+    const codeMirrorRenderedLinkRule = extractRule(css, '.tabs-codemirror-host .tabs-cm-rendered-link,\n.tabs-codemirror-host .cm-tabs-markdown-link')
+
+    expect(renderedLinkRule).toContain('cursor: pointer;')
+    expect(css).toContain('.tabs-rendered-markdown-surface .tabs-rendered-markdown-link:hover')
+    expect(css).toContain('color: var(--editor-link-hover-text, var(--editor-link-text, var(--accent)));')
+    expect(codeMirrorRenderedLinkRule).toContain('cursor: pointer;')
+    expect(css).toContain('.tabs-codemirror-host .tabs-cm-rendered-link:hover')
+    expect(css).toContain('.tabs-codemirror-host .cm-tabs-markdown-link:hover')
+  })
+})
+
 describe('editor annotation styles', () => {
   it('positions the double-dash annotation marker below the text midline', () => {
     const css = readStyle('editor-content.css')

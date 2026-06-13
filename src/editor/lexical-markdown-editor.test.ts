@@ -6,6 +6,8 @@ import {
   getHeadlessLexicalCursorSelection,
   getHeadlessLexicalMarkdown,
   isLexicalMarkdownEditor,
+  LEXICAL_MARKDOWN_EXPORT_DEBOUNCE_MS,
+  repairLexicalMarkdownForImport,
   restoreHeadlessLexicalCursorSelection,
   runHeadlessLexicalCommand,
   shouldNotifyLexicalMarkdownChange,
@@ -14,6 +16,42 @@ import {
 import type { Editor } from '@toast-ui/editor'
 
 const lexicalMarkdownEditorSource = readFileSync(fileURLToPath(new URL('./lexical-markdown-editor.ts', import.meta.url)), 'utf8')
+const corruptedAisleThreeFixture = [
+  '---',
+  'tags: []',
+  'status: ""',
+  'created: 2026-06-11',
+  'updated: 2026-06-11T22:59:25.702Z',
+  '---',
+  '# Third, probably',
+  '**Alright**',
+  '*Italics*',
+  '==highlighted==',
+  '> block quote?',
+  '> ~~strikeout!~~',
+  '>',
+  '> \\*\\*\\*',
+  '* dash',
+  '* bullet',
+  '1. numbered',
+  '* [ ] task',
+  '  Tab indent here <--',
+  '\\*\\*\\*',
+  '  asdf',
+  '  asdf',
+  '  asdf',
+  '^-- block quote indent',
+  '![sparkSubtab](<sparkSubtab--97c129#last position>)',
+  'Preview --^',
+  '',
+  '```',
+  'My code block here',
+  '```',
+  '| inline code --> | `here!!` |',
+  '| --------------- | ------ |',
+  '|',
+  '\\|',
+].join('\n')
 
 describe('Lexical markdown adapter', () => {
   it('identifies Lexical editor handles', () => {
@@ -70,6 +108,70 @@ describe('Lexical markdown adapter', () => {
     expect(getHeadlessLexicalMarkdown(editor)).toBe(markdown)
   })
 
+  it('repairs the attached aisle fixture corruption before Lexical persists it again', () => {
+    const editor = createHeadlessLexicalMarkdownEditor(corruptedAisleThreeFixture)
+    const persisted = getHeadlessLexicalMarkdown(editor)
+
+    expect(persisted).toContain('> ---')
+    expect(persisted).toContain('> \n')
+    expect(persisted).toContain('\n---')
+    expect(persisted).toContain('- dash')
+    expect(persisted).toContain('* bullet')
+    expect(persisted).toContain('* [ ] task')
+    expect(persisted).toContain('![sparkSubtab](<sparkSubtab--97c129#last position>)')
+    expect(persisted).toContain('Preview --^')
+    expect(persisted).toContain('^-- block quote indent')
+    expect(persisted).not.toContain('\\*\\*\\*')
+    expect(persisted).not.toContain('![sparkSubtab](<<sparkSubtab--97c129#last position>>)')
+    expect(persisted).not.toMatch(/\n\\?\|\s*$/)
+  })
+
+  it('round-trips all app annotation arrow markers through inline Lexical nodes', () => {
+    const markdown = [
+      'Preview ^--',
+      'Preview --^',
+      'Preview v--',
+      'Preview --v',
+      'Preview <--',
+      'Preview -->',
+    ].join('\n')
+    const editor = createHeadlessLexicalMarkdownEditor(markdown)
+
+    expect(getHeadlessLexicalMarkdown(editor)).toBe(markdown)
+  })
+
+  it('preserves source spellings for thematic breaks and list markers', () => {
+    const markdown = [
+      '---',
+      '',
+      '***',
+      '',
+      '___',
+      '',
+      '- dash',
+      '* bullet',
+      '+ plus',
+      '* [ ] task',
+    ].join('\n')
+    const editor = createHeadlessLexicalMarkdownEditor(markdown)
+
+    expect(getHeadlessLexicalMarkdown(editor)).toBe(markdown)
+  })
+
+  it('repairs escaped thematic break lines without unescaping ordinary prose', () => {
+    const markdown = [
+      'literal \\*\\*\\* should stay literal',
+      '\\*\\*\\*',
+      '> \\*\\*\\*',
+    ].join('\n')
+
+    expect(repairLexicalMarkdownForImport(markdown)).toBe([
+      'literal \\*\\*\\* should stay literal',
+      '---',
+      '> ---',
+    ].join('\n'))
+  })
+
   it('round-trips one-column GFM tables as native Lexical table nodes', () => {
     const markdown = [
       '| [copy](https://lucide.dev/icons/files) |',
@@ -80,6 +182,13 @@ describe('Lexical markdown adapter', () => {
     const editor = createHeadlessLexicalMarkdownEditor(markdown)
 
     expect(getHeadlessLexicalMarkdown(editor)).toBe(markdown)
+  })
+
+  it('round-trips one-row and one-column normal-cell tables without malformed tail rows', () => {
+    const markdown = '| inline code --> | `here!!` |\n| --- | --- |\n|\n\\|'
+    const editor = createHeadlessLexicalMarkdownEditor(markdown)
+
+    expect(getHeadlessLexicalMarkdown(editor)).toBe('| inline code --> | `here!!` |\n| --- | --- |')
   })
 
   it('preserves link-heavy table cells for the tbCopy case', () => {
@@ -116,6 +225,18 @@ describe('Lexical markdown adapter', () => {
     expect(getHeadlessLexicalMarkdown(editor)).toBe(markdown)
   })
 
+  it('repairs raw spark preview image tokens to canonical preview tokens', () => {
+    const editor = createHeadlessLexicalMarkdownEditor('![sparkSubtab](<sparkSubtab--97c129#last position>)')
+
+    expect(getHeadlessLexicalMarkdown(editor)).toBe('![sparkSubtab](<sparkSubtab--97c129#last position>)')
+  })
+
+  it('repairs double-angle preview tokens back to canonical single-angle syntax', () => {
+    const editor = createHeadlessLexicalMarkdownEditor('![sparkSubtab](<<sparkSubtab--97c129#last position>>)')
+
+    expect(getHeadlessLexicalMarkdown(editor)).toBe('![sparkSubtab](<sparkSubtab--97c129#last position>)')
+  })
+
   it('does not notify storage for selection-only Lexical updates', () => {
     expect(
       shouldNotifyLexicalMarkdownChange({
@@ -144,6 +265,41 @@ describe('Lexical markdown adapter', () => {
     expect(lexicalMarkdownEditorSource).toContain('if (!currentEditable) return')
     expect(lexicalMarkdownEditorSource).toContain('setEditable: applyEditableState')
     expect(lexicalMarkdownEditorSource).toContain("root.classList.toggle('is-lexical-readonly', !nextEditable)")
+  })
+
+  it('debounces expensive Markdown export for dirty Lexical updates', () => {
+    expect(LEXICAL_MARKDOWN_EXPORT_DEBOUNCE_MS).toBe(450)
+    expect(lexicalMarkdownEditorSource).toContain('pendingMarkdownDirty = true')
+    expect(lexicalMarkdownEditorSource).toContain('schedulePendingMarkdownExport()')
+    expect(lexicalMarkdownEditorSource).not.toContain('editorState.read(() => {\n        nextMarkdown = exportMarkdownFromEditor()')
+  })
+
+  it('exposes cached and flush APIs for cheap read-only snapshots', () => {
+    expect(lexicalMarkdownEditorSource).toContain('getCachedMarkdown: () => latestMarkdown')
+    expect(lexicalMarkdownEditorSource).toContain('hasPendingMarkdownChanges: () => pendingMarkdownDirty')
+    expect(lexicalMarkdownEditorSource).toContain('flushPendingMarkdown:')
+    expect(lexicalMarkdownEditorSource).toContain("getMarkdown: () => materializePendingMarkdown({ notify: false, reason: 'get-markdown' })")
+  })
+
+  it('wires Lexical-only app surface behavior through the adapter handle', () => {
+    expect(lexicalMarkdownEditorSource).toContain('LexicalAnnotationArrowNode')
+    expect(lexicalMarkdownEditorSource).toContain('createNotePreviewWidgetElement')
+    expect(lexicalMarkdownEditorSource).toContain('isIsolated(): true')
+    expect(lexicalMarkdownEditorSource).toContain('isKeyboardSelectable(): boolean')
+    expect(lexicalMarkdownEditorSource).toContain('data-tabs-lexical-list-item-key')
+    expect(lexicalMarkdownEditorSource).toContain('data-tabs-list-item-marker')
+    expect(lexicalMarkdownEditorSource).toContain('registerMarkdownShortcuts(lexicalEditor, LEXICAL_MARKDOWN_TRANSFORMERS)')
+    expect(lexicalMarkdownEditorSource).toContain('transformTaskShortcutTextNode')
+    expect(lexicalMarkdownEditorSource).toContain('transformLexicalTextNode')
+    expect(lexicalMarkdownEditorSource).toContain('createLexicalCodeBlockControls')
+    expect(lexicalMarkdownEditorSource).toContain('moveLexicalSelectionOutOfTable')
+    expect(lexicalMarkdownEditorSource).toContain('moveLexicalSelectionOutOfTableByTab')
+    expect(lexicalMarkdownEditorSource).toContain('moveLexicalSelectionOutOfTerminalTable')
+    expect(lexicalMarkdownEditorSource).toContain('replaceSelectedEmptyQuoteWithParagraph')
+    expect(lexicalMarkdownEditorSource).toContain('$createRangeSelectionFromDom(selection, editor)')
+    expect(lexicalMarkdownEditorSource).toContain("event.key === 'Escape'")
+    expect(lexicalMarkdownEditorSource).toContain('getNoteMentionQuery:')
+    expect(lexicalMarkdownEditorSource).toContain('replaceTextRangeWithLink:')
   })
 
   it('notifies storage only when a document update changes Markdown', () => {
@@ -179,5 +335,11 @@ describe('Lexical markdown adapter', () => {
     runHeadlessLexicalCommand(editor, 'addTable', { rowCount: 2, columnCount: 1 })
 
     expect(getHeadlessLexicalMarkdown(editor)).toContain('|  |\n| --- |\n|  |')
+  })
+
+  it('keeps inserted Lexical tables as normal cells instead of header cells', () => {
+    expect(lexicalMarkdownEditorSource).toContain('includeHeaders: { rows: false, columns: false }')
+    expect(lexicalMarkdownEditorSource).toContain('TableCellHeaderStates.NO_STATUS')
+    expect(lexicalMarkdownEditorSource).not.toContain('rowIndex === 0 ? TableCellHeaderStates.ROW')
   })
 })

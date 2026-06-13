@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import {
   buildRenderedMarkdownDecorationPlanFromLines,
@@ -9,6 +11,11 @@ import {
   restoreCodeMirrorSelection,
   type RenderedMarkdownLine,
 } from './codemirror-markdown-editor'
+
+const codeMirrorMarkdownEditorSource = readFileSync(
+  fileURLToPath(new URL('./codemirror-markdown-editor.ts', import.meta.url)),
+  'utf8',
+)
 
 function linesFromMarkdown(markdown: string): RenderedMarkdownLine[] {
   let from = 0
@@ -55,6 +62,24 @@ function hiddenRanges(markdown: string) {
 }
 
 describe('CodeMirror rendered Markdown decoration plan', () => {
+  it('keeps link-heavy table previews viewport-scoped instead of rebuilding the full document state field', () => {
+    expect(codeMirrorMarkdownEditorSource).toContain('const CODEMIRROR_TABLE_PREVIEW_CONTEXT_LINE_COUNT = 80')
+    expect(codeMirrorMarkdownEditorSource).toContain('function collectBufferedRenderedMarkdownLines(')
+    expect(codeMirrorMarkdownEditorSource).toContain('const visibleRanges = getCodeMirrorVisibleRanges(view)')
+    expect(codeMirrorMarkdownEditorSource).toContain('return ViewPlugin.fromClass(')
+    expect(codeMirrorMarkdownEditorSource).not.toContain('StateField.define<CodeMirrorTablePreviewState>')
+    expect(codeMirrorMarkdownEditorSource).not.toContain('collectRenderedMarkdownLinesFromState')
+  })
+
+  it('debounces CodeMirror Markdown emission and flushes on save boundaries', () => {
+    expect(codeMirrorMarkdownEditorSource).toContain('const CODEMIRROR_MARKDOWN_CHANGE_DEBOUNCE_MS = 450')
+    expect(codeMirrorMarkdownEditorSource).toContain('scheduleCodeMirrorChange(update.state)')
+    expect(codeMirrorMarkdownEditorSource).toContain("flushPendingCodeMirrorChange('blur')")
+    expect(codeMirrorMarkdownEditorSource).toContain("flushPendingCodeMirrorChange('destroy')")
+    expect(codeMirrorMarkdownEditorSource).toContain("flushPendingCodeMirrorChange('snapshot')")
+    expect(codeMirrorMarkdownEditorSource).not.toContain('onChange(update.state.doc.toString())')
+  })
+
   it('hides heading markers while styling the visible heading text', () => {
     const markdown = '# My Header'
     const plan = buildRenderedMarkdownDecorationPlanFromLines(linesFromMarkdown(markdown))
