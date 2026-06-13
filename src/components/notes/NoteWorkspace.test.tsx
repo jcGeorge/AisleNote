@@ -1,17 +1,23 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { BLOCK_INDENT_TOKEN } from '../../markdown/markdown-utils'
 import { NoteWorkspace } from './NoteWorkspace'
 import {
+  getAislePreviewRenderMode,
   getLightweightPreviewText,
   getMarkdownWorkloadProfile,
   isMarkdownPreviewLikelyExpensive,
 } from './note-workspace-preview'
 import {
+  getAisleActivationPointerFromNoteWorkspaceEvent,
   getAisleEditorKeyFromNoteWorkspacePointerTarget,
   shouldExitArrangeModeFromNoteWorkspacePointer,
 } from './note-workspace-events'
 import type { ResolvedNoteAisle } from '../../types/app'
+
+const noteWorkspaceSource = readFileSync(fileURLToPath(new URL('./NoteWorkspace.tsx', import.meta.url)), 'utf8')
 
 const aisles: ResolvedNoteAisle[] = [
   { id: 'a', aisleBodyId: 'a', markdown: 'active' },
@@ -31,6 +37,7 @@ function renderWorkspace(
     arrangeModeActive?: boolean
     suppressActiveAislePreviewFallback?: boolean
     deferInactivePreviewFallbacks?: boolean
+    inactivePreviewRenderer?: 'markdown' | 'codemirror'
     scratchpadAisleControls?: {
       canDeleteActiveAisle: boolean
       onAddAisleLeft: () => void
@@ -59,6 +66,7 @@ function renderWorkspace(
       mountedAisleIds={mountedAisleIds}
       suppressActiveAislePreviewFallback={options.suppressActiveAislePreviewFallback}
       deferInactivePreviewFallbacks={options.deferInactivePreviewFallbacks}
+      inactivePreviewRenderer={options.inactivePreviewRenderer}
       getPreviewMarkdownForAisle={(aisle) => aisle.markdown}
       onRootChange={() => undefined}
       onAisleScroll={() => undefined}
@@ -77,6 +85,15 @@ const scratchpadAisleControls = (canDeleteActiveAisle: boolean) => ({
 })
 
 describe('NoteWorkspace aisle mounting', () => {
+  it('keeps inactive preview hydration stable across active aisle changes', () => {
+    expect(noteWorkspaceSource).toContain('previousActiveAisleIdRef')
+    expect(noteWorkspaceSource).toContain('forceMarkdownPreview')
+    expect(noteWorkspaceSource).toContain('[aisles.length, deferInactivePreviewFallbacks, inactivePreviewHydrationKey, noteBodyId]')
+    expect(noteWorkspaceSource).not.toContain(
+      '[activeAisleId, aisles.length, deferInactivePreviewFallbacks, inactivePreviewHydrationKey, noteBodyId]',
+    )
+  })
+
   it('keeps every aisle pane in the scroll strip while only mounted aisles get editor hosts', () => {
     const html = renderWorkspace(new Set(['a']))
 
@@ -98,7 +115,7 @@ describe('NoteWorkspace aisle mounting', () => {
 
     expect(html).toContain('is-editor-mount-pending')
     expect(html).not.toContain('>active</')
-    expect(html).toContain('<p>far</p>')
+    expect(html).toContain('<p class="tabs-rendered-markdown-paragraph">far</p>')
   })
 
   it('uses lightweight inactive previews for heavy table-link markdown', () => {
@@ -132,6 +149,144 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('data-aisle-host-mode="editor"')
   })
 
+  it('hydrates inactive link-heavy aisles to normal markdown previews outside arrange mode', () => {
+    const heavyMarkdown = [
+      '| [copy](https://lucide.dev/icons/files) | |',
+      '| --- | --- |',
+      '| [tableOfContents](https://lucide.dev/icons/table-of-contents) | |',
+      '| [aisles](https://lucide.dev/icons/shelving-unit) | |',
+      '| [findReplace](https://lucide.dev/icons/search) | |',
+      '| [undo](https://lucide.dev/icons/undo) | |',
+      '| [redo](https://lucide.dev/icons/redo) | |',
+      '| [heading](https://lucide.dev/icons/heading) | |',
+      '| [bold](https://lucide.dev/icons/bold) | |',
+    ].join('\n')
+    const html = renderWorkspace(new Set(['active']), {
+      activeAisleId: 'active',
+      aisles: [
+        { id: 'heavy', aisleBodyId: 'heavy', markdown: heavyMarkdown },
+        { id: 'active', aisleBodyId: 'active', markdown: 'active' },
+      ],
+    })
+
+    expect(html).toContain('data-aisle-preview-mode="markdown-preview"')
+    expect(html).not.toContain('is-lightweight-preview')
+    expect(html).toContain('<table>')
+    expect(html).toContain('href="https://lucide.dev/icons/table-of-contents"')
+    expect(html).toContain('tabs-rendered-markdown-surface')
+  })
+
+  it('renders one-column link-heavy table previews as formatted tables', () => {
+    const tbCopyMarkdown = [
+      '| [copy](https://lucide.dev/icons/files) |',
+      '| ---- |',
+      '| [tableOfContents](https://lucide.dev/icons/table-of-contents) |',
+      '| [aisles](https://lucide.dev/icons/shelving-unit) |',
+    ].join('\n')
+    const html = renderWorkspace(new Set(['active']), {
+      activeAisleId: 'active',
+      aisles: [
+        { id: 'tb-copy', aisleBodyId: 'tb-copy', markdown: tbCopyMarkdown },
+        { id: 'active', aisleBodyId: 'active', markdown: 'active' },
+      ],
+    })
+
+    expect(html).toContain('data-aisle-preview-mode="markdown-preview"')
+    expect(html).toContain('<table>')
+    expect(html).toContain('<th><a href="https://lucide.dev/icons/files" class="tabs-rendered-markdown-link">copy</a></th>')
+    expect(html).toContain('href="https://lucide.dev/icons/table-of-contents"')
+    expect(html).not.toContain('is-lightweight-preview')
+  })
+
+  it('renders inactive CodeMirror aisles with the CodeMirror-look preview surface', () => {
+    const markdown = [
+      '# Completed items',
+      '',
+      'Use `code` and **bold** and *italic* and ~~strike~~ and ==highlight== #tag',
+      '',
+      '- bullet',
+      '1. ordered',
+      '- [x] done',
+      '> quote',
+      '---',
+      '```ts',
+      'const value = 1',
+      '```',
+      '[copy](https://lucide.dev/icons/files)',
+    ].join('\n')
+    const html = renderWorkspace(new Set(['active']), {
+      activeAisleId: 'active',
+      inactivePreviewRenderer: 'codemirror',
+      aisles: [
+        { id: 'preview', aisleBodyId: 'preview', markdown },
+        { id: 'active', aisleBodyId: 'active', markdown: 'active' },
+      ],
+    })
+
+    expect(html).toContain('tabs-codemirror-preview-host')
+    expect(html).toContain('tabs-codemirror-preview-content')
+    expect(html).toContain('tabs-cm-rendered-heading-line-1')
+    expect(html).toContain('tabs-cm-rendered-code')
+    expect(html).toContain('tabs-cm-rendered-strong')
+    expect(html).toContain('tabs-cm-rendered-emphasis')
+    expect(html).toContain('tabs-cm-rendered-strike')
+    expect(html).toContain('tabs-cm-rendered-highlight')
+    expect(html).toContain('tabs-cm-rendered-list-line')
+    expect(html).toContain('tabs-cm-task-marker is-checked')
+    expect(html).toContain('tabs-cm-rendered-blockquote-line')
+    expect(html).toContain('tabs-cm-rendered-hr')
+    expect(html).toContain('tabs-cm-rendered-code-block-line')
+    expect(html).toContain('data-tabs-tag="tag"')
+    expect(html).toContain('data-tabs-link-url="https://lucide.dev/icons/files"')
+    expect(html).not.toContain('href="https://lucide.dev/icons/files"')
+  })
+
+  it('renders one-column link-heavy CodeMirror previews as inactive table widgets', () => {
+    const tbCopyMarkdown = [
+      '| [copy](https://lucide.dev/icons/files) |',
+      '| ---- |',
+      '| [tableOfContents](https://lucide.dev/icons/table-of-contents) |',
+      '| [aisles](https://lucide.dev/icons/shelving-unit) |',
+    ].join('\n')
+    const html = renderWorkspace(new Set(['active']), {
+      activeAisleId: 'active',
+      inactivePreviewRenderer: 'codemirror',
+      aisles: [
+        { id: 'tb-copy', aisleBodyId: 'tb-copy', markdown: tbCopyMarkdown },
+        { id: 'active', aisleBodyId: 'active', markdown: 'active' },
+      ],
+    })
+
+    expect(html).toContain('data-aisle-preview-mode="markdown-preview"')
+    expect(html).toContain('tabs-cm-rendered-table-wrap')
+    expect(html).toContain('class="tabs-rendered-markdown-table tabs-cm-rendered-table"')
+    expect(html).toContain('data-tabs-link-url="https://lucide.dev/icons/files"')
+    expect(html).toContain('>copy</span>')
+    expect(html).toContain('data-tabs-link-url="https://lucide.dev/icons/table-of-contents"')
+    expect(html).not.toContain('href="https://lucide.dev/icons/table-of-contents"')
+    expect(html).not.toContain('| ---- |')
+  })
+
+  it('renders only the active aisle as a CodeMirror editor during a 1 to 2 to 3 switch state', () => {
+    const html = renderWorkspace(new Set(['aisle-3']), {
+      activeAisleId: 'aisle-3',
+      inactivePreviewRenderer: 'codemirror',
+      aisles: [
+        { id: 'aisle-1', aisleBodyId: 'aisle-1', markdown: '# First' },
+        { id: 'aisle-2', aisleBodyId: 'aisle-2', markdown: '# Second' },
+        { id: 'aisle-3', aisleBodyId: 'aisle-3', markdown: '# Third' },
+      ],
+    })
+
+    expect(html.match(/data-aisle-host-mode="editor"/g) ?? []).toHaveLength(1)
+    expect(html.match(/data-aisle-host-mode="preview"/g) ?? []).toHaveLength(2)
+    expect(html.match(/tabs-codemirror-preview-host/g) ?? []).toHaveLength(2)
+    expect(html).toContain('data-aisle-id="aisle-3"')
+    expect(html).toContain('data-aisle-editor-key="body-1::aisle-3" data-aisle-host-mode="editor"')
+    expect(html).not.toContain('data-aisle-editor-key="body-1::aisle-1" data-aisle-host-mode="editor"')
+    expect(html).not.toContain('data-aisle-editor-key="body-1::aisle-2" data-aisle-host-mode="editor"')
+  })
+
   it('uses lightweight previews for inactive link-heavy aisles in arrange mode without anchor DOM', () => {
     const heavyMarkdown = [
       '# Completed items',
@@ -162,6 +317,55 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).not.toContain('<table>')
   })
 
+  it('uses lightweight previews only until deferred inactive link-heavy previews hydrate', () => {
+    const profile = getMarkdownWorkloadProfile([
+      '[one](https://example.com/one)',
+      '[two](https://example.com/two)',
+      '[three](https://example.com/three)',
+      '[four](https://example.com/four)',
+      '[five](https://example.com/five)',
+    ].join('\n'))
+
+    expect(getAislePreviewRenderMode({
+      active: false,
+      arrangeModeActive: false,
+      deferInactivePreviewFallbacks: true,
+      editorMounted: false,
+      editorMountPending: false,
+      inactivePreviewsHydrated: false,
+      profile,
+    })).toBe('lightweight-preview')
+    expect(getAislePreviewRenderMode({
+      active: false,
+      arrangeModeActive: false,
+      deferInactivePreviewFallbacks: true,
+      editorMounted: false,
+      editorMountPending: false,
+      forceMarkdownPreview: true,
+      inactivePreviewsHydrated: false,
+      profile,
+    })).toBe('markdown-preview')
+    expect(getAislePreviewRenderMode({
+      active: false,
+      arrangeModeActive: true,
+      deferInactivePreviewFallbacks: true,
+      editorMounted: false,
+      editorMountPending: false,
+      forceMarkdownPreview: true,
+      inactivePreviewsHydrated: false,
+      profile,
+    })).toBe('lightweight-preview')
+    expect(getAislePreviewRenderMode({
+      active: false,
+      arrangeModeActive: false,
+      deferInactivePreviewFallbacks: true,
+      editorMounted: false,
+      editorMountPending: false,
+      inactivePreviewsHydrated: true,
+      profile,
+    })).toBe('markdown-preview')
+  })
+
   it('classifies link-heavy markdown previews as expensive without flagging image-only previews', () => {
     const fixture = [
       '| [copy](https://lucide.dev/icons/files) | |',
@@ -183,6 +387,13 @@ describe('NoteWorkspace aisle mounting', () => {
       isLinkHeavy: true,
     })
     expect(isMarkdownPreviewLikelyExpensive(fixture)).toBe(true)
+    expect(isMarkdownPreviewLikelyExpensive([
+      '[one](https://example.com/one)',
+      '[two](https://example.com/two)',
+      '[three](https://example.com/three)',
+      '[four](https://example.com/four)',
+      '[five](https://example.com/five)',
+    ].join('\n'))).toBe(true)
     expect(isMarkdownPreviewLikelyExpensive('![Diagram](data:image/png;base64,abc)')).toBe(false)
     expect(getLightweightPreviewText('| [copy](https://lucide.dev/icons/files) | |')).toBe('| copy | |')
   })
@@ -297,7 +508,7 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html.match(/data-media-kind="audio"/g) ?? []).toHaveLength(2)
     expect(html.match(/data-media-kind="video"/g) ?? []).toHaveLength(2)
     expect(html).toContain('aria-label="Song player"')
-    expect(html).toContain('<a href="https://example.com">Site</a>')
+    expect(html).toContain('<a href="https://example.com" class="tabs-rendered-markdown-link">Site</a>')
   })
 
   it('renders fallback aisles that start with a heading', () => {
@@ -324,7 +535,8 @@ describe('NoteWorkspace aisle mounting', () => {
     )
 
     expect(html).toContain('aisle-editor-preview-fallback')
-    expect(html).toContain('<h1>Top heading</h1>')
+    expect(html).toContain('class="tabs-rendered-markdown-heading tabs-rendered-markdown-heading-1"')
+    expect(html).toContain('Top heading</h1>')
   })
 
   it('renders fallback block indents without exposing the storage marker', () => {
@@ -351,9 +563,41 @@ describe('NoteWorkspace aisle mounting', () => {
     )
 
     expect(html).toContain('style="--tabs-block-indent-level:2"')
-    expect(html).toContain('class="tabs-block-indent"')
+    expect(html).toContain('class="tabs-rendered-markdown-paragraph tabs-block-indent"')
     expect(html).toContain('indented')
     expect(html).not.toContain(BLOCK_INDENT_TOKEN)
+  })
+
+  it('renders explicit note preview tokens as compact placeholders in workspace previews', () => {
+    const notePreviewAisles: ResolvedNoteAisle[] = [
+      { id: 'preview', aisleBodyId: 'preview', markdown: '![Child note](<Child note--123abc>)\n\nregular text' },
+    ]
+    const html = renderToStaticMarkup(
+      <NoteWorkspace
+        noteBodyId="body-1"
+        aisles={notePreviewAisles}
+        activeAisleId="preview"
+        editorReadOnly={false}
+        aisleScrollRef={{ current: null }}
+        toolbar={null}
+        headingPopover={null}
+        imageToolsOverlay={null}
+        tableControlsOverlay={null}
+        mountedAisleIds={new Set()}
+        getPreviewMarkdownForAisle={(aisle) => aisle.markdown}
+        onRootChange={() => undefined}
+        onAisleScroll={() => undefined}
+        onActivateAisle={() => undefined}
+        onRegisterAislePaneRoot={() => undefined}
+        onRegisterAisleEditorRoot={() => undefined}
+      />,
+    )
+
+    expect(html).toContain('aisle-edit-context-preview')
+    expect(html).toContain('note preview')
+    expect(html).toContain('Child note')
+    expect(html).toContain('regular text')
+    expect(html).not.toContain('![Child note](&lt;Child note--123abc&gt;)')
   })
 
   it('does not render the retired floating link prompt overlay', () => {
@@ -536,6 +780,19 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(shouldExitArrangeModeFromNoteWorkspacePointer(true, 1)).toBe(false)
     expect(shouldExitArrangeModeFromNoteWorkspacePointer(true, 2)).toBe(false)
     expect(shouldExitArrangeModeFromNoteWorkspacePointer(false, 0)).toBe(false)
+  })
+
+  it('captures first-click coordinates only for primary aisle activation pointers', () => {
+    expect(getAisleActivationPointerFromNoteWorkspaceEvent({
+      button: 0,
+      clientX: 24,
+      clientY: 48,
+    } as PointerEvent)).toEqual({ clientX: 24, clientY: 48 })
+    expect(getAisleActivationPointerFromNoteWorkspaceEvent({
+      button: 2,
+      clientX: 24,
+      clientY: 48,
+    } as PointerEvent)).toBeUndefined()
   })
 
   it('resolves aisle activation from nested editor content before bubbling handlers can stop propagation', () => {

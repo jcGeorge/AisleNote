@@ -15,9 +15,13 @@ import {
   prepareMarkdownImagesForDisplay,
 } from '../markdown/image-asset-registry'
 import { measureSlowOperation } from '../performance/performance-logging'
+import { isCodeMirrorMarkdownEditor } from './codemirror-markdown-editor'
 import { getWysiwygView, markWysiwygLoadedUndoBoundary } from './prosemirror-utils'
 
 export function getEditorMarkdownForPersistence(editor: Editor): string {
+  if (isCodeMirrorMarkdownEditor(editor)) {
+    return normalizeMarkdownImageSourcesForPersistence(normalizeMarkdownForPersistence(editor.getMarkdown()))
+  }
   return normalizeMarkdownImageSourcesForPersistence(
     normalizeEmptyHeadingMarkersFromWysiwyg(
       editor,

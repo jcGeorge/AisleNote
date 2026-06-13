@@ -6,11 +6,13 @@ import {
   shouldFocusSavedCursorRestoreOnActivation,
 } from './cursor-restore-focus'
 import {
+  getCachedOrStoredCursorSelection,
   getPendingCursorRestoreTargetAisleId,
   getPersistableCursorSelectionForActiveEditor,
   shouldClearSuppressedSavedCursorRestore,
 } from './useNoteCursorPersistence'
 import { shouldFocusForEditorIntent } from './focus-intent'
+import type { NoteCursorSelection } from '../types/app'
 
 describe('pending note cursor restore focus', () => {
   it('focuses explicit pending focus requests', () => {
@@ -143,6 +145,25 @@ describe('pending note cursor restore focus', () => {
 })
 
 describe('active editor cursor persistence', () => {
+  it('prefers the synchronous cursor cache over persisted cursor state', () => {
+    const storedSelection = { anchor: 1, head: 1, updatedAt: 1 }
+    const cachedSelection = { anchor: 8, head: 8, updatedAt: 2 }
+    const noteLocationKey = 'domain::space::tab::__home__'
+    const cache = new Map<string, NoteCursorSelection | null>([
+      [`${noteLocationKey}::aisle-1`, cachedSelection],
+    ])
+    const stored = {
+      [noteLocationKey]: {
+        activeAisleId: 'aisle-1',
+        aisles: { 'aisle-1': storedSelection },
+        updatedAt: 1,
+      },
+    }
+
+    expect(getCachedOrStoredCursorSelection(cache, stored, noteLocationKey, 'aisle-1')).toBe(cachedSelection)
+    expect(getCachedOrStoredCursorSelection(new Map(), stored, noteLocationKey, 'aisle-1')).toBe(storedSelection)
+  })
+
   it('persists cursor selections only when the editor belongs to the active aisle', () => {
     expect(
       getPersistableCursorSelectionForActiveEditor({

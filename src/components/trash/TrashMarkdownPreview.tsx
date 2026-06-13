@@ -1,5 +1,6 @@
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { RENDERED_MARKDOWN_SURFACE_CLASS } from '../../editor/rendered-markdown-surface'
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import {
   MarkdownPreviewHeading1,
@@ -40,7 +41,10 @@ const transformTrashPreviewUrl = (url: string, key: string) => {
 export function TrashMarkdownPreview({ markdown }: TrashMarkdownPreviewProps) {
   return (
     <section className="editor-shell trash-markdown-preview-shell" aria-label="Trash note preview">
-      <div className="aisle-editor-preview-fallback trash-markdown-preview" data-trash-markdown-preview="true">
+      <div
+        className={`aisle-editor-preview-fallback trash-markdown-preview ${RENDERED_MARKDOWN_SURFACE_CLASS}`}
+        data-trash-markdown-preview="true"
+      >
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={trashMarkdownPreviewComponents}

@@ -1,9 +1,11 @@
 import type { Editor } from '@toast-ui/editor'
+import type { ActiveEditorCore } from './editor-core'
 
 export type AisleEditorMeta = {
   editor: Editor
   root: HTMLElement
   aisleId: string
+  editorCore: ActiveEditorCore
   pluginKey: unknown
   cleanup: () => void
 }

@@ -93,6 +93,18 @@ describe('editor markdown display helpers', () => {
     expect(getEditorMarkdownForPersistence(editor)).toBe('==text==\n\nplain\u2060\u2003\u2003indent')
   })
 
+  it('reads CodeMirror markdown without ProseMirror blank repair', () => {
+    const editor = {
+      __tabsEditorCore: 'codemirror',
+      getMarkdown: vi.fn(() => 'one\n\n\ntwo'),
+      get wwEditor() {
+        throw new Error('CodeMirror should not use Toast UI internals')
+      },
+    } as unknown as Editor
+
+    expect(getEditorMarkdownForPersistence(editor)).toBe('one\n\n\ntwo')
+  })
+
   it('strips editor blank artifacts from persisted markdown', () => {
     const editor = {
       getMarkdown: vi.fn(() => `one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n<br>\n\ntwo`),

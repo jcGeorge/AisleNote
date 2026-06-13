@@ -75,6 +75,11 @@ export type LazyContentCommitOptions = {
   fallbackAlreadyNormalized?: boolean
   onMaterialized?: (markdown: string) => void
 }
+export type KnownMarkdownDraftCommitOptions = {
+  aisleBodyId?: string | null
+  noteBodyId?: string | null
+  onMaterialized?: (markdown: string) => void
+}
 export type EditorFocusBoundaryEvent = 'blur' | 'visibilitychange' | 'beforeunload' | 'pagehide'
 export type EditorFocusBoundaryFlushAction = 'schedule' | 'force' | 'ignore'
 
@@ -172,6 +177,18 @@ export function materializePendingContentDraft(
     }
   } catch {
     return snapshot
+  }
+}
+
+export function createKnownMarkdownPendingContentDraft(
+  snapshot: EditorContentSnapshot,
+  onMaterialized?: (markdown: string) => void,
+): PendingContentDraft {
+  const markdown = snapshot.markdown
+  return {
+    ...snapshot,
+    resolveMarkdown: () => markdown,
+    onMaterialized,
   }
 }
 
@@ -451,6 +468,7 @@ export const useEditorPersistence = ({
   const flushPendingContent = (options: FlushPendingContentOptions = {}) => measureSlowOperation('editor pending content flush', () => {
     clearPendingSaveTimer()
     if (pendingContentRef.current.size === 0) {
+      if (isCodeMirrorMarkdownEditor(editorRef.current)) return
       const activeMarkdown = lastEditorMarkdownRef.current || getNoteBodyMarkdown(activeNoteBody, activeAisleIdRef.current)
       if (!shouldCaptureActiveEditorSnapshotOnCleanFlush(activeMarkdown, options)) return
       const snapshots = getFallbackActiveEditorSnapshot()
@@ -469,6 +487,29 @@ export const useEditorPersistence = ({
     pendingContentRef.current.clear()
     applyContentSnapshots(snapshots)
   })
+
+  const armPendingContentSaveTimer = () => {
+    if (import.meta.env?.DEV) {
+      withAisleEditorPerfState((state) => {
+        const now = getAisleEditorPerfNow()
+        state.lastPendingUpdateAt = now
+        state.pendingMapSize = pendingContentRef.current.size
+        state.pendingAisleBodyIds = Array.from(pendingContentRef.current.keys())
+        state.contentCommitTimerArmed = true
+      })
+    }
+
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current)
+    }
+
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null
+      const snapshots = getPendingContentSnapshots()
+      pendingContentRef.current.clear()
+      applyContentSnapshots(snapshots)
+    }, EDITOR_PENDING_CONTENT_COMMIT_DELAY_MS)
+  }
 
   const scheduleContentCommit = (
     markdown: string,
@@ -501,26 +542,40 @@ export const useEditorPersistence = ({
       markdown: normalizedMarkdown,
     })
 
-    if (import.meta.env?.DEV) {
-      withAisleEditorPerfState((state) => {
-        const now = getAisleEditorPerfNow()
-        state.lastPendingUpdateAt = now
-        state.pendingMapSize = pendingContentRef.current.size
-        state.pendingAisleBodyIds = Array.from(pendingContentRef.current.keys())
-        state.contentCommitTimerArmed = true
-      })
-    }
+    armPendingContentSaveTimer()
+  }
 
-    if (saveTimerRef.current !== null) {
-      window.clearTimeout(saveTimerRef.current)
+  const scheduleKnownMarkdownDraftCommit = (
+    markdown: string,
+    spaceId: string,
+    tabId: string,
+    subTabId: string | null,
+    aisleId: string,
+    options: KnownMarkdownDraftCommitOptions = {},
+  ) => {
+    const explicitAisleBodyId = typeof options.aisleBodyId === 'string' && options.aisleBodyId.trim()
+      ? options.aisleBodyId.trim()
+      : null
+    const aisleBodyId = explicitAisleBodyId ?? getAisleBodyIdForAisleId(aisleId)
+    const noteBodyId = typeof options.noteBodyId === 'string' && options.noteBodyId.trim()
+      ? options.noteBodyId.trim()
+      : activeNoteBody?.id ?? ''
+    if (!noteBodyId || !aisleBodyId) return
+    if (aisleId === activeAisleIdRef.current) {
+      lastEditorMarkdownRef.current = markdown
     }
+    lastEditorMarkdownByAisleRef.current.set(aisleBodyId, markdown)
+    pendingContentRef.current.set(aisleBodyId, createKnownMarkdownPendingContentDraft({
+      noteBodyId,
+      spaceId,
+      tabId,
+      subTabId,
+      aisleId,
+      aisleBodyId,
+      markdown,
+    }, options.onMaterialized))
 
-    saveTimerRef.current = window.setTimeout(() => {
-      saveTimerRef.current = null
-      const snapshots = getPendingContentSnapshots()
-      pendingContentRef.current.clear()
-      applyContentSnapshots(snapshots)
-    }, EDITOR_PENDING_CONTENT_COMMIT_DELAY_MS)
+    armPendingContentSaveTimer()
   }
 
   const scheduleLazyContentCommit = (
@@ -554,26 +609,7 @@ export const useEditorPersistence = ({
       onMaterialized: options.onMaterialized,
     })
 
-    if (import.meta.env?.DEV) {
-      withAisleEditorPerfState((state) => {
-        const now = getAisleEditorPerfNow()
-        state.lastPendingUpdateAt = now
-        state.pendingMapSize = pendingContentRef.current.size
-        state.pendingAisleBodyIds = Array.from(pendingContentRef.current.keys())
-        state.contentCommitTimerArmed = true
-      })
-    }
-
-    if (saveTimerRef.current !== null) {
-      window.clearTimeout(saveTimerRef.current)
-    }
-
-    saveTimerRef.current = window.setTimeout(() => {
-      saveTimerRef.current = null
-      const snapshots = getPendingContentSnapshots()
-      pendingContentRef.current.clear()
-      applyContentSnapshots(snapshots)
-    }, EDITOR_PENDING_CONTENT_COMMIT_DELAY_MS)
+    armPendingContentSaveTimer()
   }
 
   const commitCurrentEditorContent = () => {
@@ -727,6 +763,7 @@ export const useEditorPersistence = ({
     buildStateWithLatestEditorContent,
     flushPendingContent,
     scheduleContentCommit,
+    scheduleKnownMarkdownDraftCommit,
     scheduleLazyContentCommit,
     commitCurrentEditorContent,
     commitActiveEditorMarkdownNow,

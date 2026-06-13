@@ -1,16 +1,17 @@
 export const EDITOR_CORE_LOCAL_STORAGE_KEY = 'tabs.editorCore'
 
-export const EDITOR_CORE_MODES = ['auto', 'toast', 'codemirror'] as const
+export const EDITOR_CORE_MODES = ['auto', 'toast', 'codemirror-live', 'codemirror'] as const
 
 export type SelectableEditorCoreMode = typeof EDITOR_CORE_MODES[number]
-export type EditorCoreMode = SelectableEditorCoreMode | 'mdxeditor'
+export type EditorCoreMode = SelectableEditorCoreMode
 export type ActiveEditorCore = 'toast' | 'codemirror'
+export type UserFacingEditorRenderer = 'toast' | 'codemirror'
 
 export const EDITOR_CORE_MODE_LABELS: Record<EditorCoreMode, string> = {
   auto: 'Auto',
   toast: 'Toast UI',
-  mdxeditor: 'MDXEditor experimental',
-  codemirror: 'CodeMirror',
+  'codemirror-live': 'CodeMirror Live',
+  codemirror: 'CodeMirror source',
 }
 
 const VALID_EDITOR_CORE_MODES = new Set<string>(EDITOR_CORE_MODES)
@@ -43,7 +44,7 @@ export function writeEditorCoreMode(
 ): boolean {
   if (!storage) return false
   try {
-    if (mode === 'auto' || mode === 'mdxeditor') {
+    if (mode === 'auto') {
       storage.removeItem(EDITOR_CORE_LOCAL_STORAGE_KEY)
     } else {
       storage.setItem(EDITOR_CORE_LOCAL_STORAGE_KEY, mode)
@@ -67,9 +68,17 @@ export function isMarkdownLikelyToastHeavy(markdown: string): boolean {
 
 export function resolveActiveEditorCore(mode: EditorCoreMode, markdown: string): ActiveEditorCore {
   void markdown
-  if (mode === 'codemirror') return 'codemirror'
+  if (mode === 'codemirror' || mode === 'codemirror-live' || mode === 'auto') return 'codemirror'
   if (mode === 'toast') return 'toast'
-  return 'toast'
+  return 'codemirror'
+}
+
+export function getRendererForEditorCoreMode(mode: EditorCoreMode): UserFacingEditorRenderer {
+  return mode === 'toast' ? 'toast' : 'codemirror'
+}
+
+export function getEditorCoreModeForRenderer(renderer: UserFacingEditorRenderer): EditorCoreMode {
+  return renderer === 'toast' ? 'toast' : 'codemirror-live'
 }
 
 function getLocalStorage(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null {

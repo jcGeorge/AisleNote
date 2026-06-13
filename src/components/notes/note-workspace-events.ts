@@ -7,6 +7,12 @@ export function scheduleNoteWorkspaceArrangeExit(onExitArrangeMode: (() => void)
   window.setTimeout(onExitArrangeMode, 0)
 }
 
+export function getAisleActivationPointerFromNoteWorkspaceEvent(
+  event: Pick<PointerEvent, 'button' | 'clientX' | 'clientY'>,
+): { clientX: number; clientY: number } | undefined {
+  return event.button === 0 ? { clientX: event.clientX, clientY: event.clientY } : undefined
+}
+
 type ClosestCapableTarget = {
   closest: (selector: string) => { dataset?: { aisleEditorKey?: string } } | null
 }

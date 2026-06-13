@@ -15,10 +15,16 @@ export function shouldUseFastSameAisleActivation({
   return !switchingAisle && editorRefMatches && pluginKeyMatches && activeAisleStateMatches
 }
 
-export function shouldFocusAislePointerActivation(currentAisleId: string, targetAisleId: string): boolean {
-  void currentAisleId
-  void targetAisleId
-  return false
+export function shouldFocusAislePointerActivation({
+  currentAisleId,
+  targetAisleId,
+  editorCore,
+}: {
+  currentAisleId: string
+  targetAisleId: string
+  editorCore: 'toast' | 'codemirror'
+}): boolean {
+  return editorCore === 'codemirror' && Boolean(targetAisleId) && targetAisleId !== currentAisleId
 }
 
 export function shouldClearPendingCursorRestoreForAisleActivation(

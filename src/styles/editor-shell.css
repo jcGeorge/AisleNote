@@ -88,12 +88,67 @@
 }
 
 .tabs-codemirror-host .cm-scroller {
+  box-sizing: border-box;
   font-family: inherit;
   line-height: 1.55;
+  overflow: auto;
+  padding: 1rem 1.125rem;
 }
 
 .tabs-codemirror-host .cm-content {
-  padding: 1rem 1.125rem;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  caret-color: var(--editor-caret);
+}
+
+.tabs-codemirror-host .cm-cursor,
+.tabs-codemirror-host .cm-dropCursor {
+  border-left-color: var(--editor-caret) !important;
+  border-left-width: 2px !important;
+}
+
+.tabs-codemirror-host .tabs-codemirror-rendered-markdown {
+  overflow-wrap: anywhere;
+  color: var(--editor-text);
+}
+
+.tabs-codemirror-preview-host {
+  box-sizing: border-box;
+  font-size: calc(1rem * var(--note-font-scale, 1));
+}
+
+.tabs-codemirror-preview-content {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  font-family: inherit;
+  line-height: 1.55;
+  color: var(--editor-text);
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.tabs-codemirror-preview-content .cm-line {
+  min-height: 1.55em;
+  padding-inline: 0;
+  white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  tab-size: 4;
+}
+
+.tabs-codemirror-host .cm-lineWrapping {
+  white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.tabs-codemirror-host .cm-line {
+  padding-inline: 0;
 }
 
 .tabs-codemirror-host .cm-gutters {
@@ -111,12 +166,392 @@
   outline: none;
 }
 
+.tabs-rendered-markdown-surface {
+  color: var(--editor-text);
+  font-size: calc(1rem * var(--note-font-scale, 1));
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-paragraph,
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-list-item {
+  white-space: pre-wrap;
+  tab-size: 4;
+}
+
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-heading {
+  color: var(--editor-heading-text, var(--editor-text));
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-heading-1 {
+  font-size: calc(1.35rem * var(--note-font-scale, 1));
+  line-height: 1.28;
+  margin: 0.32rem 0 0.16rem;
+}
+
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-heading-2 {
+  font-size: calc(1.2rem * var(--note-font-scale, 1));
+  line-height: 1.32;
+  margin: 0.24rem 0 0.12rem;
+}
+
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-heading-3 {
+  font-size: calc(1.08rem * var(--note-font-scale, 1));
+}
+
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-heading-4 {
+  font-size: calc(1rem * var(--note-font-scale, 1));
+}
+
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-heading-5 {
+  font-size: calc(0.92rem * var(--note-font-scale, 1));
+}
+
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-heading-6 {
+  font-size: calc(0.86rem * var(--note-font-scale, 1));
+}
+
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-link,
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-image-label {
+  color: var(--editor-link-text, var(--accent));
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-code {
+  color: var(--editor-text);
+  background: var(--editor-code-bg, color-mix(in srgb, var(--editor-bg) 82%, var(--app-border)));
+  border-radius: 0.18em;
+  padding: 0 0.18em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  font-size: 0.92em;
+}
+
+.tabs-rendered-markdown-surface pre,
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-code-block-line {
+  color: var(--editor-text);
+  background: var(--editor-pre-bg);
+  border-radius: 0.18rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+}
+
+.tabs-rendered-markdown-surface pre {
+  overflow: auto;
+  padding: 0.55rem;
+}
+
+.tabs-rendered-markdown-surface blockquote,
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-blockquote-line {
+  color: var(--editor-blockquote-text);
+  background: var(--editor-blockquote-bg);
+}
+
+.tabs-rendered-markdown-surface blockquote {
+  position: relative;
+  border: 0;
+  margin: 0.18em 0;
+  padding: 0.08em 0 0.08em 0.95rem;
+}
+
+.tabs-rendered-markdown-surface blockquote::before {
+  content: '';
+  position: absolute;
+  left: 0.18rem;
+  top: 0.12em;
+  bottom: 0.12em;
+  width: 0.3rem;
+  min-height: 1.15em;
+  border-radius: 0.08rem;
+  background: var(--editor-blockquote-border);
+  pointer-events: none;
+}
+
+.tabs-rendered-markdown-surface table {
+  border-collapse: collapse;
+  border: 1px solid var(--editor-table-grid-border);
+  color: var(--editor-text);
+  background: var(--editor-bg);
+  margin: 0.35em 0;
+}
+
+.tabs-rendered-markdown-surface th,
+.tabs-rendered-markdown-surface td {
+  border: 1px solid var(--editor-table-grid-border);
+  background: var(--editor-bg);
+  color: var(--editor-text);
+  padding: 0.18em 0.42em;
+  vertical-align: top;
+  font-style: inherit;
+  font-weight: inherit;
+  text-align: inherit;
+}
+
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-strong {
+  font-weight: 700;
+}
+
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-emphasis {
+  font-style: italic;
+}
+
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-strike {
+  text-decoration: line-through;
+}
+
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-highlight {
+  color: var(--editor-highlight-text, #1f2937);
+  background: var(--editor-highlight-bg, #fde047);
+  border-radius: 0.14em;
+  padding: 0 0.08em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.tabs-rendered-markdown-surface .tabs-rendered-markdown-hr,
+.tabs-rendered-markdown-surface hr {
+  display: block;
+  height: 1px;
+  margin: 0.95rem 0;
+  border: 0;
+  opacity: var(--editor-hr-opacity, 0.74);
+  background: linear-gradient(
+    90deg,
+    transparent 0,
+    var(--editor-hr-line) 20px,
+    var(--editor-hr-line) calc(100% - 20px),
+    transparent 100%
+  );
+}
+
+.tabs-codemirror-host .cm-tabs-heading-line {
+  color: var(--editor-heading-text, var(--editor-text));
+  font-weight: 650;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-heading-line {
+  color: var(--editor-heading-text, var(--editor-text));
+  font-weight: 650;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-heading-line-1 {
+  font-size: calc(1.35rem * var(--note-font-scale, 1));
+  line-height: 1.28;
+  padding-top: 0.32rem;
+  padding-bottom: 0.16rem;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-heading-line-2 {
+  font-size: calc(1.2rem * var(--note-font-scale, 1));
+  line-height: 1.32;
+  padding-top: 0.24rem;
+  padding-bottom: 0.12rem;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-heading-line-3 {
+  font-size: calc(1.08rem * var(--note-font-scale, 1));
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-heading-line-4 {
+  font-size: calc(1rem * var(--note-font-scale, 1));
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-heading-line-5 {
+  font-size: calc(0.92rem * var(--note-font-scale, 1));
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-heading-line-6 {
+  font-size: calc(0.86rem * var(--note-font-scale, 1));
+}
+
+.tabs-codemirror-host .cm-tabs-table-line {
+  background: color-mix(in srgb, var(--editor-bg) 90%, var(--app-border));
+}
+
+.tabs-codemirror-host .cm-tabs-task-line {
+  color: var(--editor-text);
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-link,
+.tabs-codemirror-host .tabs-cm-rendered-image-label,
+.tabs-codemirror-host .cm-tabs-markdown-link,
+.tabs-codemirror-host .cm-tabs-image-link {
+  color: var(--editor-link-text, var(--accent));
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
+.tabs-codemirror-host .cm-tabs-link-label,
+.tabs-codemirror-host .cm-tabs-image-alt {
+  text-decoration: underline;
+  text-decoration-thickness: 0.06em;
+  text-underline-offset: 0.16em;
+}
+
+.tabs-codemirror-host .cm-tabs-external-url,
+.tabs-codemirror-host .cm-tabs-internal-url {
+  color: color-mix(in srgb, var(--editor-link-text, var(--accent)) 72%, var(--editor-muted-text));
+}
+
+.tabs-codemirror-host .cm-tabs-tag-token {
+  padding: 0 0.18em;
+  border-radius: 0.25em;
+  background: var(--editor-tag-bg, color-mix(in srgb, var(--accent-soft) 42%, transparent));
+  color: var(--editor-tag-text, var(--editor-text));
+}
+
+.tabs-codemirror-host .tabs-tag-token {
+  color: var(--editor-tag-text, #06141a);
+  background: var(--editor-tag-bg, #22d3ee);
+  border: 0;
+  border-radius: 0.28em;
+  padding: 0.02em 0.22em;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  text-decoration: none;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-strong {
+  font-weight: 700;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-emphasis {
+  font-style: italic;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-strike {
+  text-decoration: line-through;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-highlight {
+  color: var(--editor-highlight-text, #1f2937);
+  background: var(--editor-highlight-bg, #fde047);
+  border-radius: 0.14em;
+  padding: 0 0.08em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-code {
+  color: var(--editor-text);
+  background: var(--editor-code-bg, color-mix(in srgb, var(--editor-bg) 82%, var(--app-border)));
+  border-radius: 0.18em;
+  padding: 0 0.18em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  font-size: 0.92em;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-code-block-line {
+  color: var(--editor-text);
+  background: var(--editor-pre-bg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-code-block-line.cm-line {
+  padding-inline: 0.55rem;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-code-block-line.cm-line + .tabs-cm-rendered-code-block-line.cm-line {
+  padding-top: 0;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-blockquote-line {
+  position: relative;
+  color: var(--editor-blockquote-text);
+  background: var(--editor-blockquote-bg);
+  padding-left: 0.95rem;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-blockquote-line::before {
+  content: '';
+  position: absolute;
+  left: 0.18rem;
+  top: 0.18em;
+  bottom: 0.18em;
+  width: 0.3rem;
+  min-height: 1.15em;
+  border-radius: 0.08rem;
+  background: var(--editor-blockquote-border);
+  pointer-events: none;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-list-line {
+  padding-left: 1.15rem;
+}
+
+.tabs-codemirror-host .tabs-cm-list-marker,
+.tabs-codemirror-host .tabs-cm-task-marker {
+  display: inline-block;
+  width: 1.05rem;
+  margin-left: -1.15rem;
+  color: var(--editor-text);
+  opacity: var(--editor-list-marker-opacity, 1);
+}
+
+.tabs-codemirror-host .tabs-cm-ordered-marker {
+  width: 1.65rem;
+  margin-left: -1.75rem;
+  padding-right: 0.2rem;
+  text-align: right;
+}
+
+.tabs-codemirror-host .tabs-cm-task-marker {
+  font-size: 0.9em;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-hr {
+  display: block;
+  height: 1px;
+  margin: 0.95rem 0;
+  opacity: var(--editor-hr-opacity, 0.74);
+  background: linear-gradient(
+    90deg,
+    transparent 0,
+    var(--editor-hr-line) 20px,
+    var(--editor-hr-line) calc(100% - 20px),
+    transparent 100%
+  );
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-table-wrap {
+  overflow-x: auto;
+  margin: 0.35em 0;
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-table {
+  border-collapse: collapse;
+  border: 1px solid var(--editor-table-grid-border);
+  color: var(--editor-text);
+  background: var(--editor-bg);
+}
+
+.tabs-codemirror-host .tabs-cm-rendered-table th,
+.tabs-codemirror-host .tabs-cm-rendered-table td {
+  border: 1px solid var(--editor-table-grid-border);
+  background: var(--editor-bg);
+  color: var(--editor-text);
+  padding: 0.18em 0.42em;
+  vertical-align: top;
+  font-style: inherit;
+  font-weight: inherit;
+  text-align: inherit;
+}
+
 .aisle-editor-preview-fallback {
   overflow: auto;
   padding: 1rem 1.125rem;
   color: var(--editor-text);
   background: var(--editor-bg);
   overflow-wrap: anywhere;
+}
+
+.aisle-editor-preview-fallback.tabs-codemirror-preview-host {
+  box-sizing: border-box;
+  padding: 1rem 1.125rem;
 }
 
 .aisle-editor-preview-fallback.is-lightweight-preview {

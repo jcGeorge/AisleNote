@@ -124,10 +124,10 @@ const EDITOR_ABLATION_MODE_DESCRIPTIONS: Record<EditorAblationMode, string> = {
 }
 
 const EDITOR_CORE_MODE_DESCRIPTIONS: Record<EditorCoreMode, string> = {
-  auto: 'Uses the current safe default editor core. Toast UI remains the default until a replacement proves out.',
+  auto: 'Uses the current product default editor core. CodeMirror Live is the default; Toast remains available as a fallback.',
   toast: 'Forces the current Toast UI editor core for every aisle.',
-  mdxeditor: 'Experimental replacement core. Faster in some cases, but app-specific tags, media, find, and toolbar parity are incomplete.',
-  codemirror: 'Forces the fast source-Markdown CodeMirror editor core for every aisle.',
+  'codemirror-live': 'Forces the CodeMirror Live Markdown editor core.',
+  codemirror: 'Forces the diagnostic source-Markdown CodeMirror editor core.',
 }
 
 function EditorDevMessagesSection() {

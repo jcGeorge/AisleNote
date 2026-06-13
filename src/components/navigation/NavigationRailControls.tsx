@@ -1,4 +1,5 @@
 import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react'
+import type { UserFacingEditorRenderer } from '../../editor/editor-core'
 import type { ViewMode } from '../../types/app'
 
 export type NavigationRailAction = {
@@ -29,6 +30,8 @@ type NavigationRailControlsProps = {
   onToggleTrash: () => void
   onOpenEtCetera: () => void
   onOpenFilter: () => void
+  selectedRenderer?: UserFacingEditorRenderer
+  onSelectRenderer?: (renderer: UserFacingEditorRenderer) => void
   tagFilterControl?: ReactNode
 }
 
@@ -46,11 +49,14 @@ export function NavigationRailControls({
   onToggleTrash,
   onOpenEtCetera,
   onOpenFilter,
+  selectedRenderer,
+  onSelectRenderer,
   tagFilterControl,
 }: NavigationRailControlsProps) {
   const trashExitControlActive = viewMode === 'trash' && !showCloseControl
   const closeControlActive = showCloseControl || trashExitControlActive
   const menuButtonLabel = showCloseControl ? 'Close' : trashExitControlActive ? 'tabs' : 'Menu'
+  const rendererControlsVisible = Boolean(selectedRenderer && onSelectRenderer)
 
   return (
     <div className="tabbar-controls">
@@ -125,6 +131,28 @@ export function NavigationRailControls({
             <button type="button" className="menu-item" onClick={onOpenEtCetera}>
               et cetera
             </button>
+            {rendererControlsVisible && selectedRenderer && onSelectRenderer && (
+              <div className="menu-section menu-renderer-section" role="group" aria-label="renderer">
+                <div className="menu-section-label">renderer</div>
+                <button
+                  type="button"
+                  className={`menu-item menu-renderer-item ${selectedRenderer === 'toast' ? 'is-selected' : ''}`}
+                  aria-pressed={selectedRenderer === 'toast'}
+                  onClick={() => onSelectRenderer('toast')}
+                >
+                  Toast
+                </button>
+                <button
+                  type="button"
+                  className={`menu-item menu-renderer-item ${selectedRenderer === 'codemirror' ? 'is-selected' : ''}`}
+                  aria-pressed={selectedRenderer === 'codemirror'}
+                  onClick={() => onSelectRenderer('codemirror')}
+                >
+                  CodeMirror
+                </button>
+                <div className="menu-section-help">reloads on change</div>
+              </div>
+            )}
           </div>
         )}
       </div>

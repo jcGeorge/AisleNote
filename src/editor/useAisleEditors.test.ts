@@ -56,9 +56,34 @@ describe('aisle editor activation', () => {
   })
 
   it('does not force focus for pointer activation', () => {
-    expect(shouldFocusAislePointerActivation('aisle-1', 'aisle-1')).toBe(false)
-    expect(shouldFocusAislePointerActivation('aisle-1', 'aisle-2')).toBe(false)
-    expect(shouldFocusAislePointerActivation('aisle-1', '')).toBe(false)
+    expect(
+      shouldFocusAislePointerActivation({
+        currentAisleId: 'aisle-1',
+        targetAisleId: 'aisle-2',
+        editorCore: 'toast',
+      }),
+    ).toBe(false)
+    expect(
+      shouldFocusAislePointerActivation({
+        currentAisleId: 'aisle-1',
+        targetAisleId: 'aisle-1',
+        editorCore: 'codemirror',
+      }),
+    ).toBe(false)
+    expect(
+      shouldFocusAislePointerActivation({
+        currentAisleId: 'aisle-1',
+        targetAisleId: 'aisle-2',
+        editorCore: 'codemirror',
+      }),
+    ).toBe(true)
+    expect(
+      shouldFocusAislePointerActivation({
+        currentAisleId: 'aisle-1',
+        targetAisleId: '',
+        editorCore: 'codemirror',
+      }),
+    ).toBe(false)
   })
 
   it('clears pending cursor restore only for pointer activation', () => {

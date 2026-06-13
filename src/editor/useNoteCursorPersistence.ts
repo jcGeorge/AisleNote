@@ -1,10 +1,9 @@
 import type { Editor } from '@toast-ui/editor'
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
-import { TextSelection } from 'prosemirror-state'
 import { buildAisleEditorKey } from './aisle-editor'
 import {
+  getEditorDocSize,
   getEditorCursorSelection,
-  getWysiwygView,
   restoreEditorCursorSelection,
 } from './prosemirror-utils'
 import { clampNoteCursorSelection } from '../notes/note-cursors'
@@ -98,10 +97,28 @@ type UsePendingNoteCursorRestoreParams = {
     options?: {
       focus?: boolean
       flushPrevious?: boolean
+      focusAtClientPoint?: { clientX: number; clientY: number }
       allowDuringPendingRename?: boolean
       source?: AisleActivationSource
     },
   ) => boolean
+}
+
+function buildCursorSelectionCacheKey(noteLocationKey: string, aisleId: string): string {
+  return `${noteLocationKey}::${aisleId}`
+}
+
+export function getCachedOrStoredCursorSelection(
+  cursorSelectionCache: Map<string, NoteCursorSelection | null>,
+  noteCursorLocations: AppState['ui']['noteCursorLocations'],
+  noteLocationKey: string,
+  aisleId: string,
+): NoteCursorSelection | null {
+  const key = buildCursorSelectionCacheKey(noteLocationKey, aisleId)
+  if (cursorSelectionCache.has(key)) {
+    return cursorSelectionCache.get(key) ?? null
+  }
+  return noteCursorLocations[noteLocationKey]?.aisles[aisleId] ?? null
 }
 
 export function getPersistableCursorSelectionForActiveEditor({
@@ -140,16 +157,33 @@ export const useNoteCursorPersistence = ({
   const previousNoteLocationKeyRef = useRef('')
   const previousViewModeRef = useRef<ViewMode | null>(null)
   const pendingCursorRestoreRef = useRef<PendingCursorRestore | null>(null)
+  const cursorSelectionCacheRef = useRef<Map<string, NoteCursorSelection | null>>(new Map())
 
-  const applyActiveCursorToState = (previous: AppState): AppState => {
-    if (!isMainViewRef.current) return previous
+  const cacheCursorSelection = (noteLocationKey: string, aisleId: string, selection: NoteCursorSelection | null) => {
+    cursorSelectionCacheRef.current.set(buildCursorSelectionCacheKey(noteLocationKey, aisleId), selection)
+  }
+
+  const getSavedCursorSelection = (noteLocationKey: string, aisleId: string) => {
+    return getCachedOrStoredCursorSelection(
+      cursorSelectionCacheRef.current,
+      noteCursorLocations,
+      noteLocationKey,
+      aisleId,
+    )
+  }
+
+  const readActiveCursorSnapshot = (): {
+    noteLocationKey: string
+    aisleId: string
+    selection: NoteCursorSelection | null
+  } | null => {
+    if (!isMainViewRef.current) return null
     const aisleId = activeAisleIdRef.current
     const noteLocationKey = activeNoteLocationKeyRef.current
-    if (!aisleId || !noteLocationKey) return previous
+    if (!aisleId || !noteLocationKey) return null
     const currentEditor = editorRef.current
-    const view = getWysiwygView(currentEditor)
-    if (!currentEditor || !view || activeEditorAisleIdRef.current !== aisleId) {
-      return updateCursorLocationInState(previous, noteLocationKey, aisleId, null)
+    if (!currentEditor || activeEditorAisleIdRef.current !== aisleId) {
+      return { noteLocationKey, aisleId, selection: null }
     }
 
     const rawSelection = getEditorCursorSelection(currentEditor)
@@ -157,14 +191,31 @@ export const useNoteCursorPersistence = ({
       activeAisleId: aisleId,
       activeEditorAisleId: activeEditorAisleIdRef.current,
       rawSelection,
-      docSize: view.state.doc.content.size,
+      docSize: getEditorDocSize(currentEditor),
       updatedAt: Date.now(),
     })
+    return { noteLocationKey, aisleId, selection }
+  }
+
+  const applyCursorSnapshotToState = (
+    previous: AppState,
+    snapshot: { noteLocationKey: string; aisleId: string; selection: NoteCursorSelection | null } | null,
+  ): AppState => {
+    if (!snapshot) return previous
+    const { noteLocationKey, aisleId, selection } = snapshot
+    cacheCursorSelection(noteLocationKey, aisleId, selection)
     return updateCursorLocationInState(previous, noteLocationKey, aisleId, selection)
   }
 
+  const applyActiveCursorToState = (previous: AppState): AppState =>
+    applyCursorSnapshotToState(previous, readActiveCursorSnapshot())
+
   const saveActiveCursorLocation = () => {
-    setState((previous) => applyActiveCursorToState(previous))
+    const snapshot = readActiveCursorSnapshot()
+    if (snapshot) {
+      cacheCursorSelection(snapshot.noteLocationKey, snapshot.aisleId, snapshot.selection)
+    }
+    setState((previous) => applyCursorSnapshotToState(previous, snapshot))
   }
 
   useEffect(() => {
@@ -223,6 +274,7 @@ export const useNoteCursorPersistence = ({
   return {
     pendingCursorRestoreRef,
     applyActiveCursorToState,
+    getSavedCursorSelection,
     saveActiveCursorLocation,
   }
 }
@@ -273,12 +325,9 @@ export const usePendingNoteCursorRestore = ({
       const editorKey = buildAisleEditorKey(activeNoteBodyId, targetAisleId)
       if (activateAisleEditor(editorKey, { focus: shouldFocus })) {
         if (pendingNavigationTopAisleIdRef.current === targetAisleId) {
-          const view = getWysiwygView(editorRef.current)
-          const docSize = view?.state?.doc?.content?.size ?? 0
-          if (view && typeof view.dispatch === 'function') {
-            const topPosition = Math.min(1, Math.max(0, docSize))
-            view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, topPosition, topPosition)).scrollIntoView())
-          }
+          const docSize = getEditorDocSize(editorRef.current)
+          const topPosition = Math.min(1, Math.max(0, docSize))
+          restoreEditorCursorSelection(editorRef.current, { anchor: topPosition, head: topPosition }, { focus: shouldFocus })
           pendingNavigationTopAisleIdRef.current = null
           pendingCursorRestoreRef.current = null
         }

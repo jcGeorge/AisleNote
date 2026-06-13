@@ -3,6 +3,7 @@ import {
   chooseLazyContentCommitFallbackMarkdown,
   getEditorDisplayRewriteDiagnosticDetails,
   getEditorMarkdownSyncSnapshot,
+  hasMountedLinkedAisleEditor,
   shouldApplyEditorDisplayRewrite,
   shouldScheduleContentCommitForEditorChange,
 } from './editor-markdown-sync'
@@ -92,6 +93,26 @@ describe('editor markdown sync', () => {
 
     expect(shouldScheduleContentCommitForEditorChange(repair)).toBe(false)
     expect(shouldScheduleContentCommitForEditorChange(repair)).toBe(false)
+  })
+
+  it('detects mounted linked duplicate editors before building sync snapshots', () => {
+    const bodyIds: Record<string, string> = {
+      source: 'body-1',
+      duplicate: 'body-1',
+      other: 'body-2',
+    }
+    const getAisleBodyIdForAisleId = (aisleId: string) => bodyIds[aisleId] ?? aisleId
+
+    expect(hasMountedLinkedAisleEditor({
+      sourceAisleId: 'source',
+      mountedAisleIds: ['source', 'other'],
+      getAisleBodyIdForAisleId,
+    })).toBe(false)
+    expect(hasMountedLinkedAisleEditor({
+      sourceAisleId: 'source',
+      mountedAisleIds: ['source', 'duplicate', 'other'],
+      getAisleBodyIdForAisleId,
+    })).toBe(true)
   })
 
   it('chooses lazy commit fallback markdown without display normalization', () => {

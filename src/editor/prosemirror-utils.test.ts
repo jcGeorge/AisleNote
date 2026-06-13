@@ -15,6 +15,8 @@ vi.mock('prosemirror-history', () => ({
 
 import {
   createLinkMark,
+  getEditorCursorSelection,
+  getEditorDocSize,
   getExternalLinkRangeAtDocPosition,
   getInternalNoteLinkHitAtDocPosition,
   getLinkMarkAttrs,
@@ -330,6 +332,21 @@ describe('tag autocomplete query detection', () => {
 })
 
 describe('cursor selection restore safety', () => {
+  it('delegates cursor helpers to CodeMirror editor handles', () => {
+    const restoreCursorSelection = vi.fn(() => true)
+    const editor = {
+      __tabsEditorCore: 'codemirror',
+      getCursorSelection: vi.fn(() => ({ anchor: 3, head: 8 })),
+      getDocSize: vi.fn(() => 20),
+      restoreCursorSelection,
+    } as unknown as Editor
+
+    expect(getEditorCursorSelection(editor)).toEqual({ anchor: 3, head: 8 })
+    expect(getEditorDocSize(editor)).toBe(20)
+    expect(restoreEditorCursorSelection(editor, { anchor: 4, head: 4 }, { focus: false })).toBe(true)
+    expect(restoreCursorSelection).toHaveBeenCalledWith({ anchor: 4, head: 4 }, { focus: false })
+  })
+
   it('returns false when dispatch fails', () => {
     const doc = schema.nodes.doc.create(null, [schema.nodes.paragraph.create(null, [schema.text('asdf')])])
     const view = {

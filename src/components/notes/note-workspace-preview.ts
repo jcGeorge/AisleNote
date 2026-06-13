@@ -1,4 +1,4 @@
-const HEAVY_PREVIEW_LINK_THRESHOLD = 8
+const HEAVY_PREVIEW_LINK_THRESHOLD = 5
 const HEAVY_PREVIEW_TABLE_ROW_THRESHOLD = 6
 const MAX_WORKLOAD_PROFILE_CACHE_ENTRIES = 300
 const LIGHTWEIGHT_PREVIEW_MAX_LINES = 160
@@ -125,6 +125,7 @@ export function getAislePreviewRenderMode({
   deferInactivePreviewFallbacks,
   editorMounted,
   editorMountPending,
+  forceMarkdownPreview = false,
   inactivePreviewsHydrated,
   profile,
 }: {
@@ -133,14 +134,15 @@ export function getAislePreviewRenderMode({
   deferInactivePreviewFallbacks: boolean
   editorMounted: boolean
   editorMountPending: boolean
+  forceMarkdownPreview?: boolean
   inactivePreviewsHydrated: boolean
   profile: MarkdownWorkloadProfile | null
 }): AislePreviewRenderMode {
   if (editorMounted) return 'editor'
   if (editorMountPending) return 'empty-pending'
   if (!profile) return 'markdown-preview'
-  if (!active && profile.isLinkHeavy) return 'lightweight-preview'
   if (!active && arrangeModeActive && profile.markdownLength > 0 && profile.externalLinkCount > 0) return 'lightweight-preview'
+  if (forceMarkdownPreview) return 'markdown-preview'
   if (!active && deferInactivePreviewFallbacks && !inactivePreviewsHydrated && profile.isLinkHeavy) return 'lightweight-preview'
   return 'markdown-preview'
 }

@@ -6,6 +6,7 @@ import {
   applyEditorContentSnapshotsToState,
   EDITOR_PENDING_CONTENT_COMMIT_DELAY_MS,
   applyFreshEditorSnapshotToState,
+  createKnownMarkdownPendingContentDraft,
   getEditorFocusBoundarySaveOptions,
   getSnapshotEditorMarkdown,
   isEditorContentTargetCurrent,
@@ -141,6 +142,34 @@ describe('editor persistence snapshot helpers', () => {
       markdown: 'direct draft',
     })
     expect(onMaterialized).not.toHaveBeenCalled()
+  })
+
+  it('defers known Markdown draft normalization until materialization', () => {
+    const normalizeMarkdown = vi.fn((markdown: string) => `normalized:${markdown}`)
+    const onMaterialized = vi.fn()
+    const draft = createKnownMarkdownPendingContentDraft({
+      noteBodyId: 'body-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: null,
+      aisleId: 'aisle-a',
+      aisleBodyId: 'body-a-aisle',
+      markdown: '[copy](https://lucide.dev/icons/files)',
+    }, onMaterialized)
+
+    expect(normalizeMarkdown).not.toHaveBeenCalled()
+    expect(draft.markdown).toBe('[copy](https://lucide.dev/icons/files)')
+    expect(materializePendingContentDraft(draft, normalizeMarkdown)).toEqual({
+      noteBodyId: 'body-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: null,
+      aisleId: 'aisle-a',
+      aisleBodyId: 'body-a-aisle',
+      markdown: 'normalized:[copy](https://lucide.dev/icons/files)',
+    })
+    expect(normalizeMarkdown).toHaveBeenCalledTimes(1)
+    expect(onMaterialized).toHaveBeenCalledWith('normalized:[copy](https://lucide.dev/icons/files)')
   })
 
   it('keeps cached pending markdown if lazy materialization fails', () => {

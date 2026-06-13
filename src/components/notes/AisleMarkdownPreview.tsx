@@ -3,14 +3,9 @@ import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
   EMPTY_AISLE_PREVIEW_TEXT,
-  getAislePreviewMarkdown,
 } from '../../editor/aisle-edit-draft'
+import { RENDERED_MARKDOWN_SURFACE_CLASS } from '../../editor/rendered-markdown-surface'
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
-import {
-  NOTE_PREVIEW_REFERENCE_RE,
-  getPreviewReferenceTokenLengthAt,
-  parseMarkdownNoteReferenceToken,
-} from '../../notes/note-references'
 import {
   MarkdownPreviewHeading1,
   MarkdownPreviewHeading2,
@@ -22,6 +17,7 @@ import {
   MarkdownPreviewListItem,
   MarkdownPreviewParagraph,
 } from './markdown-preview-components'
+import { getAislePreviewSegments } from './aisle-markdown-preview-segments'
 
 const transformAislePreviewUrl = (url: string, key: string) => {
   if (key === 'href' && /^tabs-asset:/i.test(url)) return url
@@ -47,36 +43,6 @@ const aislePreviewMarkdownComponents = {
   },
 }
 
-type AislePreviewSegment =
-  | { type: 'markdown'; markdown: string }
-  | { type: 'context-preview'; label: string }
-
-export function getAislePreviewSegments(markdown: string): AislePreviewSegment[] {
-  const previewMarkdown = getAislePreviewMarkdown(markdown)
-  const segments: AislePreviewSegment[] = []
-  let lastIndex = 0
-  NOTE_PREVIEW_REFERENCE_RE.lastIndex = 0
-
-  for (const match of previewMarkdown.matchAll(NOTE_PREVIEW_REFERENCE_RE)) {
-    const parsed = getPreviewReferenceTokenLengthAt(match[0], 0) === match[0].length
-      ? parseMarkdownNoteReferenceToken(match[0])
-      : null
-    if (!parsed?.embed) continue
-    const start = match.index ?? 0
-    const before = previewMarkdown.slice(lastIndex, start)
-    if (before.trim()) segments.push({ type: 'markdown', markdown: before })
-
-    const fallbackLabel = parsed.label
-    segments.push({ type: 'context-preview', label: fallbackLabel || 'note preview' })
-    lastIndex = start + match[0].length
-  }
-
-  NOTE_PREVIEW_REFERENCE_RE.lastIndex = 0
-  const after = previewMarkdown.slice(lastIndex)
-  if (after.trim()) segments.push({ type: 'markdown', markdown: after })
-  return segments
-}
-
 type AisleMarkdownPreviewProps = {
   markdown: string
   className?: string
@@ -89,7 +55,7 @@ export function AisleMarkdownPreview({
   const previewSegments = getAislePreviewSegments(markdown)
 
   return (
-    <div className={`${className} ${previewSegments.length <= 0 ? 'is-empty' : ''}`}>
+    <div className={`${className} ${RENDERED_MARKDOWN_SURFACE_CLASS} ${previewSegments.length <= 0 ? 'is-empty' : ''}`}>
       {previewSegments.length > 0 ? (
         previewSegments.map((segment, segmentIndex) => (
           <Fragment key={`${segment.type}-${segmentIndex}`}>

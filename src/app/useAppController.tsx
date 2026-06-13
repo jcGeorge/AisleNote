@@ -115,6 +115,13 @@ import { TrashMarkdownPreview } from '../components/trash/TrashMarkdownPreview'
 import { AboutView } from '../components/about/AboutView'
 import { applyListToolbarCommand, type ToolbarListCommand } from '../editor/list-marker-commands'
 import {
+  getEditorCoreModeForRenderer,
+  getRendererForEditorCoreMode,
+  readEditorCoreMode,
+  writeEditorCoreMode,
+  type UserFacingEditorRenderer,
+} from '../editor/editor-core'
+import {
   applyEditorNewlineOperation,
   getAislePlacementForNewlineOperation,
   isAisleNewlineOperation,
@@ -627,6 +634,7 @@ export function useAppController(): AppController {
     useState<{ targetId: string; position: ArrangeInsertPosition | null } | null>(null)
   const isMacPlatform = typeof navigator !== 'undefined' ? /mac/i.test(navigator.platform) : false
   const [menuOpen, setMenuOpen] = useState(false)
+  const [editorCoreMode, setEditorCoreMode] = useState(() => readEditorCoreMode())
   const [messagesSection, setMessagesSectionState] = useState<MessagesSection>(
     () => initialDeviceSettingsRef.current?.messagesSection ?? 'inbox',
   )
@@ -741,6 +749,7 @@ export function useAppController(): AppController {
       options?: {
         focus?: boolean
         flushPrevious?: boolean
+        focusAtClientPoint?: { clientX: number; clientY: number }
         allowDuringPendingRename?: boolean
         source?: AisleActivationSource
       },
@@ -1245,6 +1254,8 @@ export function useAppController(): AppController {
     isMacPlatform,
   })
 
+  const selectedRenderer = getRendererForEditorCoreMode(editorCoreMode)
+
   const setDiagnosticCaptureEnabled = useCallback((enabled: boolean) => {
     diagnosticCaptureEnabledRef.current = enabled
     setDiagnosticCaptureEnabledState(enabled)
@@ -1717,6 +1728,7 @@ export function useAppController(): AppController {
   })
   const pendingCursorRestoreRef = cursorPersistence.pendingCursorRestoreRef
   const applyActiveCursorToState = cursorPersistence.applyActiveCursorToState
+  const getSavedCursorSelection = cursorPersistence.getSavedCursorSelection
   const saveActiveCursorLocation = cursorPersistence.saveActiveCursorLocation
 
   const editorPersistence = useEditorPersistence({
@@ -1754,10 +1766,51 @@ export function useAppController(): AppController {
     persistLatestStateSnapshot()
   }
 
-  const saveActiveCursorBeforeNavigation = () => {
+  const saveActiveCursorBeforeNavigation = useCallback(() => {
     saveActiveCursorLocation()
     flushPendingContent({ captureActiveTableEditorSnapshot: true })
-  }
+  }, [flushPendingContent, saveActiveCursorLocation])
+
+  const selectRenderer = useCallback((renderer: UserFacingEditorRenderer) => {
+    if (renderer === selectedRenderer) {
+      setMenuOpen(false)
+      return
+    }
+
+    const nextMode = getEditorCoreModeForRenderer(renderer)
+    const wrote = writeEditorCoreMode(nextMode)
+    if (!wrote) {
+      pushToast('Could not save renderer setting.', 'warning')
+      return
+    }
+
+    setEditorCoreMode(nextMode)
+    setMenuOpen(false)
+
+    const reload = () => {
+      if (typeof window !== 'undefined') {
+        window.location.reload()
+      }
+    }
+
+    try {
+      saveActiveCursorBeforeNavigation()
+      persistLatestStateSnapshot({ preferSync: true, trigger: 'renderer-switch-reload' })
+      void flushPendingPersistence({ preferSync: true, trigger: 'renderer-switch-reload' })
+        .then(reload)
+        .catch(() => {
+          pushToast('Renderer saved, but latest notes could not be flushed before reload.', 'warning')
+        })
+    } catch {
+      pushToast('Renderer saved, but latest notes could not be flushed before reload.', 'warning')
+    }
+  }, [
+    flushPendingPersistence,
+    persistLatestStateSnapshot,
+    pushToast,
+    saveActiveCursorBeforeNavigation,
+    selectedRenderer,
+  ])
 
   const getActiveNoteHistoryKey = () =>
     [
@@ -3073,6 +3126,7 @@ export function useAppController(): AppController {
     normalizeEditorMarkdownForPersistence,
     normalizeEditorMarkdownForDisplay,
     scheduleContentCommit,
+    scheduleKnownMarkdownDraftCommit: editorPersistence.scheduleKnownMarkdownDraftCommit,
     scheduleLazyContentCommit: editorPersistence.scheduleLazyContentCommit,
     registerMountedEditorSnapshotProvider,
     commitCurrentEditorContent,
@@ -5867,7 +5921,7 @@ export function useAppController(): AppController {
     pendingCursorRestoreRef.current = {
       noteLocationKey,
       aisleId: targetAisleId,
-      selection: savedLocation?.aisles[targetAisleId] ?? null,
+      selection: getSavedCursorSelection(noteLocationKey, targetAisleId) ?? savedLocation?.aisles[targetAisleId] ?? null,
       focusIntent: 'aisle-activation',
     }
     pendingFocusToAisleIdRef.current = targetAisleId
@@ -5887,6 +5941,7 @@ export function useAppController(): AppController {
     arrangeMode.active,
     flushPendingContent,
     getAisleIdFromCurrentDomFocus,
+    getSavedCursorSelection,
     pendingCursorRestoreRef,
     saveActiveCursorLocation,
     scratchpadWorkspaceActive,
@@ -6275,6 +6330,7 @@ export function useAppController(): AppController {
       viewMode={viewForMenu}
       spaceRailVisible={state.ui.alwaysShowSpaces ?? false}
       domainRailVisible={state.ui.alwaysShowDomains ?? false}
+      selectedRenderer={selectedRenderer}
       onCloseAction={() => {
         if (tagFilterActive) {
           exitTagFilterMode()
@@ -6286,6 +6342,7 @@ export function useAppController(): AppController {
       onToggleSpaceRail={toggleSpaceRailVisibility}
       onToggleDomainRail={toggleDomainRailVisibility}
       onToggleTrash={toggleTrashView}
+      onSelectRenderer={selectRenderer}
       onOpenEtCetera={openEtCeteraView}
       onOpenFilter={openNoteFilterFromMenu}
       tagFilterControl={viewForMenu === 'main' ? tagFilterControl : null}
@@ -6626,6 +6683,7 @@ export function useAppController(): AppController {
           menuOpen={menuOpen}
           spaceRailVisible={state.ui.alwaysShowSpaces ?? false}
           domainRailVisible={state.ui.alwaysShowDomains ?? false}
+          selectedRenderer={selectedRenderer}
           onAutoSizeRenameInput={autoSizeRenameInput}
           onShouldSkipRenameBlur={shouldSkipRenameBlur}
           onIsPendingCreatedRename={isPendingCreatedRename}
@@ -6718,6 +6776,7 @@ export function useAppController(): AppController {
           onToggleSpaceRail={toggleSpaceRailVisibility}
           onToggleDomainRail={toggleDomainRailVisibility}
           onToggleTrash={toggleTrashView}
+          onSelectRenderer={selectRenderer}
           onOpenMessages={openMessagesView}
           onOpenSettings={openSettingsView}
           onOpenEtCetera={openEtCeteraView}
@@ -7062,7 +7121,7 @@ export function useAppController(): AppController {
                 if (!activeNoteBodyId) return
                 aisleHorizontalScrollByBodyRef.current.set(activeNoteBodyId, scrollLeft)
               }}
-              onActivateAisle={(editorKey) => {
+              onActivateAisle={(editorKey, pointer) => {
                 const targetAisleId = getAisleIdFromAisleEditorKey(editorKey)
                 if (!targetAisleId || !activeAisleIdsRef.current.includes(targetAisleId) || isPendingCreatedRenameActive()) {
                   recordDiagnosticEvent('aisle', 'pointer-activation-blocked', {
@@ -7077,7 +7136,12 @@ export function useAppController(): AppController {
                   return
                 }
                 pendingMouseAisleActivationRef.current = { aisleId: targetAisleId, settled: false }
-                const shouldFocus = shouldFocusAislePointerActivation(activeAisleIdRef.current, targetAisleId)
+                const activePointerEditorCore = selectedRenderer === 'codemirror' ? 'codemirror' : 'toast'
+                const shouldFocus = shouldFocusAislePointerActivation({
+                  currentAisleId: activeAisleIdRef.current,
+                  targetAisleId,
+                  editorCore: activePointerEditorCore,
+                })
                 pendingFocusToAisleIdRef.current = null
                 pendingCursorRestoreRef.current = null
                 recordDiagnosticEvent('aisle', 'pointer-activation', {
@@ -7085,12 +7149,14 @@ export function useAppController(): AppController {
                     editorKey,
                     targetAisleId,
                     previousAisleId: activeAisleIdRef.current,
+                    editorCore: activePointerEditorCore,
                     shouldFocus,
                   },
                 })
                 activateAisleEditor(editorKey, {
                   flushPrevious: true,
                   focus: shouldFocus,
+                  focusAtClientPoint: activePointerEditorCore === 'codemirror' && shouldFocus ? pointer : undefined,
                   source: 'pointer',
                 })
                 syncActiveAisleSelection(targetAisleId)
@@ -7101,7 +7167,8 @@ export function useAppController(): AppController {
               onAisleWidthDragCommitted={() => showTip('aisle-width-reset')}
               mountedAisleIds={mountedAisleIds}
               suppressActiveAislePreviewFallback
-              deferInactivePreviewFallbacks={activeNoteAisles.length > 4}
+              deferInactivePreviewFallbacks={selectedRenderer === 'codemirror' || activeNoteAisles.length > 4}
+              inactivePreviewRenderer={selectedRenderer === 'codemirror' ? 'codemirror' : 'markdown'}
               getPreviewMarkdownForAisle={getPreviewMarkdownForAisle}
               onCloseTableOfContentsAisle={closeTableOfContentsAisle}
               onSelectTableOfContentsHeading={selectTableOfContentsHeading}

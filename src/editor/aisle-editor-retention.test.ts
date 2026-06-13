@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildRetainedAisleEditorIds,
+  buildRetainedAisleEditorIdsForCore,
   getAislePreviewMarkdown,
 } from './aisle-editor-retention'
 import type { PendingContent, ResolvedNoteAisle } from '../types/app'
@@ -66,6 +67,65 @@ describe('aisle editor retention helpers', () => {
     })
 
     expect(Array.from(retained).sort()).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('keeps only the active CodeMirror aisle even when other aisles are near-visible or recent', () => {
+    const retained = buildRetainedAisleEditorIdsForCore({
+      editorCore: 'codemirror',
+      aisleIds: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11'],
+      activeAisleId: 'a11',
+      backgroundAisleIds: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9', 'a10', 'a11'],
+      nearVisibleAisleIds: ['a10'],
+      recentAisleIds: ['a9', 'a8', 'a7', 'a6', 'a5', 'a4', 'a3', 'a2', 'a1'],
+      toastRecentRetainLimit: 3,
+      smallNoteLiveLimit: 4,
+    })
+
+    expect(Array.from(retained).sort()).toEqual(['a11'])
+  })
+
+  it('keeps only aisle 3 live during a CodeMirror 1 to 2 to 3 activation sequence', () => {
+    const retained = buildRetainedAisleEditorIdsForCore({
+      editorCore: 'codemirror',
+      aisleIds: ['aisle-1', 'aisle-2', 'aisle-3', 'aisle-4'],
+      activeAisleId: 'aisle-3',
+      nearVisibleAisleIds: ['aisle-1', 'aisle-2', 'aisle-3'],
+      recentAisleIds: ['aisle-2', 'aisle-1'],
+      toastRecentRetainLimit: 3,
+      smallNoteLiveLimit: 4,
+    })
+
+    expect(Array.from(retained).sort()).toEqual(['aisle-3'])
+  })
+
+  it('keeps Toast UI small-note background retention behavior unchanged', () => {
+    const retained = buildRetainedAisleEditorIdsForCore({
+      editorCore: 'toast',
+      aisleIds: ['a', 'b', 'c', 'd'],
+      activeAisleId: 'b',
+      backgroundAisleIds: ['a', 'b', 'c', 'd'],
+      nearVisibleAisleIds: [],
+      recentAisleIds: [],
+      toastRecentRetainLimit: 3,
+      smallNoteLiveLimit: 4,
+    })
+
+    expect(Array.from(retained).sort()).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('keeps Toast UI large-note retention limited to near-visible and three recent aisles', () => {
+    const retained = buildRetainedAisleEditorIdsForCore({
+      editorCore: 'toast',
+      aisleIds: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8'],
+      activeAisleId: 'a8',
+      backgroundAisleIds: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8'],
+      nearVisibleAisleIds: ['a7'],
+      recentAisleIds: ['a6', 'a5', 'a4', 'a3'],
+      toastRecentRetainLimit: 3,
+      smallNoteLiveLimit: 4,
+    })
+
+    expect(Array.from(retained).sort()).toEqual(['a4', 'a5', 'a6', 'a7', 'a8'])
   })
 
   it('prefers pending and last editor markdown for fallback previews', () => {
