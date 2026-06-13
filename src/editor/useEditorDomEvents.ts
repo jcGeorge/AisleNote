@@ -50,8 +50,6 @@ import {
   type WysiwygHistoryDirection,
   type WysiwygHistoryResult,
 } from './prosemirror-utils'
-import { isCodeMirrorMarkdownEditor } from './codemirror-markdown-editor'
-import { isLexicalMarkdownEditor } from './lexical-markdown-editor'
 import { recordDiagnosticEvent } from '../diagnostics/diagnostic-logger'
 import {
   buildMarkdownNoteReferenceToken,
@@ -401,11 +399,6 @@ export function isActiveWysiwygEditorContentTarget(target: Element | null, view:
   return target === view.dom || Boolean(view.dom.contains?.(target))
 }
 
-export function isActiveLexicalEditorContentTarget(target: Element | null, editor: Editor | null): boolean {
-  if (!target || !isLexicalMarkdownEditor(editor) || isEditorToolbarInteractionTarget(target)) return false
-  return Boolean(target.closest('.tabs-lexical-host.is-lexical-editable .tabs-lexical-editor'))
-}
-
 export function isEditorPointerChromeTarget(target: Element | null): boolean {
   return Boolean(
     target?.closest(
@@ -611,9 +604,7 @@ function getRenderedEditorLinkHit(target: Element): RenderedEditorLinkHit | null
   }
 }
 
-function getEditorCoreName(editor: Editor | null): 'toast' | 'codemirror' | 'lexical' | 'none' {
-  if (isLexicalMarkdownEditor(editor)) return 'lexical'
-  if (isCodeMirrorMarkdownEditor(editor)) return 'codemirror'
+function getEditorName(editor: Editor | null): 'toast' | 'none' {
   return editor ? 'toast' : 'none'
 }
 
@@ -770,7 +761,6 @@ export function useEditorDomEvents({
     const getExternalLinkEditRange = (event: Event, href: string): ExternalLinkRange | null => {
       if (!(event instanceof MouseEvent)) return null
       const currentEditor = editorRef.current
-      if (isLexicalMarkdownEditor(currentEditor) || isCodeMirrorMarkdownEditor(currentEditor)) return null
       const view = getWysiwygView(currentEditor)
       const coords = view?.posAtCoords?.({ left: event.clientX, top: event.clientY })
       if (!view || !coords) return null
@@ -788,7 +778,7 @@ export function useEditorDomEvents({
       if (!linkHit) return false
 
       const currentEditor = editorRef.current
-      const editorCore = getEditorCoreName(currentEditor)
+      const editor = getEditorName(currentEditor)
       const internalLinkHit = getInternalNoteLinkHitFromHref(
         linkHit.href,
         linkHit.label,
@@ -806,7 +796,7 @@ export function useEditorDomEvents({
           startAt: internalLinkHit.startAt,
         })
         recordLinkInteractionDiagnostic('link-click', startedAt, {
-          editorCore,
+          editor,
           kind: 'internal',
           href: linkHit.href,
           resolved: true,
@@ -815,7 +805,7 @@ export function useEditorDomEvents({
       }
       const opened = openExternalLink(linkHit.href)
       recordLinkInteractionDiagnostic('link-click', startedAt, {
-        editorCore,
+        editor,
         kind: 'external',
         href: linkHit.href,
         opened,
@@ -1194,7 +1184,7 @@ export function useEditorDomEvents({
       const linkHit = getRenderedEditorLinkHit(target)
       if (linkHit) {
         const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
-        const editorCore = getEditorCoreName(editorRef.current)
+        const editor = getEditorName(editorRef.current)
         const range = getExternalLinkEditRange(mouseEvent, linkHit.href)
         const internalLinkHit = getInternalNoteLinkHitFromHref(
           linkHit.href,
@@ -1208,7 +1198,7 @@ export function useEditorDomEvents({
         setMenuOpen(false)
         if (internalLinkHit) {
           recordLinkInteractionDiagnostic('link-context-menu', startedAt, {
-            editorCore,
+            editor,
             kind: 'internal',
             href: linkHit.href,
             hasEditableRange: Boolean(range),
@@ -1228,7 +1218,7 @@ export function useEditorDomEvents({
           return
         }
         recordLinkInteractionDiagnostic('link-context-menu', startedAt, {
-          editorCore,
+          editor,
           kind: 'external',
           href: linkHit.href,
           hasEditableRange: Boolean(range),
@@ -1253,21 +1243,6 @@ export function useEditorDomEvents({
       const currentEditor = editorRef.current
       const view = getWysiwygView(currentEditor)
       if (isActiveWysiwygEditorContentTarget(target, view)) {
-        prepareEditorContextMenuEvent(mouseEvent)
-        onDismissEditorEphemeraBeforeContextMenu?.()
-        closeLinkPrompt()
-        setMenuOpen(false)
-        openEditorContextMenu(
-          {
-            type: 'editor',
-            x: mouseEvent.clientX,
-            y: mouseEvent.clientY,
-          },
-          contextMenuRequestId,
-        )
-        return
-      }
-      if (isActiveLexicalEditorContentTarget(target, currentEditor)) {
         prepareEditorContextMenuEvent(mouseEvent)
         onDismissEditorEphemeraBeforeContextMenu?.()
         closeLinkPrompt()

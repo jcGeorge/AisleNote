@@ -125,7 +125,6 @@ export function getAislePreviewRenderMode({
   deferInactivePreviewFallbacks,
   editorMounted,
   editorMountPending,
-  forceMarkdownPreview = false,
   inactivePreviewsHydrated,
   profile,
 }: {
@@ -134,7 +133,6 @@ export function getAislePreviewRenderMode({
   deferInactivePreviewFallbacks: boolean
   editorMounted: boolean
   editorMountPending: boolean
-  forceMarkdownPreview?: boolean
   inactivePreviewsHydrated: boolean
   profile: MarkdownWorkloadProfile | null
 }): AislePreviewRenderMode {
@@ -142,7 +140,6 @@ export function getAislePreviewRenderMode({
   if (editorMountPending) return 'empty-pending'
   if (!profile) return 'markdown-preview'
   if (!active && arrangeModeActive && profile.markdownLength > 0 && profile.externalLinkCount > 0) return 'lightweight-preview'
-  if (forceMarkdownPreview) return 'markdown-preview'
   if (!active && deferInactivePreviewFallbacks && !inactivePreviewsHydrated && profile.isLinkHeavy) return 'lightweight-preview'
   return 'markdown-preview'
 }

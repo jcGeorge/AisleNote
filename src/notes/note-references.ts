@@ -12,7 +12,7 @@ import {
   getPreviewReferenceTokenLengthAt as getPreviewReferenceTokenLengthAtCore,
   getWikiReferenceDisplayText as getWikiReferenceDisplayTextCore,
   normalizePreviewReferenceTokensForMarkdown as normalizePreviewReferenceTokensForMarkdownCore,
-  prepareMarkdownNoteReferencesForEditor as prepareMarkdownNoteReferencesForEditorCore,
+  prepareMarkdownNoteReferencesForEditor as prepareMarkdownNoteReferencesForEditorTokens,
   parseMarkdownNoteReferenceDestination as parseMarkdownNoteReferenceDestinationCore,
   parseMarkdownNoteReferenceToken as parseMarkdownNoteReferenceTokenCore,
   parsePreviewToken as parsePreviewTokenCore,
@@ -138,7 +138,7 @@ export function normalizeMarkdownNoteReferencesForEditor(markdown: string, appSt
 }
 
 export function prepareMarkdownNoteReferencesForEditor(markdown: string, appState: AppState): string {
-  return prepareMarkdownNoteReferencesForEditorCore(markdown, appState)
+  return prepareMarkdownNoteReferencesForEditorTokens(markdown, appState)
 }
 
 export function parseWikiReferenceToken(token: string): ParsedWikiNoteReferenceToken | null {

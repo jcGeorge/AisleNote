@@ -1,18 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // https://vite.dev/config/
 export default defineConfig({
   base: './',
-  resolve: {
-    alias: {
-      '@mdxeditor-internal': path.resolve(__dirname, 'node_modules/@mdxeditor/editor/dist'),
-    },
-  },
   build: {
     rolldownOptions: {
       output: {
@@ -28,16 +19,6 @@ export default defineConfig({
               test: /node_modules[\\/]@toast-ui[\\/]editor[\\/]/,
               priority: 30,
               maxSize: 450 * 1024,
-            },
-            {
-              name: 'codemirror-vendor',
-              test: /node_modules[\\/](@codemirror|@lezer|codemirror|style-mod|w3c-keyname|crelt)[\\/]/,
-              priority: 25,
-            },
-            {
-              name: 'lexical-vendor',
-              test: /node_modules[\\/](lexical|@lexical)[\\/]/,
-              priority: 25,
             },
             {
               name: 'prosemirror',

@@ -1,5 +1,4 @@
 import type { Editor } from '@toast-ui/editor'
-import type { ActiveEditorCore } from './editor-core'
 
 export type AisleEditorMeta = {
   editor: Editor
@@ -10,7 +9,6 @@ export type AisleEditorMeta = {
   subTabId: string | null
   aisleId: string
   aisleBodyId: string
-  editorCore: ActiveEditorCore
   pluginKey: unknown
   cleanup: () => void
 }

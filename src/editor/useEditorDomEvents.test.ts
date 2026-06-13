@@ -20,7 +20,6 @@ import {
   getTerminalBlockDeleteDirectionForBeforeInput,
   getTableBoundaryCaretDirectionForEvent,
   getTerminalBlockArrowDirectionForEvent,
-  isActiveLexicalEditorContentTarget,
   isActiveWysiwygEditorContentTarget,
   isEditorToolbarInteractionTarget,
   isEditorPointerChromeTarget,
@@ -200,25 +199,11 @@ describe('editor DOM events', () => {
     expect(source).toContain('onOpenUrlLinkShortcut()')
   })
 
-  it('routes Lexical editor content context menus through the active editor menu path', () => {
-    const source = readUseEditorDomEventsSource()
-
-    expect(isActiveLexicalEditorContentTarget(fakeTarget('.tabs-lexical-host.is-lexical-editable .tabs-lexical-editor'), {
-      __tabsEditorCore: 'lexical',
-    } as any)).toBe(true)
-    expect(isActiveLexicalEditorContentTarget(fakeTarget('.tabs-lexical-host.is-lexical-readonly .tabs-lexical-editor'), {
-      __tabsEditorCore: 'lexical',
-    } as any)).toBe(false)
-    expect(source).toContain('isActiveLexicalEditorContentTarget(target, currentEditor)')
-    expect(source).toContain("target.closest('.tabs-lexical-host.is-lexical-editable .tabs-lexical-editor')")
-  })
-
-  it('handles rendered Lexical and CodeMirror links without ProseMirror range scans', () => {
+  it('handles rendered links through delegated DOM hit testing', () => {
     const source = readUseEditorDomEventsSource()
 
     expect(source).toContain("target.closest<HTMLElement>('[data-tabs-link-url]')")
     expect(source).toContain('const linkHit = getRenderedEditorLinkHit(target)')
-    expect(source).toContain('if (isLexicalMarkdownEditor(currentEditor) || isCodeMirrorMarkdownEditor(currentEditor)) return null')
     expect(source).toContain("recordDiagnosticEvent('editor', eventName")
   })
 

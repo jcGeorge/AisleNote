@@ -181,7 +181,7 @@ export const RENDERED_MARKDOWN_PARITY_FIXTURES: RenderedMarkdownParityFixture[] 
     label: 'Media',
     markdown: '![Audio](tabs-asset:///assets/song.mp3)',
     status: 'known-gap',
-    notes: 'Media widgets remain preview/Toast-backed until CodeMirror block widgets use a safe non-ViewPlugin architecture.',
+    notes: 'Media widgets remain preview/Toast-backed until the shared preview surface owns safe block widgets.',
   },
   {
     id: 'note-preview',

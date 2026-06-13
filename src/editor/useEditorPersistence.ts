@@ -9,8 +9,6 @@ import { appPersistenceService } from '../storage/app-persistence-service'
 import type { AppStateSaveOptions } from '../storage/persistence-debounce'
 import { markEditorContentStateMutation } from '../storage/persistence-scheduling'
 import type { AppState, NoteBody, PendingContent } from '../types/app'
-import { isCodeMirrorMarkdownEditor } from './codemirror-markdown-editor'
-import { isLexicalMarkdownEditor } from './lexical-markdown-editor'
 import { setEditorMarkdownForDisplay } from './editor-markdown-display'
 import {
   getAisleEditorPerfNow,
@@ -47,15 +45,6 @@ export function getSnapshotEditorMarkdown(
   } catch {
     return fallbackMarkdown
   }
-}
-
-export function shouldUseCachedReadonlyLexicalSnapshot(editor: Editor | null, cachedMarkdown: string | undefined): boolean {
-  return (
-    typeof cachedMarkdown === 'string' &&
-    isLexicalMarkdownEditor(editor) &&
-    !editor.isEditable() &&
-    !editor.hasPendingMarkdownChanges()
-  )
 }
 
 export type EditorContentTarget = {
@@ -478,7 +467,6 @@ export const useEditorPersistence = ({
   const flushPendingContent = (options: FlushPendingContentOptions = {}) => measureSlowOperation('editor pending content flush', () => {
     clearPendingSaveTimer()
     if (pendingContentRef.current.size === 0) {
-      if (isCodeMirrorMarkdownEditor(editorRef.current) || isLexicalMarkdownEditor(editorRef.current)) return
       const activeMarkdown = lastEditorMarkdownRef.current || getNoteBodyMarkdown(activeNoteBody, activeAisleIdRef.current)
       if (!shouldCaptureActiveEditorSnapshotOnCleanFlush(activeMarkdown, options)) return
       const snapshots = getFallbackActiveEditorSnapshot()
@@ -670,11 +658,7 @@ export const useEditorPersistence = ({
     lastEditorMarkdownByAisleRef.current.set(activeAisleBodyId, normalized)
     const currentEditor = editorRef.current
     if (currentEditor) {
-      if (isCodeMirrorMarkdownEditor(currentEditor) || isLexicalMarkdownEditor(currentEditor)) {
-        currentEditor.setMarkdown(normalized, false)
-      } else {
-        setEditorMarkdownForDisplay(currentEditor, normalized)
-      }
+      setEditorMarkdownForDisplay(currentEditor, normalized)
     }
     if (currentEditor) {
       commitActiveEditorMarkdownNow(currentEditor)

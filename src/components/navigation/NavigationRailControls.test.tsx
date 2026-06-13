@@ -40,28 +40,6 @@ function renderMenu(spaceRailVisible = false, domainRailVisible = false) {
   )
 }
 
-function renderMenuWithRenderer() {
-  return renderToStaticMarkup(
-    <NavigationRailControls
-      actions={[]}
-      menuOpen
-      showCloseControl={false}
-      viewMode="main"
-      spaceRailVisible={false}
-      domainRailVisible={false}
-      selectedRenderer="lexical"
-      onCloseAction={noop}
-      onSetMenuOpen={vi.fn()}
-      onToggleSpaceRail={noop}
-      onToggleDomainRail={noop}
-      onToggleTrash={noop}
-      onOpenEtCetera={noop}
-      onOpenFilter={noop}
-      onSelectRenderer={noop}
-    />,
-  )
-}
-
 function renderTrashMenu() {
   return renderToStaticMarkup(
     <NavigationRailControls
@@ -104,18 +82,6 @@ describe('NavigationRailControls', () => {
     expect(html).not.toContain('>messages<')
     expect(html).not.toContain('>about<')
     expect(html).not.toContain('messages (')
-  })
-
-  it('renders the renderer menu section with Toast and Lexical choices when supplied', () => {
-    const html = renderMenuWithRenderer()
-
-    expect(html).toContain('aria-label="renderer"')
-    expect(html).toContain('>Toast<')
-    expect(html).not.toContain('>CodeMirror<')
-    expect(html).toContain('>Lexical<')
-    expect(html.match(/menu-renderer-item/g)?.length).toBe(2)
-    expect(html).toContain('aria-pressed="true"')
-    expect(html).toContain('reloads on change')
   })
 
   it('uses show labels when both rails are hidden', () => {

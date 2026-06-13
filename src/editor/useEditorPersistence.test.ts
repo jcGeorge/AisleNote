@@ -17,7 +17,6 @@ import {
   shouldCollectMountedEditorSnapshotsForFocusBoundary,
   shouldCaptureActiveEditorSnapshotOnCleanFlush,
   shouldPersistFocusBoundarySnapshot,
-  shouldUseCachedReadonlyLexicalSnapshot,
 } from './useEditorPersistence'
 
 function persistenceState(): AppState {
@@ -89,29 +88,6 @@ describe('editor persistence snapshot helpers', () => {
     })
 
     expect(getSnapshotEditorMarkdown(editor, 'cached', getNormalizedEditorMarkdown)).toBe('cached')
-  })
-
-  it('uses cached snapshots for clean read-only Lexical surfaces', () => {
-    const readOnlyLexicalEditor = {
-      __tabsEditorCore: 'lexical',
-      isEditable: () => false,
-      hasPendingMarkdownChanges: () => false,
-    } as unknown as Editor
-    const dirtyReadOnlyLexicalEditor = {
-      __tabsEditorCore: 'lexical',
-      isEditable: () => false,
-      hasPendingMarkdownChanges: () => true,
-    } as unknown as Editor
-    const editableLexicalEditor = {
-      __tabsEditorCore: 'lexical',
-      isEditable: () => true,
-      hasPendingMarkdownChanges: () => false,
-    } as unknown as Editor
-
-    expect(shouldUseCachedReadonlyLexicalSnapshot(readOnlyLexicalEditor, 'cached')).toBe(true)
-    expect(shouldUseCachedReadonlyLexicalSnapshot(dirtyReadOnlyLexicalEditor, 'cached')).toBe(false)
-    expect(shouldUseCachedReadonlyLexicalSnapshot(editableLexicalEditor, 'cached')).toBe(false)
-    expect(shouldUseCachedReadonlyLexicalSnapshot(readOnlyLexicalEditor, undefined)).toBe(false)
   })
 
   it('materializes lazy pending content only when a snapshot is requested', () => {

@@ -166,9 +166,8 @@ describe('editor operation runner', () => {
     expect(collapsed.editor.exec).toHaveBeenCalledWith('addTable', { rowCount: 2, columnCount: 2 })
   })
 
-  it('lets Lexical add tables through its editor command instead of ProseMirror table conversion', () => {
+  it('falls back to the editor command when a table selection conversion is unavailable', () => {
     const editor = {
-      __tabsEditorCore: 'lexical',
       focus: vi.fn(),
       exec: vi.fn(),
       insertText: vi.fn(),

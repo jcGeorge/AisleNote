@@ -5,7 +5,6 @@ import {
   getExternalLinkRangeAtDocPosition,
   type ExternalLinkRange,
 } from '../editor/prosemirror-utils'
-import { isLexicalMarkdownEditor } from '../editor/lexical-markdown-editor'
 import {
   dispatchEditorTransaction,
   insertEditorTextOperation,
@@ -119,22 +118,10 @@ export const useNoteReferenceActions = ({
   }
 
   const replaceTextRangeInActiveEditor = (from: number, to: number, text: string) => {
-    const lexicalEditor = editorRef.current
-    if (isLexicalMarkdownEditor(lexicalEditor)) {
-      const handled = lexicalEditor.replaceTextRange(from, to, text)
-      if (handled) commitActiveEditorMarkdownNow(lexicalEditor)
-      return handled
-    }
     return dispatchEditorTransaction(editorOperationRuntime, ({ view }) => view.state.tr.insertText(text, from, to)).handled
   }
 
   const replaceTextRangeWithLinkInActiveEditor = (from: number, to: number, label: string, url: string) => {
-    const lexicalEditor = editorRef.current
-    if (isLexicalMarkdownEditor(lexicalEditor)) {
-      const handled = lexicalEditor.replaceTextRangeWithLink(from, to, label, url)
-      if (handled) commitActiveEditorMarkdownNow(lexicalEditor)
-      return handled
-    }
     return dispatchEditorTransaction(editorOperationRuntime, ({ view }) => {
       const linkType = view.state.schema.marks.link
       if (!linkType) return false

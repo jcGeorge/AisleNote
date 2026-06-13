@@ -363,93 +363,14 @@ describe('editor list marker styles', () => {
   })
 })
 
-describe('CodeMirror editor spacing', () => {
-  it('removes CodeMirror default line inset so focused aisles align with previews', () => {
-    const css = readStyle('editor-shell.css')
-    const scrollerRule = extractRule(css, '.tabs-codemirror-host .cm-scroller')
-    const contentRule = extractRule(css, '.tabs-codemirror-host .cm-content')
-    const previewHostRule = extractRule(css, '.aisle-editor-preview-fallback.tabs-codemirror-preview-host')
-    const previewContentRule = extractRule(css, '.tabs-codemirror-preview-content')
-    const previewLineRule = extractRule(css, '.tabs-codemirror-preview-content .cm-line')
-    const lineWrappingRule = extractRule(css, '.tabs-codemirror-host .cm-lineWrapping')
-    const lineRule = extractRule(css, '.tabs-codemirror-host .cm-line')
-    const codeBlockLineRule = extractRule(css, '.tabs-codemirror-host .tabs-cm-rendered-code-block-line.cm-line')
-    const blockquoteLineRule = extractRule(css, '.tabs-codemirror-host .tabs-cm-rendered-blockquote-line')
-    const listLineRule = extractRule(css, '.tabs-codemirror-host .tabs-cm-rendered-list-line')
-
-    expect(scrollerRule).toContain('box-sizing: border-box;')
-    expect(scrollerRule).toContain('overflow: auto;')
-    expect(scrollerRule).toContain('padding: 1rem 1.125rem;')
-    expect(contentRule).toContain('box-sizing: border-box;')
-    expect(contentRule).toContain('width: 100%;')
-    expect(contentRule).toContain('min-width: 0;')
-    expect(contentRule).toContain('max-width: 100%;')
-    expect(contentRule).toContain('padding: 0;')
-    expect(previewHostRule).toContain('box-sizing: border-box;')
-    expect(previewHostRule).toContain('padding: 1rem 1.125rem;')
-    expect(previewContentRule).toContain('box-sizing: border-box;')
-    expect(previewContentRule).toContain('width: 100%;')
-    expect(previewContentRule).toContain('min-width: 0;')
-    expect(previewContentRule).toContain('max-width: 100%;')
-    expect(previewContentRule).toContain('word-break: normal;')
-    expect(previewContentRule).toContain('overflow-wrap: anywhere;')
-    expect(previewLineRule).toContain('padding-inline: 0;')
-    expect(previewLineRule).toContain('white-space: pre-wrap;')
-    expect(previewLineRule).toContain('word-break: normal;')
-    expect(previewLineRule).toContain('overflow-wrap: anywhere;')
-    expect(lineWrappingRule).toContain('white-space: pre-wrap;')
-    expect(lineWrappingRule).toContain('word-break: normal;')
-    expect(lineWrappingRule).toContain('overflow-wrap: anywhere;')
-    expect(lineRule).toContain('padding-inline: 0;')
-    expect(codeBlockLineRule).toContain('padding-inline: 0.55rem;')
-    expect(blockquoteLineRule).toContain('padding-left: 0.95rem;')
-    expect(listLineRule).toContain('padding-left: 1.15rem;')
-  })
-})
-
-describe('Lexical editor parity styles', () => {
-  it('renders app-owned list, task, annotation, highlight, table, and preview classes', () => {
-    const css = readStyle('editor-shell.css')
-    const listRule = extractRule(css, '.tabs-lexical-editor .tabs-lexical-list')
-    const bulletMarkerRule = extractRule(
-      css,
-      '.tabs-lexical-editor .tabs-lexical-bullet-list > .tabs-lexical-list-item:not(.task-list-item)::before',
-    )
-    const taskMarkerRule = extractRule(css, '.tabs-lexical-editor .tabs-lexical-task-list-item::before')
-    const highlightRule = extractRule(css, '.tabs-lexical-editor .tabs-rendered-markdown-highlight')
-    const codeRule = extractRule(css, '.tabs-lexical-editor .tabs-lexical-code-block')
-    const tableHeaderRule = extractRule(css, '.tabs-lexical-editor .tabs-lexical-table-header-cell')
-    const annotationRule = extractRule(css, '.tabs-lexical-editor .tabs-annotation-line')
-    const previewRule = extractRule(css, '.tabs-lexical-note-preview')
-
-    expect(listRule).toContain('list-style: none;')
-    expect(bulletMarkerRule).toContain('border-radius: 50%;')
-    expect(css).toContain(
-      ".tabs-lexical-editor .tabs-lexical-bullet-list > .tabs-lexical-list-item[data-tabs-list-item-marker='dash']",
-    )
-    expect(css).toContain('height: 2px;')
-    expect(taskMarkerRule).toContain('border: 1px solid')
-    expect(highlightRule).toContain('box-shadow: none;')
-    expect(codeRule).toContain('background: var(--editor-pre-bg);')
-    expect(tableHeaderRule).toContain('font-weight: inherit;')
-    expect(annotationRule).toContain('padding-left: 2.4rem;')
-    expect(previewRule).toContain('display: inline-flex;')
-    expect(css).toContain('.tabs-lexical-note-preview-title')
-  })
-})
-
 describe('editor link affordances', () => {
   it('shows clickable rendered links with a pointer cursor and hover color', () => {
     const css = readStyle('editor-shell.css')
     const renderedLinkRule = extractRule(css, '.tabs-rendered-markdown-surface .tabs-rendered-markdown-link')
-    const codeMirrorRenderedLinkRule = extractRule(css, '.tabs-codemirror-host .tabs-cm-rendered-link,\n.tabs-codemirror-host .cm-tabs-markdown-link')
 
     expect(renderedLinkRule).toContain('cursor: pointer;')
     expect(css).toContain('.tabs-rendered-markdown-surface .tabs-rendered-markdown-link:hover')
     expect(css).toContain('color: var(--editor-link-hover-text, var(--editor-link-text, var(--accent)));')
-    expect(codeMirrorRenderedLinkRule).toContain('cursor: pointer;')
-    expect(css).toContain('.tabs-codemirror-host .tabs-cm-rendered-link:hover')
-    expect(css).toContain('.tabs-codemirror-host .cm-tabs-markdown-link:hover')
   })
 })
 
@@ -1305,11 +1226,8 @@ describe('table cell styles', () => {
       '--editor-table-grid-border: color-mix(in srgb, var(--custom-palette-border) 62%, var(--custom-palette-text));',
     )
     expect(editorContentCss).toContain('.toastui-editor-contents table,\n.toastui-editor .ProseMirror table')
-    expect(editorContentCss).toContain('.tabs-mdxeditor-content table')
-    expect(editorContentCss).toContain(".tabs-mdxeditor-content table[class*='_tableEditor'] > thead")
     expect(editorContentCss).toContain('border: 1px solid var(--editor-table-grid-border) !important;')
     expect(editorContentCss).toContain('.toastui-editor-contents th,\n.toastui-editor .ProseMirror th')
-    expect(editorContentCss).toContain('.tabs-mdxeditor-content th,\n.tabs-mdxeditor-content td')
     expect(editorContentCss).toContain('font-style: inherit !important;')
     expect(editorContentCss).toContain('font-weight: inherit !important;')
     expect(editorContentCss).toContain('text-align: inherit !important;')
@@ -1406,21 +1324,6 @@ describe('theme editor selector deduplication', () => {
     expect(editorShellCss).toContain('.tag-autocomplete-token.tabs-tag-token')
     expect(editorShellCss).toContain('color: var(--editor-tag-text);')
     expect(editorShellCss).toContain('background: var(--editor-tag-bg);')
-  })
-
-  it('keeps MDXEditor visual overrides scoped to the replacement host', () => {
-    const editorBaseCss = readStyle('editor-base.css')
-    const editorContentCss = readStyle('editor-content.css')
-    const editorShellCss = readStyle('editor-shell.css')
-
-    expect(editorBaseCss).toContain('.tabs-mdxeditor-host,\n.tabs-mdxeditor-host .mdxeditor,')
-    expect(editorShellCss).toContain('.tabs-mdxeditor-host .tabs-mdxeditor,\n.tabs-mdxeditor-host .mdxeditor,')
-    expect(editorShellCss).toContain('.tabs-mdxeditor-host [contenteditable=\'true\']:focus,')
-    expect(editorShellCss).toContain('.tabs-mdxeditor-loading')
-    expect(editorContentCss).toContain('.tabs-mdxeditor-content {')
-    expect(editorContentCss).toContain('font-size: calc(1rem * var(--note-font-scale, 1)) !important;')
-    expect(editorContentCss).toContain('.tabs-mdxeditor-content a')
-    expect(editorContentCss).toContain('.note-aisle-editor-shell .tabs-mdxeditor-content > h1:first-child')
   })
 
   it('keeps theme files focused on tokens and true exceptions', () => {

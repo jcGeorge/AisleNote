@@ -16,8 +16,6 @@ import {
   getTagAutocompleteQueryFromText,
   type TagAutocompleteQuery,
 } from '../tags/tag-autocomplete'
-import { isCodeMirrorMarkdownEditor } from './codemirror-markdown-editor'
-import { isLexicalMarkdownEditor } from './lexical-markdown-editor'
 
 export const CODE_BLOCK_INDENT_TEXT = '    '
 
@@ -162,11 +160,6 @@ export function runWysiwygHistory(
   direction: WysiwygHistoryDirection,
   options: RunWysiwygHistoryOptions = {},
 ): WysiwygHistoryResult {
-  if (isLexicalMarkdownEditor(editor)) {
-    options.beforeDispatch?.()
-    return editor.runHistory(direction) ? 'applied' : 'unavailable'
-  }
-
   const view = getWysiwygView(editor)
   if (!editor || !view) return 'unavailable'
   const command = direction === 'undo' ? undo : redo
@@ -218,13 +211,6 @@ function collectEditorTextBlocks(doc: any): EditorCursorTextBlock[] {
 }
 
 export function getEditorCursorSelection(editor: Editor | null): EditorCursorSelection | null {
-  if (isCodeMirrorMarkdownEditor(editor)) {
-    return editor.getCursorSelection()
-  }
-  if (isLexicalMarkdownEditor(editor)) {
-    return editor.getCursorSelection()
-  }
-
   const view = getWysiwygView(editor)
   const selection = view?.state?.selection
   if (!selection) return null
@@ -247,8 +233,6 @@ export function getEditorCursorSelection(editor: Editor | null): EditorCursorSel
 }
 
 export function getEditorDocSize(editor: Editor | null): number {
-  if (isCodeMirrorMarkdownEditor(editor)) return editor.getDocSize()
-  if (isLexicalMarkdownEditor(editor)) return editor.getDocSize()
   const view = getWysiwygView(editor)
   return view?.state?.doc?.content?.size ?? 0
 }
@@ -258,13 +242,6 @@ export function restoreEditorCursorSelection(
   selection: EditorCursorSelection,
   options: { focus?: boolean } = {},
 ): boolean {
-  if (isCodeMirrorMarkdownEditor(editor)) {
-    return editor.restoreCursorSelection(selection, options)
-  }
-  if (isLexicalMarkdownEditor(editor)) {
-    return editor.restoreCursorSelection(selection, options)
-  }
-
   const view = getWysiwygView(editor)
   if (!editor || !view?.state?.doc || typeof view.dispatch !== 'function') return false
 

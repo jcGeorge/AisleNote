@@ -8,21 +8,13 @@ import {
   mergeAisleActivationDiagnosticSummary,
   shouldClearPendingCursorRestoreForAisleActivation,
   shouldDeferAisleCycleForMouseActivation,
-  shouldFocusAislePointerActivation,
   shouldUseFastSameAisleActivation,
 } from './aisle-activation'
 
 const useAisleEditorsSource = readFileSync(fileURLToPath(new URL('./useAisleEditors.ts', import.meta.url)), 'utf8')
 
 describe('aisle editor activation', () => {
-  it('toggles Lexical editability instead of replacing inactive Lexical surfaces', () => {
-    expect(useAisleEditorsSource).toContain('const syncLexicalEditableStates = (activeEditorKey: string)')
-    expect(useAisleEditorsSource).toContain('meta.editor.setEditable(editorKey === activeEditorKey)')
-    expect(useAisleEditorsSource).toContain('editable: aisle.id === (activeAisleIdRef.current || resolvedActiveAisleId)')
-  })
-
-  it('uses cached Markdown for clean read-only Lexical snapshots', () => {
-    expect(useAisleEditorsSource).toContain('shouldUseCachedReadonlyLexicalSnapshot')
+  it('uses Toast snapshots for mounted aisle content', () => {
     expect(useAisleEditorsSource).toContain('const getSnapshotMarkdownForMeta = (meta: AisleEditorMeta): string')
     expect(useAisleEditorsSource).toContain('return getSnapshotEditorMarkdown(meta.editor, cachedMarkdown ?? \'\', getNormalizedEditorMarkdown)')
   })
@@ -73,44 +65,6 @@ describe('aisle editor activation', () => {
         editorRefMatches: true,
         pluginKeyMatches: true,
         activeAisleStateMatches: false,
-      }),
-    ).toBe(false)
-  })
-
-  it('does not force focus for pointer activation', () => {
-    expect(
-      shouldFocusAislePointerActivation({
-        currentAisleId: 'aisle-1',
-        targetAisleId: 'aisle-2',
-        editorCore: 'toast',
-      }),
-    ).toBe(false)
-    expect(
-      shouldFocusAislePointerActivation({
-        currentAisleId: 'aisle-1',
-        targetAisleId: 'aisle-1',
-        editorCore: 'codemirror',
-      }),
-    ).toBe(false)
-    expect(
-      shouldFocusAislePointerActivation({
-        currentAisleId: 'aisle-1',
-        targetAisleId: 'aisle-2',
-        editorCore: 'codemirror',
-      }),
-    ).toBe(true)
-    expect(
-      shouldFocusAislePointerActivation({
-        currentAisleId: 'aisle-1',
-        targetAisleId: 'aisle-2',
-        editorCore: 'lexical',
-      }),
-    ).toBe(true)
-    expect(
-      shouldFocusAislePointerActivation({
-        currentAisleId: 'aisle-1',
-        targetAisleId: '',
-        editorCore: 'codemirror',
       }),
     ).toBe(false)
   })

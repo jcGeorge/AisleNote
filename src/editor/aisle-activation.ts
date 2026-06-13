@@ -15,18 +15,6 @@ export function shouldUseFastSameAisleActivation({
   return !switchingAisle && editorRefMatches && pluginKeyMatches && activeAisleStateMatches
 }
 
-export function shouldFocusAislePointerActivation({
-  currentAisleId,
-  targetAisleId,
-  editorCore,
-}: {
-  currentAisleId: string
-  targetAisleId: string
-  editorCore: 'toast' | 'codemirror' | 'lexical'
-}): boolean {
-  return (editorCore === 'codemirror' || editorCore === 'lexical') && Boolean(targetAisleId) && targetAisleId !== currentAisleId
-}
-
 export function shouldClearPendingCursorRestoreForAisleActivation(
   source: AisleActivationSource | undefined,
 ): boolean {

@@ -134,13 +134,8 @@ describe('MessagesView', () => {
 
     expect(html).toContain('editor diagnostics')
     expect(html).toContain('id="messages-editor-ablation-mode"')
-    expect(html).not.toContain('<option value="mdxeditor">')
-    expect(html).not.toContain('<option value="codemirror-live">')
-    expect(html).not.toContain('<option value="codemirror">')
-    expect(html).toContain('<option value="lexical" selected="">Lexical</option>')
     expect(html).toContain('<option value="toast-only">Toast only</option>')
     expect(html).toContain('<option value="toast-retain-current-previous">Full editor retain previous aisle</option>')
-    expect(html).toContain('Forces the experimental Lexical rich Markdown editor core.')
     expect(html).toContain('reload app')
     expect(html).not.toContain('No inbox messages.')
     expect(html).not.toContain('toast history')

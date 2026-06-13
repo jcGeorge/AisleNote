@@ -1,6 +1,5 @@
 import type { MouseEvent, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from 'react'
 import { TRASH_HOME_ID } from '../../trash/trash-model'
-import type { UserFacingEditorRenderer } from '../../editor/editor-core'
 import type {
   AboutSection,
   ArrangeDragItem,
@@ -63,7 +62,6 @@ type TopBarProps = {
   menuOpen: boolean
   spaceRailVisible: boolean
   domainRailVisible: boolean
-  selectedRenderer?: UserFacingEditorRenderer
   onAutoSizeRenameInput: (input: HTMLInputElement) => void
   onShouldSkipRenameBlur: (type: EditableEntityType, id: string) => boolean
   onIsPendingCreatedRename?: (type: 'tab' | 'subtab', id: string) => boolean
@@ -128,7 +126,6 @@ type TopBarProps = {
   onToggleSpaceRail: () => void
   onToggleDomainRail: () => void
   onToggleTrash: () => void
-  onSelectRenderer?: (renderer: UserFacingEditorRenderer) => void
   onOpenMessages: () => void
   onOpenSettings: () => void
   onOpenEtCetera: () => void
@@ -171,7 +168,6 @@ export function TopBar({
   menuOpen,
   spaceRailVisible,
   domainRailVisible,
-  selectedRenderer,
   onAutoSizeRenameInput,
   onShouldSkipRenameBlur,
   onIsPendingCreatedRename = () => false,
@@ -215,7 +211,6 @@ export function TopBar({
   onToggleSpaceRail,
   onToggleDomainRail,
   onToggleTrash,
-  onSelectRenderer,
   onOpenMessages,
   onOpenSettings,
   onOpenEtCetera,
@@ -707,8 +702,6 @@ export function TopBar({
             onToggleTrash={onToggleTrash}
             onOpenEtCetera={onOpenEtCetera}
             onOpenFilter={onOpenFilter}
-            selectedRenderer={selectedRenderer}
-            onSelectRenderer={onSelectRenderer}
             tagFilterControl={tagFilterControl}
           />
         )}

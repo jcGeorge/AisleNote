@@ -25,7 +25,6 @@ import { ToolbarToolIcon } from '../editor/ToolbarToolIcon'
 import { AppIcon } from '../icons/AppIcon'
 import { getAislePreviewSegments } from './aisle-markdown-preview-segments'
 import { AisleHorizontalScrollbar } from './AisleHorizontalScrollbar'
-import { CodeMirrorMarkdownPreview } from './CodeMirrorMarkdownPreview'
 import {
   MarkdownPreviewHeading1,
   MarkdownPreviewHeading2,
@@ -108,8 +107,6 @@ type ScratchpadAisleControls = {
   onDeleteActiveAisle: () => void
 }
 
-type InactivePreviewRenderer = 'markdown' | 'codemirror'
-
 type AisleActivationPointer = {
   clientX: number
   clientY: number
@@ -144,7 +141,6 @@ type NoteWorkspaceProps = {
   mountedAisleIds: Set<string>
   suppressActiveAislePreviewFallback?: boolean
   deferInactivePreviewFallbacks?: boolean
-  inactivePreviewRenderer?: InactivePreviewRenderer
   getPreviewMarkdownForAisle: (aisle: ResolvedNoteAisle) => string
   onCloseTableOfContentsAisle?: (aisleId: string) => void
   onSelectTableOfContentsHeading?: (aisleId: string, headingKey: string) => void
@@ -292,7 +288,6 @@ export function NoteWorkspace({
   mountedAisleIds,
   suppressActiveAislePreviewFallback = false,
   deferInactivePreviewFallbacks = false,
-  inactivePreviewRenderer = 'markdown',
   getPreviewMarkdownForAisle,
   onCloseTableOfContentsAisle = () => undefined,
   onSelectTableOfContentsHeading = () => undefined,
@@ -317,12 +312,10 @@ export function NoteWorkspace({
   const inactivePreviewHydrationKey = `${noteBodyId}\n${aisles.map((aisle) => aisle.id).join('\n')}`
   const [hydratedInactivePreviewKey, setHydratedInactivePreviewKey] = useState('')
   const inactivePreviewsHydrated = hydratedInactivePreviewKey === inactivePreviewHydrationKey
-  const previousActiveAisleIdRef = useRef(activeAisleId)
   const activeAisleIdForHydrationDiagnosticsRef = useRef(activeAisleId)
 
   useEffect(() => {
     activeAisleIdForHydrationDiagnosticsRef.current = activeAisleId
-    previousActiveAisleIdRef.current = activeAisleId
   }, [activeAisleId])
 
   useEffect(() => {
@@ -470,12 +463,6 @@ export function NoteWorkspace({
           const editorMounted = mountedAisleIds.has(aisle.id)
           const editorMountPending = suppressActiveAislePreviewFallback && !editorMounted && aisle.id === activeAisleId
           const previewMarkdown = editorMounted || editorMountPending ? '' : getPreviewMarkdownForAisle(aisle)
-          const useCodeMirrorPreview = inactivePreviewRenderer === 'codemirror'
-          const forceMarkdownPreview =
-            useCodeMirrorPreview &&
-            !arrangeModeActive &&
-            aisle.id !== activeAisleId &&
-            aisle.id === previousActiveAisleIdRef.current
           const previewProfile =
             previewMarkdown.length > 0
               ? getMarkdownWorkloadProfile(previewMarkdown, aisle.aisleBodyId || aisle.id)
@@ -486,7 +473,6 @@ export function NoteWorkspace({
             deferInactivePreviewFallbacks,
             editorMounted,
             editorMountPending,
-            forceMarkdownPreview,
             inactivePreviewsHydrated,
             profile: previewProfile,
           })
@@ -602,8 +588,6 @@ export function NoteWorkspace({
                   <div
                     key={`${editorKey}:preview`}
                     className={`toast-editor-host aisle-editor-preview-fallback ${RENDERED_MARKDOWN_SURFACE_CLASS} ${
-                      useCodeMirrorPreview ? 'tabs-codemirror-host tabs-codemirror-preview-host' : ''
-                    } ${
                       editorMountPending ? 'is-editor-mount-pending' : ''
                     } ${
                       previewHydrationPending ? 'is-preview-hydration-pending' : ''
@@ -617,13 +601,7 @@ export function NoteWorkspace({
                     {lightweightPreviewText.trim().length > 0 ? (
                       <pre className="aisle-editor-lightweight-preview">{lightweightPreviewText}</pre>
                     ) : renderedPreviewMarkdown.trim().length > 0 ? (
-                      useCodeMirrorPreview ? (
-                        <div className="tabs-codemirror-rendered-markdown tabs-codemirror-preview-content">
-                          <CodeMirrorMarkdownPreview markdown={renderedPreviewMarkdown} />
-                        </div>
-                      ) : (
-                        <NoteWorkspaceMarkdownPreview markdown={renderedPreviewMarkdown} />
-                      )
+                      <NoteWorkspaceMarkdownPreview markdown={renderedPreviewMarkdown} />
                     ) : null}
                   </div>
                 )}

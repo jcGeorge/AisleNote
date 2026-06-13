@@ -1,6 +1,5 @@
 import type { PendingContent, ResolvedNoteAisle } from '../types/app'
 import { getAisleBodyId } from '../notes/aisle-body-state'
-import type { ActiveEditorCore } from './editor-core'
 
 export const AISLE_EDITOR_INTERSECTION_ROOT_MARGIN = '0px 100% 0px 100%'
 
@@ -13,8 +12,7 @@ export type AisleEditorRetentionInput = {
   retainNearVisibleAisles?: boolean
 }
 
-export type AisleEditorCoreRetentionInput = {
-  editorCore: ActiveEditorCore
+export type ToastAisleEditorRetentionInput = {
   aisleIds: string[]
   activeAisleId: string
   backgroundAisleIds?: Iterable<string>
@@ -70,8 +68,7 @@ export function buildRetainedAisleEditorIds({
   return retainedIds
 }
 
-export function buildRetainedAisleEditorIdsForCore({
-  editorCore,
+export function buildRetainedToastAisleEditorIds({
   aisleIds,
   activeAisleId,
   backgroundAisleIds = [],
@@ -79,22 +76,7 @@ export function buildRetainedAisleEditorIdsForCore({
   recentAisleIds = [],
   toastRecentRetainLimit,
   smallNoteLiveLimit,
-}: AisleEditorCoreRetentionInput): Set<string> {
-  if (editorCore === 'codemirror') {
-    return buildRetainedAisleEditorIds({
-      aisleIds,
-      activeAisleId,
-    })
-  }
-
-  if (editorCore === 'lexical') {
-    return buildRetainedAisleEditorIds({
-      aisleIds,
-      activeAisleId,
-      backgroundAisleIds: aisleIds,
-    })
-  }
-
+}: ToastAisleEditorRetentionInput): Set<string> {
   return buildRetainedAisleEditorIds({
     aisleIds,
     activeAisleId,

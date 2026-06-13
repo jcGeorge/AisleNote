@@ -216,7 +216,7 @@ describe('note preview references', () => {
     expect(resolveMarkdownNoteReferenceToken(state, token.slice(1))?.target.startAt).toBe('last-position')
   })
 
-  it('repairs double-angle preview destinations emitted by the Lexical spike', () => {
+  it('repairs double-angle preview destinations', () => {
     const state = createReferenceState()
     const token = buildPreviewToken(state, {
       ...payload('last-position', targetLocation('parent', 'sub')),

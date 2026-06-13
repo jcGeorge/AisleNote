@@ -5,7 +5,6 @@ import {
   getWysiwygView,
   type NoteMentionQuery,
 } from '../editor/prosemirror-utils'
-import { isLexicalMarkdownEditor } from '../editor/lexical-markdown-editor'
 import type { AppState, NoteCopyMode, NoteLocation, ViewMode } from '../types/app'
 import {
   buildNoteMentionNavigatorRows,
@@ -152,17 +151,6 @@ function getMenuAnchor(
   activeAisleIdRef: MutableRefObject<string>,
   docPosition?: number,
 ): NoteMentionMenuAnchor {
-  const editor = editorRef.current
-  if (isLexicalMarkdownEditor(editor)) {
-    const rect = editor.getSelectionClientRect()
-    if (rect) {
-      return {
-        top: rect.top,
-        bottom: rect.bottom,
-        left: rect.left,
-      }
-    }
-  }
   const view = getWysiwygView(editorRef.current)
 
   try {
@@ -275,11 +263,7 @@ export function useNoteMentionController({
   const dismissCurrentQuery = useCallback(() => {
     const currentMenu = menuRef.current
     const activeEditor = editorRef.current
-    const currentQuery = currentMenu?.query ?? (
-      isLexicalMarkdownEditor(activeEditor)
-        ? activeEditor.getNoteMentionQuery()
-        : getNoteMentionQueryAtSelection(getWysiwygView(activeEditor))
-    )
+    const currentQuery = currentMenu?.query ?? getNoteMentionQueryAtSelection(getWysiwygView(activeEditor))
     if (currentQuery) dismissedQueryRef.current = currentQuery
     closeMenuRef.current()
   }, [editorRef])
@@ -383,9 +367,7 @@ export function useNoteMentionController({
   const refreshQuery = useCallback(() => {
     if (viewMode !== 'main' || !editorRef.current) return
     const activeEditor = editorRef.current
-    const query = isLexicalMarkdownEditor(activeEditor)
-      ? activeEditor.getNoteMentionQuery()
-      : getNoteMentionQueryAtSelection(getWysiwygView(activeEditor))
+    const query = getNoteMentionQueryAtSelection(getWysiwygView(activeEditor))
     if (!query) {
       dismissedQueryRef.current = null
       if (menuRef.current) closeMenuRef.current()
