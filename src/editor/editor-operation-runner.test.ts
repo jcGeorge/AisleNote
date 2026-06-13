@@ -166,6 +166,24 @@ describe('editor operation runner', () => {
     expect(collapsed.editor.exec).toHaveBeenCalledWith('addTable', { rowCount: 2, columnCount: 2 })
   })
 
+  it('lets Lexical add tables through its editor command instead of ProseMirror table conversion', () => {
+    const editor = {
+      __tabsEditorCore: 'lexical',
+      focus: vi.fn(),
+      exec: vi.fn(),
+      insertText: vi.fn(),
+    } as unknown as Editor & { exec: ReturnType<typeof vi.fn>; focus: ReturnType<typeof vi.fn> }
+    const runtime: EditorOperationRuntime = {
+      editorRef: { current: editor },
+      commitActiveEditorMarkdownNow: vi.fn(() => 'markdown'),
+    }
+
+    expect(replaceSelectedTextWithTableOperation(runtime, { commitMode: 'none' }).handled).toBe(false)
+    expect(runEditorCommandOperation(runtime, 'addTable', { rowCount: 2, columnCount: 2 }).handled).toBe(true)
+    expect(editor.exec).toHaveBeenCalledWith('addTable', { rowCount: 2, columnCount: 2 })
+    expect(runtime.commitActiveEditorMarkdownNow).toHaveBeenCalledWith(editor)
+  })
+
   it('inserts text and replaces markdown through the operation contract', () => {
     const { runtime, editor } = createRuntime()
 

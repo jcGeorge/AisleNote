@@ -27,6 +27,12 @@ describe('electron application menu', () => {
     expect(mainSource).toContain('confirmAndResetUserSettings(window)')
   })
 
+  it('keeps a native local-notebook reset escape path outside rendered settings UI', () => {
+    expect(mainSource).toContain('Reset Local Notebook to Blank')
+    expect(mainSource).toContain('confirmAndResetLocalNotebook')
+    expect(mainSource).toContain('resetLocalNotebookToBlank')
+  })
+
   it('leaves Command+W available to the renderer tab/aisle delete shortcut', () => {
     expect(mainSource).not.toContain("{ role: 'close' }")
     expect(mainSource).not.toContain('CommandOrControl+W')

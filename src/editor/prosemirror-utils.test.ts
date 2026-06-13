@@ -347,6 +347,25 @@ describe('cursor selection restore safety', () => {
     expect(restoreCursorSelection).toHaveBeenCalledWith({ anchor: 4, head: 4 }, { focus: false })
   })
 
+  it('delegates cursor and history helpers to Lexical editor handles', () => {
+    const restoreCursorSelection = vi.fn(() => true)
+    const runHistory = vi.fn(() => true)
+    const editor = {
+      __tabsEditorCore: 'lexical',
+      getCursorSelection: vi.fn(() => ({ anchor: 2, head: 6 })),
+      getDocSize: vi.fn(() => 12),
+      restoreCursorSelection,
+      runHistory,
+    } as unknown as Editor
+
+    expect(getEditorCursorSelection(editor)).toEqual({ anchor: 2, head: 6 })
+    expect(getEditorDocSize(editor)).toBe(12)
+    expect(restoreEditorCursorSelection(editor, { anchor: 5, head: 5 }, { focus: false })).toBe(true)
+    expect(runWysiwygHistory(editor, 'undo')).toBe('applied')
+    expect(restoreCursorSelection).toHaveBeenCalledWith({ anchor: 5, head: 5 }, { focus: false })
+    expect(runHistory).toHaveBeenCalledWith('undo')
+  })
+
   it('returns false when dispatch fails', () => {
     const doc = schema.nodes.doc.create(null, [schema.nodes.paragraph.create(null, [schema.text('asdf')])])
     const view = {

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   AISLE_ACTIVATION_WARNING_THRESHOLD_MS,
@@ -10,7 +12,15 @@ import {
   shouldUseFastSameAisleActivation,
 } from './aisle-activation'
 
+const useAisleEditorsSource = readFileSync(fileURLToPath(new URL('./useAisleEditors.ts', import.meta.url)), 'utf8')
+
 describe('aisle editor activation', () => {
+  it('toggles Lexical editability instead of replacing inactive Lexical surfaces', () => {
+    expect(useAisleEditorsSource).toContain('const syncLexicalEditableStates = (activeEditorKey: string)')
+    expect(useAisleEditorsSource).toContain('meta.editor.setEditable(editorKey === activeEditorKey)')
+    expect(useAisleEditorsSource).toContain('editable: aisle.id === (activeAisleIdRef.current || resolvedActiveAisleId)')
+  })
+
   it('uses the fast path only when the current mounted aisle is already active', () => {
     expect(
       shouldUseFastSameAisleActivation({
@@ -75,6 +85,13 @@ describe('aisle editor activation', () => {
         currentAisleId: 'aisle-1',
         targetAisleId: 'aisle-2',
         editorCore: 'codemirror',
+      }),
+    ).toBe(true)
+    expect(
+      shouldFocusAislePointerActivation({
+        currentAisleId: 'aisle-1',
+        targetAisleId: 'aisle-2',
+        editorCore: 'lexical',
       }),
     ).toBe(true)
     expect(

@@ -17,6 +17,7 @@ describe('editor core selection', () => {
     expect(parseEditorCoreMode('mdxeditor')).toBe('auto')
     expect(parseEditorCoreMode('codemirror-live')).toBe('codemirror-live')
     expect(parseEditorCoreMode('codemirror')).toBe('codemirror')
+    expect(parseEditorCoreMode('lexical')).toBe('lexical')
   })
 
   it('detects the table-plus-external-link fixture as Toast-heavy', () => {
@@ -41,14 +42,17 @@ describe('editor core selection', () => {
     expect(resolveActiveEditorCore('codemirror-live', '# Note')).toBe('codemirror')
     expect(resolveActiveEditorCore('toast', '| [x](https://example.com) |\n| --- |')).toBe('toast')
     expect(resolveActiveEditorCore('codemirror', '# Note')).toBe('codemirror')
+    expect(resolveActiveEditorCore('lexical', '| copy |\n| --- |')).toBe('lexical')
   })
 
   it('maps user-facing renderer choices to persisted editor core modes', () => {
     expect(getRendererForEditorCoreMode('auto')).toBe('codemirror')
     expect(getRendererForEditorCoreMode('codemirror-live')).toBe('codemirror')
     expect(getRendererForEditorCoreMode('codemirror')).toBe('codemirror')
+    expect(getRendererForEditorCoreMode('lexical')).toBe('lexical')
     expect(getRendererForEditorCoreMode('toast')).toBe('toast')
     expect(getEditorCoreModeForRenderer('codemirror')).toBe('codemirror-live')
+    expect(getEditorCoreModeForRenderer('lexical')).toBe('lexical')
     expect(getEditorCoreModeForRenderer('toast')).toBe('toast')
   })
 
@@ -63,10 +67,12 @@ describe('editor core selection', () => {
 
     expect(readEditorCoreMode(storage)).toBe('codemirror-live')
     expect(writeEditorCoreMode('codemirror-live', storage)).toBe(true)
+    expect(writeEditorCoreMode('lexical', storage)).toBe(true)
     expect(writeEditorCoreMode('toast', storage)).toBe(true)
     expect(writeEditorCoreMode('auto', storage)).toBe(true)
     expect(writes).toEqual([
       [EDITOR_CORE_LOCAL_STORAGE_KEY, 'codemirror-live'],
+      [EDITOR_CORE_LOCAL_STORAGE_KEY, 'lexical'],
       [EDITOR_CORE_LOCAL_STORAGE_KEY, 'toast'],
     ])
     expect(removals).toEqual([EDITOR_CORE_LOCAL_STORAGE_KEY])

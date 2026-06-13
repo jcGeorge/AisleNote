@@ -128,6 +128,7 @@ const EDITOR_CORE_MODE_DESCRIPTIONS: Record<EditorCoreMode, string> = {
   toast: 'Forces the current Toast UI editor core for every aisle.',
   'codemirror-live': 'Forces the CodeMirror Live Markdown editor core.',
   codemirror: 'Forces the diagnostic source-Markdown CodeMirror editor core.',
+  lexical: 'Forces the experimental Lexical rich Markdown editor core.',
 }
 
 function EditorDevMessagesSection() {

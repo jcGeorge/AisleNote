@@ -22,9 +22,9 @@ export function shouldFocusAislePointerActivation({
 }: {
   currentAisleId: string
   targetAisleId: string
-  editorCore: 'toast' | 'codemirror'
+  editorCore: 'toast' | 'codemirror' | 'lexical'
 }): boolean {
-  return editorCore === 'codemirror' && Boolean(targetAisleId) && targetAisleId !== currentAisleId
+  return (editorCore === 'codemirror' || editorCore === 'lexical') && Boolean(targetAisleId) && targetAisleId !== currentAisleId
 }
 
 export function shouldClearPendingCursorRestoreForAisleActivation(

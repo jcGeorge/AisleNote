@@ -98,6 +98,21 @@ describe('aisle editor retention helpers', () => {
     expect(Array.from(retained).sort()).toEqual(['aisle-3'])
   })
 
+  it('keeps all Lexical aisles mounted so inactive aisles can remain read-only WYSIWYG surfaces', () => {
+    const retained = buildRetainedAisleEditorIdsForCore({
+      editorCore: 'lexical',
+      aisleIds: ['aisle-1', 'aisle-2', 'aisle-3', 'aisle-4'],
+      activeAisleId: 'aisle-3',
+      backgroundAisleIds: ['aisle-1', 'aisle-2', 'aisle-3', 'aisle-4'],
+      nearVisibleAisleIds: ['aisle-1', 'aisle-2'],
+      recentAisleIds: ['aisle-2', 'aisle-1'],
+      toastRecentRetainLimit: 3,
+      smallNoteLiveLimit: 4,
+    })
+
+    expect(Array.from(retained).sort()).toEqual(['aisle-1', 'aisle-2', 'aisle-3', 'aisle-4'])
+  })
+
   it('keeps Toast UI small-note background retention behavior unchanged', () => {
     const retained = buildRetainedAisleEditorIdsForCore({
       editorCore: 'toast',

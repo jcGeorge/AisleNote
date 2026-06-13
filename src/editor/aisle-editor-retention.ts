@@ -87,6 +87,14 @@ export function buildRetainedAisleEditorIdsForCore({
     })
   }
 
+  if (editorCore === 'lexical') {
+    return buildRetainedAisleEditorIds({
+      aisleIds,
+      activeAisleId,
+      backgroundAisleIds: aisleIds,
+    })
+  }
+
   return buildRetainedAisleEditorIds({
     aisleIds,
     activeAisleId,

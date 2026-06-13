@@ -1,17 +1,18 @@
 export const EDITOR_CORE_LOCAL_STORAGE_KEY = 'tabs.editorCore'
 
-export const EDITOR_CORE_MODES = ['auto', 'toast', 'codemirror-live', 'codemirror'] as const
+export const EDITOR_CORE_MODES = ['auto', 'toast', 'codemirror-live', 'codemirror', 'lexical'] as const
 
 export type SelectableEditorCoreMode = typeof EDITOR_CORE_MODES[number]
 export type EditorCoreMode = SelectableEditorCoreMode
-export type ActiveEditorCore = 'toast' | 'codemirror'
-export type UserFacingEditorRenderer = 'toast' | 'codemirror'
+export type ActiveEditorCore = 'toast' | 'codemirror' | 'lexical'
+export type UserFacingEditorRenderer = 'toast' | 'codemirror' | 'lexical'
 
 export const EDITOR_CORE_MODE_LABELS: Record<EditorCoreMode, string> = {
   auto: 'Auto',
   toast: 'Toast UI',
   'codemirror-live': 'CodeMirror Live',
   codemirror: 'CodeMirror source',
+  lexical: 'Lexical',
 }
 
 const VALID_EDITOR_CORE_MODES = new Set<string>(EDITOR_CORE_MODES)
@@ -69,15 +70,18 @@ export function isMarkdownLikelyToastHeavy(markdown: string): boolean {
 export function resolveActiveEditorCore(mode: EditorCoreMode, markdown: string): ActiveEditorCore {
   void markdown
   if (mode === 'codemirror' || mode === 'codemirror-live' || mode === 'auto') return 'codemirror'
+  if (mode === 'lexical') return 'lexical'
   if (mode === 'toast') return 'toast'
   return 'codemirror'
 }
 
 export function getRendererForEditorCoreMode(mode: EditorCoreMode): UserFacingEditorRenderer {
+  if (mode === 'lexical') return 'lexical'
   return mode === 'toast' ? 'toast' : 'codemirror'
 }
 
 export function getEditorCoreModeForRenderer(renderer: UserFacingEditorRenderer): EditorCoreMode {
+  if (renderer === 'lexical') return 'lexical'
   return renderer === 'toast' ? 'toast' : 'codemirror-live'
 }
 

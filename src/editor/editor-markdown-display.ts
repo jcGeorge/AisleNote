@@ -16,10 +16,11 @@ import {
 } from '../markdown/image-asset-registry'
 import { measureSlowOperation } from '../performance/performance-logging'
 import { isCodeMirrorMarkdownEditor } from './codemirror-markdown-editor'
+import { isLexicalMarkdownEditor } from './lexical-markdown-editor'
 import { getWysiwygView, markWysiwygLoadedUndoBoundary } from './prosemirror-utils'
 
 export function getEditorMarkdownForPersistence(editor: Editor): string {
-  if (isCodeMirrorMarkdownEditor(editor)) {
+  if (isCodeMirrorMarkdownEditor(editor) || isLexicalMarkdownEditor(editor)) {
     return normalizeMarkdownImageSourcesForPersistence(normalizeMarkdownForPersistence(editor.getMarkdown()))
   }
   return normalizeMarkdownImageSourcesForPersistence(
@@ -51,6 +52,10 @@ export type EditorDisplayRestoreResult = {
 }
 
 export function restoreEditorDisplay(editor: Editor | null, markdown: string): EditorDisplayRestoreResult {
+  if (isLexicalMarkdownEditor(editor)) {
+    void markdown
+    return { restored: false, viewReady: true }
+  }
   const view = getWysiwygView(editor)
   const viewReady = Boolean(view?.state?.doc)
   const restored = viewReady ? restoreEditorBlankParagraphs(editor, markdown) : false
@@ -285,6 +290,10 @@ export function setEditorMarkdownForDisplay(
   options: BlankParagraphDisplayOptions = {},
 ): void {
   measureSlowOperation('editor display markdown rewrite', () => {
+    if (isLexicalMarkdownEditor(editor)) {
+      editor.setMarkdown(markdown, cursorToEnd)
+      return
+    }
     editor.setMarkdown(prepareMarkdownForEditorDisplay(markdown, options), cursorToEnd)
     restoreEditorDisplay(editor, markdown)
   })

@@ -302,6 +302,9 @@ declare global {
         | { ok: true; status: StorageProfileStatus }
         | { ok: false; error: string; status: StorageProfileStatus }
       >
+      resetLocalNotebookToBlank?: () => Promise<
+        { ok: true; status: StorageProfileStatus } | { ok: false; error?: string; status: StorageProfileStatus }
+      >
       renameNotebook?: (payload: { name: string }) => Promise<
         | { ok: true; status: StorageProfileStatus }
         | { ok: false; error: string; status: StorageProfileStatus }

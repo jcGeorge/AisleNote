@@ -30,6 +30,16 @@ export default defineConfig({
               maxSize: 450 * 1024,
             },
             {
+              name: 'codemirror-vendor',
+              test: /node_modules[\\/](@codemirror|@lezer|codemirror|style-mod|w3c-keyname|crelt)[\\/]/,
+              priority: 25,
+            },
+            {
+              name: 'lexical-vendor',
+              test: /node_modules[\\/](lexical|@lexical)[\\/]/,
+              priority: 25,
+            },
+            {
               name: 'prosemirror',
               test: /node_modules[\\/]prosemirror-/,
               priority: 20,

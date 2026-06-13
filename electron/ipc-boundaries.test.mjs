@@ -733,6 +733,56 @@ describe('electron ipc boundaries', () => {
       })
     }))
 
+  it('resets the local notebook to blank and drops remembered notebook links', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const externalRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-linked-notebook-'))
+      try {
+        saveAppState(defaultNotebookRoot(userDataPath), serializedAppState('dawn'), { userSettingsRoot: userDataPath })
+        saveAppState(externalRoot, serializedAppState('light'), { userSettingsRoot: userDataPath })
+        writeStorageProfileConfig(userDataPath, externalRoot)
+        const window = {
+          isDestroyed: vi.fn(() => false),
+          webContents: { id: 2, send: vi.fn() },
+        }
+        const ipcMain = createIpcMain()
+        const storageSession = registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow([window]),
+        })
+
+        await expect(ipcMain.handlers.get('reset-local-notebook-to-blank')()).resolves.toMatchObject({
+          ok: true,
+          status: {
+            event: 'notebook-reset-local',
+            profileRootPath: defaultNotebookRoot(userDataPath),
+            knownNotebooks: [
+              expect.objectContaining({
+                notebookPath: defaultNotebookRoot(userDataPath),
+                isActive: true,
+              }),
+            ],
+          },
+        })
+
+        expect(storageSession.getProfileRootPath()).toBe(defaultNotebookRoot(userDataPath))
+        const localLoad = loadAppStateResult(defaultNotebookRoot(userDataPath), { userSettingsRoot: userDataPath })
+        expect(localLoad.ok).toBe(true)
+        const localState = JSON.parse(localLoad.serializedState)
+        expect(localState.domains[0].name).toBe('humble beginnings')
+        expect(localState.noteAisleBodies[0].markdown).toBe('')
+        expect(storageSession.getStorageProfileStatus().knownNotebooks).toHaveLength(1)
+        expect(window.webContents.send).toHaveBeenCalledWith(
+          'app-state-updated',
+          expect.objectContaining({
+            serializedState: expect.stringContaining('humble beginnings'),
+          }),
+        )
+      } finally {
+        rmSync(externalRoot, { recursive: true, force: true })
+      }
+    }))
+
   it('broadcasts successful revisioned app-state saves to other windows', () =>
     withTempUserDataPath((userDataPath) => {
       const ipcMain = createIpcMain()

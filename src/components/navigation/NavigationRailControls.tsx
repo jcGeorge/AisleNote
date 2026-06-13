@@ -150,6 +150,14 @@ export function NavigationRailControls({
                 >
                   CodeMirror
                 </button>
+                <button
+                  type="button"
+                  className={`menu-item menu-renderer-item ${selectedRenderer === 'lexical' ? 'is-selected' : ''}`}
+                  aria-pressed={selectedRenderer === 'lexical'}
+                  onClick={() => onSelectRenderer('lexical')}
+                >
+                  Lexical
+                </button>
                 <div className="menu-section-help">reloads on change</div>
               </div>
             )}

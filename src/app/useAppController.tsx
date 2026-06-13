@@ -118,6 +118,7 @@ import {
   getEditorCoreModeForRenderer,
   getRendererForEditorCoreMode,
   readEditorCoreMode,
+  resolveActiveEditorCore,
   writeEditorCoreMode,
   type UserFacingEditorRenderer,
 } from '../editor/editor-core'
@@ -188,6 +189,7 @@ import {
 } from '../editor/prosemirror-utils'
 import { useAisleEditors } from '../editor/useAisleEditors'
 import { isCodeMirrorMarkdownEditor } from '../editor/codemirror-markdown-editor'
+import { isLexicalMarkdownEditor } from '../editor/lexical-markdown-editor'
 import { useEditorDomEvents } from '../editor/useEditorDomEvents'
 import { useEditorPersistence } from '../editor/useEditorPersistence'
 import { useEditorToolbarLayer } from '../editor/useEditorToolbarLayer'
@@ -4963,7 +4965,7 @@ export function useAppController(): AppController {
       // If the editor cannot be read, still push the known replacement result into it.
     }
     normalizingAisleIdsRef.current.add(activeAisle.id)
-    if (isCodeMirrorMarkdownEditor(currentEditor)) {
+    if (isCodeMirrorMarkdownEditor(currentEditor) || isLexicalMarkdownEditor(currentEditor)) {
       currentEditor.setMarkdown(nextMarkdown, false)
     } else {
       setEditorMarkdownForDisplay(currentEditor, nextMarkdown, false)
@@ -7136,7 +7138,7 @@ export function useAppController(): AppController {
                   return
                 }
                 pendingMouseAisleActivationRef.current = { aisleId: targetAisleId, settled: false }
-                const activePointerEditorCore = selectedRenderer === 'codemirror' ? 'codemirror' : 'toast'
+                const activePointerEditorCore = resolveActiveEditorCore(editorCoreMode, '')
                 const shouldFocus = shouldFocusAislePointerActivation({
                   currentAisleId: activeAisleIdRef.current,
                   targetAisleId,
@@ -7156,7 +7158,10 @@ export function useAppController(): AppController {
                 activateAisleEditor(editorKey, {
                   flushPrevious: true,
                   focus: shouldFocus,
-                  focusAtClientPoint: activePointerEditorCore === 'codemirror' && shouldFocus ? pointer : undefined,
+                  focusAtClientPoint:
+                    (activePointerEditorCore === 'codemirror' || activePointerEditorCore === 'lexical') && shouldFocus
+                      ? pointer
+                      : undefined,
                   source: 'pointer',
                 })
                 syncActiveAisleSelection(targetAisleId)
