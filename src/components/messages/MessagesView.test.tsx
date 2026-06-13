@@ -134,10 +134,8 @@ describe('MessagesView', () => {
 
     expect(html).toContain('editor diagnostics')
     expect(html).toContain('id="messages-editor-ablation-mode"')
-    expect(html).not.toContain('<option value="mdxeditor">')
     expect(html).toContain('<option value="toast-only">Toast only</option>')
     expect(html).toContain('<option value="toast-retain-current-previous">Full editor retain previous aisle</option>')
-    expect(html).toContain('Toast UI remains the default until a replacement proves out')
     expect(html).toContain('reload app')
     expect(html).not.toContain('No inbox messages.')
     expect(html).not.toContain('toast history')

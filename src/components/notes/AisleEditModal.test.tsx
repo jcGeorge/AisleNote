@@ -138,7 +138,7 @@ describe('AisleEditModal', () => {
     const html = renderModal([aisle('a', `${BLOCK_INDENT_TOKEN.repeat(2)}indented`)])
 
     expect(html).toContain('style="--tabs-block-indent-level:2"')
-    expect(html).toContain('class="tabs-block-indent"')
+    expect(html).toContain('class="tabs-rendered-markdown-paragraph tabs-block-indent"')
     expect(html).toContain('indented')
     expect(html).not.toContain(BLOCK_INDENT_TOKEN)
   })

@@ -1,4 +1,6 @@
 import {
+  Fragment,
+  memo,
   useCallback,
   useEffect,
   useRef,
@@ -15,10 +17,13 @@ import { buildAisleEditorKey } from '../../editor/aisle-editor'
 import { clampAisleWidth } from '../../notes/aisle-widths'
 import type { HeadingOutlineItem } from '../../editor/heading-outline'
 import type { TableOfContentsLinkItem } from '../../editor/table-of-contents-links'
+import { RENDERED_MARKDOWN_SURFACE_CLASS } from '../../editor/rendered-markdown-surface'
+import { recordDiagnosticEvent } from '../../diagnostics/diagnostic-logger'
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import type { ResolvedNoteAisle } from '../../types/app'
 import { ToolbarToolIcon } from '../editor/ToolbarToolIcon'
 import { AppIcon } from '../icons/AppIcon'
+import { getAislePreviewSegments } from './aisle-markdown-preview-segments'
 import { AisleHorizontalScrollbar } from './AisleHorizontalScrollbar'
 import {
   MarkdownPreviewHeading1,
@@ -32,6 +37,7 @@ import {
   MarkdownPreviewParagraph,
 } from './markdown-preview-components'
 import {
+  getAisleActivationPointerFromNoteWorkspaceEvent,
   getAisleEditorKeyFromNoteWorkspacePointerTarget,
   scheduleNoteWorkspaceArrangeExit,
   shouldExitArrangeModeFromNoteWorkspacePointer,
@@ -62,6 +68,27 @@ const noteWorkspacePreviewMarkdownComponents = {
   p: MarkdownPreviewParagraph,
 }
 
+const NoteWorkspaceMarkdownPreview = memo(function NoteWorkspaceMarkdownPreview({ markdown }: { markdown: string }) {
+  return getAislePreviewSegments(markdown).map((segment, segmentIndex) => (
+    <Fragment key={`${segment.type}-${segmentIndex}`}>
+      {segment.type === 'markdown' ? (
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          urlTransform={transformAislePreviewUrl}
+          components={noteWorkspacePreviewMarkdownComponents}
+        >
+          {segment.markdown}
+        </ReactMarkdown>
+      ) : (
+        <div className="aisle-edit-context-preview">
+          <span className="aisle-edit-context-preview-label">note preview</span>
+          <span className="aisle-edit-context-preview-title">{segment.label}</span>
+        </div>
+      )}
+    </Fragment>
+  ))
+})
+
 function assignRef<T>(ref: Ref<T>, value: T | null) {
   if (typeof ref === 'function') {
     ref(value)
@@ -78,6 +105,11 @@ type ScratchpadAisleControls = {
   onAddAisleLeft: () => void
   onAddAisleRight: () => void
   onDeleteActiveAisle: () => void
+}
+
+type AisleActivationPointer = {
+  clientX: number
+  clientY: number
 }
 
 type NoteWorkspaceProps = {
@@ -102,7 +134,7 @@ type NoteWorkspaceProps = {
   onExitArrangeMode?: () => void
   onRootChange: (node: HTMLElement | null) => void
   onAisleScroll: (scrollLeft: number) => void
-  onActivateAisle: (editorKey: string) => void
+  onActivateAisle: (editorKey: string, pointer?: AisleActivationPointer) => void
   onResizeAisleWidth?: (aisleId: string, width: number) => void
   onResetAisleWidth?: (aisleId: string) => void
   onAisleWidthDragCommitted?: () => void
@@ -280,6 +312,11 @@ export function NoteWorkspace({
   const inactivePreviewHydrationKey = `${noteBodyId}\n${aisles.map((aisle) => aisle.id).join('\n')}`
   const [hydratedInactivePreviewKey, setHydratedInactivePreviewKey] = useState('')
   const inactivePreviewsHydrated = hydratedInactivePreviewKey === inactivePreviewHydrationKey
+  const activeAisleIdForHydrationDiagnosticsRef = useRef(activeAisleId)
+
+  useEffect(() => {
+    activeAisleIdForHydrationDiagnosticsRef.current = activeAisleId
+  }, [activeAisleId])
 
   useEffect(() => {
     if (!deferInactivePreviewFallbacks) {
@@ -291,12 +328,23 @@ export function NoteWorkspace({
     let cancelled = false
     let timeoutId: number | null = null
     let frameId: number | null = null
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
     const idleWindow = window as unknown as {
       requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
       cancelIdleCallback?: (handle: number) => void
     }
     const hydrate = () => {
-      if (!cancelled) setHydratedInactivePreviewKey(inactivePreviewHydrationKey)
+      if (cancelled) return
+      setHydratedInactivePreviewKey(inactivePreviewHydrationKey)
+      recordDiagnosticEvent('note-workspace', 'inactive-preview-hydration', {
+        level: 'info',
+        durationMs: (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+        details: {
+          noteBodyId,
+          aisleCount: aisles.length,
+          activeAisleId: activeAisleIdForHydrationDiagnosticsRef.current,
+        },
+      })
     }
     if (typeof idleWindow.requestIdleCallback === 'function') {
       const idleId = idleWindow.requestIdleCallback(hydrate, { timeout: 250 })
@@ -313,7 +361,7 @@ export function NoteWorkspace({
       if (frameId !== null) window.cancelAnimationFrame(frameId)
       if (timeoutId !== null) window.clearTimeout(timeoutId)
     }
-  }, [deferInactivePreviewFallbacks, inactivePreviewHydrationKey])
+  }, [aisles.length, deferInactivePreviewFallbacks, inactivePreviewHydrationKey, noteBodyId])
 
   const setAisleScrollRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -396,7 +444,7 @@ export function NoteWorkspace({
           }
           const editorKey = getAisleEditorKeyFromNoteWorkspacePointerTarget(event.target)
           if (editorKey) {
-            onActivateAisle(editorKey)
+            onActivateAisle(editorKey, getAisleActivationPointerFromNoteWorkspaceEvent(event.nativeEvent))
           }
         }}
         onClickCapture={(event) => {
@@ -539,7 +587,7 @@ export function NoteWorkspace({
                 ) : (
                   <div
                     key={`${editorKey}:preview`}
-                    className={`toast-editor-host aisle-editor-preview-fallback ${
+                    className={`toast-editor-host aisle-editor-preview-fallback ${RENDERED_MARKDOWN_SURFACE_CLASS} ${
                       editorMountPending ? 'is-editor-mount-pending' : ''
                     } ${
                       previewHydrationPending ? 'is-preview-hydration-pending' : ''
@@ -553,13 +601,7 @@ export function NoteWorkspace({
                     {lightweightPreviewText.trim().length > 0 ? (
                       <pre className="aisle-editor-lightweight-preview">{lightweightPreviewText}</pre>
                     ) : renderedPreviewMarkdown.trim().length > 0 ? (
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        urlTransform={transformAislePreviewUrl}
-                        components={noteWorkspacePreviewMarkdownComponents}
-                      >
-                        {renderedPreviewMarkdown}
-                      </ReactMarkdown>
+                      <NoteWorkspaceMarkdownPreview markdown={renderedPreviewMarkdown} />
                     ) : null}
                   </div>
                 )}

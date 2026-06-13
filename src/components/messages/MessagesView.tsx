@@ -20,14 +20,6 @@ import {
   writeEditorAblationMode,
   type EditorAblationMode,
 } from '../../editor/editor-ablation'
-import {
-  EDITOR_CORE_MODE_LABELS,
-  EDITOR_CORE_MODES,
-  parseEditorCoreMode,
-  readEditorCoreMode,
-  writeEditorCoreMode,
-  type EditorCoreMode,
-} from '../../editor/editor-core'
 import type { AppMessage, MessagesSection, NoteLocation, ToastHistoryEntry } from '../../types/app'
 import { orderToastHistoryForDisplay } from '../overlays/toast-stack'
 
@@ -123,17 +115,9 @@ const EDITOR_ABLATION_MODE_DESCRIPTIONS: Record<EditorAblationMode, string> = {
   'toast-retain-current-previous': 'Current production path retaining the active and previous aisle editor.',
 }
 
-const EDITOR_CORE_MODE_DESCRIPTIONS: Record<EditorCoreMode, string> = {
-  auto: 'Uses the current safe default editor core. Toast UI remains the default until a replacement proves out.',
-  toast: 'Forces the current Toast UI editor core for every aisle.',
-  mdxeditor: 'Experimental replacement core. Faster in some cases, but app-specific tags, media, find, and toolbar parity are incomplete.',
-  codemirror: 'Forces the fast source-Markdown CodeMirror editor core for every aisle.',
-}
-
 function EditorDevMessagesSection() {
   const editorAblationEnabled = isEditorAblationEnabled()
   const [mode, setMode] = useState<EditorAblationMode>(() => readEditorAblationMode())
-  const [editorCoreMode, setEditorCoreMode] = useState<EditorCoreMode>(() => readEditorCoreMode())
   const [status, setStatus] = useState('')
 
   if (!editorAblationEnabled) {
@@ -157,12 +141,6 @@ function EditorDevMessagesSection() {
     setStatus(wrote ? 'Reload the app to apply this editor diagnostic mode.' : 'Could not save editor diagnostic mode.')
   }
 
-  const handleEditorCoreModeChange = (nextMode: EditorCoreMode) => {
-    const wrote = writeEditorCoreMode(nextMode)
-    setEditorCoreMode(nextMode)
-    setStatus(wrote ? 'Reload the app to apply this editor core.' : 'Could not save editor core mode.')
-  }
-
   const reloadApp = () => {
     if (typeof window !== 'undefined') {
       window.location.reload()
@@ -181,24 +159,6 @@ function EditorDevMessagesSection() {
             </p>
           </div>
         </div>
-        <div className="settings-hotkey-row">
-          <label className="settings-hotkey-label" htmlFor="messages-editor-core-mode">
-            editor core
-          </label>
-          <select
-            id="messages-editor-core-mode"
-            className="settings-select-input"
-            value={editorCoreMode}
-            onChange={(event) => handleEditorCoreModeChange(parseEditorCoreMode(event.target.value))}
-          >
-            {EDITOR_CORE_MODES.map((option) => (
-              <option key={option} value={option}>
-                {EDITOR_CORE_MODE_LABELS[option]}
-              </option>
-            ))}
-          </select>
-        </div>
-        <p className="settings-help">{EDITOR_CORE_MODE_DESCRIPTIONS[editorCoreMode]}</p>
         <div className="settings-hotkey-row">
           <label className="settings-hotkey-label" htmlFor="messages-editor-ablation-mode">
             editor diagnostic mode

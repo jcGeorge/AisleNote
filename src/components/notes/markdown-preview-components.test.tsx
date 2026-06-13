@@ -70,4 +70,20 @@ describe('markdown preview tag appearance', () => {
     expect(html).not.toContain('<span class="tabs-tag-token">#Inline</span>')
     expect(html).not.toContain('<span class="tabs-tag-token">#Fenced</span>')
   })
+
+  it('applies shared rendered Markdown surface classes to preview links and headings', () => {
+    const html = renderPreview('# My Header\n\n[copy](https://lucide.dev/icons/files)')
+
+    expect(html).toContain('class="tabs-rendered-markdown-heading tabs-rendered-markdown-heading-1"')
+    expect(html).toContain('class="tabs-rendered-markdown-link"')
+    expect(html).toContain('href="https://lucide.dev/icons/files"')
+  })
+
+  it('renders app highlight syntax without exposing the == markers', () => {
+    const html = renderPreview('Alright\n==highlighted==')
+
+    expect(html).toContain('class="tabs-rendered-markdown-highlight"')
+    expect(html).toContain('highlighted</span>')
+    expect(html).not.toContain('==highlighted==')
+  })
 })

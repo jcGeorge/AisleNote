@@ -216,6 +216,21 @@ describe('note preview references', () => {
     expect(resolveMarkdownNoteReferenceToken(state, token.slice(1))?.target.startAt).toBe('last-position')
   })
 
+  it('repairs double-angle preview destinations', () => {
+    const state = createReferenceState()
+    const token = buildPreviewToken(state, {
+      ...payload('last-position', targetLocation('parent', 'sub')),
+      previewStart: 'last-position' as const,
+    })
+    const doubleAngleToken = token.replace('(<Sub note', '(<<Sub note').replace('position>)', 'position>>)')
+
+    expect(parsePreviewToken(doubleAngleToken, state)).toMatchObject({
+      target: targetLocation('parent', 'sub'),
+      previewStart: 'last-position',
+    })
+    expect(resolveMarkdownNoteReferenceToken(state, doubleAngleToken)?.canonicalToken).toBe(token)
+  })
+
   it('does not parse old encoded or directive note preview tokens', () => {
     const state = createReferenceState()
 

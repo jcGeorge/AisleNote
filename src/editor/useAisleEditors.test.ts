@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   AISLE_ACTIVATION_WARNING_THRESHOLD_MS,
@@ -6,11 +8,23 @@ import {
   mergeAisleActivationDiagnosticSummary,
   shouldClearPendingCursorRestoreForAisleActivation,
   shouldDeferAisleCycleForMouseActivation,
-  shouldFocusAislePointerActivation,
   shouldUseFastSameAisleActivation,
 } from './aisle-activation'
 
+const useAisleEditorsSource = readFileSync(fileURLToPath(new URL('./useAisleEditors.ts', import.meta.url)), 'utf8')
+
 describe('aisle editor activation', () => {
+  it('uses Toast snapshots for mounted aisle content', () => {
+    expect(useAisleEditorsSource).toContain('const getSnapshotMarkdownForMeta = (meta: AisleEditorMeta): string')
+    expect(useAisleEditorsSource).toContain('return getSnapshotEditorMarkdown(meta.editor, cachedMarkdown ?? \'\', getNormalizedEditorMarkdown)')
+  })
+
+  it('records link-heavy editor hot-path diagnostics without changing renderer behavior', () => {
+    expect(useAisleEditorsSource).toContain("recordDiagnosticEvent('editor', event")
+    expect(useAisleEditorsSource).toContain("recordHotPathDiagnostic('change-hot-path'")
+    expect(useAisleEditorsSource).toContain("recordHotPathDiagnostic('linked-aisle-sync'")
+  })
+
   it('uses the fast path only when the current mounted aisle is already active', () => {
     expect(
       shouldUseFastSameAisleActivation({
@@ -53,12 +67,6 @@ describe('aisle editor activation', () => {
         activeAisleStateMatches: false,
       }),
     ).toBe(false)
-  })
-
-  it('does not force focus for pointer activation', () => {
-    expect(shouldFocusAislePointerActivation('aisle-1', 'aisle-1')).toBe(false)
-    expect(shouldFocusAislePointerActivation('aisle-1', 'aisle-2')).toBe(false)
-    expect(shouldFocusAislePointerActivation('aisle-1', '')).toBe(false)
   })
 
   it('clears pending cursor restore only for pointer activation', () => {

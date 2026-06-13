@@ -50,6 +50,7 @@ import {
   type WysiwygHistoryDirection,
   type WysiwygHistoryResult,
 } from './prosemirror-utils'
+import { recordDiagnosticEvent } from '../diagnostics/diagnostic-logger'
 import {
   buildMarkdownNoteReferenceToken,
   type InternalNoteLinkHit,
@@ -544,13 +545,12 @@ export function shouldSkipTableExitRepairTarget(target: Element | null): boolean
   )
 }
 
-function getInternalNoteLinkHitFromAnchor(
-  anchor: HTMLAnchorElement,
+function getInternalNoteLinkHitFromHref(
+  href: string,
+  label: string,
   range: ExternalLinkRange | null,
   resolveInternalNoteReferenceToken: (token: string) => ResolvedMarkdownNoteReference | null,
 ): InternalNoteLinkHit | null {
-  const href = anchor.getAttribute('href') || anchor.href
-  const label = anchor.textContent?.trim() || href
   const token = buildMarkdownNoteReferenceToken({ target: href, label })
   const reference = token ? resolveInternalNoteReferenceToken(token) : null
   if (!reference) return null
@@ -571,6 +571,41 @@ function getInternalNoteLinkHitFromAnchor(
     occurrence: 0,
     range: range ? { ...range, href } : null,
   }
+}
+
+type RenderedEditorLinkHit = {
+  href: string
+  label: string
+  element: HTMLElement
+  anchor: HTMLAnchorElement | null
+}
+
+function getRenderedEditorLinkHit(target: Element): RenderedEditorLinkHit | null {
+  const anchor = target.closest('a')
+  if (anchor instanceof HTMLAnchorElement) {
+    const href = anchor.getAttribute('href') || anchor.href
+    if (!href) return null
+    return {
+      href,
+      label: anchor.textContent?.trim() || href,
+      element: anchor,
+      anchor,
+    }
+  }
+
+  const renderedLink = target.closest<HTMLElement>('[data-tabs-link-url]')
+  const href = renderedLink?.dataset.tabsLinkUrl ?? renderedLink?.getAttribute('data-tabs-link-url') ?? ''
+  if (!renderedLink || !href) return null
+  return {
+    href,
+    label: renderedLink.textContent?.trim() || href,
+    element: renderedLink,
+    anchor: null,
+  }
+}
+
+function getEditorName(editor: Editor | null): 'toast' | 'none' {
+  return editor ? 'toast' : 'none'
 }
 
 export function getPlainTextPointerChromeClosePlan({
@@ -708,9 +743,25 @@ export function useEditorDomEvents({
 
     const isPrimaryMouseActivation = (event: Event) => !(event instanceof MouseEvent) || event.button === 0
 
+    const recordLinkInteractionDiagnostic = (
+      eventName: string,
+      startedAt: number,
+      details: Record<string, unknown>,
+    ) => {
+      if (!import.meta.env?.DEV) return
+      const durationMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt
+      if (durationMs < 8) return
+      recordDiagnosticEvent('editor', eventName, {
+        level: durationMs >= 50 ? 'warning' : 'info',
+        durationMs,
+        details,
+      })
+    }
+
     const getExternalLinkEditRange = (event: Event, href: string): ExternalLinkRange | null => {
       if (!(event instanceof MouseEvent)) return null
-      const view = getWysiwygView(editorRef.current)
+      const currentEditor = editorRef.current
+      const view = getWysiwygView(currentEditor)
       const coords = view?.posAtCoords?.({ left: event.clientX, top: event.clientY })
       if (!view || !coords) return null
       return (
@@ -720,13 +771,20 @@ export function useEditorDomEvents({
     }
 
     const handleAnchorInteraction = (event: Event, target: Element) => {
+      const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
       if (!isPrimaryMouseActivation(event)) return false
       if (event.type !== 'click') return false
-      const anchor = target.closest('a')
-      if (!(anchor instanceof HTMLAnchorElement)) return false
+      const linkHit = getRenderedEditorLinkHit(target)
+      if (!linkHit) return false
 
-      const href = anchor.getAttribute('href') || anchor.href
-      const internalLinkHit = getInternalNoteLinkHitFromAnchor(anchor, null, resolveInternalNoteReferenceToken)
+      const currentEditor = editorRef.current
+      const editor = getEditorName(currentEditor)
+      const internalLinkHit = getInternalNoteLinkHitFromHref(
+        linkHit.href,
+        linkHit.label,
+        null,
+        resolveInternalNoteReferenceToken,
+      )
 
       event.preventDefault()
       event.stopPropagation()
@@ -737,9 +795,22 @@ export function useEditorDomEvents({
           aisleId: internalLinkHit.heading ? undefined : internalLinkHit.aisleIds?.[0],
           startAt: internalLinkHit.startAt,
         })
+        recordLinkInteractionDiagnostic('link-click', startedAt, {
+          editor,
+          kind: 'internal',
+          href: linkHit.href,
+          resolved: true,
+        })
         return true
       }
-      if (!openExternalLink(href)) {
+      const opened = openExternalLink(linkHit.href)
+      recordLinkInteractionDiagnostic('link-click', startedAt, {
+        editor,
+        kind: 'external',
+        href: linkHit.href,
+        opened,
+      })
+      if (!opened) {
         // Keep the click from editing the URL even if the shell cannot open it.
         return true
       }
@@ -1110,17 +1181,28 @@ export function useEditorDomEvents({
         return
       }
       activateEditorFromEventTarget(target)
-      const anchor = target.closest('a')
-      if (anchor instanceof HTMLAnchorElement) {
-        const href = anchor.getAttribute('href') || anchor.href
-        const text = anchor.textContent ?? ''
-        const range = getExternalLinkEditRange(mouseEvent, href)
-        const internalLinkHit = getInternalNoteLinkHitFromAnchor(anchor, range, resolveInternalNoteReferenceToken)
+      const linkHit = getRenderedEditorLinkHit(target)
+      if (linkHit) {
+        const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+        const editor = getEditorName(editorRef.current)
+        const range = getExternalLinkEditRange(mouseEvent, linkHit.href)
+        const internalLinkHit = getInternalNoteLinkHitFromHref(
+          linkHit.href,
+          linkHit.label,
+          range,
+          resolveInternalNoteReferenceToken,
+        )
         prepareEditorContextMenuEvent(mouseEvent)
         onDismissEditorEphemeraBeforeContextMenu?.()
         closeLinkPrompt()
         setMenuOpen(false)
         if (internalLinkHit) {
+          recordLinkInteractionDiagnostic('link-context-menu', startedAt, {
+            editor,
+            kind: 'internal',
+            href: linkHit.href,
+            hasEditableRange: Boolean(range),
+          })
           openEditorContextMenu(
             {
               type: 'editor',
@@ -1135,6 +1217,12 @@ export function useEditorDomEvents({
           )
           return
         }
+        recordLinkInteractionDiagnostic('link-context-menu', startedAt, {
+          editor,
+          kind: 'external',
+          href: linkHit.href,
+          hasEditableRange: Boolean(range),
+        })
         openEditorContextMenu(
           {
             type: 'editor',
@@ -1142,8 +1230,8 @@ export function useEditorDomEvents({
             y: mouseEvent.clientY,
             link: {
               type: 'external',
-              href,
-              label: text,
+              href: linkHit.href,
+              label: linkHit.label,
               range,
             },
           },
@@ -1152,7 +1240,8 @@ export function useEditorDomEvents({
         return
       }
 
-      const view = getWysiwygView(editorRef.current)
+      const currentEditor = editorRef.current
+      const view = getWysiwygView(currentEditor)
       if (isActiveWysiwygEditorContentTarget(target, view)) {
         prepareEditorContextMenuEvent(mouseEvent)
         onDismissEditorEphemeraBeforeContextMenu?.()

@@ -799,6 +799,50 @@ describe('broken markdown table repair', () => {
       EDITOR_BLANK_LINE_PLACEHOLDER,
     ].join('\n'))
   })
+
+  it('removes pipe-only tail rows after a valid table', () => {
+    const table = [
+      '| inline code --> | `here!!` |',
+      '| --------------- | ------ |',
+    ].join('\n')
+    const source = [
+      table,
+      '|',
+      '\\|',
+      '|',
+    ].join('\n')
+
+    expect(repairBrokenMarkdownTables(source)).toBe(table)
+    expect(normalizeMarkdownForPersistence(source)).toBe(table)
+  })
+
+  it('keeps table tail repair stable across repeated save cycles', () => {
+    const table = [
+      '| inline code --> | `here!!` |',
+      '| --------------- | ------ |',
+    ].join('\n')
+    let markdown = table
+
+    for (let index = 0; index < 5; index += 1) {
+      markdown = normalizeMarkdownForPersistence([
+        markdown,
+        '|',
+        '\\|',
+      ].join('\n'))
+      expect(markdown).toBe(table)
+    }
+  })
+
+  it('does not remove standalone pipe paragraphs that are not table tails', () => {
+    const source = [
+      'before',
+      '|',
+      '\\|',
+      'after',
+    ].join('\n')
+
+    expect(repairBrokenMarkdownTables(source)).toBe(source)
+  })
 })
 
 describe('markdown highlight syntax', () => {

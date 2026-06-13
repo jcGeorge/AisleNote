@@ -262,7 +262,8 @@ export function useNoteMentionController({
 
   const dismissCurrentQuery = useCallback(() => {
     const currentMenu = menuRef.current
-    const currentQuery = currentMenu?.query ?? getNoteMentionQueryAtSelection(getWysiwygView(editorRef.current))
+    const activeEditor = editorRef.current
+    const currentQuery = currentMenu?.query ?? getNoteMentionQueryAtSelection(getWysiwygView(activeEditor))
     if (currentQuery) dismissedQueryRef.current = currentQuery
     closeMenuRef.current()
   }, [editorRef])
@@ -365,7 +366,8 @@ export function useNoteMentionController({
 
   const refreshQuery = useCallback(() => {
     if (viewMode !== 'main' || !editorRef.current) return
-    const query = getNoteMentionQueryAtSelection(getWysiwygView(editorRef.current))
+    const activeEditor = editorRef.current
+    const query = getNoteMentionQueryAtSelection(getWysiwygView(activeEditor))
     if (!query) {
       dismissedQueryRef.current = null
       if (menuRef.current) closeMenuRef.current()

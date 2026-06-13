@@ -998,6 +998,48 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
   }
 
+  const resetLocalNotebookToBlank = async () => {
+    const defaultProfileRootPath = getDefaultStorageProfileRoot(userDataPath)
+    const serializedState = JSON.stringify(createBlankNotebookState(userDataPath))
+
+    try {
+      watcher?.markAppWrite()
+      saveNotebookState(defaultProfileRootPath, serializedState, {
+        userDataPath,
+        userSettingsRoot: userDataPath,
+        replaceExisting: true,
+      })
+      watcher?.markAppWrite()
+
+      const result = coordinator.reloadProfileRoot(defaultProfileRootPath, {
+        requireSerializedState: true,
+        detectAppSaveEcho: false,
+      })
+      if (!result.ok) {
+        updateStatus('notebook-reset-error', result.error ?? 'Local notebook could not be reset.')
+        return { ok: false, error: result.error ?? 'Local notebook could not be reset.', status }
+      }
+
+      profile = {
+        ...writeStorageProfileConfig(userDataPath, defaultProfileRootPath, {
+          forgetPaths: profile.knownNotebookPaths,
+        }),
+        userDataPath,
+      }
+      updateStatus('notebook-reset-local')
+      startWatcher()
+      broadcastAppStateUpdate({
+        serializedState: result.serializedState,
+        revision: result.revision,
+      })
+      return { ok: true, status }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Local notebook could not be reset.'
+      updateStatus('notebook-reset-error', message)
+      return { ok: false, error: message, status }
+    }
+  }
+
   const chooseUserSettingsFolder = async (event = null) => {
     if (!dialog || typeof dialog.showOpenDialog !== 'function') {
       return { ok: false, error: 'Folder selection is unavailable.', status: userSettingsLocationStatus }
@@ -1212,6 +1254,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   ipcMain.handle?.('get-user-settings-location-status', async () => userSettingsLocationStatus)
   ipcMain.handle?.('choose-notebook-location', chooseNotebookLocation)
   ipcMain.handle?.('create-notebook', createNotebook)
+  ipcMain.handle?.('reset-local-notebook-to-blank', resetLocalNotebookToBlank)
   ipcMain.handle?.('rename-notebook', renameNotebook)
   ipcMain.handle?.('open-notebook', openNotebook)
   ipcMain.handle?.('switch-notebook', switchNotebook)
@@ -1381,6 +1424,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     getProfileRootPath: () => profile.profileRootPath,
     getStorageProfileStatus: () => status,
     getUserSettingsLocationStatus: () => userSettingsLocationStatus,
+    resetLocalNotebookToBlank,
     resetUserSettingsToDefaults,
     saveRendererAppState: saveRevisionedState,
     scanStorageProfile: () => watcher?.scan(),

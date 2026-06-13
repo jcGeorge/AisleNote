@@ -108,47 +108,6 @@ button:hover {
   min-height: 360px;
 }
 
-.editor-benchmark-codemirror .cm-editor,
-.editor-benchmark-lexical-content,
-.editor-benchmark-tiptap-content {
-  border: 1px solid #ccd3dc;
-  border-radius: 6px;
-  min-height: 360px;
-}
-
-.editor-benchmark-codemirror .cm-scroller,
-.editor-benchmark-lexical-content,
-.editor-benchmark-tiptap-content {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.editor-benchmark-lexical-content,
-.editor-benchmark-tiptap-content {
-  outline: none;
-  overflow: auto;
-  padding: 12px;
-}
-
-.editor-benchmark-mdxeditor .mdxeditor,
 .editor-benchmark-toastui .toastui-editor-defaultUI {
   min-height: 360px;
-}
-
-.editor-benchmark-tiptap table,
-.editor-benchmark-lexical table,
-.editor-benchmark-mdxeditor table {
-  border-collapse: collapse;
-  width: 100%;
-}
-
-.editor-benchmark-tiptap td,
-.editor-benchmark-tiptap th,
-.editor-benchmark-lexical td,
-.editor-benchmark-lexical th,
-.editor-benchmark-mdxeditor td,
-.editor-benchmark-mdxeditor th {
-  border: 1px solid #ccd3dc;
-  padding: 4px 6px;
 }

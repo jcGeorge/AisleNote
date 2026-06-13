@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildRetainedAisleEditorIds,
+  buildRetainedToastAisleEditorIds,
   getAislePreviewMarkdown,
 } from './aisle-editor-retention'
 import type { PendingContent, ResolvedNoteAisle } from '../types/app'
@@ -66,6 +67,34 @@ describe('aisle editor retention helpers', () => {
     })
 
     expect(Array.from(retained).sort()).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('keeps Toast UI small-note background retention behavior unchanged', () => {
+    const retained = buildRetainedToastAisleEditorIds({
+      aisleIds: ['a', 'b', 'c', 'd'],
+      activeAisleId: 'b',
+      backgroundAisleIds: ['a', 'b', 'c', 'd'],
+      nearVisibleAisleIds: [],
+      recentAisleIds: [],
+      toastRecentRetainLimit: 3,
+      smallNoteLiveLimit: 4,
+    })
+
+    expect(Array.from(retained).sort()).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('keeps Toast UI large-note retention limited to near-visible and three recent aisles', () => {
+    const retained = buildRetainedToastAisleEditorIds({
+      aisleIds: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8'],
+      activeAisleId: 'a8',
+      backgroundAisleIds: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8'],
+      nearVisibleAisleIds: ['a7'],
+      recentAisleIds: ['a6', 'a5', 'a4', 'a3'],
+      toastRecentRetainLimit: 3,
+      smallNoteLiveLimit: 4,
+    })
+
+    expect(Array.from(retained).sort()).toEqual(['a4', 'a5', 'a6', 'a7', 'a8'])
   })
 
   it('prefers pending and last editor markdown for fallback previews', () => {

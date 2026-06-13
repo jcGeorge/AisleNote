@@ -107,6 +107,10 @@ function isMarkdownTableDelimiterLine(line: string): boolean {
   return Boolean(cells?.length && cells.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, ''))))
 }
 
+function isMalformedMarkdownTableTailLine(line: string): boolean {
+  return /^\s*\\?\|\s*$/.test(line)
+}
+
 type MarkdownTableLineInfo = {
   cells: string[]
   escaped: boolean
@@ -204,6 +208,9 @@ export function repairBrokenMarkdownTables(markdown: string): string {
     if (table) {
       repairedLines.push(...table.lines)
       index = table.endIndex
+      while (index < lines.length && isMalformedMarkdownTableTailLine(lines[index])) {
+        index += 1
+      }
       continue
     }
 

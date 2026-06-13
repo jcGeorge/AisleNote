@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getUserSettingsLocationStatus: () => ipcRenderer.invoke('get-user-settings-location-status'),
   chooseNotebookLocation: () => ipcRenderer.invoke('choose-notebook-location'),
   createNotebook: (payload) => ipcRenderer.invoke('create-notebook', payload),
+  resetLocalNotebookToBlank: () => ipcRenderer.invoke('reset-local-notebook-to-blank'),
   renameNotebook: (payload) => ipcRenderer.invoke('rename-notebook', payload),
   openNotebook: () => ipcRenderer.invoke('open-notebook'),
   switchNotebook: (payload) => ipcRenderer.invoke('switch-notebook', payload),

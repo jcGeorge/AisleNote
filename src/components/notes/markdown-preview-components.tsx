@@ -11,7 +11,12 @@ import {
 import { BLOCK_INDENT_TOKEN, countBlockIndentLevels } from '../../markdown/markdown-utils'
 import { MediaPlayer } from '../../media/MediaPlayer'
 import { getMediaKindFromUrl, isPotentialMediaUrl } from '../../media/media-utils'
-import { extractMarkdownTagRanges, TAG_TOKEN_CLASS_NAME } from '../../tags/tags.js'
+import { TAG_TOKEN_CLASS_NAME } from '../../tags/tags.js'
+import {
+  RENDERED_MARKDOWN_CLASS_NAMES,
+  getRenderedMarkdownInlineTextParts,
+  getRenderedMarkdownHeadingClassName,
+} from '../../editor/rendered-markdown-surface'
 
 type MarkdownParagraphProps = HTMLAttributes<HTMLParagraphElement> & {
   node?: unknown
@@ -66,28 +71,30 @@ function getReactNodeText(node: ReactNode): string {
   return ''
 }
 
-function renderTaggedText(value: string, keyPrefix: string): ReactNode {
-  const ranges = extractMarkdownTagRanges(value)
-  if (ranges.length === 0) return value
+function renderInlineText(value: string, keyPrefix: string): ReactNode {
+  const parts = getRenderedMarkdownInlineTextParts(value)
+  if (parts.length === 1 && parts[0].kind === 'text') return parts[0].text
 
-  const parts: ReactNode[] = []
-  let cursor = 0
-  ranges.forEach((range, index) => {
-    if (range.from > cursor) parts.push(value.slice(cursor, range.from))
-    parts.push(
+  return parts.map((part, index) => {
+    if (part.kind === 'text') return part.text
+    if (part.kind === 'highlight') {
+      return (
+        <span key={`${keyPrefix}-highlight-${index}`} className={RENDERED_MARKDOWN_CLASS_NAMES.highlight}>
+          {part.text}
+        </span>
+      )
+    }
+    return (
       <span
-        key={`${keyPrefix}-tag-${index}-${range.from}`}
+        key={`${keyPrefix}-tag-${index}`}
         className={TAG_TOKEN_CLASS_NAME}
-        data-tabs-tag={range.tag}
+        data-tabs-tag={part.tag}
         data-app-tooltip="filter by tag"
       >
-        {value.slice(range.from, range.to)}
-      </span>,
+        {part.text}
+      </span>
     )
-    cursor = range.to
   })
-  if (cursor < value.length) parts.push(value.slice(cursor))
-  return parts
 }
 
 function isCodePreviewElement(node: ReactNode): boolean {
@@ -96,8 +103,8 @@ function isCodePreviewElement(node: ReactNode): boolean {
 }
 
 function renderMarkdownPreviewTagsWithKey(node: ReactNode, keyPrefix: string): ReactNode {
-  if (typeof node === 'string') return renderTaggedText(node, keyPrefix)
-  if (typeof node === 'number') return renderTaggedText(String(node), keyPrefix)
+  if (typeof node === 'string') return renderInlineText(node, keyPrefix)
+  if (typeof node === 'number') return renderInlineText(String(node), keyPrefix)
   if (!node || typeof node === 'boolean') return node
   if (Array.isArray(node)) {
     return Children.map(node, (child, index) => renderMarkdownPreviewTagsWithKey(child, `${keyPrefix}-${index}`))
@@ -134,7 +141,11 @@ export function MarkdownPreviewParagraph({
     <p
       {...props}
       style={blockIndentStyle}
-      className={mergeClassNames(className, previewChildren.blockIndentLevel > 0 ? 'tabs-block-indent' : undefined)}
+      className={mergeClassNames(
+        className,
+        RENDERED_MARKDOWN_CLASS_NAMES.paragraph,
+        previewChildren.blockIndentLevel > 0 ? 'tabs-block-indent' : undefined,
+      )}
     >
       {renderMarkdownPreviewTags(previewChildren.children)}
     </p>
@@ -143,10 +154,15 @@ export function MarkdownPreviewParagraph({
 
 function renderMarkdownPreviewHeading(
   Tag: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6',
-  { node, children, ...props }: MarkdownHeadingProps,
+  { node, children, className, ...props }: MarkdownHeadingProps,
 ) {
   void node
-  return <Tag {...props}>{renderMarkdownPreviewTags(children)}</Tag>
+  const level = Number(Tag.slice(1))
+  return (
+    <Tag {...props} className={mergeClassNames(className, getRenderedMarkdownHeadingClassName(level))}>
+      {renderMarkdownPreviewTags(children)}
+    </Tag>
+  )
 }
 
 export function MarkdownPreviewHeading1(props: MarkdownHeadingProps) {
@@ -179,7 +195,11 @@ export function MarkdownPreviewListItem({
   ...props
 }: MarkdownListItemProps) {
   void node
-  return <li {...props}>{renderMarkdownPreviewTags(children)}</li>
+  return (
+    <li {...props} className={mergeClassNames(props.className, RENDERED_MARKDOWN_CLASS_NAMES.listItem)}>
+      {renderMarkdownPreviewTags(children)}
+    </li>
+  )
 }
 
 export function MarkdownPreviewLink({
@@ -195,7 +215,7 @@ export function MarkdownPreviewLink({
   }
 
   return (
-    <a {...props} href={href}>
+    <a {...props} href={href} className={mergeClassNames(props.className, RENDERED_MARKDOWN_CLASS_NAMES.link)}>
       {children}
     </a>
   )

@@ -232,6 +232,11 @@ export function getEditorCursorSelection(editor: Editor | null): EditorCursorSel
   }
 }
 
+export function getEditorDocSize(editor: Editor | null): number {
+  const view = getWysiwygView(editor)
+  return view?.state?.doc?.content?.size ?? 0
+}
+
 export function restoreEditorCursorSelection(
   editor: Editor | null,
   selection: EditorCursorSelection,

@@ -91,7 +91,25 @@ async function confirmAndResetUserSettings(window = BrowserWindow.getFocusedWind
   }
 }
 
-function installApplicationMenu({ onNewWindow, onResetUserSettings }) {
+async function confirmAndResetLocalNotebook(window = BrowserWindow.getFocusedWindow()) {
+  if (!storageSession?.resetLocalNotebookToBlank) return
+  const confirmation = await dialog.showMessageBox(window ?? undefined, {
+    type: 'warning',
+    buttons: ['Reset local notebook', 'Cancel'],
+    cancelId: 1,
+    defaultId: 1,
+    message: 'Reset local notebook to blank?',
+    detail:
+      'This deletes the local notebook stored on this device and switches Tabs back to a blank local notebook. Connected notebook folders are not modified.',
+  })
+  if (confirmation.response !== 0) return
+  const result = await storageSession.resetLocalNotebookToBlank()
+  if (!result?.ok) {
+    dialog.showErrorBox('Local notebook reset failed', result?.error ?? 'Local notebook could not be reset.')
+  }
+}
+
+function installApplicationMenu({ onNewWindow, onResetUserSettings, onResetLocalNotebook }) {
   const isMac = process.platform === 'darwin'
   if (!isMac) {
     Menu.setApplicationMenu(null)
@@ -120,6 +138,10 @@ function installApplicationMenu({ onNewWindow, onResetUserSettings }) {
           label: 'Reset User Settings to Defaults',
           accelerator: 'CommandOrControl+Alt+Shift+R',
           click: onResetUserSettings,
+        },
+        {
+          label: 'Reset Local Notebook to Blank',
+          click: onResetLocalNotebook,
         },
       ],
     },
@@ -311,7 +333,11 @@ if (!gotSingleInstanceLock) {
     storageSession = registerStorageIpc({ ipcMain, app, BrowserWindow, dialog, shell })
     editorContextMenuIpc = createEditorContextMenuIpc({ ipcMain, BrowserWindow })
     registerImageAssetProtocol({ protocol, storageSession })
-    installApplicationMenu({ onNewWindow: openAppWindow, onResetUserSettings: () => confirmAndResetUserSettings() })
+    installApplicationMenu({
+      onNewWindow: openAppWindow,
+      onResetUserSettings: () => confirmAndResetUserSettings(),
+      onResetLocalNotebook: () => confirmAndResetLocalNotebook(),
+    })
     registerFileIpc({ ipcMain, dialog, storageSession })
     registerClipboardIpc({ ipcMain, clipboard, nativeImage })
     registerUpdateIpc({ ipcMain, updateService })

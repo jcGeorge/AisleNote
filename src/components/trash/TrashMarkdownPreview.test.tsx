@@ -9,7 +9,8 @@ describe('TrashMarkdownPreview', () => {
     )
 
     expect(html).toContain('data-trash-markdown-preview="true"')
-    expect(html).toContain('<h1>Deleted note</h1>')
+    expect(html).toContain('class="tabs-rendered-markdown-heading tabs-rendered-markdown-heading-1"')
+    expect(html).toContain('Deleted note</h1>')
     expect(html).toContain('<strong>content</strong>')
     expect(html).not.toContain('toast-editor-host')
   })

@@ -223,27 +223,12 @@ function assessMarkdownRoundTrip(markdown, candidate, renderedShape) {
 function createRecommendation(results) {
   const successful = results.filter((result) => result.ok)
   const toast = successful.find((result) => result.candidate.id === 'toast-ui')
-  const codeMirror = successful.find((result) => result.candidate.id === 'codemirror-6')
-  const mdx = successful.find((result) => result.candidate.id === 'mdxeditor')
-  const lexical = successful.find((result) => result.candidate.id === 'lexical-direct')
 
   if (toast && meetsToastUiKeepThreshold(toast)) {
-    return 'Keep Toast UI only if the production-only plugins/blank-restore path are proven to be the actual issue; the isolated baseline met the spike thresholds.'
+    return 'Toast UI met the benchmark thresholds.'
   }
 
-  if (toast && mdx && mdx.roundTrip.status !== 'fail' && beatsByTwoX(mdx, toast)) {
-    return 'Replace Toast UI with MDXEditor/Lexical first: it preserves WYSIWYG Markdown and beat Toast UI by at least 2x on mount and p95 typing in this harness.'
-  }
-
-  if (lexical && lexical.roundTrip.status !== 'fail' && (!mdx || isMeaningfullyFaster(lexical, mdx))) {
-    return 'Test a direct Lexical prototype next: direct Lexical performed well enough to justify custom Markdown table work.'
-  }
-
-  if (codeMirror) {
-    return 'Use CodeMirror 6 as the performance control and replacement fallback if WYSIWYG can be relaxed; continue WYSIWYG testing if that UX requirement is firm.'
-  }
-
-  return 'No replacement candidate completed cleanly; fix the benchmark/runtime failures before making an editor foundation decision.'
+  return 'Toast UI did not meet the benchmark thresholds; inspect production editor diagnostics and Toast-specific plugins before changing editor foundations.'
 }
 
 function meetsToastUiKeepThreshold(result) {
@@ -257,18 +242,6 @@ function meetsToastUiKeepThreshold(result) {
   )
 }
 
-function beatsByTwoX(candidate, baseline) {
-  const baselineTyping = Math.max(baseline.typeOutside.p95, baseline.typeInside.p95)
-  const candidateTyping = Math.max(candidate.typeOutside.p95, candidate.typeInside.p95)
-  return candidate.mountMs * 2 <= baseline.mountMs && candidateTyping * 2 <= baselineTyping
-}
-
-function isMeaningfullyFaster(candidate, baseline) {
-  const baselineTyping = Math.max(baseline.typeOutside.p95, baseline.typeInside.p95)
-  const candidateTyping = Math.max(candidate.typeOutside.p95, candidate.typeInside.p95)
-  return candidate.mountMs < baseline.mountMs * 0.75 || candidateTyping < baselineTyping * 0.75
-}
-
 async function writeReports(results) {
   await mkdir(outputDir, { recursive: true })
   await writeFile(resolve(outputDir, 'latest.json'), `${JSON.stringify(results, null, 2)}\n`)
@@ -277,7 +250,7 @@ async function writeReports(results) {
 
 function createMarkdownReport(results) {
   const lines = [
-    '# Replacement Editor Benchmark',
+    '# Toast UI Editor Benchmark',
     '',
     `Generated: ${results.generatedAt}`,
     `Fixture: ${results.fixture}`,

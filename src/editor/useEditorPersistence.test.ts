@@ -6,6 +6,7 @@ import {
   applyEditorContentSnapshotsToState,
   EDITOR_PENDING_CONTENT_COMMIT_DELAY_MS,
   applyFreshEditorSnapshotToState,
+  createKnownMarkdownPendingContentDraft,
   getEditorFocusBoundarySaveOptions,
   getSnapshotEditorMarkdown,
   isEditorContentTargetCurrent,
@@ -141,6 +142,34 @@ describe('editor persistence snapshot helpers', () => {
       markdown: 'direct draft',
     })
     expect(onMaterialized).not.toHaveBeenCalled()
+  })
+
+  it('defers known Markdown draft normalization until materialization', () => {
+    const normalizeMarkdown = vi.fn((markdown: string) => `normalized:${markdown}`)
+    const onMaterialized = vi.fn()
+    const draft = createKnownMarkdownPendingContentDraft({
+      noteBodyId: 'body-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: null,
+      aisleId: 'aisle-a',
+      aisleBodyId: 'body-a-aisle',
+      markdown: '[copy](https://lucide.dev/icons/files)',
+    }, onMaterialized)
+
+    expect(normalizeMarkdown).not.toHaveBeenCalled()
+    expect(draft.markdown).toBe('[copy](https://lucide.dev/icons/files)')
+    expect(materializePendingContentDraft(draft, normalizeMarkdown)).toEqual({
+      noteBodyId: 'body-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: null,
+      aisleId: 'aisle-a',
+      aisleBodyId: 'body-a-aisle',
+      markdown: 'normalized:[copy](https://lucide.dev/icons/files)',
+    })
+    expect(normalizeMarkdown).toHaveBeenCalledTimes(1)
+    expect(onMaterialized).toHaveBeenCalledWith('normalized:[copy](https://lucide.dev/icons/files)')
   })
 
   it('keeps cached pending markdown if lazy materialization fails', () => {
@@ -320,6 +349,34 @@ describe('editor persistence snapshot helpers', () => {
 
     expect(next).toBe(base)
     expect(next.noteAisleBodies?.find((body) => body.id === 'body-a-aisle')?.markdown).toBe('old')
+  })
+
+  it('applies mounted snapshots to their original note when another note has the same aisle id', () => {
+    const base = persistenceState()
+    const secondTab = {
+      id: 'tab-b',
+      title: 'Tab B',
+      noteBodyId: 'body-b',
+      activeSubTabId: null,
+      subTabs: [],
+    }
+    base.spaces[0].data.activeTabId = 'tab-b'
+    base.spaces[0].data.tabs.push(secondTab)
+    base.noteBodies.push({ id: 'body-b', aisles: [{ id: 'aisle-a', aisleBodyId: 'body-b-aisle' }] })
+    base.noteAisleBodies?.push({ id: 'body-b-aisle', createdAt: '1', updatedAt: '1', markdown: 'new note content' })
+
+    const next = applyEditorContentSnapshotsToState(base, [{
+      noteBodyId: 'body-a',
+      spaceId: 'space-a',
+      tabId: 'tab-a',
+      subTabId: null,
+      aisleId: 'aisle-a',
+      aisleBodyId: 'body-a-aisle',
+      markdown: 'old note snapshot',
+    }])
+
+    expect(next.noteAisleBodies?.find((body) => body.id === 'body-a-aisle')?.markdown).toBe('old note snapshot')
+    expect(next.noteAisleBodies?.find((body) => body.id === 'body-b-aisle')?.markdown).toBe('new note content')
   })
 
   it('lets mounted aisle snapshots win over stale pending content on save boundaries', () => {

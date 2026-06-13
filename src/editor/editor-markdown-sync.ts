@@ -62,6 +62,23 @@ export function shouldScheduleContentCommitForEditorChange({
   return currentCanonicalMarkdown !== nextCanonicalMarkdown
 }
 
+export function hasMountedLinkedAisleEditor({
+  sourceAisleId,
+  mountedAisleIds,
+  getAisleBodyIdForAisleId,
+}: {
+  sourceAisleId: string
+  mountedAisleIds: Iterable<string>
+  getAisleBodyIdForAisleId: (aisleId: string) => string
+}): boolean {
+  const sourceAisleBodyId = getAisleBodyIdForAisleId(sourceAisleId)
+  for (const mountedAisleId of mountedAisleIds) {
+    if (mountedAisleId === sourceAisleId) continue
+    if (getAisleBodyIdForAisleId(mountedAisleId) === sourceAisleBodyId) return true
+  }
+  return false
+}
+
 export function chooseLazyContentCommitFallbackMarkdown({
   pendingMarkdown,
   cachedMarkdown,

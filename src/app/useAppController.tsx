@@ -149,7 +149,6 @@ import { getAisleIdFromAisleEditorKey } from '../editor/aisle-editor'
 import {
   getActiveAisleRefSyncValue,
   shouldDeferAisleCycleForMouseActivation,
-  shouldFocusAislePointerActivation,
   type AisleActivationSource,
 } from '../editor/aisle-activation'
 import { useAisleController } from '../editor/useAisleController'
@@ -180,7 +179,6 @@ import {
   type WysiwygHistoryResult,
 } from '../editor/prosemirror-utils'
 import { useAisleEditors } from '../editor/useAisleEditors'
-import { isCodeMirrorMarkdownEditor } from '../editor/codemirror-markdown-editor'
 import { useEditorDomEvents } from '../editor/useEditorDomEvents'
 import { useEditorPersistence } from '../editor/useEditorPersistence'
 import { useEditorToolbarLayer } from '../editor/useEditorToolbarLayer'
@@ -1717,6 +1715,7 @@ export function useAppController(): AppController {
   })
   const pendingCursorRestoreRef = cursorPersistence.pendingCursorRestoreRef
   const applyActiveCursorToState = cursorPersistence.applyActiveCursorToState
+  const getSavedCursorSelection = cursorPersistence.getSavedCursorSelection
   const saveActiveCursorLocation = cursorPersistence.saveActiveCursorLocation
 
   const editorPersistence = useEditorPersistence({
@@ -1754,10 +1753,10 @@ export function useAppController(): AppController {
     persistLatestStateSnapshot()
   }
 
-  const saveActiveCursorBeforeNavigation = () => {
+  const saveActiveCursorBeforeNavigation = useCallback(() => {
     saveActiveCursorLocation()
     flushPendingContent({ captureActiveTableEditorSnapshot: true })
-  }
+  }, [flushPendingContent, saveActiveCursorLocation])
 
   const getActiveNoteHistoryKey = () =>
     [
@@ -4909,11 +4908,7 @@ export function useAppController(): AppController {
       // If the editor cannot be read, still push the known replacement result into it.
     }
     normalizingAisleIdsRef.current.add(activeAisle.id)
-    if (isCodeMirrorMarkdownEditor(currentEditor)) {
-      currentEditor.setMarkdown(nextMarkdown, false)
-    } else {
-      setEditorMarkdownForDisplay(currentEditor, nextMarkdown, false)
-    }
+    setEditorMarkdownForDisplay(currentEditor, nextMarkdown, false)
   }
 
   const applyFindReplacement = (mode: 'current' | 'all') => {
@@ -5867,7 +5862,7 @@ export function useAppController(): AppController {
     pendingCursorRestoreRef.current = {
       noteLocationKey,
       aisleId: targetAisleId,
-      selection: savedLocation?.aisles[targetAisleId] ?? null,
+      selection: getSavedCursorSelection(noteLocationKey, targetAisleId) ?? savedLocation?.aisles[targetAisleId] ?? null,
       focusIntent: 'aisle-activation',
     }
     pendingFocusToAisleIdRef.current = targetAisleId
@@ -5887,6 +5882,7 @@ export function useAppController(): AppController {
     arrangeMode.active,
     flushPendingContent,
     getAisleIdFromCurrentDomFocus,
+    getSavedCursorSelection,
     pendingCursorRestoreRef,
     saveActiveCursorLocation,
     scratchpadWorkspaceActive,
@@ -7077,7 +7073,7 @@ export function useAppController(): AppController {
                   return
                 }
                 pendingMouseAisleActivationRef.current = { aisleId: targetAisleId, settled: false }
-                const shouldFocus = shouldFocusAislePointerActivation(activeAisleIdRef.current, targetAisleId)
+                const shouldFocus = false
                 pendingFocusToAisleIdRef.current = null
                 pendingCursorRestoreRef.current = null
                 recordDiagnosticEvent('aisle', 'pointer-activation', {
@@ -7085,6 +7081,7 @@ export function useAppController(): AppController {
                     editorKey,
                     targetAisleId,
                     previousAisleId: activeAisleIdRef.current,
+                    editor: 'toast',
                     shouldFocus,
                   },
                 })

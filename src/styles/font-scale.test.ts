@@ -363,6 +363,17 @@ describe('editor list marker styles', () => {
   })
 })
 
+describe('editor link affordances', () => {
+  it('shows clickable rendered links with a pointer cursor and hover color', () => {
+    const css = readStyle('editor-shell.css')
+    const renderedLinkRule = extractRule(css, '.tabs-rendered-markdown-surface .tabs-rendered-markdown-link')
+
+    expect(renderedLinkRule).toContain('cursor: pointer;')
+    expect(css).toContain('.tabs-rendered-markdown-surface .tabs-rendered-markdown-link:hover')
+    expect(css).toContain('color: var(--editor-link-hover-text, var(--editor-link-text, var(--accent)));')
+  })
+})
+
 describe('editor annotation styles', () => {
   it('positions the double-dash annotation marker below the text midline', () => {
     const css = readStyle('editor-content.css')
@@ -1215,11 +1226,8 @@ describe('table cell styles', () => {
       '--editor-table-grid-border: color-mix(in srgb, var(--custom-palette-border) 62%, var(--custom-palette-text));',
     )
     expect(editorContentCss).toContain('.toastui-editor-contents table,\n.toastui-editor .ProseMirror table')
-    expect(editorContentCss).toContain('.tabs-mdxeditor-content table')
-    expect(editorContentCss).toContain(".tabs-mdxeditor-content table[class*='_tableEditor'] > thead")
     expect(editorContentCss).toContain('border: 1px solid var(--editor-table-grid-border) !important;')
     expect(editorContentCss).toContain('.toastui-editor-contents th,\n.toastui-editor .ProseMirror th')
-    expect(editorContentCss).toContain('.tabs-mdxeditor-content th,\n.tabs-mdxeditor-content td')
     expect(editorContentCss).toContain('font-style: inherit !important;')
     expect(editorContentCss).toContain('font-weight: inherit !important;')
     expect(editorContentCss).toContain('text-align: inherit !important;')
@@ -1316,21 +1324,6 @@ describe('theme editor selector deduplication', () => {
     expect(editorShellCss).toContain('.tag-autocomplete-token.tabs-tag-token')
     expect(editorShellCss).toContain('color: var(--editor-tag-text);')
     expect(editorShellCss).toContain('background: var(--editor-tag-bg);')
-  })
-
-  it('keeps MDXEditor visual overrides scoped to the replacement host', () => {
-    const editorBaseCss = readStyle('editor-base.css')
-    const editorContentCss = readStyle('editor-content.css')
-    const editorShellCss = readStyle('editor-shell.css')
-
-    expect(editorBaseCss).toContain('.tabs-mdxeditor-host,\n.tabs-mdxeditor-host .mdxeditor,')
-    expect(editorShellCss).toContain('.tabs-mdxeditor-host .tabs-mdxeditor,\n.tabs-mdxeditor-host .mdxeditor,')
-    expect(editorShellCss).toContain('.tabs-mdxeditor-host [contenteditable=\'true\']:focus,')
-    expect(editorShellCss).toContain('.tabs-mdxeditor-loading')
-    expect(editorContentCss).toContain('.tabs-mdxeditor-content {')
-    expect(editorContentCss).toContain('font-size: calc(1rem * var(--note-font-scale, 1)) !important;')
-    expect(editorContentCss).toContain('.tabs-mdxeditor-content a')
-    expect(editorContentCss).toContain('.note-aisle-editor-shell .tabs-mdxeditor-content > h1:first-child')
   })
 
   it('keeps theme files focused on tokens and true exceptions', () => {

@@ -12,6 +12,26 @@ export type AisleEditorRetentionInput = {
   retainNearVisibleAisles?: boolean
 }
 
+export type ToastAisleEditorRetentionInput = {
+  aisleIds: string[]
+  activeAisleId: string
+  backgroundAisleIds?: Iterable<string>
+  nearVisibleAisleIds?: Iterable<string>
+  recentAisleIds?: Iterable<string>
+  toastRecentRetainLimit: number
+  smallNoteLiveLimit: number
+}
+
+function takeIterableValues(values: Iterable<string>, limit: number) {
+  if (limit <= 0) return []
+  const selected: string[] = []
+  for (const value of values) {
+    selected.push(value)
+    if (selected.length >= limit) break
+  }
+  return selected
+}
+
 export function buildRetainedAisleEditorIds({
   aisleIds,
   activeAisleId,
@@ -46,6 +66,25 @@ export function buildRetainedAisleEditorIds({
   }
 
   return retainedIds
+}
+
+export function buildRetainedToastAisleEditorIds({
+  aisleIds,
+  activeAisleId,
+  backgroundAisleIds = [],
+  nearVisibleAisleIds = [],
+  recentAisleIds = [],
+  toastRecentRetainLimit,
+  smallNoteLiveLimit,
+}: ToastAisleEditorRetentionInput): Set<string> {
+  return buildRetainedAisleEditorIds({
+    aisleIds,
+    activeAisleId,
+    backgroundAisleIds: aisleIds.length <= smallNoteLiveLimit ? backgroundAisleIds : [],
+    nearVisibleAisleIds,
+    recentAisleIds: takeIterableValues(recentAisleIds, toastRecentRetainLimit),
+    retainNearVisibleAisles: aisleIds.length > smallNoteLiveLimit,
+  })
 }
 
 export function getAislePreviewMarkdown({

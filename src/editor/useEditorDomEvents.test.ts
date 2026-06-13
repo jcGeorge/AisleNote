@@ -199,6 +199,14 @@ describe('editor DOM events', () => {
     expect(source).toContain('onOpenUrlLinkShortcut()')
   })
 
+  it('handles rendered links through delegated DOM hit testing', () => {
+    const source = readUseEditorDomEventsSource()
+
+    expect(source).toContain("target.closest<HTMLElement>('[data-tabs-link-url]')")
+    expect(source).toContain('const linkHit = getRenderedEditorLinkHit(target)')
+    expect(source).toContain("recordDiagnosticEvent('editor', eventName")
+  })
+
   it('treats editor chrome as special pointer targets outside normal text selection', () => {
     expect(isEditorPointerChromeTarget(fakeTarget('.image-tools'))).toBe(true)
     expect(isEditorPointerChromeTarget(fakeTarget('.media-tools'))).toBe(true)
