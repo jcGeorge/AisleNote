@@ -31,6 +31,10 @@ type UseEditorPersistenceParams = {
   applyActiveCursorToState: (previous: AppState) => AppState
 }
 
+export type FlushPendingContentOptions = {
+  captureActiveTableEditorSnapshot?: boolean
+}
+
 export function getSnapshotEditorMarkdown(
   editor: Editor | null,
   fallbackMarkdown: string,
@@ -75,7 +79,7 @@ export type EditorFocusBoundaryEvent = 'blur' | 'visibilitychange' | 'beforeunlo
 export type EditorFocusBoundaryFlushAction = 'schedule' | 'force' | 'ignore'
 
 export const EDITOR_FOCUS_BOUNDARY_FLUSH_DELAY_MS = 60
-export const EDITOR_PENDING_CONTENT_COMMIT_DELAY_MS = 30_000
+export const EDITOR_PENDING_CONTENT_COMMIT_DELAY_MS = 180
 
 export function resolveEditorFocusBoundaryFlushAction(
   eventName: EditorFocusBoundaryEvent,
@@ -115,6 +119,29 @@ export function shouldPersistFocusBoundarySnapshot({
 }): boolean {
   if (eventName === 'beforeunload' || eventName === 'pagehide') return true
   return stateChanged || pendingEditorCount > 0
+}
+
+function hasMarkdownTable(markdown: string): boolean {
+  const lines = String(markdown ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const header = lines[index].trim()
+    const delimiter = lines[index + 1].trim()
+    if (!header.startsWith('|') || !header.endsWith('|')) continue
+    if (!delimiter.startsWith('|') || !delimiter.endsWith('|')) continue
+    const delimiterCells = delimiter.slice(1, -1).split('|')
+    if (delimiterCells.length < 1) continue
+    if (delimiterCells.every((cell) => /^:?-{3,}:?$/.test(cell.trim().replace(/\s+/g, '')))) {
+      return true
+    }
+  }
+  return false
+}
+
+export function shouldCaptureActiveEditorSnapshotOnCleanFlush(
+  markdown: string,
+  options: FlushPendingContentOptions = {},
+): boolean {
+  return options.captureActiveTableEditorSnapshot === true && hasMarkdownTable(markdown)
 }
 
 export function pendingContentMatchesTarget(pending: PendingContent, target: EditorContentTarget): boolean {
@@ -421,9 +448,15 @@ export const useEditorPersistence = ({
     }, EDITOR_FOCUS_BOUNDARY_FLUSH_DELAY_MS)
   }
 
-  const flushPendingContent = () => measureSlowOperation('editor pending content flush', () => {
+  const flushPendingContent = (options: FlushPendingContentOptions = {}) => measureSlowOperation('editor pending content flush', () => {
     clearPendingSaveTimer()
-    if (pendingContentRef.current.size === 0) return
+    if (pendingContentRef.current.size === 0) {
+      const activeMarkdown = lastEditorMarkdownRef.current || getNoteBodyMarkdown(activeNoteBody, activeAisleIdRef.current)
+      if (!shouldCaptureActiveEditorSnapshotOnCleanFlush(activeMarkdown, options)) return
+      const snapshots = getFallbackActiveEditorSnapshot()
+      applyContentSnapshots(snapshots)
+      return
+    }
 
     const snapshots = getPendingContentSnapshots()
     if (import.meta.env?.DEV) {

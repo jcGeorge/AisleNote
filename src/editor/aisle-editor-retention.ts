@@ -6,6 +6,7 @@ export const AISLE_EDITOR_INTERSECTION_ROOT_MARGIN = '0px 100% 0px 100%'
 export type AisleEditorRetentionInput = {
   aisleIds: string[]
   activeAisleId: string
+  backgroundAisleIds?: Iterable<string>
   nearVisibleAisleIds?: Iterable<string>
   recentAisleIds?: Iterable<string>
   retainNearVisibleAisles?: boolean
@@ -14,6 +15,7 @@ export type AisleEditorRetentionInput = {
 export function buildRetainedAisleEditorIds({
   aisleIds,
   activeAisleId,
+  backgroundAisleIds = [],
   nearVisibleAisleIds = [],
   recentAisleIds = [],
   retainNearVisibleAisles = false,
@@ -33,6 +35,10 @@ export function buildRetainedAisleEditorIds({
     for (const aisleId of nearVisibleAisleIds) {
       addIfValid(aisleId)
     }
+  }
+
+  for (const aisleId of backgroundAisleIds) {
+    addIfValid(aisleId)
   }
 
   for (const aisleId of recentAisleIds) {

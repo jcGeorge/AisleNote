@@ -4,6 +4,7 @@ import { getAisleMarkdown } from '../notes/note-markdown'
 import type { AppState, NoteAisle, Space } from '../types/app'
 import {
   applyEditorContentSnapshotsToState,
+  EDITOR_PENDING_CONTENT_COMMIT_DELAY_MS,
   applyFreshEditorSnapshotToState,
   getEditorFocusBoundarySaveOptions,
   getSnapshotEditorMarkdown,
@@ -13,6 +14,7 @@ import {
   pendingContentMatchesTarget,
   resolveEditorFocusBoundaryFlushAction,
   shouldCollectMountedEditorSnapshotsForFocusBoundary,
+  shouldCaptureActiveEditorSnapshotOnCleanFlush,
   shouldPersistFocusBoundarySnapshot,
 } from './useEditorPersistence'
 
@@ -48,6 +50,28 @@ const aisleMarkdown = (state: AppState, aisle: NoteAisle | null | undefined) =>
   aisle ? getAisleMarkdown(aisle, state.noteAisleBodies) : ''
 
 describe('editor persistence snapshot helpers', () => {
+  it('uses the normal short debounce for editor content commits', () => {
+    expect(EDITOR_PENDING_CONTENT_COMMIT_DELAY_MS).toBe(180)
+  })
+
+  it('captures active clean-flush snapshots only for table markdown when requested', () => {
+    expect(shouldCaptureActiveEditorSnapshotOnCleanFlush('plain text', {
+      captureActiveTableEditorSnapshot: true,
+    })).toBe(false)
+    expect(shouldCaptureActiveEditorSnapshotOnCleanFlush([
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+    ].join('\n'), {
+      captureActiveTableEditorSnapshot: true,
+    })).toBe(true)
+    expect(shouldCaptureActiveEditorSnapshotOnCleanFlush([
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+    ].join('\n'))).toBe(false)
+  })
+
   it('reads fresh editor markdown for close-time snapshots', () => {
     const editor = { getMarkdown: () => 'fresh' } as unknown as Editor
     const getNormalizedEditorMarkdown = vi.fn((target: Editor) => (target as unknown as { getMarkdown: () => string }).getMarkdown())

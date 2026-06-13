@@ -1756,7 +1756,7 @@ export function useAppController(): AppController {
 
   const saveActiveCursorBeforeNavigation = () => {
     saveActiveCursorLocation()
-    flushPendingContent()
+    flushPendingContent({ captureActiveTableEditorSnapshot: true })
   }
 
   const getActiveNoteHistoryKey = () =>
@@ -5858,7 +5858,7 @@ export function useAppController(): AppController {
 
     closeEditorEphemeraRef.current()
     saveActiveCursorLocation()
-    flushPendingContent()
+    flushPendingContent({ captureActiveTableEditorSnapshot: true })
 
     const noteLocationKey = scratchpadWorkspaceActive
       ? SCRATCHPAD_CURSOR_LOCATION_KEY
@@ -7101,7 +7101,7 @@ export function useAppController(): AppController {
               onAisleWidthDragCommitted={() => showTip('aisle-width-reset')}
               mountedAisleIds={mountedAisleIds}
               suppressActiveAislePreviewFallback
-              deferInactivePreviewFallbacks
+              deferInactivePreviewFallbacks={activeNoteAisles.length > 4}
               getPreviewMarkdownForAisle={getPreviewMarkdownForAisle}
               onCloseTableOfContentsAisle={closeTableOfContentsAisle}
               onSelectTableOfContentsHeading={selectTableOfContentsHeading}

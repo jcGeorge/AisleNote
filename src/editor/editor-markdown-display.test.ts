@@ -195,7 +195,7 @@ describe('editor markdown display helpers', () => {
     ].join('\n'), false)
   })
 
-  it('deletes parser-only blank paragraphs inserted before a table', () => {
+  it('does not run blank restoration against ordinary table markdown', () => {
     const { editor, tr, dispatch } = fakeEditorWithBlocks([
       textBlock('paragraph', 'before'),
       textBlock('paragraph'),
@@ -207,10 +207,35 @@ describe('editor markdown display helpers', () => {
       '| A | B |',
       '| --- | --- |',
       '| C | D |',
+    ].join('\n'))).toBe(false)
+
+    expect(tr.deletedRanges).toEqual([])
+    expect(tr.insertedNodes).toHaveLength(0)
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  it('still restores explicit blank placeholders around table markdown', () => {
+    const { editor, tr, dispatch } = fakeEditorWithBlocks([
+      textBlock('paragraph', 'before'),
+      textBlock('table', 'A B C D'),
+      textBlock('paragraph', 'after'),
+    ])
+
+    expect(restoreEditorBlankParagraphs(editor, [
+      'before',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      'after',
     ].join('\n'))).toBe(true)
 
-    expect(tr.deletedRanges).toEqual([[1, 2]])
-    expect(tr.insertedNodes).toHaveLength(0)
+    expect(tr.insertedNodes).toHaveLength(2)
     expect(dispatch).toHaveBeenCalled()
   })
 

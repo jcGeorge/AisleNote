@@ -645,7 +645,7 @@ export function applyListToolbarCommand(editor: Editor, command: ToolbarListComm
     )
     if (nextMarkdown !== null) {
       const previousSelection = getEditorCursorSelection(editor)
-      setEditorMarkdownForDisplay(editor, nextMarkdown, false)
+      setEditorMarkdownForDisplay(editor, nextMarkdown, false, { splitPlainParagraphLines: true })
       if (!previousSelection || !restoreEditorCursorSelection(editor, previousSelection)) {
         editor.focus()
       }

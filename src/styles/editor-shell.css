@@ -119,6 +119,20 @@
   overflow-wrap: anywhere;
 }
 
+.aisle-editor-preview-fallback.is-lightweight-preview {
+  overflow-wrap: normal;
+}
+
+.aisle-editor-lightweight-preview {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  color: var(--editor-text);
+  font: inherit;
+  line-height: inherit;
+}
+
 .aisle-editor-preview-fallback img {
   max-width: 100%;
   height: auto;

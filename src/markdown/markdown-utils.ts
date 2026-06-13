@@ -383,6 +383,10 @@ export type BlankParagraphDisplayPlan = {
   blockKinds: Array<'blank' | 'content'>
 }
 
+export type BlankParagraphDisplayOptions = {
+  splitPlainParagraphLines?: boolean
+}
+
 type MarkdownLineBlockKind = 'atomic' | 'list' | 'paragraph'
 
 function isStandaloneHtmlBreakLine(line: string): boolean {
@@ -634,8 +638,14 @@ export function isBlankParagraphNode(node: any): boolean {
   return true
 }
 
-export function prepareBlankParagraphsForEditorDisplay(markdown: string): BlankParagraphDisplayPlan {
-  const chunks = expandPlainParagraphChunks(splitMarkdownTopLevelChunks(repairBrokenMarkdownTables(markdown)))
+export function prepareBlankParagraphsForEditorDisplay(
+  markdown: string,
+  options: BlankParagraphDisplayOptions = {},
+): BlankParagraphDisplayPlan {
+  const baseChunks = splitMarkdownTopLevelChunks(repairBrokenMarkdownTables(markdown))
+  const chunks = options.splitPlainParagraphLines === true
+    ? expandPlainParagraphChunks(baseChunks)
+    : baseChunks
   const contentChunks: MarkdownBlockChunk[] = []
   const blockKinds = chunks.map((chunk) => {
     if (isStandaloneBlankLineChunk(chunk)) return 'blank' as const
@@ -671,21 +681,63 @@ function serializeCleanMarkdownBlocks(
   return lines.join('\n')
 }
 
+function hasExplicitBlankLineArtifact(markdown: string): boolean {
+  return String(markdown ?? '')
+    .split(/\r\n|\r|\n/)
+    .some(isBlankLineArtifactLine)
+}
+
+function stripTableAdjacentBlankBlockKinds(
+  blockKinds: Array<'blank' | 'content'>,
+  contentChunks: MarkdownBlockChunk[],
+): Array<'blank' | 'content'> {
+  let contentIndex = 0
+  return blockKinds.filter((kind) => {
+    if (kind === 'content') {
+      contentIndex += 1
+      return true
+    }
+
+    const previousContent = contentChunks[contentIndex - 1]
+    const nextContent = contentChunks[contentIndex]
+    return !(
+      (previousContent && isMarkdownTableChunk(previousContent)) ||
+      (nextContent && isMarkdownTableChunk(nextContent))
+    )
+  })
+}
+
 export function preserveBlankParagraphsFromWysiwyg(editor: Editor | null, markdown: string): string {
   const doc = (editor as any)?.wwEditor?.view?.state?.doc
   if (!doc || typeof doc.forEach !== 'function') return markdown
+  const hasExplicitBlankArtifacts = hasExplicitBlankLineArtifact(markdown)
+  const normalizedMarkdown = normalizeBlankLineRuns(markdown)
+  const markdownHasTable = splitMarkdownTopLevelChunks(normalizedMarkdown).some(isMarkdownTableChunk)
 
   const blockKinds: Array<'blank' | 'content'> = []
   doc.forEach((node: any) => {
     blockKinds.push(isBlankParagraphNode(node) ? 'blank' : 'content')
   })
 
-  const markdownChunks = expandPlainParagraphChunks(splitMarkdownTopLevelChunks(markdown))
+  const markdownChunks = expandPlainParagraphChunks(splitMarkdownTopLevelChunks(normalizedMarkdown))
   let contentChunks = markdownChunks.filter((chunk) => !isStandaloneBlankLineChunk(chunk))
   const hasBlankChunks = contentChunks.length !== markdownChunks.length
   const hasBlankBlocks = blockKinds.includes('blank')
 
   const contentBlockCount = blockKinds.filter((kind) => kind === 'content').length
+  if (markdownHasTable && !hasExplicitBlankArtifacts) {
+    let tableContentChunks = contentChunks
+    if (contentBlockCount > tableContentChunks.length) {
+      tableContentChunks = splitPlainParagraphChunksToCount(tableContentChunks, contentBlockCount)
+    }
+    if (contentBlockCount < tableContentChunks.length) {
+      tableContentChunks = mergePlainParagraphChunksToCount(tableContentChunks, contentBlockCount)
+    }
+    return contentBlockCount === tableContentChunks.length
+      ? serializeCleanMarkdownBlocks(stripTableAdjacentBlankBlockKinds(blockKinds, tableContentChunks), tableContentChunks)
+      : normalizedMarkdown
+  }
+
   if (contentBlockCount > contentChunks.length && (hasBlankBlocks || hasBlankChunks)) {
     contentChunks = splitPlainParagraphChunksToCount(contentChunks, contentBlockCount)
   }

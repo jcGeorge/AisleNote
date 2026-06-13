@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MessagesView } from './MessagesView'
 import type { DiagnosticLogEntry } from '../../diagnostics/diagnostic-log'
 import type { AppMessage, ToastHistoryEntry } from '../../types/app'
@@ -63,6 +63,10 @@ const diagnosticEntries: DiagnosticLogEntry[] = [
   },
 ]
 
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
+
 describe('MessagesView', () => {
   it('renders empty inbox state', () => {
     const html = renderToStaticMarkup(
@@ -98,7 +102,25 @@ describe('MessagesView', () => {
     expect(html).not.toContain('duplicate files de-coupled')
   })
 
-  it('renders editor dev controls as a messages child section', () => {
+  it('hides editor dev controls when ablation is not enabled', () => {
+    const html = renderToStaticMarkup(
+      <MessagesView
+        section="editor-dev"
+        messages={[message]}
+        toastHistory={toastHistory}
+        onDismissMessage={vi.fn()}
+        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenLocation={vi.fn()}
+      />,
+    )
+
+    expect(html).toContain('editor diagnostics disabled')
+    expect(html).not.toContain('id="messages-editor-ablation-mode"')
+    expect(html).not.toContain('<option value="toast-only">Toast only</option>')
+  })
+
+  it('renders editor dev controls as a messages child section when explicitly enabled', () => {
+    vi.stubEnv('VITE_ENABLE_EDITOR_ABLATION', 'true')
     const html = renderToStaticMarkup(
       <MessagesView
         section="editor-dev"

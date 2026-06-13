@@ -97,4 +97,22 @@ describe('table of contents link collection', () => {
       ['note-preview', 40, 65],
     ])
   })
+
+  it('does not try to resolve ordinary external link marks as note references', () => {
+    const resolve = vi.fn(() => null)
+    const links = getTableOfContentsLinksFromDoc(
+      'aisle-a',
+      docWithTextNodes([
+        { text: 'copy', pos: 1, href: 'https://lucide.dev/icons/files' },
+        { text: 'tableOfContents', pos: 12, href: 'https://lucide.dev/icons/table-of-contents' },
+      ]),
+      resolve,
+    )
+
+    expect(resolve).not.toHaveBeenCalled()
+    expect(links.map((link) => [link.kind, link.label, link.href])).toEqual([
+      ['url-link', 'copy', 'https://lucide.dev/icons/files'],
+      ['url-link', 'tableOfContents', 'https://lucide.dev/icons/table-of-contents'],
+    ])
+  })
 })

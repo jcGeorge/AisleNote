@@ -1,6 +1,6 @@
 import { createRef, isValidElement, type ReactElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   AboutSection,
   ArrangeModeState,
@@ -53,6 +53,10 @@ const arrangeMode: ArrangeModeState = {
 }
 
 const noop = () => undefined
+
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
 
 type TestElement = ReactElement<Record<string, unknown> & { children?: ReactNode }>
 type TestHandler = (event: Record<string, unknown>) => void
@@ -339,13 +343,13 @@ describe('navigation arrange tooltips', () => {
     expect(messagesHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">inbox (2)</button>')
     expect(messagesHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">toast history (3)</button>')
     expect(messagesHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">diagnostics</button>')
-    expect(messagesHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">editor dev</button>')
+    expect(messagesHtml).not.toContain('editor dev</button>')
     expect(toastHistoryHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">inbox (2)</button>')
     expect(toastHistoryHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">toast history (3)</button>')
     expect(toastHistoryHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">diagnostics (4)</button>')
-    expect(toastHistoryHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">editor dev</button>')
+    expect(toastHistoryHtml).not.toContain('editor dev</button>')
     expect(diagnosticsHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">diagnostics (4)</button>')
-    expect(diagnosticsHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">editor dev</button>')
+    expect(diagnosticsHtml).not.toContain('editor dev</button>')
     expect(diagnosticsHtml).not.toContain('aria-label="diagnostic controls"')
     expect(diagnosticsHtml).not.toContain('aria-label="diagnostic filters"')
     expect(diagnosticsHtml).not.toContain('aria-label="diagnostic mode"')

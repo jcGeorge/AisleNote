@@ -48,6 +48,16 @@ describe('aisle editor retention helpers', () => {
     expect(Array.from(retained).sort()).toEqual(['b', 'c'])
   })
 
+  it('can retain background-mounted aisles for small notes after first paint', () => {
+    const retained = buildRetainedAisleEditorIds({
+      aisleIds: ['a', 'b', 'c', 'd'],
+      activeAisleId: 'b',
+      backgroundAisleIds: ['a', 'b', 'c', 'd'],
+    })
+
+    expect(Array.from(retained).sort()).toEqual(['a', 'b', 'c', 'd'])
+  })
+
   it('can retain multiple recent aisles without mounting unknown aisles', () => {
     const retained = buildRetainedAisleEditorIds({
       aisleIds: ['a', 'b', 'c', 'd'],

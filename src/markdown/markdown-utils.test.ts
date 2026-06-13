@@ -74,6 +74,39 @@ function editorForBlocks(blocks: FakeNode[]): Editor {
   } as unknown as Editor
 }
 
+const toolbarReplacementsTableFixture = [
+  '# Completed items',
+  '',
+  'Fall in line here.',
+  '',
+  '| [copy](https://lucide.dev/icons/files) |  |',
+  '| ---- | --- |',
+  '| [tableOfContents](https://lucide.dev/icons/table-of-contents) |  |',
+  '| [aisles](https://lucide.dev/icons/shelving-unit) |  |',
+  '| [findReplace](https://lucide.dev/icons/search) |  |',
+  '| [undo](https://lucide.dev/icons/undo) |  |',
+  '| [redo](https://lucide.dev/icons/redo) |  |',
+  '| [heading](https://lucide.dev/icons/heading) |  |',
+  '| [bold](https://lucide.dev/icons/bold) |  |',
+  '| [italic](https://lucide.dev/icons/italic) |  |',
+  '| [highlight](https://lucide.dev/icons/highlighter) |  |',
+  '| [strike](https://lucide.dev/icons/strikethrough) |  |',
+  '| [taskList](https://lucide.dev/icons/square-check-big) |  |',
+  '| [bulletList](https://lucide.dev/icons/list) |  |',
+  '| [orderedList](https://lucide.dev/icons/list-ordered) |  |',
+  '| [dashList](https://lucide.dev/icons/logs) |  |',
+  '| [blockQuote](https://lucide.dev/icons/quote) |  |',
+  '| [blockIndent](https://lucide.dev/icons/list-indent-increase) |  |',
+  '| [removeBlockIndent](https://lucide.dev/icons/list-indent-decrease) |  |',
+  '| [hr](https://lucide.dev/icons/minus) |  |',
+  '| [link](https://lucide.dev/icons/link) |  |',
+  '| [image](https://lucide.dev/icons/image) |  |',
+  '| [table](https://lucide.dev/icons/grid-2x2-plus) |  |',
+  '| [code](https://lucide.dev/icons/code) |  |',
+  '| [codeBlock](https://lucide.dev/icons/braces) |  |',
+  '| [clear](https://lucide.dev/icons/delete) |  |',
+].join('\n')
+
 describe('markdown WYSIWYG blank line preservation', () => {
   it('stores an intentional empty paragraph between two paragraphs as plain markdown', () => {
     const markdown = preserveBlankParagraphsFromWysiwyg(
@@ -166,8 +199,8 @@ describe('markdown WYSIWYG blank line preservation', () => {
 
   it('plans leading blank rows separately from parser spacing for adjacent visible lines', () => {
     expect(prepareBlankParagraphsForEditorDisplay('\nokay\nso\nthese are together.')).toEqual({
-      markdown: 'okay\n\nso\n\nthese are together.',
-      blockKinds: ['blank', 'content', 'content', 'content'],
+      markdown: 'okay\nso\nthese are together.',
+      blockKinds: ['blank', 'content'],
     })
   })
 
@@ -363,10 +396,17 @@ describe('markdown WYSIWYG blank line preservation', () => {
     expect(markdown).toBe('### Hat Trick!\nhmm interesting\n- [ ] one\n- [ ] two\n    - [ ] three')
   })
 
-  it('splits adjacent heading, paragraph, and task list blocks before editor display', () => {
+  it('separates adjacent structural blocks before editor display without splitting plain soft breaks', () => {
     expect(prepareBlankParagraphsForEditorDisplay('### Hat Trick!\nhmm interesting\n- [ ] one')).toEqual({
       markdown: '### Hat Trick!\n\nhmm interesting\n\n- [ ] one',
       blockKinds: ['content', 'content', 'content'],
+    })
+  })
+
+  it('keeps adjacent plain text lines as soft breaks before editor display', () => {
+    expect(prepareBlankParagraphsForEditorDisplay("I dont't know\nsure, I guess.\nWait, what?")).toEqual({
+      markdown: "I dont't know\nsure, I guess.\nWait, what?",
+      blockKinds: ['content'],
     })
   })
 
@@ -437,7 +477,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
     })
   })
 
-  it('preserves explicit table spacing after WYSIWYG serialization', () => {
+  it('strips non-explicit table spacing after WYSIWYG serialization', () => {
     const markdown = preserveBlankParagraphsFromWysiwyg(
       editorForBlocks([
         block('paragraph', 'before'),
@@ -452,6 +492,39 @@ describe('markdown WYSIWYG blank line preservation', () => {
         '| A | B |',
         '| --- | --- |',
         '| C | D |',
+        '',
+        'after',
+      ].join('\n'),
+    )
+
+    expect(markdown).toBe([
+      'before',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      'after',
+    ].join('\n'))
+  })
+
+  it('preserves explicit blank markers around a table', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', 'before'),
+        emptyParagraph(),
+        block('table', 'A B C D'),
+        emptyParagraph(),
+        block('paragraph', 'after'),
+      ]),
+      [
+        'before',
+        '',
+        EDITOR_BLANK_LINE_PLACEHOLDER,
+        '',
+        '| A | B |',
+        '| --- | --- |',
+        '| C | D |',
+        '',
+        EDITOR_BLANK_LINE_PLACEHOLDER,
         '',
         'after',
       ].join('\n'),
@@ -468,38 +541,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
     ].join('\n'))
   })
 
-  it('preserves user-created blank paragraph nodes around a table', () => {
-    const markdown = preserveBlankParagraphsFromWysiwyg(
-      editorForBlocks([
-        block('paragraph', 'before'),
-        emptyParagraph(),
-        block('table', 'A B C D'),
-        emptyParagraph(),
-        block('paragraph', 'after'),
-      ]),
-      [
-        'before',
-        '',
-        '| A | B |',
-        '| --- | --- |',
-        '| C | D |',
-        '',
-        'after',
-      ].join('\n'),
-    )
-
-    expect(markdown).toBe([
-      'before',
-      '',
-      '| A | B |',
-      '| --- | --- |',
-      '| C | D |',
-      '',
-      'after',
-    ].join('\n'))
-  })
-
-  it('preserves multiple visible blank paragraph nodes around a table', () => {
+  it('strips multiple non-explicit blank paragraph nodes around a table', () => {
     const markdown = preserveBlankParagraphsFromWysiwyg(
       editorForBlocks([
         block('paragraph', 'before'),
@@ -525,13 +567,9 @@ describe('markdown WYSIWYG blank line preservation', () => {
 
     expect(markdown).toBe([
       'before',
-      '',
-      '',
       '| A | B |',
       '| --- | --- |',
       '| C | D |',
-      '',
-      '',
       'after',
     ].join('\n'))
   })
@@ -550,6 +588,72 @@ describe('markdown WYSIWYG blank line preservation', () => {
       '| C | D |',
       'after',
     ].join('\n'))
+  })
+
+  it('keeps toolbar replacement table normalization stable and strips Toast-only parser spacing on snapshot', () => {
+    const compactToolbarTableFixture = toolbarReplacementsTableFixture.replaceAll('\n\n', '\n')
+
+    expect(normalizeMarkdownForPersistence(toolbarReplacementsTableFixture)).toBe(toolbarReplacementsTableFixture)
+    expect(prepareBlankParagraphsForEditorDisplay(toolbarReplacementsTableFixture).markdown).toBe(
+      toolbarReplacementsTableFixture,
+    )
+    expect(
+      preserveBlankParagraphsFromWysiwyg(
+        editorForBlocks([
+          block('heading', 'Completed items'),
+          block('paragraph', 'Fall in line here.'),
+          block('table', 'copy tableOfContents aisles findReplace'),
+        ]),
+        toolbarReplacementsTableFixture,
+      ),
+    ).toBe(compactToolbarTableFixture)
+  })
+
+  it('does not re-persist Toast parser spacing after blank lines around a table are deleted', () => {
+    const compactToolbarTableFixture = toolbarReplacementsTableFixture.replaceAll('\n\n', '\n')
+    const toastSerializedWithParserSpacing = [
+      '# Completed items',
+      '',
+      'Fall in line here.',
+      '',
+      '| [copy](https://lucide.dev/icons/files) |  |',
+      '| ---- | --- |',
+      '| [tableOfContents](https://lucide.dev/icons/table-of-contents) |  |',
+      '| [aisles](https://lucide.dev/icons/shelving-unit) |  |',
+      '| [findReplace](https://lucide.dev/icons/search) |  |',
+      '| [undo](https://lucide.dev/icons/undo) |  |',
+      '| [redo](https://lucide.dev/icons/redo) |  |',
+      '| [heading](https://lucide.dev/icons/heading) |  |',
+      '| [bold](https://lucide.dev/icons/bold) |  |',
+      '| [italic](https://lucide.dev/icons/italic) |  |',
+      '| [highlight](https://lucide.dev/icons/highlighter) |  |',
+      '| [strike](https://lucide.dev/icons/strikethrough) |  |',
+      '| [taskList](https://lucide.dev/icons/square-check-big) |  |',
+      '| [bulletList](https://lucide.dev/icons/list) |  |',
+      '| [orderedList](https://lucide.dev/icons/list-ordered) |  |',
+      '| [dashList](https://lucide.dev/icons/logs) |  |',
+      '| [blockQuote](https://lucide.dev/icons/quote) |  |',
+      '| [blockIndent](https://lucide.dev/icons/list-indent-increase) |  |',
+      '| [removeBlockIndent](https://lucide.dev/icons/list-indent-decrease) |  |',
+      '| [hr](https://lucide.dev/icons/minus) |  |',
+      '| [link](https://lucide.dev/icons/link) |  |',
+      '| [image](https://lucide.dev/icons/image) |  |',
+      '| [table](https://lucide.dev/icons/grid-2x2-plus) |  |',
+      '| [code](https://lucide.dev/icons/code) |  |',
+      '| [codeBlock](https://lucide.dev/icons/braces) |  |',
+      '| [clear](https://lucide.dev/icons/delete) |  |',
+    ].join('\n')
+
+    expect(
+      preserveBlankParagraphsFromWysiwyg(
+        editorForBlocks([
+          block('heading', 'Completed items'),
+          block('paragraph', 'Fall in line here.'),
+          block('table', 'copy tableOfContents aisles findReplace'),
+        ]),
+        toastSerializedWithParserSpacing,
+      ),
+    ).toBe(compactToolbarTableFixture)
   })
 
   it('does not rewrite blank lines inside fenced code blocks', () => {

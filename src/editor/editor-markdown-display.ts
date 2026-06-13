@@ -1,5 +1,7 @@
 import type { Editor } from '@toast-ui/editor'
 import {
+  EDITOR_BLANK_LINE_PLACEHOLDER,
+  type BlankParagraphDisplayOptions,
   isBlankParagraphNode,
   mergeLeadingIndentsFromWysiwyg,
   normalizeEmptyHeadingMarkersFromWysiwyg,
@@ -27,8 +29,11 @@ export function getEditorMarkdownForPersistence(editor: Editor): string {
   )
 }
 
-export function prepareMarkdownForEditorDisplay(markdown: string): string {
-  const blankPrepared = prepareBlankParagraphsForEditorDisplay(markdown)
+export function prepareMarkdownForEditorDisplay(
+  markdown: string,
+  options: BlankParagraphDisplayOptions = {},
+): string {
+  const blankPrepared = prepareBlankParagraphsForEditorDisplay(markdown, options)
   return prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(blankPrepared.markdown))
 }
 
@@ -56,6 +61,33 @@ type TopLevelEditorNode = {
   position: number
   nodeSize: number
   kind: 'blank' | 'content'
+}
+
+function hasMarkdownTable(markdown: string): boolean {
+  const lines = String(markdown ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const header = lines[index].trim()
+    const delimiter = lines[index + 1].trim()
+    if (
+      header.startsWith('|') &&
+      header.endsWith('|') &&
+      delimiter.startsWith('|') &&
+      delimiter.endsWith('|') &&
+      delimiter
+        .slice(1, -1)
+        .split('|')
+        .every((cell) => /^:?-{3,}:?$/.test(cell.trim().replace(/\s+/g, '')))
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+function hasExplicitBlankRestoreMarker(markdown: string): boolean {
+  return String(markdown ?? '')
+    .split(/\r\n|\r|\n/)
+    .some((line) => line.includes(EDITOR_BLANK_LINE_PLACEHOLDER) || /^<br\s*\/?>$/i.test(line.trim()))
 }
 
 function createBlankParagraphNode(paragraphType: any) {
@@ -205,6 +237,7 @@ function applyFullBlankParagraphRestore({
 
 function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown: string): boolean {
   const blankPrepared = prepareBlankParagraphsForEditorDisplay(markdown)
+  if (hasMarkdownTable(markdown) && !hasExplicitBlankRestoreMarker(markdown)) return false
 
   const view = getWysiwygView(editor)
   const doc = view?.state?.doc
@@ -241,9 +274,14 @@ function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown:
   })
 }
 
-export function setEditorMarkdownForDisplay(editor: Editor, markdown: string, cursorToEnd = false): void {
+export function setEditorMarkdownForDisplay(
+  editor: Editor,
+  markdown: string,
+  cursorToEnd = false,
+  options: BlankParagraphDisplayOptions = {},
+): void {
   measureSlowOperation('editor display markdown rewrite', () => {
-    editor.setMarkdown(prepareMarkdownForEditorDisplay(markdown), cursorToEnd)
+    editor.setMarkdown(prepareMarkdownForEditorDisplay(markdown, options), cursorToEnd)
     restoreEditorDisplay(editor, markdown)
   })
 }

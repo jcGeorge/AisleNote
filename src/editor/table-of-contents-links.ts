@@ -98,27 +98,27 @@ function collectDocLinkItems(
       last = textNodes[index]
       text += last.text
     }
-    const noteToken = buildMarkdownNoteReferenceToken({ target: first.href, label: text })
-    const noteReference = noteToken ? resolveMarkdownNoteReference(noteToken) : null
-    if (noteReference) {
+    const normalizedHref = normalizeExternalWebUrl(first.href)
+    if (normalizedHref) {
       items.push({
         aisleId,
-        kind: 'note-link',
-        label: noteReference.label || normalizeLinkLabel(text, 'linked note'),
-        target: noteReference.target,
+        kind: 'url-link',
+        label: normalizeLinkLabel(text, normalizedHref),
+        href: normalizedHref,
         from: first.from,
         to: last.to,
         order: first.from,
       })
       continue
     }
-    const normalizedHref = normalizeExternalWebUrl(first.href)
-    if (!normalizedHref) continue
+    const noteToken = buildMarkdownNoteReferenceToken({ target: first.href, label: text })
+    const noteReference = noteToken ? resolveMarkdownNoteReference(noteToken) : null
+    if (!noteReference) continue
     items.push({
       aisleId,
-      kind: 'url-link',
-      label: normalizeLinkLabel(text, normalizedHref),
-      href: normalizedHref,
+      kind: 'note-link',
+      label: noteReference.label || normalizeLinkLabel(text, 'linked note'),
+      target: noteReference.target,
       from: first.from,
       to: last.to,
       order: first.from,

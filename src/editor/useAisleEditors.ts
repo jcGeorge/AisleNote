@@ -95,6 +95,7 @@ import type { PendingCursorRestore } from './useNoteCursorPersistence'
 import {
   getSnapshotEditorMarkdown,
   type EditorContentSnapshot,
+  type FlushPendingContentOptions,
   type LazyContentCommitOptions,
   type MountedEditorSnapshotProvider,
   type PendingContentMap,
@@ -134,7 +135,7 @@ type UseAisleEditorsOptions = {
   closeImageToolsIfSelectedImageMissingRef: MutableRefObject<() => void>
   isPendingCreatedRenameActive: () => boolean
   saveActiveCursorLocation: () => void
-  flushPendingContent: () => void
+  flushPendingContent: (options?: FlushPendingContentOptions) => void
   clearMultiLineEdit: (collapseToHead?: boolean) => void
   getNormalizedEditorMarkdown: (editor: Editor) => string
   normalizeEditorMarkdownForPersistence: (markdown: string) => string
@@ -191,6 +192,7 @@ type PendingLinkScroll = {
 }
 
 const AISLE_EDITOR_RECENT_RETAIN_LIMIT = 3
+const AISLE_EDITOR_SMALL_NOTE_LIVE_LIMIT = 4
 
 type DevAisleEditorMountState = {
   noteBodyId: string
@@ -256,6 +258,7 @@ export function useAisleEditors({
   const aisleEditorMetaRef = useRef<Map<string, AisleEditorMeta>>(new Map())
   const [nearVisibleAisleIds, setNearVisibleAisleIds] = useState<Set<string>>(() => new Set())
   const [recentRetainedAisleIds, setRecentRetainedAisleIds] = useState<string[]>([])
+  const [backgroundMountedAisleIds, setBackgroundMountedAisleIds] = useState<Set<string>>(() => new Set())
   const editorAblationMode = readEditorAblationMode()
   const editorCoreMode = readEditorCoreMode()
   const editorAblationPolicy = useMemo(
@@ -330,18 +333,27 @@ export function useAisleEditors({
   }
   const getAisleActivationNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
   const activeAisleIds = useMemo(() => activeNoteAisles.map((aisle) => aisle.id), [activeNoteAisles])
+  const activeAisleIdsKey = useMemo(() => activeAisleIds.join('\n'), [activeAisleIds])
+  const backgroundMountedAisleIdsKey = useMemo(
+    () => activeAisleIds.filter((aisleId) => backgroundMountedAisleIds.has(aisleId)).join('\n'),
+    [activeAisleIds, backgroundMountedAisleIds],
+  )
   const mountedAisleIds = useMemo(
     () =>
       buildRetainedAisleEditorIds({
         aisleIds: activeAisleIds,
         activeAisleId: activeAisleId || resolvedActiveAisleId,
+        backgroundAisleIds: activeAisleIds.length <= AISLE_EDITOR_SMALL_NOTE_LIVE_LIMIT
+          ? backgroundMountedAisleIds
+          : [],
         nearVisibleAisleIds,
         recentAisleIds: recentRetainedAisleIds.slice(0, AISLE_EDITOR_RECENT_RETAIN_LIMIT),
-        retainNearVisibleAisles: false,
+        retainNearVisibleAisles: activeAisleIds.length > AISLE_EDITOR_SMALL_NOTE_LIVE_LIMIT,
       }),
     [
       activeAisleId,
       activeAisleIds,
+      backgroundMountedAisleIds,
       nearVisibleAisleIds,
       recentRetainedAisleIds,
       resolvedActiveAisleId,
@@ -353,6 +365,32 @@ export function useAisleEditors({
   ])
 
   const getAisleById = (aisleId: string) => activeNoteAislesRef.current.find((aisle) => aisle.id === aisleId) ?? null
+
+  useEffect(() => {
+    setBackgroundMountedAisleIds(new Set())
+    if (
+      viewMode !== 'main' ||
+      !activeNoteBodyId ||
+      activeAisleIds.length <= 1 ||
+      activeAisleIds.length > AISLE_EDITOR_SMALL_NOTE_LIVE_LIMIT
+    ) {
+      return
+    }
+
+    let cancelled = false
+    let timeoutId: number | null = null
+    const frameId = window.requestAnimationFrame(() => {
+      timeoutId = window.setTimeout(() => {
+        if (!cancelled) setBackgroundMountedAisleIds(new Set(activeAisleIds))
+      }, 0)
+    })
+
+    return () => {
+      cancelled = true
+      window.cancelAnimationFrame(frameId)
+      if (timeoutId !== null) window.clearTimeout(timeoutId)
+    }
+  }, [viewMode, activeNoteBodyId, activeAisleIdsKey])
 
   const getAisleBodyIdForAisleId = (aisleId: string) => {
     const aisle = getAisleById(aisleId)
@@ -614,7 +652,7 @@ export function useAisleEditors({
       switchAwayHadPendingContent = sourceAisle ? Boolean(getPendingContentForAisle(sourceAisle)) : false
       const switchAwayStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
       saveActiveCursorLocation()
-      flushPendingContent()
+      flushPendingContent({ captureActiveTableEditorSnapshot: true })
       clearMultiLineEdit(false)
       closeImageToolsRef.current()
       switchAwayDurationMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - switchAwayStartedAt
@@ -1461,7 +1499,15 @@ export function useAisleEditors({
       return
     }
     emitDevAisleEditorMountState()
-  }, [viewMode, activeNoteBodyId, mountedAisleIds, nearVisibleAisleIds, activeAisleIds, recentRetainedAisleIds])
+  }, [
+    viewMode,
+    activeNoteBodyId,
+    mountedAisleIds,
+    nearVisibleAisleIds,
+    activeAisleIds,
+    recentRetainedAisleIds,
+    backgroundMountedAisleIdsKey,
+  ])
 
   useEffect(() => {
     return () => {

@@ -36,7 +36,11 @@ import {
   scheduleNoteWorkspaceArrangeExit,
   shouldExitArrangeModeFromNoteWorkspacePointer,
 } from './note-workspace-events'
-import { isMarkdownPreviewLikelyExpensive } from './note-workspace-preview'
+import {
+  getAislePreviewRenderMode,
+  getLightweightPreviewText,
+  getMarkdownWorkloadProfile,
+} from './note-workspace-preview'
 
 const transformAislePreviewUrl = (url: string, key: string) => {
   if (key === 'href' && /^tabs-asset:/i.test(url)) return url
@@ -411,22 +415,27 @@ export function NoteWorkspace({
           const editorMounted = mountedAisleIds.has(aisle.id)
           const editorMountPending = suppressActiveAislePreviewFallback && !editorMounted && aisle.id === activeAisleId
           const previewMarkdown = editorMounted || editorMountPending ? '' : getPreviewMarkdownForAisle(aisle)
-          const previewLikelyExpensive = isMarkdownPreviewLikelyExpensive(previewMarkdown)
+          const previewProfile =
+            previewMarkdown.length > 0
+              ? getMarkdownWorkloadProfile(previewMarkdown, aisle.aisleBodyId || aisle.id)
+              : null
+          const previewRenderMode = getAislePreviewRenderMode({
+            active: aisle.id === activeAisleId,
+            arrangeModeActive,
+            deferInactivePreviewFallbacks,
+            editorMounted,
+            editorMountPending,
+            inactivePreviewsHydrated,
+            profile: previewProfile,
+          })
+          const renderedPreviewMarkdown = previewRenderMode === 'markdown-preview' ? previewMarkdown : ''
+          const lightweightPreviewText =
+            previewRenderMode === 'lightweight-preview' ? getLightweightPreviewText(previewMarkdown) : ''
           const previewHydrationPending =
+            previewRenderMode === 'lightweight-preview' &&
             deferInactivePreviewFallbacks &&
-            !editorMounted &&
-            !editorMountPending &&
-            aisle.id !== activeAisleId &&
-            previewLikelyExpensive &&
-            !inactivePreviewsHydrated
-          const previewSuppressed =
-            deferInactivePreviewFallbacks &&
-            !editorMounted &&
-            !editorMountPending &&
-            aisle.id !== activeAisleId &&
             !inactivePreviewsHydrated &&
-            previewLikelyExpensive
-          const renderedPreviewMarkdown = previewSuppressed ? '' : previewMarkdown
+            Boolean(previewProfile?.isLinkHeavy)
           const tableOfContentsHeadings = tableOfContentsHeadingsByAisle[aisle.id] ?? []
           const tableOfContentsLinks = tableOfContentsLinksByAisle[aisle.id] ?? []
           const tableOfContentsOpen =
@@ -534,11 +543,16 @@ export function NoteWorkspace({
                       editorMountPending ? 'is-editor-mount-pending' : ''
                     } ${
                       previewHydrationPending ? 'is-preview-hydration-pending' : ''
+                    } ${
+                      previewRenderMode === 'lightweight-preview' ? 'is-lightweight-preview' : ''
                     }`}
                     data-aisle-host-mode="preview"
+                    data-aisle-preview-mode={previewRenderMode}
                     aria-hidden="true"
                   >
-                    {renderedPreviewMarkdown.trim().length > 0 ? (
+                    {lightweightPreviewText.trim().length > 0 ? (
+                      <pre className="aisle-editor-lightweight-preview">{lightweightPreviewText}</pre>
+                    ) : renderedPreviewMarkdown.trim().length > 0 ? (
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         urlTransform={transformAislePreviewUrl}

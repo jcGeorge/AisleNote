@@ -14,6 +14,7 @@ import {
 import {
   EDITOR_ABLATION_MODE_LABELS,
   EDITOR_ABLATION_MODES,
+  isEditorAblationEnabled,
   parseEditorAblationMode,
   readEditorAblationMode,
   writeEditorAblationMode,
@@ -130,9 +131,25 @@ const EDITOR_CORE_MODE_DESCRIPTIONS: Record<EditorCoreMode, string> = {
 }
 
 function EditorDevMessagesSection() {
+  const editorAblationEnabled = isEditorAblationEnabled()
   const [mode, setMode] = useState<EditorAblationMode>(() => readEditorAblationMode())
   const [editorCoreMode, setEditorCoreMode] = useState<EditorCoreMode>(() => readEditorCoreMode())
   const [status, setStatus] = useState('')
+
+  if (!editorAblationEnabled) {
+    return (
+      <div className="messages-list editor-dev-messages-list">
+        <article className="message-card editor-dev-card">
+          <div className="message-card-header">
+            <div>
+              <h3>editor diagnostics disabled</h3>
+              <p>Editor diagnostic modes are unavailable in normal builds.</p>
+            </div>
+          </div>
+        </article>
+      </div>
+    )
+  }
 
   const handleModeChange = (nextMode: EditorAblationMode) => {
     const wrote = writeEditorAblationMode(nextMode)

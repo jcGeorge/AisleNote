@@ -2,7 +2,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { BLOCK_INDENT_TOKEN } from '../../markdown/markdown-utils'
 import { NoteWorkspace } from './NoteWorkspace'
-import { isMarkdownPreviewLikelyExpensive } from './note-workspace-preview'
+import {
+  getLightweightPreviewText,
+  getMarkdownWorkloadProfile,
+  isMarkdownPreviewLikelyExpensive,
+} from './note-workspace-preview'
 import {
   getAisleEditorKeyFromNoteWorkspacePointerTarget,
   shouldExitArrangeModeFromNoteWorkspacePointer,
@@ -24,6 +28,7 @@ function renderWorkspace(
     linkedAisleIds?: Set<string>
     wholeNoteLinked?: boolean
     aisleWidths?: Record<string, number>
+    arrangeModeActive?: boolean
     suppressActiveAislePreviewFallback?: boolean
     deferInactivePreviewFallbacks?: boolean
     scratchpadAisleControls?: {
@@ -40,6 +45,7 @@ function renderWorkspace(
       aisles={options.aisles ?? aisles}
       activeAisleId={options.activeAisleId ?? 'a'}
       editorReadOnly={false}
+      arrangeModeActive={options.arrangeModeActive}
       frontmatterAisleIds={options.frontmatterAisleIds}
       linkedAisleIds={options.linkedAisleIds}
       wholeNoteLinked={options.wholeNoteLinked}
@@ -95,7 +101,7 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('<p>far</p>')
   })
 
-  it('defers inactive heavy table-link previews on the first workspace render', () => {
+  it('uses lightweight inactive previews for heavy table-link markdown', () => {
     const heavyMarkdown = [
       '| [copy](https://lucide.dev/icons/files) | |',
       '| --- | --- |',
@@ -117,14 +123,19 @@ describe('NoteWorkspace aisle mounting', () => {
       ],
     })
 
-    expect(html).toContain('is-preview-hydration-pending')
-    expect(html).not.toContain('tableOfContents')
+    expect(html).toContain('is-lightweight-preview')
+    expect(html).toContain('data-aisle-preview-mode="lightweight-preview"')
+    expect(html).toContain('tableOfContents')
+    expect(html).not.toContain('href="https://lucide.dev/icons/table-of-contents"')
+    expect(html).not.toContain('<table>')
     expect(html).toContain('src="data:image/png;base64,abc"')
     expect(html).toContain('data-aisle-host-mode="editor"')
   })
 
-  it('classifies link-heavy markdown previews as expensive without flagging image-only previews', () => {
-    expect(isMarkdownPreviewLikelyExpensive([
+  it('uses lightweight previews for inactive link-heavy aisles in arrange mode without anchor DOM', () => {
+    const heavyMarkdown = [
+      '# Completed items',
+      '',
       '| [copy](https://lucide.dev/icons/files) | |',
       '| --- | --- |',
       '| [tableOfContents](https://lucide.dev/icons/table-of-contents) | |',
@@ -133,8 +144,47 @@ describe('NoteWorkspace aisle mounting', () => {
       '| [undo](https://lucide.dev/icons/undo) | |',
       '| [redo](https://lucide.dev/icons/redo) | |',
       '| [heading](https://lucide.dev/icons/heading) | |',
-    ].join('\n'))).toBe(true)
+      '| [bold](https://lucide.dev/icons/bold) | |',
+    ].join('\n')
+    const html = renderWorkspace(new Set(['active']), {
+      activeAisleId: 'active',
+      arrangeModeActive: true,
+      aisles: [
+        { id: 'heavy', aisleBodyId: 'heavy', markdown: heavyMarkdown },
+        { id: 'active', aisleBodyId: 'active', markdown: 'active' },
+      ],
+    })
+
+    expect(html).toContain('data-aisle-preview-mode="lightweight-preview"')
+    expect(html).toContain('Completed items')
+    expect(html).toContain('| copy | |')
+    expect(html).not.toContain('href="https://lucide.dev/icons/files"')
+    expect(html).not.toContain('<table>')
+  })
+
+  it('classifies link-heavy markdown previews as expensive without flagging image-only previews', () => {
+    const fixture = [
+      '| [copy](https://lucide.dev/icons/files) | |',
+      '| --- | --- |',
+      '| [tableOfContents](https://lucide.dev/icons/table-of-contents) | |',
+      '| [aisles](https://lucide.dev/icons/shelving-unit) | |',
+      '| [findReplace](https://lucide.dev/icons/search) | |',
+      '| [undo](https://lucide.dev/icons/undo) | |',
+      '| [redo](https://lucide.dev/icons/redo) | |',
+      '| [heading](https://lucide.dev/icons/heading) | |',
+    ].join('\n')
+    const profile = getMarkdownWorkloadProfile(fixture)
+    expect(profile).toMatchObject({
+      externalLinkCount: 7,
+      markdownLinkCount: 7,
+      hasMediaCandidate: false,
+      hasNotePreviewCandidate: false,
+      hasInternalNoteCandidate: false,
+      isLinkHeavy: true,
+    })
+    expect(isMarkdownPreviewLikelyExpensive(fixture)).toBe(true)
     expect(isMarkdownPreviewLikelyExpensive('![Diagram](data:image/png;base64,abc)')).toBe(false)
+    expect(getLightweightPreviewText('| [copy](https://lucide.dev/icons/files) | |')).toBe('| copy | |')
   })
 
   it('marks editor and preview hosts as separate DOM ownership modes', () => {

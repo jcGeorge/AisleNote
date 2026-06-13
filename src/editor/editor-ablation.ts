@@ -37,6 +37,10 @@ export type EditorAblationPolicy = {
 
 const VALID_EDITOR_ABLATION_MODES = new Set<string>(EDITOR_ABLATION_MODES)
 
+export function isEditorAblationEnabled(): boolean {
+  return import.meta.env?.VITE_ENABLE_EDITOR_ABLATION === 'true'
+}
+
 export function parseEditorAblationMode(value: unknown): EditorAblationMode {
   return typeof value === 'string' && VALID_EDITOR_ABLATION_MODES.has(value)
     ? value as EditorAblationMode
@@ -44,13 +48,21 @@ export function parseEditorAblationMode(value: unknown): EditorAblationMode {
 }
 
 export function readEditorAblationMode({
-  enabled = true,
+  enabled = isEditorAblationEnabled(),
   storage = getLocalStorage(),
 }: {
   enabled?: boolean
-  storage?: Pick<Storage, 'getItem'> | null
+  storage?: Pick<Storage, 'getItem' | 'removeItem'> | null
 } = {}): EditorAblationMode {
-  if (!enabled || !storage) return 'off'
+  if (!storage) return 'off'
+  if (!enabled) {
+    try {
+      storage.removeItem(EDITOR_ABLATION_LOCAL_STORAGE_KEY)
+    } catch {
+      // Ignore storage failures; disabled ablation must still resolve to off.
+    }
+    return 'off'
+  }
   try {
     return parseEditorAblationMode(storage.getItem(EDITOR_ABLATION_LOCAL_STORAGE_KEY))
   } catch {
@@ -61,10 +73,11 @@ export function readEditorAblationMode({
 export function writeEditorAblationMode(
   mode: EditorAblationMode,
   storage: Pick<Storage, 'setItem' | 'removeItem'> | null = getLocalStorage(),
+  { enabled = isEditorAblationEnabled() }: { enabled?: boolean } = {},
 ): boolean {
   if (!storage) return false
   try {
-    if (mode === 'off') {
+    if (!enabled || mode === 'off') {
       storage.removeItem(EDITOR_ABLATION_LOCAL_STORAGE_KEY)
     } else {
       storage.setItem(EDITOR_ABLATION_LOCAL_STORAGE_KEY, mode)
@@ -76,9 +89,10 @@ export function writeEditorAblationMode(
 }
 
 export function createEditorAblationPolicy(mode: EditorAblationMode): EditorAblationPolicy {
-  switch (mode) {
+  const activeMode = isEditorAblationEnabled() ? mode : 'off'
+  switch (activeMode) {
     case 'toast-only':
-      return createPolicy(mode, {
+      return createPolicy(activeMode, {
         useDisplayPreparation: false,
         runMountBlankRestore: false,
         includeToolbarItems: false,
@@ -89,7 +103,7 @@ export function createEditorAblationPolicy(mode: EditorAblationMode): EditorAbla
         includeDomInstallers: false,
       })
     case 'toast-blank-restore':
-      return createPolicy(mode, {
+      return createPolicy(activeMode, {
         includeToolbarItems: false,
         includeCorePlugins: false,
         includeSpecialLinkPlugins: false,
@@ -98,7 +112,7 @@ export function createEditorAblationPolicy(mode: EditorAblationMode): EditorAbla
         includeDomInstallers: false,
       })
     case 'toast-core-plugins':
-      return createPolicy(mode, {
+      return createPolicy(activeMode, {
         includeToolbarItems: false,
         includeSpecialLinkPlugins: false,
         includeStructuralPlugins: false,
@@ -106,27 +120,27 @@ export function createEditorAblationPolicy(mode: EditorAblationMode): EditorAbla
         includeDomInstallers: false,
       })
     case 'toast-special-plugins':
-      return createPolicy(mode, {
+      return createPolicy(activeMode, {
         includeSpecialLinkPlugins: false,
       })
     case 'toast-full-no-restore':
-      return createPolicy(mode, {
+      return createPolicy(activeMode, {
         runMountBlankRestore: false,
       })
     case 'toast-retain-current-previous':
-      return createPolicy(mode, {
+      return createPolicy(activeMode, {
         runMountBlankRestore: false,
         retainPreviousAisle: true,
       })
     case 'off':
-      return createPolicy(mode, {
+      return createPolicy(activeMode, {
         runMountBlankRestore: false,
       })
   }
 }
 
 export function isEditorAblationActive(mode: EditorAblationMode): boolean {
-  return mode !== 'off'
+  return isEditorAblationEnabled() && mode !== 'off'
 }
 
 export function measureEditorAblationOperation<T>(operation: () => T): { result: T; durationMs: number } {
