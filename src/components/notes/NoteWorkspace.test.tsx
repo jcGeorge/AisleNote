@@ -38,7 +38,15 @@ function renderWorkspace(
     suppressActiveAislePreviewFallback?: boolean
     deferInactivePreviewFallbacks?: boolean
     scratchpadAisleControls?: {
-      canDeleteActiveAisle: boolean
+      showAddButtons?: boolean
+      showDeleteButton?: boolean
+      onAddAisleLeft: () => void
+      onAddAisleRight: () => void
+      onDeleteActiveAisle: () => void
+    }
+    regularNoteAisleControls?: {
+      showAddButtons?: boolean
+      showDeleteButton?: boolean
       onAddAisleLeft: () => void
       onAddAisleRight: () => void
       onDeleteActiveAisle: () => void
@@ -57,6 +65,7 @@ function renderWorkspace(
       wholeNoteLinked={options.wholeNoteLinked}
       aisleWidths={options.aisleWidths}
       scratchpadAisleControls={options.scratchpadAisleControls}
+      regularNoteAisleControls={options.regularNoteAisleControls}
       aisleScrollRef={{ current: null }}
       toolbar={null}
       headingPopover={null}
@@ -75,8 +84,8 @@ function renderWorkspace(
   )
 }
 
-const scratchpadAisleControls = (canDeleteActiveAisle: boolean) => ({
-  canDeleteActiveAisle,
+const scratchpadAisleControls = (showDeleteButton: boolean) => ({
+  showDeleteButton,
   onAddAisleLeft: () => undefined,
   onAddAisleRight: () => undefined,
   onDeleteActiveAisle: () => undefined,
@@ -557,6 +566,47 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).not.toContain('Delete aisle 1')
     expect(html).not.toContain('note-scratchpad-aisle-delete-btn')
     expect(html).not.toContain('aisle-edit-delete-icon note-scratchpad-aisle-delete-icon')
+  })
+
+  it('renders regular note add controls only for the active aisle', () => {
+    const html = renderWorkspace(new Set(['b']), {
+      activeAisleId: 'b',
+      regularNoteAisleControls: {
+        showAddButtons: true,
+        showDeleteButton: false,
+        onAddAisleLeft: () => undefined,
+        onAddAisleRight: () => undefined,
+        onDeleteActiveAisle: () => undefined,
+      },
+    })
+
+    expect(html.match(/note-scratchpad-aisle-controls/g) ?? []).toHaveLength(1)
+    expect(html).toContain('Aisle 2 controls')
+    expect(html).not.toContain('Aisle 1 controls')
+    expect(html).toContain('Add aisle to left of aisle 2')
+    expect(html).toContain('Add aisle to right of aisle 2')
+    expect(html.match(/note-scratchpad-aisle-add-btn/g) ?? []).toHaveLength(2)
+    expect(html).not.toContain('Delete aisle 2')
+  })
+
+  it('renders the regular note delete control without add buttons', () => {
+    const singleAisle: ResolvedNoteAisle[] = [{ id: 'solo', aisleBodyId: 'solo', markdown: 'single' }]
+    const html = renderWorkspace(new Set(['solo']), {
+      aisles: singleAisle,
+      activeAisleId: 'solo',
+      regularNoteAisleControls: {
+        showAddButtons: false,
+        showDeleteButton: true,
+        onAddAisleLeft: () => undefined,
+        onAddAisleRight: () => undefined,
+        onDeleteActiveAisle: () => undefined,
+      },
+    })
+
+    expect(html).toContain('Aisle 1 controls')
+    expect(html).toContain('Delete aisle 1')
+    expect(html).toContain('note-scratchpad-aisle-delete-btn')
+    expect(html).not.toContain('note-scratchpad-aisle-add-btn')
   })
 
   it('renders fm only for aisles with valid frontmatter', () => {

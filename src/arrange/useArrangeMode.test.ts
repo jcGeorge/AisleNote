@@ -178,9 +178,9 @@ describe('arrange preview ghost items', () => {
         fallbackHeight: 24,
       }),
     ).toEqual([
-      { id: 'parent-a', label: 'Parent A', x: -80, y: -72, width: 44, height: 24 },
-      { id: 'parent-c', label: 'Parent C', x: 60, y: -12, width: 52, height: 28 },
-      { id: 'parent-d', label: 'Parent D', x: 120, y: 8, width: 64, height: 30 },
+      { id: 'parent-a', label: 'Parent A', x: -80, y: -50, width: 44, height: 24 },
+      { id: 'parent-c', label: 'Parent C', x: 60, y: 10, width: 52, height: 28 },
+      { id: 'parent-d', label: 'Parent D', x: 120, y: 30, width: 64, height: 30 },
     ])
   })
 
@@ -212,7 +212,7 @@ describe('arrange preview ghost items', () => {
     ).toEqual([
       { id: 'parent-a', label: 'Parent A', x: -34, y: -18, width: 40, height: 24 },
       { id: 'parent-c', label: 'Parent C', x: -58, y: 18, width: 40, height: 24 },
-      { id: 'parent-d', label: 'Parent D', x: 120, y: 8, width: 40, height: 24 },
+      { id: 'parent-d', label: 'Parent D', x: 120, y: 30, width: 40, height: 24 },
     ])
   })
 })

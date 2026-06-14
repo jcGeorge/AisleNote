@@ -69,6 +69,11 @@ import {
 import { AisleEditModal } from '../components/notes/AisleEditModal'
 import { MessagesView } from '../components/messages/MessagesView'
 import { NoteWorkspace } from '../components/notes/NoteWorkspace'
+import {
+  NoteWorkspaceErrorBoundary,
+  NoteWorkspaceRecoveryFallback,
+  type NoteWorkspaceRecoveryDetails,
+} from '../components/notes/NoteWorkspaceErrorBoundary'
 import { scrollAislePaneIntoHorizontalView } from '../components/notes/aisle-horizontal-scroll'
 import { SubTabRail } from '../components/navigation/SubTabRail'
 import {
@@ -179,7 +184,7 @@ import {
   type WysiwygHistoryDirection,
   type WysiwygHistoryResult,
 } from '../editor/prosemirror-utils'
-import { useAisleEditors } from '../editor/useAisleEditors'
+import { useAisleEditors, type AisleEditorMountErrorDetails } from '../editor/useAisleEditors'
 import { useEditorDomEvents } from '../editor/useEditorDomEvents'
 import { useEditorPersistence } from '../editor/useEditorPersistence'
 import { useEditorToolbarLayer } from '../editor/useEditorToolbarLayer'
@@ -243,6 +248,7 @@ import {
   type RenameEntityType,
 } from '../navigation/rename-draft'
 import { buildNoteLocationKey, getLocationInfo, listNoteLocationsForBody } from '../notes/note-locations'
+import { getSafeNoteSelection } from '../notes/safe-note-selection'
 import {
   buildAisleSlotKey,
   decoupleAisleSlotsInState,
@@ -491,6 +497,12 @@ type CopyAsMenuState = {
   aisle?: Record<CopyAsAction, CopyAsMenuItemState>
 }
 
+type NoteWorkspaceFailureState = {
+  resetKey: string
+  message: string
+  details: NoteWorkspaceRecoveryDetails
+}
+
 const COPY_AS_MENU_ACTIONS: CopyAsAction[] = ['copy', 'duplicate', 'link', 'preview']
 const SCRATCHPAD_COPY_AISLE_LIMIT_MESSAGE =
   'This copy operation would exceed the number of available aisles in scratchpad. Please increase the number of aisles for scratchpad in misc settings or delete unused scratchpad aisles.'
@@ -652,6 +664,7 @@ export function useAppController(): AppController {
   const [trashDragPreview, setTrashDragPreviewState] = useState<TrashRailDragPreview | null>(null)
   const [isDraggingOverTrashDrop, setIsDraggingOverTrashDrop] = useState(false)
   const [activeAisleId, setActiveAisleId] = useState<string>('')
+  const [noteWorkspaceFailure, setNoteWorkspaceFailure] = useState<NoteWorkspaceFailureState | null>(null)
   const [activeToolbarLayoutId, setActiveToolbarLayoutIdState] = useState<string>(
     () => initialDeviceSettingsRef.current?.activeToolbarLayoutId ?? DEFAULT_TOOLBAR_LAYOUT_ID,
   )
@@ -996,6 +1009,25 @@ export function useAppController(): AppController {
     scratchpadActive: viewMode === 'main' && scratchpadActive,
   })
   const scratchpadWorkspaceActive = viewMode === 'main' && scratchpadActive
+  const noteWorkspaceResetKey = [
+    viewMode,
+    scratchpadWorkspaceActive ? 'scratchpad' : 'note',
+    activeNoteLocationKey,
+    activeNoteBodyId,
+    resolvedActiveAisleId,
+  ].join('::')
+  const noteWorkspaceRecoveryDetails = useMemo<NoteWorkspaceRecoveryDetails>(
+    () => ({
+      noteBodyId: activeNoteBodyId,
+      activeAisleId: resolvedActiveAisleId,
+      location: activeNoteLocation,
+      scratchpadActive: scratchpadWorkspaceActive,
+    }),
+    [activeNoteBodyId, activeNoteLocation, resolvedActiveAisleId, scratchpadWorkspaceActive],
+  )
+  useEffect(() => {
+    setNoteWorkspaceFailure((current) => (current && current.resetKey !== noteWorkspaceResetKey ? null : current))
+  }, [noteWorkspaceResetKey])
   const activeNoteLocations = useMemo(
     () => (activeNoteBodyId ? listNoteLocationsForBody(state, activeNoteBodyId) : []),
     [activeNoteBodyId, state],
@@ -1914,6 +1946,54 @@ export function useAppController(): AppController {
     setViewMode('main')
     setMenuOpen(false)
     setEditing(null)
+  }
+
+  const recoverToSafeNote = (source: string) => {
+    const selection = getSafeNoteSelection(stateRef.current, {
+      excludedLocation: scratchpadWorkspaceActive ? null : activeNoteLocation,
+    })
+    if (!selection) {
+      recordDiagnosticEvent('note-workspace', 'safe-note-recovery-unavailable', {
+        level: 'error',
+        details: {
+          source,
+          activeDomainId: stateRef.current.activeDomainId,
+          activeSpaceId: stateRef.current.activeSpaceId,
+          activeNoteBodyId,
+          activeAisleId: resolvedActiveAisleId,
+        },
+      })
+      pushToast('No safe note could be found.', 'warning')
+      return
+    }
+
+    recordDiagnosticEvent('note-workspace', 'safe-note-recovery', {
+      level: 'warning',
+      details: {
+        source,
+        reason: selection.reason,
+        from: {
+          domainId: stateRef.current.activeDomainId,
+          spaceId: stateRef.current.activeSpaceId,
+          noteBodyId: activeNoteBodyId,
+          aisleId: resolvedActiveAisleId,
+        },
+        to: {
+          ...selection.location,
+          noteBodyId: selection.noteBodyId,
+        },
+      },
+    })
+    setNoteWorkspaceFailure(null)
+    saveDeviceLastOpened({
+      domainId: selection.location.domainId,
+      spaceId: selection.location.spaceId,
+      primeTabId: selection.location.tabId,
+      subTabId: selection.location.subTabId,
+      viewMode: 'main',
+      scratchpadActive: false,
+    })
+    navigateToNoteLocation({ ...selection.location, startAt: 'top' })
   }
 
   const exitTagFilterMode = () => {
@@ -3072,6 +3152,28 @@ export function useAppController(): AppController {
     })
   }
 
+  const handleAisleEditorMountError = (error: unknown, details: AisleEditorMountErrorDetails) => {
+    const message = error instanceof Error ? error.message : 'The note editor could not be opened.'
+    recordDiagnosticEvent('note-workspace', 'editor-mount-error', {
+      level: 'error',
+      message,
+      details: {
+        ...details,
+        stack: error instanceof Error ? error.stack : undefined,
+      },
+    })
+    if (
+      details.noteBodyId === activeNoteBodyIdRef.current &&
+      details.aisleId === activeAisleIdRef.current
+    ) {
+      setNoteWorkspaceFailure({
+        resetKey: noteWorkspaceResetKey,
+        message: 'This note editor could not be opened.',
+        details: noteWorkspaceRecoveryDetails,
+      })
+    }
+  }
+
   const aisleEditors = useAisleEditors({
     viewMode,
     activeNoteBodyId,
@@ -3122,6 +3224,7 @@ export function useAppController(): AppController {
     navigateToNoteLocation,
     deleteNotePreview: (request) => deleteNotePreviewRef.current(request),
     openNotePreviewContextMenu,
+    onEditorMountError: handleAisleEditorMountError,
   })
   const activateAisleEditor = aisleEditors.activateAisleEditor
   const activateEditorFromEventTarget = aisleEditors.activateEditorFromEventTarget
@@ -6809,6 +6912,8 @@ export function useAppController(): AppController {
           customThemePaletteDraft={settingsController.customThemePaletteDraft}
           alwaysShowSpacesDraft={settingsController.alwaysShowSpacesDraft}
           alwaysShowDomainsDraft={settingsController.alwaysShowDomainsDraft}
+          showRegularNoteAisleAddButtonsDraft={settingsController.showRegularNoteAisleAddButtonsDraft}
+          showRegularNoteAisleDeleteButtonDraft={settingsController.showRegularNoteAisleDeleteButtonDraft}
           tableAddTargetModeDraft={settingsController.tableAddTargetModeDraft}
           tableDeleteTargetModeDraft={settingsController.tableDeleteTargetModeDraft}
           tableOfContentsScopeDraft={settingsController.tableOfContentsScopeDraft}
@@ -6853,6 +6958,8 @@ export function useAppController(): AppController {
               pushToast(ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE, 'error')
             }
           }}
+          onShowRegularNoteAisleAddButtonsChange={settingsController.updateShowRegularNoteAisleAddButtonsSetting}
+          onShowRegularNoteAisleDeleteButtonChange={settingsController.updateShowRegularNoteAisleDeleteButtonSetting}
           onTableAddTargetModeChange={settingsController.updateTableAddTargetModeSetting}
           onTableDeleteTargetModeChange={settingsController.updateTableDeleteTargetModeSetting}
           onTableOfContentsScopeChange={settingsController.updateTableOfContentsScopeSetting}
@@ -7042,111 +7149,157 @@ export function useAppController(): AppController {
           ) : viewMode === 'about' ? (
             <AboutView section={aboutSection} />
           ) : viewMode === 'main' ? (
-            <NoteWorkspace
-              noteBodyId={activeNoteBodyId}
-              aisles={activeNoteAisles}
-              activeAisleId={resolvedActiveAisleId}
-              editorReadOnly={editorReadOnly}
-              arrangeModeActive={mainArrangementActive}
-              frontmatterAisleIds={activeFrontmatterAisleIds}
-              linkedAisleIds={activeLinkedAisleIds}
-              wholeNoteLinked={activeNoteDuplicateCount > 1}
-              scratchpadAisleControls={
-                scratchpadWorkspaceActive
-                  ? {
-                      canDeleteActiveAisle: activeNoteAisles.length > 1,
-                      onAddAisleLeft: () => {
-                        closeEditorEphemeraRef.current()
-                        addScratchpadAisle('', { placement: 'left-of-focus' })
-                      },
-                      onAddAisleRight: () => {
-                        closeEditorEphemeraRef.current()
-                        addScratchpadAisle('', { placement: 'right-of-focus' })
-                      },
-                      onDeleteActiveAisle: () => {
-                        closeEditorEphemeraRef.current()
-                        deleteScratchpadActiveAisle()
-                      },
-                    }
-                  : undefined
-              }
-              aisleScrollRef={aisleScrollRef}
-              toolbar={editorToolbarLayer.toolbar}
-              headingPopover={editorToolbarLayer.popovers}
-              imageToolsOverlay={renderImageToolsOverlay()}
-              tableControlsOverlay={renderTableControlsOverlay()}
-              arrangeDestinationPrompt={
-                arrangeDestinationPrompt ? (
-                  <ArrangeDestinationPrompt
-                    message={getArrangeDestinationPromptMessage(arrangeDestinationPrompt.mode)}
-                    onCancel={cancelArrangeDestinationPrompt}
-                  />
-                ) : null
-              }
-              tableOfContentsHeadingsByAisle={activeTableOfContentsPanels?.headingsByAisle ?? {}}
-              tableOfContentsLinksByAisle={activeTableOfContentsPanels?.linksByAisle ?? {}}
-              openTableOfContentsAisleIds={activeTableOfContentsPanels?.openAisleIds ?? new Set<string>()}
-              aisleWidths={activeAisleWidths}
-              onRootChange={(node) => {
-                editorEventRootRef.current = node
-              }}
-              onExitArrangeMode={exitArrangeMode}
-              onAisleScroll={(scrollLeft) => {
-                if (!activeNoteBodyId) return
-                aisleHorizontalScrollByBodyRef.current.set(activeNoteBodyId, scrollLeft)
-              }}
-              onActivateAisle={(editorKey) => {
-                const targetAisleId = getAisleIdFromAisleEditorKey(editorKey)
-                if (!targetAisleId || !activeAisleIdsRef.current.includes(targetAisleId) || isPendingCreatedRenameActive()) {
-                  recordDiagnosticEvent('aisle', 'pointer-activation-blocked', {
-                    level: 'warning',
-                    details: {
-                      editorKey,
-                      targetAisleId,
-                      activeAisleIds: activeAisleIdsRef.current,
-                      pendingCreatedRename: isPendingCreatedRenameActive(),
-                    },
-                  })
-                  return
-                }
-                pendingMouseAisleActivationRef.current = { aisleId: targetAisleId, settled: false }
-                const shouldFocus = false
-                pendingFocusToAisleIdRef.current = null
-                pendingCursorRestoreRef.current = null
-                recordDiagnosticEvent('aisle', 'pointer-activation', {
+            <NoteWorkspaceErrorBoundary
+              resetKey={noteWorkspaceResetKey}
+              details={noteWorkspaceRecoveryDetails}
+              onRecover={() => recoverToSafeNote('note-workspace-render-error')}
+              onError={(error, info) => {
+                recordDiagnosticEvent('note-workspace', 'render-error', {
+                  level: 'error',
+                  message: error.message,
                   details: {
-                    editorKey,
-                    targetAisleId,
-                    previousAisleId: activeAisleIdRef.current,
-                    editor: 'toast',
-                    shouldFocus,
+                    ...noteWorkspaceRecoveryDetails,
+                    stack: error.stack,
+                    componentStack: info.componentStack,
                   },
                 })
-                activateAisleEditor(editorKey, {
-                  flushPrevious: true,
-                  focus: shouldFocus,
-                  source: 'pointer',
-                })
-                syncActiveAisleSelection(targetAisleId)
-                scheduleAisleFocusScroll(targetAisleId)
               }}
-              onResizeAisleWidth={resizeAisleWidth}
-              onResetAisleWidth={resetAisleWidth}
-              onAisleWidthDragCommitted={() => showTip('aisle-width-reset')}
-              mountedAisleIds={mountedAisleIds}
-              suppressActiveAislePreviewFallback
-              deferInactivePreviewFallbacks={activeNoteAisles.length > 4}
-              getPreviewMarkdownForAisle={getPreviewMarkdownForAisle}
-              onCloseTableOfContentsAisle={closeTableOfContentsAisle}
-              onSelectTableOfContentsHeading={selectTableOfContentsHeading}
-              onSelectTableOfContentsLink={selectTableOfContentsLink}
-              onOpenTableOfContentsLink={openTableOfContentsLinkTarget}
-              onOpenAisleFrontmatter={openFrontmatterModalForAisle}
-              onOpenAisleLink={openLinkedAisleModal}
-              onOpenTagFilter={openTagFilterForTag}
-              onRegisterAislePaneRoot={registerAislePaneRoot}
-              onRegisterAisleEditorRoot={registerAisleEditorRoot}
-            />
+            >
+              {noteWorkspaceFailure && noteWorkspaceFailure.resetKey === noteWorkspaceResetKey ? (
+                <NoteWorkspaceRecoveryFallback
+                  message={noteWorkspaceFailure.message}
+                  details={noteWorkspaceFailure.details}
+                  onRecover={() => recoverToSafeNote('note-workspace-editor-mount-error')}
+                />
+              ) : (
+                <NoteWorkspace
+                  noteBodyId={activeNoteBodyId}
+                  aisles={activeNoteAisles}
+                  activeAisleId={resolvedActiveAisleId}
+                  editorReadOnly={editorReadOnly}
+                  arrangeModeActive={mainArrangementActive}
+                  frontmatterAisleIds={activeFrontmatterAisleIds}
+                  linkedAisleIds={activeLinkedAisleIds}
+                  wholeNoteLinked={activeNoteDuplicateCount > 1}
+                  scratchpadAisleControls={
+                    scratchpadWorkspaceActive
+                      ? {
+                          showDeleteButton: activeNoteAisles.length > 1,
+                          onAddAisleLeft: () => {
+                            closeEditorEphemeraRef.current()
+                            addScratchpadAisle('', { placement: 'left-of-focus' })
+                          },
+                          onAddAisleRight: () => {
+                            closeEditorEphemeraRef.current()
+                            addScratchpadAisle('', { placement: 'right-of-focus' })
+                          },
+                          onDeleteActiveAisle: () => {
+                            closeEditorEphemeraRef.current()
+                            deleteScratchpadActiveAisle()
+                          },
+                        }
+                      : undefined
+                  }
+                  regularNoteAisleControls={
+                    !scratchpadWorkspaceActive &&
+                    (state.ui.showRegularNoteAisleAddButtons === true ||
+                      state.ui.showRegularNoteAisleDeleteButton === true)
+                      ? {
+                          showAddButtons: state.ui.showRegularNoteAisleAddButtons === true,
+                          showDeleteButton: state.ui.showRegularNoteAisleDeleteButton === true,
+                          onAddAisleLeft: () => {
+                            closeEditorEphemeraRef.current()
+                            addAisleToActiveNote('', { placement: 'left-of-focus' })
+                          },
+                          onAddAisleRight: () => {
+                            closeEditorEphemeraRef.current()
+                            addAisleToActiveNote('', { placement: 'right-of-focus' })
+                          },
+                          onDeleteActiveAisle: () => {
+                            deleteActiveAisleFromShortcut()
+                          },
+                        }
+                      : undefined
+                  }
+                  aisleScrollRef={aisleScrollRef}
+                  toolbar={editorToolbarLayer.toolbar}
+                  headingPopover={editorToolbarLayer.popovers}
+                  imageToolsOverlay={renderImageToolsOverlay()}
+                  tableControlsOverlay={renderTableControlsOverlay()}
+                  arrangeDestinationPrompt={
+                    arrangeDestinationPrompt ? (
+                      <ArrangeDestinationPrompt
+                        message={getArrangeDestinationPromptMessage(arrangeDestinationPrompt.mode)}
+                        onCancel={cancelArrangeDestinationPrompt}
+                      />
+                    ) : null
+                  }
+                  tableOfContentsHeadingsByAisle={activeTableOfContentsPanels?.headingsByAisle ?? {}}
+                  tableOfContentsLinksByAisle={activeTableOfContentsPanels?.linksByAisle ?? {}}
+                  openTableOfContentsAisleIds={activeTableOfContentsPanels?.openAisleIds ?? new Set<string>()}
+                  aisleWidths={activeAisleWidths}
+                  onRootChange={(node) => {
+                    editorEventRootRef.current = node
+                  }}
+                  onExitArrangeMode={exitArrangeMode}
+                  onAisleScroll={(scrollLeft) => {
+                    if (!activeNoteBodyId) return
+                    aisleHorizontalScrollByBodyRef.current.set(activeNoteBodyId, scrollLeft)
+                  }}
+                  onActivateAisle={(editorKey) => {
+                    const targetAisleId = getAisleIdFromAisleEditorKey(editorKey)
+                    if (!targetAisleId || !activeAisleIdsRef.current.includes(targetAisleId) || isPendingCreatedRenameActive()) {
+                      recordDiagnosticEvent('aisle', 'pointer-activation-blocked', {
+                        level: 'warning',
+                        details: {
+                          editorKey,
+                          targetAisleId,
+                          activeAisleIds: activeAisleIdsRef.current,
+                          pendingCreatedRename: isPendingCreatedRenameActive(),
+                        },
+                      })
+                      return
+                    }
+                    pendingMouseAisleActivationRef.current = { aisleId: targetAisleId, settled: false }
+                    const shouldFocus = false
+                    pendingFocusToAisleIdRef.current = null
+                    pendingCursorRestoreRef.current = null
+                    recordDiagnosticEvent('aisle', 'pointer-activation', {
+                      details: {
+                        editorKey,
+                        targetAisleId,
+                        previousAisleId: activeAisleIdRef.current,
+                        editor: 'toast',
+                        shouldFocus,
+                      },
+                    })
+                    activateAisleEditor(editorKey, {
+                      flushPrevious: true,
+                      focus: shouldFocus,
+                      source: 'pointer',
+                    })
+                    syncActiveAisleSelection(targetAisleId)
+                    scheduleAisleFocusScroll(targetAisleId)
+                  }}
+                  onResizeAisleWidth={resizeAisleWidth}
+                  onResetAisleWidth={resetAisleWidth}
+                  onAisleWidthDragCommitted={() => showTip('aisle-width-reset')}
+                  mountedAisleIds={mountedAisleIds}
+                  suppressActiveAislePreviewFallback
+                  deferInactivePreviewFallbacks={activeNoteAisles.length > 4}
+                  getPreviewMarkdownForAisle={getPreviewMarkdownForAisle}
+                  onCloseTableOfContentsAisle={closeTableOfContentsAisle}
+                  onSelectTableOfContentsHeading={selectTableOfContentsHeading}
+                  onSelectTableOfContentsLink={selectTableOfContentsLink}
+                  onOpenTableOfContentsLink={openTableOfContentsLinkTarget}
+                  onOpenAisleFrontmatter={openFrontmatterModalForAisle}
+                  onOpenAisleLink={openLinkedAisleModal}
+                  onOpenTagFilter={openTagFilterForTag}
+                  onRegisterAislePaneRoot={registerAislePaneRoot}
+                  onRegisterAisleEditorRoot={registerAisleEditorRoot}
+                />
+              )}
+            </NoteWorkspaceErrorBoundary>
           ) : viewMode === 'trash' ? (
             <TrashMarkdownPreview markdown={trashDisplay.markdown} />
           ) : (

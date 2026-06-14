@@ -51,11 +51,11 @@ describe('tab arrange drag preview overlay', () => {
   })
 
   it('centers the preview under the pointer and offsets it downward', () => {
-    expect(ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_REM).toBe(2)
-    expect(ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_PX).toBe(32)
+    expect(ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_REM).toBe(0.625)
+    expect(ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_PX).toBe(10)
     expect(getArrangeDragPreviewStyle(parentPreview)).toMatchObject({
       left: '40px',
-      top: '96px',
+      top: '74px',
       width: '120px',
       height: '32px',
     })
@@ -70,7 +70,7 @@ describe('tab arrange drag preview overlay', () => {
       'tab-arrange-preview is-parent tab-btn parent-tab-btn is-selected arrange-preview-card arrange-preview-primary',
     )
     expect(html).toContain('left:40px')
-    expect(html).toContain('top:96px')
+    expect(html).toContain('top:74px')
     expect(html).toContain('width:120px')
     expect(html).toContain('height:32px')
     expect(html).not.toContain('--arrange-preview-primary-x')
@@ -86,7 +86,7 @@ describe('tab arrange drag preview overlay', () => {
       'tab-arrange-preview is-subtab tab-btn subtab-btn is-selected arrange-preview-card arrange-preview-primary',
     )
     expect(html).toContain('left:35px')
-    expect(html).toContain('top:87px')
+    expect(html).toContain('top:65px')
     expect(html).toContain('Sub A')
   })
 
@@ -108,7 +108,7 @@ describe('tab arrange drag preview overlay', () => {
     expect(html).toContain('class="arrange-preview-stack is-stacked"')
     expect(html).toContain('data-drag-count="4"')
     expect(html).toContain('left:40px')
-    expect(html).toContain('top:96px')
+    expect(html).toContain('top:74px')
     expect(html).toContain('width:120px')
     expect(html).toContain('height:32px')
     expect(html).toContain('--arrange-preview-primary-x:0px')

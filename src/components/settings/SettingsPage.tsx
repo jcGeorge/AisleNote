@@ -123,6 +123,8 @@ type SettingsPageProps = {
   customThemePaletteDraft: CustomThemePalette
   alwaysShowSpacesDraft: boolean
   alwaysShowDomainsDraft: boolean
+  showRegularNoteAisleAddButtonsDraft: boolean
+  showRegularNoteAisleDeleteButtonDraft: boolean
   tableAddTargetModeDraft: TableControlTargetMode
   tableDeleteTargetModeDraft: TableControlTargetMode
   tableOfContentsScopeDraft: TableOfContentsScope
@@ -163,6 +165,8 @@ type SettingsPageProps = {
   onToolbarButtonScaleChange: (value: string) => void
   onAlwaysShowSpacesChange: (enabled: boolean) => void
   onAlwaysShowDomainsChange: (enabled: boolean) => void
+  onShowRegularNoteAisleAddButtonsChange: (enabled: boolean) => void
+  onShowRegularNoteAisleDeleteButtonChange: (enabled: boolean) => void
   onTableAddTargetModeChange: (mode: TableControlTargetMode) => void
   onTableDeleteTargetModeChange: (mode: TableControlTargetMode) => void
   onTableOfContentsScopeChange: (scope: TableOfContentsScope) => void
@@ -229,6 +233,8 @@ export function SettingsPage({
   customThemePaletteDraft,
   alwaysShowSpacesDraft,
   alwaysShowDomainsDraft,
+  showRegularNoteAisleAddButtonsDraft,
+  showRegularNoteAisleDeleteButtonDraft,
   tableAddTargetModeDraft,
   tableDeleteTargetModeDraft,
   tableOfContentsScopeDraft,
@@ -269,6 +275,8 @@ export function SettingsPage({
   onToolbarButtonScaleChange,
   onAlwaysShowSpacesChange,
   onAlwaysShowDomainsChange,
+  onShowRegularNoteAisleAddButtonsChange,
+  onShowRegularNoteAisleDeleteButtonChange,
   onTableAddTargetModeChange,
   onTableDeleteTargetModeChange,
   onTableOfContentsScopeChange,
@@ -743,6 +751,36 @@ export function SettingsPage({
                   role="switch"
                   checked={alwaysShowDomainsDraft}
                   onChange={(event) => onAlwaysShowDomainsChange(event.target.checked)}
+                />
+              </div>
+            </div>
+            <div className="settings-hotkey-row">
+              <label className="settings-hotkey-label" htmlFor="settings-regular-note-aisle-add-buttons">
+                regular note aisle add buttons
+              </label>
+              <div className="form-check form-switch settings-switch">
+                <input
+                  id="settings-regular-note-aisle-add-buttons"
+                  className="form-check-input"
+                  type="checkbox"
+                  role="switch"
+                  checked={showRegularNoteAisleAddButtonsDraft}
+                  onChange={(event) => onShowRegularNoteAisleAddButtonsChange(event.target.checked)}
+                />
+              </div>
+            </div>
+            <div className="settings-hotkey-row">
+              <label className="settings-hotkey-label" htmlFor="settings-regular-note-aisle-delete-button">
+                regular note aisle delete button
+              </label>
+              <div className="form-check form-switch settings-switch">
+                <input
+                  id="settings-regular-note-aisle-delete-button"
+                  className="form-check-input"
+                  type="checkbox"
+                  role="switch"
+                  checked={showRegularNoteAisleDeleteButtonDraft}
+                  onChange={(event) => onShowRegularNoteAisleDeleteButtonChange(event.target.checked)}
                 />
               </div>
             </div>

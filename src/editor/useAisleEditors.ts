@@ -108,6 +108,20 @@ type ActivateAisleEditorOptions = {
   source?: AisleActivationSource
 }
 
+export type AisleEditorMountErrorDetails = {
+  editorKey: string
+  aisleId: string
+  aisleBodyId: string
+  noteBodyId: string
+  spaceId: string
+  tabId: string
+  subTabId: string | null
+  activeAisleId: string
+  mountedEditorCount: number
+  pluginCount: number
+  editor: 'toast'
+}
+
 type UseAisleEditorsOptions = {
   viewMode: ViewMode
   activeNoteBodyId: string
@@ -179,6 +193,7 @@ type UseAisleEditorsOptions = {
     label: string
     sourceRange?: { from: number; to: number }
   }) => void
+  onEditorMountError?: (error: unknown, details: AisleEditorMountErrorDetails) => void
 }
 
 type PendingHeadingScroll = {
@@ -253,6 +268,7 @@ export function useAisleEditors({
   navigateToNoteLocation,
   deleteNotePreview,
   openNotePreviewContextMenu,
+  onEditorMountError,
 }: UseAisleEditorsOptions) {
   const aisleEditorRootsRef = useRef<Map<string, HTMLElement>>(new Map())
   const aislePaneRootsRef = useRef<Map<string, HTMLElement>>(new Map())
@@ -260,6 +276,7 @@ export function useAisleEditors({
   const [nearVisibleAisleIds, setNearVisibleAisleIds] = useState<Set<string>>(() => new Set())
   const [recentRetainedAisleIds, setRecentRetainedAisleIds] = useState<string[]>([])
   const [backgroundMountedAisleIds, setBackgroundMountedAisleIds] = useState<Set<string>>(() => new Set())
+  const [failedEditorMountKeys, setFailedEditorMountKeys] = useState<Set<string>>(() => new Set())
   const editorAblationMode = readEditorAblationMode()
   const editorAblationPolicy = useMemo(
     () => createEditorAblationPolicy(editorAblationMode),
@@ -337,7 +354,7 @@ export function useAisleEditors({
     () => activeAisleIds.filter((aisleId) => backgroundMountedAisleIds.has(aisleId)).join('\n'),
     [activeAisleIds, backgroundMountedAisleIds],
   )
-  const mountedAisleIds = useMemo(
+  const requestedMountedAisleIds = useMemo(
     () =>
       buildRetainedToastAisleEditorIds({
         aisleIds: activeAisleIds,
@@ -356,6 +373,16 @@ export function useAisleEditors({
       recentRetainedAisleIds,
       resolvedActiveAisleId,
     ],
+  )
+  const mountedAisleIds = useMemo(
+    () =>
+      new Set(
+        activeAisleIds.filter((aisleId) => {
+          if (!requestedMountedAisleIds.has(aisleId)) return false
+          return !failedEditorMountKeys.has(buildAisleEditorKey(activeNoteBodyId, aisleId))
+        }),
+      ),
+    [activeAisleIds, activeNoteBodyId, failedEditorMountKeys, requestedMountedAisleIds],
   )
   const mountedAisleIdsKey = useMemo(() => activeAisleIds.filter((aisleId) => mountedAisleIds.has(aisleId)).join('\n'), [
     activeAisleIds,
@@ -430,6 +457,55 @@ export function useAisleEditors({
         ...(input.details ?? {}),
       },
     })
+  }
+
+  const clearFailedEditorMountKey = (editorKey: string) => {
+    setFailedEditorMountKeys((current) => {
+      if (!current.has(editorKey)) return current
+      const next = new Set(current)
+      next.delete(editorKey)
+      return next
+    })
+  }
+
+  const rememberFailedEditorMountKey = (editorKey: string) => {
+    setFailedEditorMountKeys((current) => {
+      if (current.has(editorKey)) return current
+      const next = new Set(current)
+      next.add(editorKey)
+      return next
+    })
+  }
+
+  const createAisleEditorMountErrorDetails = (
+    editorKey: string,
+    aisle: ResolvedNoteAisle,
+    pluginCount: number,
+  ): AisleEditorMountErrorDetails => ({
+    editorKey,
+    aisleId: aisle.id,
+    aisleBodyId: getAisleBodyId(aisle),
+    noteBodyId: activeNoteBodyIdRef.current,
+    spaceId: activeSpaceIdRef.current,
+    tabId: activeTabIdRef.current,
+    subTabId: activeSubTabIdRef.current,
+    activeAisleId: activeAisleIdRef.current,
+    mountedEditorCount: aisleEditorMetaRef.current.size,
+    pluginCount,
+    editor: 'toast',
+  })
+
+  const recordAisleEditorMountFailure = (error: unknown, details: AisleEditorMountErrorDetails) => {
+    const message = error instanceof Error ? error.message : 'Toast UI editor mount failed.'
+    recordDiagnosticEvent('aisle-editor', 'mount-error', {
+      level: 'error',
+      message,
+      details: {
+        ...details,
+        stack: error instanceof Error ? error.stack : undefined,
+      },
+    })
+    onEditorMountError?.(error, details)
   }
 
   const rememberRecentRetainedAisle = (previousAisleId: string, nextAisleId: string) => {
@@ -1382,6 +1458,7 @@ export function useAisleEditors({
             },
           }))
       }
+      let editor: Editor | null = null
       const editorOptions: any = {
         el: root,
         initialValue: editorAblationPolicy.useDisplayPreparation
@@ -1397,7 +1474,10 @@ export function useAisleEditors({
         usageStatistics: false,
         plugins: editorPlugins,
         events: {
-          change: () => handleAisleEditorChange(editorKey, aisle.id, editor),
+          change: () => {
+            if (!editor) return
+            handleAisleEditorChange(editorKey, aisle.id, editor)
+          },
           focus: () => activateEditorFromFocus(editorKey),
         },
       }
@@ -1417,147 +1497,195 @@ export function useAisleEditors({
           },
         }
       }
-      const constructorMeasurement = measureEditorAblationOperation(() =>
-        measureSlowOperation(`aisle editor Toast UI constructor:${aisle.id}`, () => new Editor(editorOptions)))
-      const editor = constructorMeasurement.result
       const activateFromFocus = () => activateEditorFromFocus(editorKey, getAisleActivationNow())
       const activateFromPointer = () => activateEditorFromPointer(editorKey, getAisleActivationNow())
       root.addEventListener('focusin', activateFromFocus)
       root.addEventListener('pointerdown', activateFromPointer, true)
       const noopCleanup = () => {}
-      const cleanupImageDisplayMetadataSync = editorAblationPolicy.includeDomInstallers
-        ? installImageDisplayMetadataSync(root)
-        : noopCleanup
-      const cleanupEditorSpellcheck = editorAblationPolicy.includeDomInstallers
-        ? installEditorSpellcheck(root)
-        : noopCleanup
-      const cleanupToolbarAppTooltips = editorAblationPolicy.includeDomInstallers
-        ? installToolbarAppTooltips(root)
-        : noopCleanup
-      const cleanupHeadingPopupActiveState = editorAblationPolicy.includeDomInstallers
-        ? installHeadingPopupActiveState(root, () => editor)
-        : noopCleanup
-      const cleanupCompletedTaskCheckboxBehavior = editorAblationPolicy.includeDomInstallers
-        ? installCompletedTaskCheckboxBehavior(
-            root,
-            () => editor,
-            trackCompletedTaskQuickDelete,
-            (committedEditor) => commitAisleEditorMarkdown(aisle.id, committedEditor),
-          )
-        : noopCleanup
-      const cleanupTaskTextReorderBehavior = editorAblationPolicy.includeDomInstallers
-        ? installTaskTextReorderBehavior(root, () => editor, {
-            onReorderCommitted: (committedEditor) => {
-              pendingCursorRestoreRef.current = null
-              commitAisleEditorMarkdown(aisle.id, committedEditor)
-            },
-          })
-        : noopCleanup
-
-      const mountedAisleBodyId = getAisleBodyId(aisle)
-      const mountedNoteBodyId = activeNoteBodyId
-      const mountedSpaceId = activeSpaceIdRef.current
-      const mountedTabId = activeTabIdRef.current
-      const mountedSubTabId = activeSubTabIdRef.current
-
-      aisleEditorMetaRef.current.set(editorKey, {
-        editor,
-        root,
-        noteBodyId: mountedNoteBodyId,
-        spaceId: mountedSpaceId,
-        tabId: mountedTabId,
-        subTabId: mountedSubTabId,
-        aisleId: aisle.id,
-        aisleBodyId: mountedAisleBodyId,
-        pluginKey,
-        cleanup: () => {
+      let cleanupImageDisplayMetadataSync = noopCleanup
+      let cleanupEditorSpellcheck = noopCleanup
+      let cleanupToolbarAppTooltips = noopCleanup
+      let cleanupHeadingPopupActiveState = noopCleanup
+      let cleanupCompletedTaskCheckboxBehavior = noopCleanup
+      let cleanupTaskTextReorderBehavior = noopCleanup
+      const cleanupPartialMount = () => {
+        try {
           cleanupImageDisplayMetadataSync()
+        } catch {
+          // Cleanup is best-effort after a partial editor mount.
+        }
+        try {
           cleanupEditorSpellcheck()
+        } catch {
+          // Cleanup is best-effort after a partial editor mount.
+        }
+        try {
           cleanupToolbarAppTooltips()
+        } catch {
+          // Cleanup is best-effort after a partial editor mount.
+        }
+        try {
           cleanupTaskTextReorderBehavior()
+        } catch {
+          // Cleanup is best-effort after a partial editor mount.
+        }
+        try {
           cleanupCompletedTaskCheckboxBehavior()
+        } catch {
+          // Cleanup is best-effort after a partial editor mount.
+        }
+        try {
           cleanupHeadingPopupActiveState()
+        } catch {
+          // Cleanup is best-effort after a partial editor mount.
+        }
+        try {
           root.removeEventListener('focusin', activateFromFocus)
           root.removeEventListener('pointerdown', activateFromPointer, true)
-          try {
-            editor.destroy()
-          } catch {
-            // Toast UI can throw during teardown if the toolbar DOM was customized.
-          }
-          if (activeEditorAisleIdRef.current === aisle.id) {
-            activeEditorAisleIdRef.current = ''
-          }
-          if (root.dataset.aisleHostMode === 'editor') {
-            root.innerHTML = ''
-          }
-        },
-      })
-      recordDiagnosticEvent('aisle-editor', 'mount', {
-        details: {
-          editorKey,
-          aisleId: aisle.id,
-          noteBodyId: activeNoteBodyId,
-          editor: 'toast',
-          mountedEditorCount: aisleEditorMetaRef.current.size,
-          pendingFocusAfterMount: pendingFocusAfterMountAisleIdRef.current === aisle.id,
-        },
-      })
-      cacheMarkdownForAisleBodyId(mountedAisleBodyId, initialMarkdown.canonicalMarkdown)
-
-      const focusAfterRestore = pendingFocusAfterMountAisleIdRef.current === aisle.id
-      let mountBlankRestoreDurationMs = 0
-      let mountBlankRestoreSkipped = !editorAblationPolicy.runMountBlankRestore
-      const runMountBlankRestore = (label: string) => {
-        if (!editorAblationPolicy.runMountBlankRestore) {
-          return { restored: false, viewReady: true }
+        } catch {
+          // Cleanup is best-effort after a partial editor mount.
         }
-        const measurement = measureEditorAblationOperation(() => measureSlowOperation(label, () => {
-          markProgrammaticAisleMarkdown(aisle.id, initialMarkdown.canonicalMarkdown)
-          return restoreEditorDisplay(editor, initialMarkdown.displayMarkdown)
-        }))
-        mountBlankRestoreDurationMs += measurement.durationMs
-        const result = measurement.result
-        if (result.restored) {
-          window.setTimeout(() => clearProgrammaticAisleMarkdown(aisle.id, initialMarkdown.canonicalMarkdown), 0)
-        } else {
-          clearProgrammaticAisleMarkdown(aisle.id, initialMarkdown.canonicalMarkdown)
+        try {
+          editor?.destroy()
+        } catch {
+          // Toast UI can throw during teardown if mount failed partway through.
         }
-        return result
+        if (activeEditorAisleIdRef.current === aisle.id) {
+          activeEditorAisleIdRef.current = ''
+        }
+        if (root.dataset.aisleHostMode === 'editor') {
+          root.innerHTML = ''
+        }
       }
-      const immediateRestoreResult = runMountBlankRestore(`aisle editor mount blank restore:${aisle.id}:immediate`)
-      const retryBlankRestoreAfterPaint = !immediateRestoreResult.viewReady
-      recordEditorAblationDiagnostic('mount', {
-        aisleId: aisle.id,
-        durationMs: constructorMeasurement.durationMs + mountBlankRestoreDurationMs,
-        details: {
-          editorKey,
-          newlyConstructed: true,
-          constructorDurationMs: constructorMeasurement.durationMs,
-          mountBlankRestoreDurationMs,
-          mountBlankRestoreSkipped,
-          mountBlankRestoreRetryScheduled: retryBlankRestoreAfterPaint,
-          pluginCount: editorPlugins.length,
-          editor: 'toast',
-        },
-      })
-      const restoreFrameId = window.requestAnimationFrame(() => {
-        pendingBlankRestoreFrameRef.current.delete(aisle.id)
-        const mountedMeta = aisleEditorMetaRef.current.get(editorKey)
-        if (!mountedMeta || mountedMeta.editor !== editor) return
-        if (retryBlankRestoreAfterPaint) {
-          mountBlankRestoreSkipped = false
-          runMountBlankRestore(`aisle editor mount blank restore:${aisle.id}`)
+
+      try {
+        const constructorMeasurement = measureEditorAblationOperation(() =>
+          measureSlowOperation(`aisle editor Toast UI constructor:${aisle.id}`, () => new Editor(editorOptions)))
+        editor = constructorMeasurement.result
+        const mountedEditor = editor
+        cleanupImageDisplayMetadataSync = editorAblationPolicy.includeDomInstallers
+          ? installImageDisplayMetadataSync(root)
+          : noopCleanup
+        cleanupEditorSpellcheck = editorAblationPolicy.includeDomInstallers
+          ? installEditorSpellcheck(root)
+          : noopCleanup
+        cleanupToolbarAppTooltips = editorAblationPolicy.includeDomInstallers
+          ? installToolbarAppTooltips(root)
+          : noopCleanup
+        cleanupHeadingPopupActiveState = editorAblationPolicy.includeDomInstallers
+          ? installHeadingPopupActiveState(root, () => mountedEditor)
+          : noopCleanup
+        cleanupCompletedTaskCheckboxBehavior = editorAblationPolicy.includeDomInstallers
+          ? installCompletedTaskCheckboxBehavior(
+              root,
+              () => mountedEditor,
+              trackCompletedTaskQuickDelete,
+              (committedEditor) => commitAisleEditorMarkdown(aisle.id, committedEditor),
+            )
+          : noopCleanup
+        cleanupTaskTextReorderBehavior = editorAblationPolicy.includeDomInstallers
+          ? installTaskTextReorderBehavior(root, () => mountedEditor, {
+              onReorderCommitted: (committedEditor) => {
+                pendingCursorRestoreRef.current = null
+                commitAisleEditorMarkdown(aisle.id, committedEditor)
+              },
+            })
+          : noopCleanup
+
+        const mountedAisleBodyId = getAisleBodyId(aisle)
+        const mountedNoteBodyId = activeNoteBodyId
+        const mountedSpaceId = activeSpaceIdRef.current
+        const mountedTabId = activeTabIdRef.current
+        const mountedSubTabId = activeSubTabIdRef.current
+
+        aisleEditorMetaRef.current.set(editorKey, {
+          editor: mountedEditor,
+          root,
+          noteBodyId: mountedNoteBodyId,
+          spaceId: mountedSpaceId,
+          tabId: mountedTabId,
+          subTabId: mountedSubTabId,
+          aisleId: aisle.id,
+          aisleBodyId: mountedAisleBodyId,
+          pluginKey,
+          cleanup: cleanupPartialMount,
+        })
+        clearFailedEditorMountKey(editorKey)
+        recordDiagnosticEvent('aisle-editor', 'mount', {
+          details: {
+            editorKey,
+            aisleId: aisle.id,
+            noteBodyId: activeNoteBodyId,
+            editor: 'toast',
+            mountedEditorCount: aisleEditorMetaRef.current.size,
+            pendingFocusAfterMount: pendingFocusAfterMountAisleIdRef.current === aisle.id,
+          },
+        })
+        cacheMarkdownForAisleBodyId(mountedAisleBodyId, initialMarkdown.canonicalMarkdown)
+
+        const focusAfterRestore = pendingFocusAfterMountAisleIdRef.current === aisle.id
+        let mountBlankRestoreDurationMs = 0
+        let mountBlankRestoreSkipped = !editorAblationPolicy.runMountBlankRestore
+        const runMountBlankRestore = (label: string) => {
+          if (!editorAblationPolicy.runMountBlankRestore) {
+            return { restored: false, viewReady: true }
+          }
+          const measurement = measureEditorAblationOperation(() => measureSlowOperation(label, () => {
+            markProgrammaticAisleMarkdown(aisle.id, initialMarkdown.canonicalMarkdown)
+            return restoreEditorDisplay(mountedEditor, initialMarkdown.displayMarkdown)
+          }))
+          mountBlankRestoreDurationMs += measurement.durationMs
+          const result = measurement.result
+          if (result.restored) {
+            window.setTimeout(() => clearProgrammaticAisleMarkdown(aisle.id, initialMarkdown.canonicalMarkdown), 0)
+          } else {
+            clearProgrammaticAisleMarkdown(aisle.id, initialMarkdown.canonicalMarkdown)
+          }
+          return result
         }
-        if (focusAfterRestore && pendingFocusAfterMountAisleIdRef.current === aisle.id) {
+        const immediateRestoreResult = runMountBlankRestore(`aisle editor mount blank restore:${aisle.id}:immediate`)
+        const retryBlankRestoreAfterPaint = !immediateRestoreResult.viewReady
+        recordEditorAblationDiagnostic('mount', {
+          aisleId: aisle.id,
+          durationMs: constructorMeasurement.durationMs + mountBlankRestoreDurationMs,
+          details: {
+            editorKey,
+            newlyConstructed: true,
+            constructorDurationMs: constructorMeasurement.durationMs,
+            mountBlankRestoreDurationMs,
+            mountBlankRestoreSkipped,
+            mountBlankRestoreRetryScheduled: retryBlankRestoreAfterPaint,
+            pluginCount: editorPlugins.length,
+            editor: 'toast',
+          },
+        })
+        const restoreFrameId = window.requestAnimationFrame(() => {
+          pendingBlankRestoreFrameRef.current.delete(aisle.id)
+          const mountedMeta = aisleEditorMetaRef.current.get(editorKey)
+          if (!mountedMeta || mountedMeta.editor !== mountedEditor) return
+          if (retryBlankRestoreAfterPaint) {
+            mountBlankRestoreSkipped = false
+            runMountBlankRestore(`aisle editor mount blank restore:${aisle.id}`)
+          }
+          if (focusAfterRestore && pendingFocusAfterMountAisleIdRef.current === aisle.id) {
+            pendingFocusAfterMountAisleIdRef.current = null
+            activateAisleEditor(editorKey, { focus: true })
+          }
+          runPendingHeadingScroll()
+          runPendingLinkScroll()
+        })
+        pendingBlankRestoreFrameRef.current.set(aisle.id, restoreFrameId)
+        if (import.meta.env?.DEV) {
+          emitDevAisleEditorMountState()
+        }
+      } catch (error) {
+        rememberFailedEditorMountKey(editorKey)
+        cleanupPartialMount()
+        if (pendingFocusAfterMountAisleIdRef.current === aisle.id) {
           pendingFocusAfterMountAisleIdRef.current = null
-          activateAisleEditor(editorKey, { focus: true })
         }
-        runPendingHeadingScroll()
-        runPendingLinkScroll()
-      })
-      pendingBlankRestoreFrameRef.current.set(aisle.id, restoreFrameId)
-      if (import.meta.env?.DEV) {
-        emitDevAisleEditorMountState()
+        recordAisleEditorMountFailure(error, createAisleEditorMountErrorDetails(editorKey, aisle, editorPlugins.length))
+        continue
       }
     }
 

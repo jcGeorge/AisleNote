@@ -157,6 +157,8 @@ function renderSettingsPage(
       customThemePaletteDraft={getThemePaletteForTheme(state.theme, state.ui.themePalettes)}
       alwaysShowSpacesDraft={state.ui.alwaysShowSpaces ?? false}
       alwaysShowDomainsDraft={state.ui.alwaysShowDomains ?? false}
+      showRegularNoteAisleAddButtonsDraft={state.ui.showRegularNoteAisleAddButtons ?? false}
+      showRegularNoteAisleDeleteButtonDraft={state.ui.showRegularNoteAisleDeleteButton ?? false}
       tableAddTargetModeDraft={state.ui.tableAddTargetMode}
       tableDeleteTargetModeDraft={state.ui.tableDeleteTargetMode}
       tableOfContentsScopeDraft={state.ui.tableOfContentsScope ?? 'all-aisles'}
@@ -200,6 +202,8 @@ function renderSettingsPage(
       onToolbarButtonScaleChange={() => undefined}
       onAlwaysShowSpacesChange={() => undefined}
       onAlwaysShowDomainsChange={() => undefined}
+      onShowRegularNoteAisleAddButtonsChange={() => undefined}
+      onShowRegularNoteAisleDeleteButtonChange={() => undefined}
       onTableAddTargetModeChange={() => undefined}
       onTableDeleteTargetModeChange={() => undefined}
       onTableOfContentsScopeChange={() => undefined}
@@ -750,10 +754,16 @@ describe('frontmatter settings page', () => {
     expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">other visuals</button>')
     expect(html).toContain('always show spaces')
     expect(html).toContain('always show domains')
+    expect(html).toContain('regular note aisle add buttons')
+    expect(html).toContain('regular note aisle delete button')
     expect(html).toContain('toolbar button size')
     expect(html).toContain('id="settings-toolbar-button-scale"')
     expect(html).toContain('id="settings-always-show-spaces"')
     expect(html).toContain('id="settings-always-show-domains"')
+    expect(html).toContain('id="settings-regular-note-aisle-add-buttons"')
+    expect(html).toContain('id="settings-regular-note-aisle-delete-button"')
+    expect(html).not.toContain('id="settings-regular-note-aisle-add-buttons" class="form-check-input" type="checkbox" role="switch" checked=""')
+    expect(html).not.toContain('id="settings-regular-note-aisle-delete-button" class="form-check-input" type="checkbox" role="switch" checked=""')
     expect(html).not.toContain('aria-label="theme palette"')
     expect(html).not.toContain('aria-label="theme color preview"')
   })

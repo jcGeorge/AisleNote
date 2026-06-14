@@ -52,6 +52,8 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   ...DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
   alwaysShowSpaces: false,
   alwaysShowDomains: false,
+  showRegularNoteAisleAddButtons: false,
+  showRegularNoteAisleDeleteButton: false,
   noteFilter: {
     active: false,
     kind: 'tags',
@@ -428,10 +430,20 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
     alwaysShowSpaces && typeof obj.alwaysShowDomains === 'boolean'
       ? obj.alwaysShowDomains
       : DEFAULT_UI_SETTINGS.alwaysShowDomains
+  const showRegularNoteAisleAddButtons =
+    typeof obj.showRegularNoteAisleAddButtons === 'boolean'
+      ? obj.showRegularNoteAisleAddButtons
+      : DEFAULT_UI_SETTINGS.showRegularNoteAisleAddButtons
+  const showRegularNoteAisleDeleteButton =
+    typeof obj.showRegularNoteAisleDeleteButton === 'boolean'
+      ? obj.showRegularNoteAisleDeleteButton
+      : DEFAULT_UI_SETTINGS.showRegularNoteAisleDeleteButton
   return {
     ...registeredSettings,
     alwaysShowSpaces,
     alwaysShowDomains,
+    showRegularNoteAisleAddButtons,
+    showRegularNoteAisleDeleteButton,
     tabButtonScale:
       typeof obj.tabButtonScale === 'number'
         ? clampTabButtonScale(obj.tabButtonScale)

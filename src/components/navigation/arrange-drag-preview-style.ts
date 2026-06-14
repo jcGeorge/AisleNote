@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 
-export const ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_REM = 2
-export const ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_PX = ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_REM * 16
+export const ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_PX = 10
+export const ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_REM = ARRANGE_DRAG_PREVIEW_POINTER_OFFSET_PX / 16
 
 export type ArrangeDragPreviewPosition = {
   currentX: number

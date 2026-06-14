@@ -131,6 +131,12 @@ export function useSettingsController({
   )
   const [alwaysShowSpacesDraft, setAlwaysShowSpacesDraft] = useState(DEFAULT_UI_SETTINGS.alwaysShowSpaces ?? false)
   const [alwaysShowDomainsDraft, setAlwaysShowDomainsDraft] = useState(DEFAULT_UI_SETTINGS.alwaysShowDomains ?? false)
+  const [showRegularNoteAisleAddButtonsDraft, setShowRegularNoteAisleAddButtonsDraft] = useState(
+    DEFAULT_UI_SETTINGS.showRegularNoteAisleAddButtons ?? false,
+  )
+  const [showRegularNoteAisleDeleteButtonDraft, setShowRegularNoteAisleDeleteButtonDraft] = useState(
+    DEFAULT_UI_SETTINGS.showRegularNoteAisleDeleteButton ?? false,
+  )
   const [tableAddTargetModeDraft, setTableAddTargetModeDraft] = useState(DEFAULT_UI_SETTINGS.tableAddTargetMode)
   const [tableDeleteTargetModeDraft, setTableDeleteTargetModeDraft] = useState(DEFAULT_UI_SETTINGS.tableDeleteTargetMode)
   const [tableOfContentsScopeDraft, setTableOfContentsScopeDraft] = useState(
@@ -174,6 +180,12 @@ export function useSettingsController({
     setSyncedUiBooleanDrafts(getSyncedUiBooleanSettings(state.ui))
     setAlwaysShowSpacesDraft(state.ui.alwaysShowSpaces ?? DEFAULT_UI_SETTINGS.alwaysShowSpaces ?? false)
     setAlwaysShowDomainsDraft(state.ui.alwaysShowDomains ?? DEFAULT_UI_SETTINGS.alwaysShowDomains ?? false)
+    setShowRegularNoteAisleAddButtonsDraft(
+      state.ui.showRegularNoteAisleAddButtons ?? DEFAULT_UI_SETTINGS.showRegularNoteAisleAddButtons ?? false,
+    )
+    setShowRegularNoteAisleDeleteButtonDraft(
+      state.ui.showRegularNoteAisleDeleteButton ?? DEFAULT_UI_SETTINGS.showRegularNoteAisleDeleteButton ?? false,
+    )
     setTableAddTargetModeDraft(state.ui.tableAddTargetMode)
     setTableDeleteTargetModeDraft(state.ui.tableDeleteTargetMode)
     setTableOfContentsScopeDraft(
@@ -213,6 +225,8 @@ export function useSettingsController({
     state.theme,
     state.ui.alwaysShowSpaces,
     state.ui.alwaysShowDomains,
+    state.ui.showRegularNoteAisleAddButtons,
+    state.ui.showRegularNoteAisleDeleteButton,
     state.ui.tableAddTargetMode,
     state.ui.tableDeleteTargetMode,
     state.ui.tableOfContentsScope,
@@ -377,6 +391,28 @@ export function useSettingsController({
       },
     }))
     return true
+  }
+
+  const updateShowRegularNoteAisleAddButtonsSetting = (checked: boolean) => {
+    setShowRegularNoteAisleAddButtonsDraft(checked)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        showRegularNoteAisleAddButtons: checked,
+      },
+    }))
+  }
+
+  const updateShowRegularNoteAisleDeleteButtonSetting = (checked: boolean) => {
+    setShowRegularNoteAisleDeleteButtonDraft(checked)
+    commitImmediateSettingsState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        showRegularNoteAisleDeleteButton: checked,
+      },
+    }))
   }
 
   const updateTableAddTargetModeSetting = (mode: TableControlTargetMode) => {
@@ -944,6 +980,8 @@ export function useSettingsController({
     customThemePaletteDraft,
     alwaysShowSpacesDraft,
     alwaysShowDomainsDraft,
+    showRegularNoteAisleAddButtonsDraft,
+    showRegularNoteAisleDeleteButtonDraft,
     tableAddTargetModeDraft,
     tableDeleteTargetModeDraft,
     tableOfContentsScopeDraft,
@@ -972,6 +1010,8 @@ export function useSettingsController({
     updateAutoRemoveDaysSetting,
     updateAlwaysShowSpacesSetting,
     updateAlwaysShowDomainsSetting,
+    updateShowRegularNoteAisleAddButtonsSetting,
+    updateShowRegularNoteAisleDeleteButtonSetting,
     updateTableAddTargetModeSetting,
     updateTableDeleteTargetModeSetting,
     updateTableOfContentsScopeSetting,

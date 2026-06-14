@@ -704,6 +704,40 @@
   position: relative;
 }
 
+.note-workspace-recovery {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: var(--editor-bg);
+  color: var(--app-text);
+}
+
+.note-workspace-recovery-panel {
+  width: min(100%, 27rem);
+  border: 1px solid var(--app-border);
+  border-radius: 0.5rem;
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-popover);
+  padding: 1rem;
+}
+
+.note-workspace-recovery-title {
+  color: var(--app-text-heading);
+  font-size: var(--ui-font-label);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.note-workspace-recovery-meta {
+  margin: 0.45rem 0 0.85rem;
+  color: var(--app-text-subtle);
+  font-size: var(--ui-font-small);
+  overflow-wrap: anywhere;
+}
+
 .note-tools-item {
   border: 0;
   border-radius: 0.25rem;

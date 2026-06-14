@@ -417,6 +417,8 @@ export type AppState = {
   ui: {
     alwaysShowSpaces?: boolean
     alwaysShowDomains?: boolean
+    showRegularNoteAisleAddButtons?: boolean
+    showRegularNoteAisleDeleteButton?: boolean
     lastLinkInsertMode?: LinkInsertMode
     lastNoteCopyMode?: NoteCopyMode
     findCaseSensitive?: boolean

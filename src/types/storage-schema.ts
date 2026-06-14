@@ -128,6 +128,8 @@ export type StorageGlobalSettings = {
   ui: {
     alwaysShowSpaces?: boolean
     alwaysShowDomains?: boolean
+    showRegularNoteAisleAddButtons?: boolean
+    showRegularNoteAisleDeleteButton?: boolean
     lastLinkInsertMode?: 'note' | 'url'
     lastNoteCopyMode?: 'independent' | 'linked'
     findCaseSensitive?: boolean

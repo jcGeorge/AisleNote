@@ -1186,7 +1186,7 @@ describe('compact scope rails', () => {
     )
     expect(spaceHtml).not.toContain('arrange-preview-ghost')
     expect(spaceHtml).toContain('left:40px')
-    expect(domainHtml).toContain('top:99px')
+    expect(domainHtml).toContain('top:77px')
   })
 
   it('renders compact scope preview ghost cards for multi-item drags', () => {
@@ -1255,7 +1255,7 @@ describe('compact scope rails', () => {
     expect(domainHtml).toContain('--arrange-preview-ghost-x:64px')
     expect(domainHtml).toContain('--arrange-preview-ghost-rotation:8deg')
     expect(domainHtml).toContain('left:40px')
-    expect(domainHtml).toContain('top:99px')
+    expect(domainHtml).toContain('top:77px')
     expect(domainHtml).toContain('width:104px')
     expect(domainHtml).toContain('width:136px')
     expect(domainHtml.match(/Domain A/g)).toHaveLength(1)

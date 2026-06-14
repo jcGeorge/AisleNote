@@ -105,6 +105,8 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   ...DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
   alwaysShowSpaces: false,
   alwaysShowDomains: false,
+  showRegularNoteAisleAddButtons: false,
+  showRegularNoteAisleDeleteButton: false,
   noteFilter: {
     active: false,
     kind: 'tags',
@@ -541,12 +543,22 @@ export function extractSyncedUiSettings(rawUi) {
     alwaysShowSpaces && typeof ui.alwaysShowDomains === 'boolean'
       ? ui.alwaysShowDomains
       : DEFAULT_SYNCED_UI_SETTINGS.alwaysShowDomains
+  const showRegularNoteAisleAddButtons = optionalBoolean(
+    ui.showRegularNoteAisleAddButtons,
+    DEFAULT_SYNCED_UI_SETTINGS.showRegularNoteAisleAddButtons,
+  )
+  const showRegularNoteAisleDeleteButton = optionalBoolean(
+    ui.showRegularNoteAisleDeleteButton,
+    DEFAULT_SYNCED_UI_SETTINGS.showRegularNoteAisleDeleteButton,
+  )
   const themePalettes = normalizeThemePalettes(ui.themePalettes)
 
   return {
     ...registeredUi,
     alwaysShowSpaces,
     alwaysShowDomains,
+    showRegularNoteAisleAddButtons,
+    showRegularNoteAisleDeleteButton,
     noteFilter: normalizeNoteFilterSettings(ui.noteFilter),
     dataSettingsSection: optionalDataSettingsSection(ui.dataSettingsSection, DEFAULT_SYNCED_UI_SETTINGS.dataSettingsSection),
     selectedCustomTheme: normalizeSelectedCustomTheme(ui.selectedCustomTheme),
@@ -610,6 +622,8 @@ export function extractUiPreferences(appState) {
     ...pickRegisteredSyncedUiSettings(syncedUi),
     alwaysShowSpaces: syncedUi.alwaysShowSpaces,
     alwaysShowDomains: syncedUi.alwaysShowDomains,
+    showRegularNoteAisleAddButtons: syncedUi.showRegularNoteAisleAddButtons,
+    showRegularNoteAisleDeleteButton: syncedUi.showRegularNoteAisleDeleteButton,
     noteFilter: syncedUi.noteFilter,
     dataSettingsSection: syncedUi.dataSettingsSection,
     settingsSection: optionalString(ui.settingsSection, DEFAULT_SYNCED_UI_SETTINGS.settingsSection),

@@ -100,8 +100,9 @@ function assignRef<T>(ref: Ref<T>, value: T | null) {
   }
 }
 
-type ScratchpadAisleControls = {
-  canDeleteActiveAisle: boolean
+type NoteAisleControls = {
+  showAddButtons?: boolean
+  showDeleteButton?: boolean
   onAddAisleLeft: () => void
   onAddAisleRight: () => void
   onDeleteActiveAisle: () => void
@@ -149,7 +150,8 @@ type NoteWorkspaceProps = {
   onOpenAisleFrontmatter?: (aisleId: string) => void
   onOpenAisleLink?: (aisleId: string) => void
   onOpenTagFilter?: (tag: string) => void
-  scratchpadAisleControls?: ScratchpadAisleControls
+  scratchpadAisleControls?: NoteAisleControls
+  regularNoteAisleControls?: NoteAisleControls
   onRegisterAislePaneRoot: (aisleId: string, node: HTMLElement | null) => void
   onRegisterAisleEditorRoot: (editorKey: string, node: HTMLElement | null) => void
 }
@@ -297,6 +299,7 @@ export function NoteWorkspace({
   onOpenAisleLink = () => undefined,
   onOpenTagFilter = () => undefined,
   scratchpadAisleControls,
+  regularNoteAisleControls,
   onRegisterAislePaneRoot,
   onRegisterAisleEditorRoot,
 }: NoteWorkspaceProps) {
@@ -491,7 +494,13 @@ export function NoteWorkspace({
             (tableOfContentsHeadings.length > 0 || tableOfContentsLinks.length > 0)
           const showLinkButton = wholeNoteLinked || linkedAisleIds.has(aisle.id)
           const showFrontmatterButton = frontmatterAisleIds.has(aisle.id)
-          const showScratchpadAisleControls = Boolean(scratchpadAisleControls && aisle.id === activeAisleId)
+          const aisleControls = scratchpadAisleControls ?? regularNoteAisleControls
+          const showAisleAddButtons = aisleControls?.showAddButtons ?? true
+          const showAisleDeleteButton = aisleControls?.showDeleteButton ?? false
+          const showAisleControls = Boolean(
+            aisleControls && aisle.id === activeAisleId && (showAisleAddButtons || showAisleDeleteButton),
+          )
+          const aisleControlsLabel = scratchpadAisleControls ? 'Scratchpad aisle' : 'Aisle'
           const customAisleWidth = isSplitWorkspace ? aisleWidths[aisle.id] : undefined
           const aislePaneStyle =
             typeof customAisleWidth === 'number'
@@ -606,26 +615,31 @@ export function NoteWorkspace({
                   </div>
                 )}
               </section>
-              {showScratchpadAisleControls && scratchpadAisleControls && (
-                <div className="note-scratchpad-aisle-controls" aria-label={`Scratchpad aisle ${index + 1} controls`}>
-                  <button
-                    type="button"
-                    className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-add-btn note-scratchpad-aisle-add-left-btn"
-                    aria-label={`Add aisle to left of aisle ${index + 1}`}
-                    data-app-tooltip="Add aisle left"
-                    data-note-workspace-skip-aisle-activation="true"
-                    onPointerDown={(event) => {
-                      event.stopPropagation()
-                    }}
-                    onClick={(event) => {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      scratchpadAisleControls.onAddAisleLeft()
-                    }}
-                  >
-                    <AppIcon iconId="aisleRight" className="note-scratchpad-aisle-add-icon" flipHorizontal />
-                  </button>
-                  {scratchpadAisleControls.canDeleteActiveAisle && (
+              {showAisleControls && aisleControls && (
+                <div
+                  className="note-scratchpad-aisle-controls"
+                  aria-label={`${aisleControlsLabel} ${index + 1} controls`}
+                >
+                  {showAisleAddButtons && (
+                    <button
+                      type="button"
+                      className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-add-btn note-scratchpad-aisle-add-left-btn"
+                      aria-label={`Add aisle to left of aisle ${index + 1}`}
+                      data-app-tooltip="Add aisle left"
+                      data-note-workspace-skip-aisle-activation="true"
+                      onPointerDown={(event) => {
+                        event.stopPropagation()
+                      }}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        aisleControls.onAddAisleLeft()
+                      }}
+                    >
+                      <AppIcon iconId="aisleRight" className="note-scratchpad-aisle-add-icon" flipHorizontal />
+                    </button>
+                  )}
+                  {showAisleDeleteButton && (
                     <button
                       type="button"
                       className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-delete-btn"
@@ -638,29 +652,31 @@ export function NoteWorkspace({
                       onClick={(event) => {
                         event.preventDefault()
                         event.stopPropagation()
-                        scratchpadAisleControls.onDeleteActiveAisle()
+                        aisleControls.onDeleteActiveAisle()
                       }}
                     >
                       <span className="aisle-edit-delete-icon note-scratchpad-aisle-delete-icon" aria-hidden="true" />
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-add-btn note-scratchpad-aisle-add-right-btn"
-                    aria-label={`Add aisle to right of aisle ${index + 1}`}
-                    data-app-tooltip="Add aisle right"
-                    data-note-workspace-skip-aisle-activation="true"
-                    onPointerDown={(event) => {
-                      event.stopPropagation()
-                    }}
-                    onClick={(event) => {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      scratchpadAisleControls.onAddAisleRight()
-                    }}
-                  >
-                    <AppIcon iconId="aisleRight" className="note-scratchpad-aisle-add-icon" />
-                  </button>
+                  {showAisleAddButtons && (
+                    <button
+                      type="button"
+                      className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-add-btn note-scratchpad-aisle-add-right-btn"
+                      aria-label={`Add aisle to right of aisle ${index + 1}`}
+                      data-app-tooltip="Add aisle right"
+                      data-note-workspace-skip-aisle-activation="true"
+                      onPointerDown={(event) => {
+                        event.stopPropagation()
+                      }}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        aisleControls.onAddAisleRight()
+                      }}
+                    >
+                      <AppIcon iconId="aisleRight" className="note-scratchpad-aisle-add-icon" />
+                    </button>
+                  )}
                 </div>
               )}
               {tableOfContentsOpen && (
