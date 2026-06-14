@@ -519,7 +519,12 @@
 
 .toastui-editor-contents p.tabs-annotation-line-arrow-down::before,
 .toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down::before {
-  top: 0.34em;
+  top: 0.62em;
+}
+
+.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::before,
+.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::before {
+  top: 78%;
 }
 
 .toastui-editor-contents p.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::before,

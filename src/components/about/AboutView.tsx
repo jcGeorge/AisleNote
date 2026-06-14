@@ -15,13 +15,14 @@ export function AboutViewContent({
   runtimeInfo: RuntimeInfo | null
   runtimeUnavailable?: boolean
 }) {
-  if (section === 'donation') {
+  if (section === 'tooltip-sources') {
     return (
       <section className="utility-page-wrap about-view" aria-label="About Tabs">
         <div className="utility-page-card about-view-card">
-          <h2>donation</h2>
+          <h2>tooltip sources</h2>
           <p>
-            Tabs is free to use and intended to be open source. Donation and support options can be added here later.
+            Tabs uses Lucide icons for toolbar, navigation, and app controls. Lucide is an open-source icon set used
+            throughout the interface for clear, consistent visual labels.
           </p>
         </div>
       </section>

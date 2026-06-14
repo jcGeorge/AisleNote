@@ -348,13 +348,13 @@ export function TopBar({
               <button
                 type="button"
                 role="tab"
-                aria-selected={aboutSection === 'donation'}
+                aria-selected={aboutSection === 'tooltip-sources'}
                 className={`btn btn-sm ${
-                  aboutSection === 'donation' ? 'btn-primary' : 'btn-outline-secondary'
+                  aboutSection === 'tooltip-sources' ? 'btn-primary' : 'btn-outline-secondary'
                 } tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn`}
-                onClick={() => onAboutSectionChange('donation')}
+                onClick={() => onAboutSectionChange('tooltip-sources')}
               >
-                donation
+                tooltip sources
               </button>
             </>
           )}

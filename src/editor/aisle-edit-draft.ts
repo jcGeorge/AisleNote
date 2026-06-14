@@ -102,6 +102,75 @@ export function deleteFocusedAisleFromDraft(
   return { aisles: nextAisles, activeAisleId: nextActiveAisleId }
 }
 
+export type ClearAisleContentsDraftAction =
+  | {
+      type: 'delete-aisle'
+      aisles: ResolvedNoteAisle[]
+      activeAisleId: string
+      removedAisleBodyId: string
+    }
+  | {
+      type: 'decouple-and-clear'
+      aisles: ResolvedNoteAisle[]
+      activeAisleId: string
+      previousAisleBodyId: string
+      nextAisleBodyId: string
+    }
+  | {
+      type: 'clear-aisle'
+      aisleId: string
+      aisleBodyId: string
+    }
+
+export function getClearAisleContentsDraftAction(
+  draft: ResolvedNoteAisle[],
+  activeAisleId: string | null | undefined,
+  activeMarkdown: string,
+  linkedAisleIds: ReadonlySet<string>,
+  createAisleBodyId: () => string,
+): ClearAisleContentsDraftAction | null {
+  if (!activeAisleId) return null
+  const activeAisle = draft.find((aisle) => aisle.id === activeAisleId)
+  if (!activeAisle) return null
+
+  if (isEmptyAisleMarkdown(activeMarkdown)) {
+    const deleteResult = deleteFocusedAisleFromDraft(draft, activeAisle.id)
+    if (deleteResult) {
+      return {
+        type: 'delete-aisle',
+        aisles: deleteResult.aisles,
+        activeAisleId: deleteResult.activeAisleId,
+        removedAisleBodyId: activeAisle.aisleBodyId,
+      }
+    }
+  }
+
+  if (linkedAisleIds.has(activeAisle.id)) {
+    const nextAisleBodyId = createAisleBodyId()
+    return {
+      type: 'decouple-and-clear',
+      aisles: draft.map((aisle) =>
+        aisle.id === activeAisle.id
+          ? {
+              ...aisle,
+              aisleBodyId: nextAisleBodyId,
+              markdown: '',
+            }
+          : aisle,
+      ),
+      activeAisleId: activeAisle.id,
+      previousAisleBodyId: activeAisle.aisleBodyId,
+      nextAisleBodyId,
+    }
+  }
+
+  return {
+    type: 'clear-aisle',
+    aisleId: activeAisle.id,
+    aisleBodyId: activeAisle.aisleBodyId,
+  }
+}
+
 export function reorderAisleDraft(draft: ResolvedNoteAisle[], fromIndex: number, toIndex: number): ResolvedNoteAisle[] {
   if (fromIndex === toIndex) return draft
   if (fromIndex < 0 || fromIndex >= draft.length) return draft

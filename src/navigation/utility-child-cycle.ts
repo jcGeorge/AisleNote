@@ -1,7 +1,7 @@
 import { SETTINGS_SECTIONS } from '../settings/defaults'
 import type { AboutSection, MessagesSection, SettingsSection, ViewMode } from '../types/app'
 
-export const ABOUT_SECTIONS: AboutSection[] = ['home', 'donation']
+export const ABOUT_SECTIONS: AboutSection[] = ['home', 'tooltip-sources']
 export const MESSAGES_SECTIONS: MessagesSection[] = ['inbox', 'toast-history', 'diagnostics', 'editor-dev']
 
 export type UtilityChildSelection =

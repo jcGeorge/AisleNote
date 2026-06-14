@@ -462,6 +462,24 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
   }
 
+  const inspectProfileRootCandidate = (profileRootPath) => {
+    const normalizedProfileRootPath = path.resolve(profileRootPath)
+    return {
+      profileRootPath: normalizedProfileRootPath,
+      targetResult: loadNotebookResult(normalizedProfileRootPath),
+      targetHasProfile: existsSync(path.join(getHybridStorageRoot(normalizedProfileRootPath), 'manifest.json')),
+      targetHasEntries: notebookDirectoryHasEntries(normalizedProfileRootPath),
+    }
+  }
+
+  const resolveMoveProfileRootCandidate = (selectedProfileRootPath) => {
+    const selected = inspectProfileRootCandidate(selectedProfileRootPath)
+    if (selected.targetHasProfile || !selected.targetHasEntries || selected.targetResult.ok) return selected
+    return inspectProfileRootCandidate(
+      path.join(selected.profileRootPath, getStorageProfileNotebookName(profile.profileRootPath)),
+    )
+  }
+
   const createRecoveryMetadata = (failedProfile, failedResult, mode) => {
     const activeNotebookPath = getDefaultStorageProfileRoot(userDataPath)
     const failedNotebookAvailable = existsSync(failedProfile.profileRootPath)
@@ -778,21 +796,41 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
   }
 
-  const replaceProfileWithCurrentData = async (profileRootPath, event = null) => {
+  const maybeTrashSourceProfileRoot = async (sourceProfileRootPath) => {
+    if (!existsSync(sourceProfileRootPath)) return null
+    if (!shell || typeof shell.trashItem !== 'function') {
+      return 'Old notebook folder was kept because moving it to Trash is unavailable.'
+    }
+    try {
+      await shell.trashItem(sourceProfileRootPath)
+      return null
+    } catch (error) {
+      return error instanceof Error && error.message
+        ? `Old notebook folder was kept because it could not be moved to Trash: ${error.message}`
+        : 'Old notebook folder was kept because it could not be moved to Trash.'
+    }
+  }
+
+  const replaceProfileWithCurrentData = async (profileRootPath, event = null, options = {}) => {
     const serializedState = await getCurrentSerializedStateForProfileMove(event)
     if (serializedState === null) {
       return { ok: false, error: 'Current app state is not ready to move.', status }
     }
+    const previousProfileRootPath = profile.profileRootPath
     try {
       saveNotebookState(profileRootPath, serializedState, {
         userDataPath,
         userSettingsRoot: userDataPath,
         replaceExisting: true,
-        assetSourceRoot: getHybridStorageRoot(profile.profileRootPath),
+        assetSourceRoot: getHybridStorageRoot(previousProfileRootPath),
       })
-      return switchToProfileRoot(profileRootPath, 'profile-moved', {
-        replacePaths: [[profile.profileRootPath, profileRootPath]],
+      const result = switchToProfileRoot(profileRootPath, 'profile-moved', {
+        replacePaths: [[previousProfileRootPath, profileRootPath]],
       })
+      if (!result.ok || options.trashSource !== true || previousProfileRootPath === profileRootPath) return result
+      const warning = await maybeTrashSourceProfileRoot(previousProfileRootPath)
+      if (warning) return { ...result, warning }
+      return { ...result, status: updateStatus('profile-moved') }
     } catch (error) {
       return {
         ok: false,
@@ -813,12 +851,17 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     })
     if (selection.canceled || !selection.filePaths?.[0]) return { canceled: true, status }
 
-    const profileRootPath = path.resolve(selection.filePaths[0])
+    const selectedProfileRootPath = path.resolve(selection.filePaths[0])
+    const target = mode === 'move'
+      ? resolveMoveProfileRootCandidate(selectedProfileRootPath)
+      : inspectProfileRootCandidate(selectedProfileRootPath)
+    const {
+      profileRootPath,
+      targetResult,
+      targetHasProfile,
+      targetHasEntries,
+    } = target
     if (profileRootPath === profile.profileRootPath) return { ok: true, status }
-
-    const targetResult = loadNotebookResult(profileRootPath)
-    const targetHasProfile = existsSync(path.join(getHybridStorageRoot(profileRootPath), 'manifest.json'))
-    const targetHasEntries = notebookDirectoryHasEntries(profileRootPath)
 
     if (!targetHasProfile && targetHasEntries && !targetResult.ok) {
       return {
@@ -829,18 +872,24 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
 
     if (mode === 'move') {
-      if (targetHasProfile && dialog?.showMessageBox) {
-        const overwrite = await dialog.showMessageBox({
-          type: 'warning',
-          buttons: ['Replace with current data', 'Cancel'],
-          cancelId: 1,
+      let trashSource = false
+      if (dialog?.showMessageBox) {
+        const moveChoice = await dialog.showMessageBox({
+          type: targetHasProfile ? 'warning' : 'question',
+          buttons: targetHasProfile
+            ? ['Replace and keep old copy', 'Replace and move old copy to Trash', 'Cancel']
+            : ['Keep old copy', 'Move old copy to Trash', 'Cancel'],
+          cancelId: 2,
           defaultId: 0,
-          message: 'This folder already contains Tabs data.',
-          detail: 'Replacing it will write your current notebook into this folder. Current user settings stay in app support.',
+          message: targetHasProfile ? 'This folder already contains Tabs data.' : 'Move notebook folder?',
+          detail: targetHasProfile
+            ? 'Replacing it will write your current notebook into this folder. Current user settings stay in app support.'
+            : 'Tabs will write your current notebook into this folder. Current user settings stay in app support.',
         })
-        if (overwrite.response !== 0) return { canceled: true, status }
+        if (moveChoice.response === 2) return { canceled: true, status }
+        trashSource = moveChoice.response === 1
       }
-      return replaceProfileWithCurrentData(profileRootPath, event)
+      return replaceProfileWithCurrentData(profileRootPath, event, { trashSource })
     }
 
     if (targetResult.ok && typeof targetResult.serializedState === 'string') {

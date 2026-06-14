@@ -1138,9 +1138,12 @@
 }
 
 .aisle-toc-panel {
-  width: min(20rem, calc(100% - 1.5rem));
-  max-height: min(70%, 30rem);
+  width: min(28rem, calc(100% - 1.5rem));
+  height: min(42rem, calc(100% - 1.5rem));
+  max-height: calc(100% - 1.5rem);
+  min-height: min(20rem, calc(100% - 1.5rem));
   display: grid;
+  grid-template-rows: minmax(0, 1fr);
   gap: 0.45rem;
   padding: 0.55rem;
   border: 1px solid var(--context-menu-border);
@@ -1166,7 +1169,8 @@
   display: grid;
   align-content: start;
   gap: 0.65rem;
-  overflow: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
 

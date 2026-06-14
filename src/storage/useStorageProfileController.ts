@@ -3,7 +3,7 @@ import type { StorageProfileStatus, ToastTone } from '../types/app'
 
 type StorageProfileActionResult =
   | { canceled: true; status: StorageProfileStatus }
-  | { ok: true; status: StorageProfileStatus }
+  | { ok: true; status: StorageProfileStatus; warning?: string }
   | { ok: false; error?: string; status: StorageProfileStatus }
 
 type SerializedStateSource = string | (() => string)
@@ -81,6 +81,9 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     if ('canceled' in result && result.canceled) return false
     if ('ok' in result && result.ok) {
       pushToastRef.current(successMessage, 'success')
+      if (result.warning) {
+        pushToastRef.current(result.warning, 'warning', STORAGE_ERROR_TOAST_DURATION_MS)
+      }
       return true
     }
     pushToastRef.current(

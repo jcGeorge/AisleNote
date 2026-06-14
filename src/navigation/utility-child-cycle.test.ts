@@ -75,7 +75,7 @@ describe('utility child cycling', () => {
         aboutSection: 'home',
         direction: 1,
       }),
-    ).toEqual({ viewMode: 'about', section: 'donation' })
+    ).toEqual({ viewMode: 'about', section: 'tooltip-sources' })
 
     expect(
       getNextUtilityChildSelection({

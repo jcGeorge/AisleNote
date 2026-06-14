@@ -129,6 +129,7 @@ import {
 import { closeEditorEphemera, type CloseEditorEphemeraOptions } from '../editor/editor-ephemera'
 import {
   deleteFocusedAisleFromDraft,
+  getClearAisleContentsDraftAction,
   getAislesForNewAisle,
   isEmptyAisleMarkdown,
   MAX_AISLE_WARNING_MESSAGE,
@@ -344,6 +345,7 @@ import {
   updateSpaceInActiveDomain,
 } from '../state/domains'
 import {
+  createId,
   createTab,
   createSpace,
   MAX_NOTE_AISLES,
@@ -2739,6 +2741,17 @@ export function useAppController(): AppController {
     if (!isMainViewRef.current) return
     const currentEditor = editorRef.current
     if (!currentEditor) return
+    const activeAisle = activeNoteAisles.find((aisle) => aisle.id === activeAisleIdRef.current) ?? activeNoteAisles[0]
+    if (!activeAisle) return
+    const activeMarkdown = getNormalizedEditorMarkdown(currentEditor)
+    const clearAction = getClearAisleContentsDraftAction(
+      activeNoteAisles,
+      activeAisle.id,
+      activeMarkdown,
+      activeLinkedAisleIds,
+      createId,
+    )
+    if (!clearAction) return
 
     closeEditorEphemeraRef.current()
     closeLinkPrompt()
@@ -2750,19 +2763,39 @@ export function useAppController(): AppController {
     }
 
     normalizingContentRef.current = false
-    normalizingAisleIdsRef.current.delete(activeAisleIdRef.current)
+    normalizingAisleIdsRef.current.delete(activeAisle.id)
+
+    if (clearAction.type === 'delete-aisle') {
+      pendingContentRef.current.delete(clearAction.removedAisleBodyId)
+      lastEditorMarkdownByAisleRef.current.delete(clearAction.removedAisleBodyId)
+      applyAisleEditDraftToActiveNote(clearAction.aisles, { activeAisleId: clearAction.activeAisleId })
+      return
+    }
+
+    if (clearAction.type === 'decouple-and-clear') {
+      applyAisleEditDraftToActiveNote(clearAction.aisles, { activeAisleId: clearAction.activeAisleId })
+      pendingContentRef.current.delete(clearAction.previousAisleBodyId)
+      pendingContentRef.current.delete(clearAction.nextAisleBodyId)
+      lastEditorMarkdownRef.current = ''
+      lastEditorMarkdownByAisleRef.current.set(clearAction.nextAisleBodyId, '')
+      clearEditorMarkdownForDisplay(currentEditor)
+
+      window.requestAnimationFrame(() => {
+        focusEditorAtDocumentStart()
+      })
+      return
+    }
+
+    pendingContentRef.current.delete(clearAction.aisleBodyId)
     lastEditorMarkdownRef.current = ''
-    const activeAisle = activeNoteAisles.find((aisle) => aisle.id === activeAisleIdRef.current)
-    const activeAisleBodyId = activeAisle ? getAisleBodyId(activeAisle) : activeAisleIdRef.current
-    pendingContentRef.current.delete(activeAisleBodyId)
-    lastEditorMarkdownByAisleRef.current.set(activeAisleBodyId, '')
+    lastEditorMarkdownByAisleRef.current.set(clearAction.aisleBodyId, '')
     clearEditorMarkdownForDisplay(currentEditor)
     scheduleContentCommit(
       '',
       activeSpaceIdRef.current,
       activeTabIdRef.current,
       activeSubTabIdRef.current,
-      activeAisleIdRef.current,
+      clearAction.aisleId,
     )
 
     window.requestAnimationFrame(() => {

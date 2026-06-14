@@ -442,6 +442,10 @@ describe('editor annotation styles', () => {
       css,
       '.toastui-editor-contents p.tabs-annotation-line-arrow-down::before,\n.toastui-editor .ProseMirror p.tabs-annotation-line-arrow-down::before',
     )
+    const downInlineCurvePositionRule = extractLastRule(
+      css,
+      '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down::before',
+    )
     const downInlineTailLeftCurveRule = extractRule(
       css,
       '.toastui-editor-contents .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::before,\n.toastui-editor .ProseMirror .tabs-annotation-inline-arrow.tabs-annotation-line-arrow-down.tabs-annotation-line-tail-left::before',
@@ -515,7 +519,8 @@ describe('editor annotation styles', () => {
     expect(upInlineTailLeftCurveRule).toContain('m10%209%205-5%205%205')
     expect(upInlineTailRightCurveRule).toContain('mask-image: url("data:image/svg+xml')
     expect(upInlineTailRightCurveRule).toContain('M14%209%209%204%204%209')
-    expect(downLineCurvePositionRule).toContain('top: 0.34em;')
+    expect(downLineCurvePositionRule).toContain('top: 0.62em;')
+    expect(downInlineCurvePositionRule).toContain('top: 78%;')
     expect(downInlineTailLeftCurveRule).toContain('mask-image: url("data:image/svg+xml')
     expect(downInlineTailLeftCurveRule).toContain('m10%2015%205%205%205-5')
     expect(downInlineTailRightCurveRule).toContain('mask-image: url("data:image/svg+xml')
@@ -1381,9 +1386,15 @@ describe('table of contents panel styles', () => {
   it('centers the per-aisle table of contents panel without adding a backdrop', () => {
     const editorShellCss = readStyle('editor-shell.css')
     const layerRule = editorShellCss.match(/\.aisle-toc-panel-layer\s*\{[^}]+\}/)?.[0] ?? ''
+    const panelRule = extractRule(editorShellCss, '.aisle-toc-panel')
+    const sectionsRule = extractRule(editorShellCss, '.aisle-toc-sections')
 
     expect(layerRule).toContain('align-items: center;')
     expect(layerRule).toContain('justify-content: center;')
     expect(layerRule).toContain('background: transparent;')
+    expect(panelRule).toContain('height: min(42rem, calc(100% - 1.5rem));')
+    expect(panelRule).toContain('grid-template-rows: minmax(0, 1fr);')
+    expect(sectionsRule).toContain('overflow-y: auto;')
+    expect(sectionsRule).toContain('overscroll-behavior: contain;')
   })
 })

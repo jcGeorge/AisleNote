@@ -30,7 +30,7 @@ export const DEVICE_SETTINGS_STORAGE_KEY = 'tabs:device-settings:v1'
 const VIEW_MODES: ViewMode[] = ['main', 'trash', 'settings', 'messages', 'about']
 const ET_CETERA_VIEW_MODES = ['settings', 'messages', 'about'] as const
 const MESSAGES_SECTIONS: MessagesSection[] = ['inbox', 'toast-history', 'diagnostics']
-const ABOUT_SECTIONS: AboutSection[] = ['home', 'donation']
+const ABOUT_SECTIONS: AboutSection[] = ['home', 'tooltip-sources']
 export type DeviceEtCeteraViewMode = typeof ET_CETERA_VIEW_MODES[number]
 
 export type DeviceLastOpened = {

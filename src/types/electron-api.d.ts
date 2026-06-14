@@ -329,7 +329,7 @@ declare global {
       >
       moveStorageProfile?: () => Promise<
         | { canceled: true; status: StorageProfileStatus }
-        | { ok: true; status: StorageProfileStatus }
+        | { ok: true; status: StorageProfileStatus; warning?: string }
         | { ok: false; error: string; status: StorageProfileStatus }
       >
       chooseUserSettingsFolder?: () => Promise<

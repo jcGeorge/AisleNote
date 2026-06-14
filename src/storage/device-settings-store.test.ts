@@ -64,6 +64,8 @@ describe('device settings store', () => {
         .tagAutocompleteRecentKeys,
     ).toEqual(['tag', 'nested/tag'])
     expect(parseDeviceSettings(JSON.stringify({ messagesSection: 'editor-dev' })).messagesSection).toBe('inbox')
+    expect(parseDeviceSettings(JSON.stringify({ aboutSection: 'tooltip-sources' })).aboutSection).toBe('tooltip-sources')
+    expect(parseDeviceSettings(JSON.stringify({ aboutSection: 'donation' })).aboutSection).toBe('home')
   })
 
   it('normalizes invalid screen last-opened modes to main', () => {

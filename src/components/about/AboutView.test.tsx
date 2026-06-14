@@ -15,13 +15,13 @@ describe('AboutView', () => {
     expect(html).toContain('darwin')
   })
 
-  it('renders copy-only donation information', () => {
-    const html = renderToStaticMarkup(<AboutViewContent section="donation" runtimeInfo={null} />)
+  it('renders copy-only tooltip source information', () => {
+    const html = renderToStaticMarkup(<AboutViewContent section="tooltip-sources" runtimeInfo={null} />)
 
-    expect(html).toContain('donation')
-    expect(html).toContain('free to use')
-    expect(html).toContain('open source')
-    expect(html).toContain('support options can be added here later')
+    expect(html).toContain('tooltip sources')
+    expect(html).toContain('Lucide icons')
+    expect(html).toContain('open-source icon set')
+    expect(html).toContain('clear, consistent visual labels')
     expect(html).not.toContain('href=')
   })
 

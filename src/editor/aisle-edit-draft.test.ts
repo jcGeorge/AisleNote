@@ -9,6 +9,7 @@ import {
   createAisleEditDraft,
   deleteAisleFromDraft,
   deleteFocusedAisleFromDraft,
+  getClearAisleContentsDraftAction,
   findRightmostEmptyAisleIndex,
   getAislesForNewAisle,
   getAislePreviewText,
@@ -120,6 +121,45 @@ describe('aisle edit draft helpers', () => {
 
     expect(deleteFocusedAisleFromDraft([aisle('a')], 'a')).toBeNull()
     expect(deleteFocusedAisleFromDraft(draft, 'missing')).toBeNull()
+  })
+
+  it('uses clear contents on an empty aisle as an aisle delete when possible', () => {
+    const draft = [aisle('a', 'Alpha'), aisle('b', '')]
+
+    expect(getClearAisleContentsDraftAction(draft, 'b', ' ', new Set(), () => 'new-body')).toEqual({
+      type: 'delete-aisle',
+      aisles: [aisle('a', 'Alpha')],
+      activeAisleId: 'a',
+      removedAisleBodyId: 'b',
+    })
+  })
+
+  it('de-couples and clears a linked aisle instead of clearing the shared aisle body', () => {
+    const draft = [
+      { id: 'a', aisleBodyId: 'shared-body', markdown: 'Shared text' },
+      aisle('b', 'Local text'),
+    ]
+
+    expect(getClearAisleContentsDraftAction(draft, 'a', 'Shared text', new Set(['a']), () => 'decoupled-body')).toEqual({
+      type: 'decouple-and-clear',
+      aisles: [
+        { id: 'a', aisleBodyId: 'decoupled-body', markdown: '' },
+        aisle('b', 'Local text'),
+      ],
+      activeAisleId: 'a',
+      previousAisleBodyId: 'shared-body',
+      nextAisleBodyId: 'decoupled-body',
+    })
+  })
+
+  it('clears a non-empty independent aisle in place', () => {
+    const draft = [aisle('a', 'Alpha')]
+
+    expect(getClearAisleContentsDraftAction(draft, 'a', 'Alpha', new Set(), () => 'new-body')).toEqual({
+      type: 'clear-aisle',
+      aisleId: 'a',
+      aisleBodyId: 'a',
+    })
   })
 
   it('moves aisles with buttons and drag reorder indexes', () => {

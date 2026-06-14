@@ -1684,10 +1684,89 @@ describe('electron ipc boundaries', () => {
       }
     }))
 
-  it('rejects moving current app data into a non-empty folder without a notebook manifest', async () =>
+  it('moves current app data into a same-named child when the selected location is non-empty', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
-      const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-non-empty-target-'))
+      const targetLocation = mkdtempSync(path.join(os.tmpdir(), 'tabs-non-empty-location-'))
+      const targetRoot = path.join(targetLocation, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME)
       try {
+        writeFileSync(path.join(targetLocation, 'readme.txt'), 'keep me', 'utf8')
+        const ipcMain = createIpcMain()
+        const showMessageBox = vi.fn(async () => ({ response: 0 }))
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [targetLocation] })),
+            showMessageBox,
+          },
+        })
+
+        const saveEvent = { returnValue: null }
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+
+        await expect(ipcMain.handlers.get('move-storage-profile')()).resolves.toMatchObject({
+          ok: true,
+          status: {
+            profileRootPath: targetRoot,
+            knownNotebooks: [
+              expect.objectContaining({ notebookPath: defaultNotebookRoot(userDataPath), isActive: false }),
+              expect.objectContaining({ notebookPath: targetRoot, isActive: true }),
+            ],
+          },
+        })
+        expect(showMessageBox).toHaveBeenCalledWith(expect.objectContaining({
+          buttons: ['Keep old copy', 'Move old copy to Trash', 'Cancel'],
+        }))
+        expect(readFileSync(path.join(targetLocation, 'readme.txt'), 'utf8')).toBe('keep me')
+        expect(loadAppStateResult(targetRoot, { userSettingsRoot: userDataPath }).ok).toBe(true)
+      } finally {
+        rmSync(targetLocation, { recursive: true, force: true })
+      }
+    }))
+
+  it('prompts to replace a same-named child notebook inside a selected parent location', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const targetLocation = mkdtempSync(path.join(os.tmpdir(), 'tabs-child-notebook-location-'))
+      const targetRoot = path.join(targetLocation, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME)
+      try {
+        saveAppState(targetRoot, serializedAppState('light'), { userSettingsRoot: userDataPath })
+        const ipcMain = createIpcMain()
+        const showMessageBox = vi.fn(async () => ({ response: 0 }))
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [targetLocation] })),
+            showMessageBox,
+          },
+        })
+
+        const saveEvent = { returnValue: null }
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+
+        await expect(ipcMain.handlers.get('move-storage-profile')()).resolves.toMatchObject({
+          ok: true,
+          status: { profileRootPath: targetRoot },
+        })
+        expect(showMessageBox).toHaveBeenCalledWith(expect.objectContaining({
+          buttons: ['Replace and keep old copy', 'Replace and move old copy to Trash', 'Cancel'],
+        }))
+        const targetResult = loadAppStateResult(targetRoot, { userSettingsRoot: userDataPath })
+        expect(targetResult.ok).toBe(true)
+        expect(JSON.parse(targetResult.serializedState).theme).toBe('dawn')
+      } finally {
+        rmSync(targetLocation, { recursive: true, force: true })
+      }
+    }))
+
+  it('rejects moving current app data when the same-named child is non-empty without a notebook manifest', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const targetLocation = mkdtempSync(path.join(os.tmpdir(), 'tabs-invalid-child-location-'))
+      const targetRoot = path.join(targetLocation, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME)
+      try {
+        mkdirSync(targetRoot)
         writeFileSync(path.join(targetRoot, 'readme.txt'), 'keep me', 'utf8')
         const ipcMain = createIpcMain()
         const showMessageBox = vi.fn(async () => ({ response: 0 }))
@@ -1696,7 +1775,7 @@ describe('electron ipc boundaries', () => {
           app: { getPath: () => userDataPath },
           BrowserWindow: createBrowserWindow(),
           dialog: {
-            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [targetRoot] })),
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [targetLocation] })),
             showMessageBox,
           },
         })
@@ -1710,6 +1789,78 @@ describe('electron ipc boundaries', () => {
         })
         expect(showMessageBox).not.toHaveBeenCalled()
         expect(readFileSync(path.join(targetRoot, 'readme.txt'), 'utf8')).toBe('keep me')
+      } finally {
+        rmSync(targetLocation, { recursive: true, force: true })
+      }
+    }))
+
+  it('moves the old notebook folder to Trash after the new notebook loads when requested', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const sourceRoot = defaultNotebookRoot(userDataPath)
+      const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-trash-move-target-'))
+      try {
+        const trashItem = vi.fn(async (sourcePath) => {
+          expect(loadAppStateResult(targetRoot, { userSettingsRoot: userDataPath }).ok).toBe(true)
+          rmSync(sourcePath, { recursive: true, force: true })
+        })
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [targetRoot] })),
+            showMessageBox: vi.fn(async () => ({ response: 1 })),
+          },
+          shell: { trashItem },
+        })
+
+        const saveEvent = { returnValue: null }
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+
+        await expect(ipcMain.handlers.get('move-storage-profile')()).resolves.toMatchObject({
+          ok: true,
+          status: { profileRootPath: targetRoot },
+        })
+        expect(trashItem).toHaveBeenCalledWith(sourceRoot)
+        expect(existsSync(sourceRoot)).toBe(false)
+        expect(loadAppStateResult(targetRoot, { userSettingsRoot: userDataPath }).ok).toBe(true)
+      } finally {
+        rmSync(targetRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('keeps a successful move when trashing the old notebook folder fails', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const sourceRoot = defaultNotebookRoot(userDataPath)
+      const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-trash-warning-target-'))
+      try {
+        const trashItem = vi.fn(async () => {
+          throw new Error('permission denied')
+        })
+        const ipcMain = createIpcMain()
+        registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          dialog: {
+            showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [targetRoot] })),
+            showMessageBox: vi.fn(async () => ({ response: 1 })),
+          },
+          shell: { trashItem },
+        })
+
+        const saveEvent = { returnValue: null }
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+
+        await expect(ipcMain.handlers.get('move-storage-profile')()).resolves.toMatchObject({
+          ok: true,
+          status: { profileRootPath: targetRoot },
+          warning: 'Old notebook folder was kept because it could not be moved to Trash: permission denied',
+        })
+        expect(trashItem).toHaveBeenCalledWith(sourceRoot)
+        expect(existsSync(sourceRoot)).toBe(true)
+        expect(loadAppStateResult(targetRoot, { userSettingsRoot: userDataPath }).ok).toBe(true)
       } finally {
         rmSync(targetRoot, { recursive: true, force: true })
       }

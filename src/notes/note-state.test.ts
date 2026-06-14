@@ -345,6 +345,36 @@ describe('note-state helpers', () => {
     expect(stillLinkedBody?.frontmatterStatus).toBe('valid')
   })
 
+  it('can clear a newly de-coupled aisle body without clearing the shared source body', () => {
+    const state = {
+      ...createTestState(),
+      noteAisleBodies: [{ id: 'shared-aisle-body', markdown: 'shared text #Shared', tags: ['Shared'] }],
+      noteBodies: [
+        {
+          id: 'body-1',
+          aisles: [{ id: 'aisle-a', aisleBodyId: 'shared-aisle-body' }],
+        },
+        {
+          id: 'body-2',
+          aisles: [{ id: 'aisle-b', aisleBodyId: 'shared-aisle-body' }],
+        },
+      ],
+    }
+
+    const next = syncNoteBodyAisleStructureInState(state, 'body-1', [
+      { id: 'aisle-a', aisleBodyId: 'decoupled-aisle-body', markdown: '' },
+    ])
+    const decoupledAisle = next.noteBodies.find((body) => body.id === 'body-1')?.aisles[0]
+    const stillLinkedAisle = next.noteBodies.find((body) => body.id === 'body-2')?.aisles[0]
+
+    expect(decoupledAisle).toEqual({ id: 'aisle-a', aisleBodyId: 'decoupled-aisle-body' })
+    expect(decoupledAisle ? getAisleMarkdown(decoupledAisle, next.noteAisleBodies) : 'missing').toBe('')
+    expect(stillLinkedAisle).toEqual({ id: 'aisle-b', aisleBodyId: 'shared-aisle-body' })
+    expect(stillLinkedAisle ? getAisleMarkdown(stillLinkedAisle, next.noteAisleBodies) : '').toBe('shared text #Shared')
+    expect(next.noteAisleBodies?.find((body) => body.id === 'shared-aisle-body')?.tags).toEqual(['Shared'])
+    expect(next.noteAisleBodies?.find((body) => body.id === 'decoupled-aisle-body')?.tags).toEqual([])
+  })
+
   it('applies note location across domain, space, tab, and sub-tab state', () => {
     const next = applyNoteLocationToState(createTestState(), {
       domainId: 'domain-1',

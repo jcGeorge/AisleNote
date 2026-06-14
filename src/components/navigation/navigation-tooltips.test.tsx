@@ -335,7 +335,10 @@ describe('navigation arrange tooltips', () => {
       diagnosticLogCount: 4,
     })
     const aboutHtml = renderTopBar(false, { active: false }, false, { viewMode: 'about' })
-    const donationHtml = renderTopBar(false, { active: false }, false, { viewMode: 'about', aboutSection: 'donation' })
+    const tooltipSourcesHtml = renderTopBar(false, { active: false }, false, {
+      viewMode: 'about',
+      aboutSection: 'tooltip-sources',
+    })
 
     expect(messagesHtml).toContain('aria-label="utility sections"')
     expect(messagesHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-parent-rail-btn">messages (2)</button>')
@@ -358,8 +361,8 @@ describe('navigation arrange tooltips', () => {
     expect(messagesHtml).not.toMatch(/topbar-context-btn[^"]*">messages \(2\)<\/button>/)
     expect(aboutHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn parent-tab-btn utility-parent-rail-btn">about</button>')
     expect(aboutHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">home</button>')
-    expect(aboutHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">donation</button>')
-    expect(donationHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">donation</button>')
+    expect(aboutHtml).toContain('aria-selected="false" class="btn btn-sm btn-outline-secondary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">tooltip sources</button>')
+    expect(tooltipSourcesHtml).toContain('aria-selected="true" class="btn btn-sm btn-primary tab-btn subtab-btn utility-view-rail-btn utility-child-rail-btn">tooltip sources</button>')
     expect(aboutHtml).not.toMatch(/topbar-context-btn[^"]*">about<\/button>/)
   })
 
