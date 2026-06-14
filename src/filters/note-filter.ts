@@ -160,6 +160,10 @@ function createEmptyIndex(kind: NoteFilterKind, selectedKeys: string[], options:
   }
 }
 
+export function getEmptyNoteFilterIndex(kind: NoteFilterKind, selectedKeys: string[] = []): NoteFilterIndex {
+  return createEmptyIndex(kind, normalizeSelectedKeys(kind, selectedKeys), [], [])
+}
+
 function addFirstMatch(map: Map<string, NoteLocation>, key: string, location: NoteLocation) {
   if (!map.has(key)) map.set(key, location)
 }

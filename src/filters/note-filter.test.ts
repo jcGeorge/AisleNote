@@ -5,6 +5,7 @@ import { parseSavedState } from '../state/app-state'
 import {
   buildNoteFilterIndex,
   extractMediaFilterReferences,
+  getEmptyNoteFilterIndex,
   getFirstMatchingNoteFilterLocationForDomain,
   getFirstMatchingNoteFilterLocationForParent,
   getFirstMatchingNoteFilterLocationForSpace,
@@ -157,6 +158,20 @@ function createState() {
     ],
   }))
 }
+
+describe('empty note filter index', () => {
+  it('preserves normalized selected keys without scanning notebook content', () => {
+    const index = getEmptyNoteFilterIndex('tags', ['#Imported', ' imported '])
+
+    expect(index.kind).toBe('tags')
+    expect(index.selectedKeys).toEqual(['imported'])
+    expect(index.availableOptions).toEqual([])
+    expect(index.allOccurrences).toEqual([])
+    expect(index.selectedOccurrences).toEqual([])
+    expect(index.noteCounts.size).toBe(0)
+    expect(index.scratchpadCount).toBe(0)
+  })
+})
 
 describe('note filter index', () => {
   it('extracts markdown image references and audio/video links for the media filter', () => {

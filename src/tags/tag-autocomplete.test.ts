@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   TAG_AUTOCOMPLETE_CONTAINS_MIN_QUERY_LENGTH,
@@ -11,6 +13,11 @@ import {
   rememberTagAutocompleteKey,
 } from './tag-autocomplete'
 import type { TagFilterTagSummary } from './tag-filter'
+
+const useTagAutocompleteControllerSource = readFileSync(
+  fileURLToPath(new URL('./useTagAutocompleteController.ts', import.meta.url)),
+  'utf8',
+)
 
 const tags: TagFilterTagSummary[] = [
   { key: 'asdf', label: 'asdf', count: 4 },
@@ -128,5 +135,12 @@ describe('tag autocomplete helpers', () => {
 
   it('builds replacement text with selected casing', () => {
     expect(getTagAutocompleteReplacement('Nested/Tag')).toBe('#Nested/Tag ')
+  })
+
+  it('requests available tags lazily after a cursor tag query exists', () => {
+    expect(useTagAutocompleteControllerSource).toContain('getAvailableTags: () => TagFilterTagSummary[]')
+    expect(useTagAutocompleteControllerSource).toContain('const getAvailableTagsRef = useRef(getAvailableTags)')
+    expect(useTagAutocompleteControllerSource).toContain('getTagAutocompleteSuggestions(getAvailableTagsRef.current(), query.query')
+    expect(useTagAutocompleteControllerSource).not.toContain('availableTagsRef.current = availableTags')
   })
 })

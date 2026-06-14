@@ -326,4 +326,12 @@ describe('note filter rail visibility', () => {
     expect(appControllerSource).toContain('selectedKeys: [key]')
     expect(appControllerSource).toContain('if (occurrence) openNoteFilterOccurrence(occurrence)')
   })
+
+  it('keeps inactive note filter and tag autocomplete indexes off the typing path', () => {
+    expect(appControllerSource).toContain('const noteFilterIndexState = tagFilterActive ? state : null')
+    expect(appControllerSource).toContain('return getEmptyNoteFilterIndex(noteFilterKind, selectedKeys)')
+    expect(appControllerSource).toContain('const getTagAutocompleteAvailableTags = useCallback')
+    expect(appControllerSource).toContain('getAvailableTags: getTagAutocompleteAvailableTags')
+    expect(appControllerSource).not.toContain('const tagAutocompleteFilterIndex = useMemo')
+  })
 })

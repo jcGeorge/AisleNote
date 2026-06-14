@@ -114,6 +114,10 @@ export function shouldSkipImageToolsClose({
   )
 }
 
+export function hasActiveImageToolsState(state: Parameters<typeof shouldSkipImageToolsClose>[0]): boolean {
+  return !shouldSkipImageToolsClose(state)
+}
+
 type UseImageToolsParams = {
   editorRef: MutableRefObject<Editor | null>
   editorEventRootRef: MutableRefObject<HTMLElement | null>
@@ -333,6 +337,16 @@ export function useImageTools({
     updateInlineCrop(CLOSED_INLINE_CROP_STATE)
     updateImageTools(CLOSED_IMAGE_TOOLS_STATE)
   }
+
+  const hasActiveState = () =>
+    hasActiveImageToolsState({
+      imageTools: imageToolsRef.current,
+      inlineCrop: inlineCropRef.current,
+      hasActiveImage: Boolean(activeImageRef.current),
+      hasActiveImageLookup: Boolean(activeImageLookupRef.current),
+      hasImageResize: Boolean(imageResizeRef.current),
+      imageRebindInProgress: imageRebindInProgressRef.current,
+    })
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1359,6 +1373,7 @@ export function useImageTools({
     inlineCrop,
     activeImageRef,
     isCropActive: () => inlineCropRef.current.active,
+    hasActiveState,
     close,
     closeIfSelectedImageMissing,
     refreshPosition,

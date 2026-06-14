@@ -47,7 +47,7 @@ type TagAutocompleteViewport = {
 
 type UseTagAutocompleteControllerParams = {
   viewMode: ViewMode
-  availableTags: TagFilterTagSummary[]
+  getAvailableTags: () => TagFilterTagSummary[]
   recentTagKeys: string[]
   onRecentTagKeysChange: (keys: string[]) => void
   editorRef: MutableRefObject<Editor | null>
@@ -137,7 +137,7 @@ function tagAutocompleteQueryMatches(left: TagAutocompleteQuery | null, right: T
 
 export function useTagAutocompleteController({
   viewMode,
-  availableTags,
+  getAvailableTags,
   recentTagKeys,
   onRecentTagKeysChange,
   editorRef,
@@ -150,11 +150,11 @@ export function useTagAutocompleteController({
   const menuRef = useRef<TagAutocompleteMenuState | null>(null)
   const dismissedQueryRef = useRef<TagAutocompleteQuery | null>(null)
   const closeMenuRef = useRef<(options?: { restoreEditorFocus?: boolean }) => void>(() => {})
-  const availableTagsRef = useRef(availableTags)
+  const getAvailableTagsRef = useRef(getAvailableTags)
   const recentTagKeysRef = useRef(recentTagKeys)
 
   menuRef.current = menu
-  availableTagsRef.current = availableTags
+  getAvailableTagsRef.current = getAvailableTags
   recentTagKeysRef.current = recentTagKeys
 
   const operationRuntime = useMemo<EditorOperationRuntime>(() => ({
@@ -195,7 +195,7 @@ export function useTagAutocompleteController({
       return
     }
 
-    const suggestions = getTagAutocompleteSuggestions(availableTagsRef.current, query.query, recentTagKeysRef.current)
+    const suggestions = getTagAutocompleteSuggestions(getAvailableTagsRef.current(), query.query, recentTagKeysRef.current)
     if (suggestions.length === 0) {
       if (menuRef.current) closeMenuRef.current()
       return

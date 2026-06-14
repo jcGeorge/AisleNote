@@ -57,6 +57,27 @@ function createTextDoc(text: string) {
   }
 }
 
+function createMarkedTextDoc(segments: Array<{ text: string; href?: string }>) {
+  return {
+    descendants(callback: (node: unknown, pos: number) => void) {
+      let position = 1
+      segments.forEach((segment) => {
+        callback(
+          {
+            isText: true,
+            text: segment.text,
+            marks: segment.href
+              ? [{ type: { name: 'link' }, attrs: { linkUrl: segment.href } }]
+              : [],
+          },
+          position,
+        )
+        position += segment.text.length
+      })
+    },
+  }
+}
+
 function createImageDoc(source: string, alt = 'Linked') {
   return {
     descendants(callback: (node: unknown, pos: number) => boolean | void) {
@@ -155,6 +176,71 @@ describe('note preview plugin', () => {
       'Linked',
     )
     expect(hiddenNode).toMatchObject({ from: 4, to: 5, attrs: { class: 'note-context-node-hidden' } })
+  })
+
+  it('renders preview links parsed as an exclamation marker plus an internal link', () => {
+    const context = createPluginContext()
+    const payload = {
+      id: 'preview-id',
+      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+    }
+    const resolvePreviewToken = vi.fn(() => payload)
+    const pluginFactory = createNotePreviewPlugin(context, {
+      sourceNoteBodyId: 'source-body',
+      getNotePreviewData: vi.fn(),
+      resolvePreviewToken,
+      navigateToNoteLocation: vi.fn(),
+      deleteNotePreview: vi.fn(),
+    }).wysiwygPlugins[0]()
+
+    const decorations = pluginFactory.props.decorations({
+      doc: createMarkedTextDoc([
+        { text: 'Before ' },
+        { text: '!' },
+        { text: 'Others', href: 'Others--123abc' },
+        { text: ' after' },
+      ]),
+    })
+    const widget = decorations.find((decoration: any) => decoration.type === 'widget')
+    const hiddenSource = decorations.find((decoration: any) => decoration.type === 'inline')
+    widget.factory()
+
+    expect(resolvePreviewToken).toHaveBeenCalledWith('![Others](Others--123abc)')
+    expect(createNotePreviewWidgetElement).toHaveBeenCalledWith(
+      payload,
+      expect.objectContaining({ sourceNoteBodyId: 'source-body' }),
+      { from: 8, to: 15 },
+      'Others',
+    )
+    expect(hiddenSource).toMatchObject({ from: 8, to: 15, attrs: { class: 'note-context-token-hidden' } })
+  })
+
+  it('renders preview links when the exclamation marker is part of the link text', () => {
+    const context = createPluginContext()
+    const payload = {
+      id: 'preview-id',
+      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+    }
+    const resolvePreviewToken = vi.fn(() => payload)
+    const pluginFactory = createNotePreviewPlugin(context, {
+      sourceNoteBodyId: 'source-body',
+      getNotePreviewData: vi.fn(),
+      resolvePreviewToken,
+      navigateToNoteLocation: vi.fn(),
+      deleteNotePreview: vi.fn(),
+    }).wysiwygPlugins[0]()
+
+    const decorations = pluginFactory.props.decorations({ doc: createMarkedTextDoc([{ text: '!Others', href: 'Others--123abc' }]) })
+    const widget = decorations.find((decoration: any) => decoration.type === 'widget')
+    widget.factory()
+
+    expect(resolvePreviewToken).toHaveBeenCalledWith('![Others](Others--123abc)')
+    expect(createNotePreviewWidgetElement).toHaveBeenCalledWith(
+      payload,
+      expect.objectContaining({ sourceNoteBodyId: 'source-body' }),
+      { from: 1, to: 8 },
+      'Others',
+    )
   })
 
   it('resolves encoded internal note image node sources', () => {
@@ -263,6 +349,26 @@ describe('note preview plugin', () => {
     }).wysiwygPlugins[0]()
 
     const decorations = pluginFactory.props.decorations({ doc: createTextDoc('Before [Linked](Linked--123abc) after') })
+
+    expect(decorations).toEqual([])
+    expect(resolvePreviewToken).not.toHaveBeenCalled()
+  })
+
+  it('does not replace parsed internal note hyperlinks without a preview marker', () => {
+    const context = createPluginContext()
+    const resolvePreviewToken = vi.fn(() => ({
+      id: 'preview-id',
+      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+    }))
+    const pluginFactory = createNotePreviewPlugin(context, {
+      sourceNoteBodyId: 'source-body',
+      getNotePreviewData: vi.fn(),
+      resolvePreviewToken,
+      navigateToNoteLocation: vi.fn(),
+      deleteNotePreview: vi.fn(),
+    }).wysiwygPlugins[0]()
+
+    const decorations = pluginFactory.props.decorations({ doc: createMarkedTextDoc([{ text: 'Others', href: 'Others--123abc' }]) })
 
     expect(decorations).toEqual([])
     expect(resolvePreviewToken).not.toHaveBeenCalled()

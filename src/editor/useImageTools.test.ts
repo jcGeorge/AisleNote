@@ -3,6 +3,7 @@ import {
   CLOSED_IMAGE_TOOLS_STATE,
   CLOSED_INLINE_CROP_STATE,
   getInlineCropCloseDiagnosticDetails,
+  hasActiveImageToolsState,
   shouldSkipImageToolsClose,
 } from './useImageTools'
 
@@ -58,6 +59,21 @@ describe('image tools close behavior', () => {
     expect(shouldSkipImageToolsClose({ ...base, hasActiveImageLookup: true })).toBe(false)
     expect(shouldSkipImageToolsClose({ ...base, hasImageResize: true })).toBe(false)
     expect(shouldSkipImageToolsClose({ ...base, imageRebindInProgress: true })).toBe(false)
+  })
+
+  it('reports active image tool state as the inverse of idle close state', () => {
+    const idle = {
+      imageTools: CLOSED_IMAGE_TOOLS_STATE,
+      inlineCrop: CLOSED_INLINE_CROP_STATE,
+      hasActiveImage: false,
+      hasActiveImageLookup: false,
+      hasImageResize: false,
+      imageRebindInProgress: false,
+    }
+
+    expect(hasActiveImageToolsState(idle)).toBe(false)
+    expect(hasActiveImageToolsState({ ...idle, hasActiveImage: true })).toBe(true)
+    expect(hasActiveImageToolsState({ ...idle, imageTools: { ...CLOSED_IMAGE_TOOLS_STATE, visible: true } })).toBe(true)
   })
 })
 

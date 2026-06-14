@@ -8,6 +8,7 @@ import {
   createAisleActivationDiagnosticSummary,
   mergeAisleActivationDiagnosticSummary,
   shouldClearPendingCursorRestoreForAisleActivation,
+  shouldSkipActiveEditorActivationForEditorChange,
   shouldUseFastSameAisleActivation,
   type AisleActivationDiagnosticInput,
   type AisleActivationDiagnosticSummary,
@@ -147,6 +148,7 @@ type UseAisleEditorsOptions = {
   isMainViewRef: MutableRefObject<boolean>
   closeImageToolsRef: MutableRefObject<() => void>
   closeImageToolsIfSelectedImageMissingRef: MutableRefObject<() => void>
+  hasActiveImageToolsStateRef: MutableRefObject<() => boolean>
   isPendingCreatedRenameActive: () => boolean
   saveActiveCursorLocation: () => void
   flushPendingContent: (options?: FlushPendingContentOptions) => void
@@ -243,6 +245,7 @@ export function useAisleEditors({
   isMainViewRef,
   closeImageToolsRef,
   closeImageToolsIfSelectedImageMissingRef,
+  hasActiveImageToolsStateRef,
   isPendingCreatedRenameActive,
   saveActiveCursorLocation,
   flushPendingContent,
@@ -1108,6 +1111,8 @@ export function useAisleEditors({
     knownMarkdown?: string,
   ) => {
     const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+    let skippedActiveEditorActivation: boolean | null = null
+    let skippedImageToolsMissingCheck: boolean | null = null
     return measureSlowOperation(`aisle editor change:${aisleId}`, () => {
       try {
         if (!isMainViewRef.current) return
@@ -1156,8 +1161,26 @@ export function useAisleEditors({
           return
         }
 
-        activateAisleEditor(editorKey)
-        closeImageToolsIfSelectedImageMissingRef.current()
+        if (
+          meta &&
+          shouldSkipActiveEditorActivationForEditorChange({
+            editorRefMatches: editorRef.current === editor,
+            activeAisleStateMatches: isMountedMetaCurrentActiveAisle(meta),
+          })
+        ) {
+          skippedActiveEditorActivation = true
+          activeEditorAisleIdRef.current = aisleId
+        } else {
+          skippedActiveEditorActivation = false
+          activateAisleEditor(editorKey)
+        }
+
+        if (hasActiveImageToolsStateRef.current()) {
+          skippedImageToolsMissingCheck = false
+          closeImageToolsIfSelectedImageMissingRef.current()
+        } else {
+          skippedImageToolsMissingCheck = true
+        }
 
         void knownMarkdown
         const fallbackMarkdown = getCachedMarkdownForAisleBodyId(targetAisleBodyId) ?? getLazyContentCommitFallbackMarkdownForAisle(aisleId)
@@ -1192,6 +1215,8 @@ export function useAisleEditors({
             editorKey,
             pendingContentCount: pendingContentRef.current.size,
             knownMarkdown: typeof knownMarkdown === 'string',
+            skippedActiveEditorActivation,
+            skippedImageToolsMissingCheck,
           },
         })
         recordEditorAblationDiagnostic('change', {
@@ -1200,8 +1225,26 @@ export function useAisleEditors({
           details: {
             editorKey,
             pendingContentCount: pendingContentRef.current.size,
+            skippedActiveEditorActivation,
+            skippedImageToolsMissingCheck,
           },
         })
+        if (import.meta.env?.DEV) {
+          withAisleEditorPerfState((state) => {
+            state.lastEditorChangeHotPathDurationMs = durationMs
+            state.maxEditorChangeHotPathDurationMs = Math.max(state.maxEditorChangeHotPathDurationMs ?? 0, durationMs)
+            if (skippedActiveEditorActivation === true) {
+              state.skippedActiveEditorActivationCount += 1
+            } else if (skippedActiveEditorActivation === false) {
+              state.ranActiveEditorActivationCount += 1
+            }
+            if (skippedImageToolsMissingCheck === true) {
+              state.skippedImageToolsMissingCheckCount += 1
+            } else if (skippedImageToolsMissingCheck === false) {
+              state.ranImageToolsMissingCheckCount += 1
+            }
+          })
+        }
       }
     })
   }

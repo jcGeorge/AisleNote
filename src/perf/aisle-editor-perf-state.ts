@@ -1,6 +1,12 @@
 export type AisleEditorPerfState = {
   editorChangeCount: number
   lastEditorChangeAt: number | null
+  lastEditorChangeHotPathDurationMs: number | null
+  maxEditorChangeHotPathDurationMs: number | null
+  skippedActiveEditorActivationCount: number
+  ranActiveEditorActivationCount: number
+  skippedImageToolsMissingCheckCount: number
+  ranImageToolsMissingCheckCount: number
   activeAisleId: string
   activeAisleBodyId: string
   pendingMapSize: number
@@ -41,6 +47,12 @@ type AisleEditorPerfWindow = {
 const createAisleEditorPerfState = (): AisleEditorPerfState => ({
   editorChangeCount: 0,
   lastEditorChangeAt: null,
+  lastEditorChangeHotPathDurationMs: null,
+  maxEditorChangeHotPathDurationMs: null,
+  skippedActiveEditorActivationCount: 0,
+  ranActiveEditorActivationCount: 0,
+  skippedImageToolsMissingCheckCount: 0,
+  ranImageToolsMissingCheckCount: 0,
   activeAisleId: '',
   activeAisleBodyId: '',
   pendingMapSize: 0,

@@ -20,6 +20,27 @@ type NotePreviewPluginOptions = NotePreviewWidgetOptions & {
 
 export type { NotePreviewData } from '../notes/note-preview-data'
 
+type TextSegment = {
+  from: number
+  to: number
+  text: string
+  href: string
+}
+
+type PreviewTextLinkRange = {
+  from: number
+  to: number
+  href: string
+  label: string
+}
+
+type ResolvedPreviewTextLink = {
+  payload: NotePreviewReferencePayload
+  label: string
+  from: number
+  to: number
+}
+
 function getNodeTypeName(node: any): string {
   return String(node?.type?.name ?? '').toLowerCase()
 }
@@ -34,6 +55,17 @@ function getImageNodeAltText(node: any): string {
   const attrs = node?.attrs ?? {}
   const alt = attrs.altText ?? attrs.alt
   return typeof alt === 'string' ? alt.trim() : ''
+}
+
+function getTextNodeLinkHref(node: any): string {
+  const marks = Array.isArray(node?.marks) ? node.marks : []
+  const linkMark = marks.find(
+    (mark: any) =>
+      mark?.type?.name === 'link' &&
+      (typeof mark?.attrs?.linkUrl === 'string' || typeof mark?.attrs?.href === 'string'),
+  )
+  const href = linkMark?.attrs?.linkUrl ?? linkMark?.attrs?.href
+  return typeof href === 'string' ? href.trim() : ''
 }
 
 function normalizePreviewImageNodeSource(source: string): string {
@@ -58,6 +90,81 @@ function resolvePreviewImageNode(
   })
   const payload = token ? resolvePreviewToken(token) : null
   return payload ? { payload, label } : null
+}
+
+function collectTextSegments(doc: any): TextSegment[] {
+  const segments: TextSegment[] = []
+  doc.descendants((node: any, pos: number) => {
+    if (!node?.isText || typeof node.text !== 'string' || node.text.length === 0) return true
+    segments.push({
+      from: pos,
+      to: pos + node.text.length,
+      text: node.text,
+      href: getTextNodeLinkHref(node),
+    })
+    return true
+  })
+  return segments
+}
+
+function collectPreviewTextLinkRanges(segments: readonly TextSegment[]): PreviewTextLinkRange[] {
+  const ranges: PreviewTextLinkRange[] = []
+  segments.forEach((segment) => {
+    if (!segment.href) return
+    const previous = ranges[ranges.length - 1]
+    if (previous && previous.href === segment.href && previous.to === segment.from) {
+      previous.to = segment.to
+      previous.label += segment.text
+      return
+    }
+    ranges.push({
+      from: segment.from,
+      to: segment.to,
+      href: segment.href,
+      label: segment.text,
+    })
+  })
+  return ranges
+}
+
+function getPreviewTextLinkMarkerFrom(segments: readonly TextSegment[], range: PreviewTextLinkRange): number | null {
+  if (range.label.startsWith('!')) return range.from
+  const previousSegment = segments.find((segment) => segment.to === range.from)
+  return previousSegment?.text.endsWith('!') ? range.from - 1 : null
+}
+
+function resolvePreviewTextLink(
+  segments: readonly TextSegment[],
+  range: PreviewTextLinkRange,
+  resolvePreviewToken: (token: string) => NotePreviewReferencePayload | null,
+): ResolvedPreviewTextLink | null {
+  const markerFrom = getPreviewTextLinkMarkerFrom(segments, range)
+  if (markerFrom === null) return null
+  const label = (range.label.startsWith('!') ? range.label.slice(1) : range.label).trim()
+  const token = buildMarkdownNoteReferenceToken({
+    embed: true,
+    target: range.href,
+    label,
+  })
+  const payload = token ? resolvePreviewToken(token) : null
+  return payload
+    ? {
+        payload,
+        label,
+        from: markerFrom,
+        to: range.to,
+      }
+    : null
+}
+
+function collectPreviewTextLinks(
+  doc: any,
+  resolvePreviewToken: (token: string) => NotePreviewReferencePayload | null,
+): ResolvedPreviewTextLink[] {
+  const segments = collectTextSegments(doc)
+  return collectPreviewTextLinkRanges(segments)
+    .map((range) => resolvePreviewTextLink(segments, range, resolvePreviewToken))
+    .filter((link): link is ResolvedPreviewTextLink => Boolean(link))
 }
 
 function addPreviewWidgetDecoration({
@@ -153,6 +260,21 @@ function createNotePreviewDecorations({
       decorations.push(Decoration.inline(from, to, { class: 'note-context-token-hidden' }))
     }
     return true
+  })
+  collectPreviewTextLinks(doc, options.resolvePreviewToken).forEach((link) => {
+    const sourceRange = { from: link.from, to: link.to }
+    addPreviewWidgetDecoration({
+      decorations,
+      Decoration,
+      payload: link.payload,
+      options,
+      renderMode,
+      from: link.from,
+      sourceRange,
+      key: `${renderMode === 'readonly-preview' ? 'readonly-' : ''}note-preview-link-${link.from}-${link.to}-${link.payload.id}`,
+      label: link.label,
+    })
+    decorations.push(Decoration.inline(link.from, link.to, { class: 'note-context-token-hidden' }))
   })
   return DecorationSet.create(doc, decorations)
 }

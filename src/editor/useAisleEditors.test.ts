@@ -8,6 +8,7 @@ import {
   mergeAisleActivationDiagnosticSummary,
   shouldClearPendingCursorRestoreForAisleActivation,
   shouldDeferAisleCycleForMouseActivation,
+  shouldSkipActiveEditorActivationForEditorChange,
   shouldUseFastSameAisleActivation,
 } from './aisle-activation'
 
@@ -67,6 +68,34 @@ describe('aisle editor activation', () => {
         activeAisleStateMatches: false,
       }),
     ).toBe(false)
+  })
+
+  it('skips activation during editor changes from the already active editor', () => {
+    expect(
+      shouldSkipActiveEditorActivationForEditorChange({
+        editorRefMatches: true,
+        activeAisleStateMatches: true,
+      }),
+    ).toBe(true)
+
+    expect(
+      shouldSkipActiveEditorActivationForEditorChange({
+        editorRefMatches: false,
+        activeAisleStateMatches: true,
+      }),
+    ).toBe(false)
+    expect(
+      shouldSkipActiveEditorActivationForEditorChange({
+        editorRefMatches: true,
+        activeAisleStateMatches: false,
+      }),
+    ).toBe(false)
+  })
+
+  it('guards image tool missing checks behind active image tool state during typing', () => {
+    expect(useAisleEditorsSource).toContain('hasActiveImageToolsStateRef.current()')
+    expect(useAisleEditorsSource).toContain('skippedImageToolsMissingCheckCount')
+    expect(useAisleEditorsSource).toContain('skippedActiveEditorActivationCount')
   })
 
   it('clears pending cursor restore only for pointer activation', () => {

@@ -368,6 +368,7 @@ import {
 } from './note-filter-state'
 import {
   buildNoteFilterIndex,
+  getEmptyNoteFilterIndex,
   getFirstMatchingNoteFilterLocationForDomain,
   getFirstMatchingNoteFilterLocationForParent,
   getFirstMatchingNoteFilterLocationForSpace,
@@ -383,7 +384,9 @@ import {
   type NoteFilterOccurrence,
 } from '../filters/note-filter'
 import {
+  buildTagFilterIndex,
   normalizeTagKey,
+  type TagFilterTagSummary,
   type TagFilterOccurrence,
 } from '../tags/tag-filter'
 import { normalizeTagAutocompleteRecentKeys } from '../tags/tag-autocomplete'
@@ -745,6 +748,7 @@ export function useAppController(): AppController {
   const skipRenameBlurRef = useRef<{ type: EditableEntityType; id: string } | null>(null)
   const closeImageToolsRef = useRef<() => void>(() => {})
   const closeImageToolsIfSelectedImageMissingRef = useRef<() => void>(() => {})
+  const hasActiveImageToolsStateRef = useRef<() => boolean>(() => false)
   const closeMediaToolsRef = useRef<() => void>(() => {})
   const closeTableControlsRef = useRef<() => void>(() => {})
   const closeEditorEphemeraRef = useRef<(options?: CloseEditorEphemeraOptions) => void>(() => {})
@@ -1152,8 +1156,12 @@ export function useAppController(): AppController {
           : noteFilter.tags.selectedKeys
   const tagFilterActive = noteFilter.active
   const noteFilterSelectedKey = noteFilterSelectedKeys.join('\u0000')
+  const noteFilterIndexState = tagFilterActive ? state : null
   const noteFilterIndex = useMemo(() => {
     const selectedKeys = noteFilterSelectedKey ? noteFilterSelectedKey.split('\u0000') : []
+    if (!tagFilterActive) {
+      return getEmptyNoteFilterIndex(noteFilterKind, selectedKeys)
+    }
     if (import.meta.env?.DEV) {
       return runAisleEditorPerfTiming(
         (perfState, durationMs) => {
@@ -1164,22 +1172,22 @@ export function useAppController(): AppController {
       )
     }
     return buildNoteFilterIndex(state, noteFilterKind, selectedKeys)
-  }, [noteFilterKind, noteFilterSelectedKey, state])
+  }, [noteFilterKind, noteFilterSelectedKey, noteFilterIndexState, tagFilterActive])
   const sortedNoteFilterOptions = useMemo(
     () => sortNoteFilterOptions(noteFilterIndex.availableOptions, noteFilter.tags.sortMode),
     [noteFilter.tags.sortMode, noteFilterIndex.availableOptions],
   )
-  const tagAutocompleteFilterIndex = useMemo(() => {
+  const getTagAutocompleteAvailableTags = useCallback((): TagFilterTagSummary[] => {
     if (import.meta.env?.DEV) {
       return runAisleEditorPerfTiming(
         (perfState, durationMs) => {
           perfState.tagAutocompleteFilterIndexBuildCount += 1
           perfState.lastTagAutocompleteFilterIndexBuildDurationMs = durationMs
         },
-        () => buildNoteFilterIndex(state, 'tags', []),
+        () => buildTagFilterIndex(state, []).availableTags,
       )
     }
-    return buildNoteFilterIndex(state, 'tags', [])
+    return buildTagFilterIndex(state, []).availableTags
   }, [state])
 
   const updateNoteFilter = (updater: (current: NoteFilterSettings) => NoteFilterSettings) => {
@@ -1229,18 +1237,18 @@ export function useAppController(): AppController {
   }, [findReplaceMatches.length])
   const activeLinkedAisleIds = useMemo(
     () => (activeNoteBodyId ? getLinkedAisleIdsForNoteBody(state, activeNoteBodyId) : new Set<string>()),
-    [activeNoteBodyId, state],
+    [activeNoteBodyId, state.activeDomainId, state.activeSpaceId, state.domains, state.noteBodies, state.spaces],
   )
   const activeFrontmatterAisleIds = useMemo(() => {
-    const aisleBodyById = new Map((state.noteAisleBodies ?? []).map((body) => [body.id, body]))
-    return new Set(
-      activeNoteAisles
-        .filter((aisle) => {
-          const aisleBody = aisleBodyById.get(getAisleBodyId(aisle))
-          return aisleBody?.frontmatterStatus === 'valid' && aisleBody.frontmatter !== null && aisleBody.frontmatter !== undefined
-        })
-        .map((aisle) => aisle.id),
-    )
+    const result = new Set<string>()
+    activeNoteAisles.forEach((aisle) => {
+      const aisleBodyId = getAisleBodyId(aisle)
+      const aisleBody = (state.noteAisleBodies ?? []).find((body) => body.id === aisleBodyId)
+      if (aisleBody?.frontmatterStatus === 'valid' && aisleBody.frontmatter !== null && aisleBody.frontmatter !== undefined) {
+        result.add(aisle.id)
+      }
+    })
+    return result
   }, [activeNoteAisles, state.noteAisleBodies])
   const activeToolbarLayout = resolveToolbarLayout(state.ui.toolbarLayouts, activeToolbarLayoutId)
   const normalizedHotkeys = useMemo(() => normalizeHotkeySettings(state.hotkeys), [state.hotkeys])
@@ -3078,7 +3086,7 @@ export function useAppController(): AppController {
   })
   const tagAutocomplete = useTagAutocompleteController({
     viewMode,
-    availableTags: tagAutocompleteFilterIndex.availableOptions,
+    getAvailableTags: getTagAutocompleteAvailableTags,
     recentTagKeys: tagAutocompleteRecentKeys,
     onRecentTagKeysChange: (keys) => {
       const normalizedKeys = normalizeTagAutocompleteRecentKeys(keys)
@@ -3199,6 +3207,7 @@ export function useAppController(): AppController {
     isMainViewRef,
     closeImageToolsRef,
     closeImageToolsIfSelectedImageMissingRef,
+    hasActiveImageToolsStateRef,
     isPendingCreatedRenameActive,
     saveActiveCursorLocation,
     flushPendingContent,
@@ -3429,6 +3438,7 @@ export function useAppController(): AppController {
   const inlineCrop = imageToolsController.inlineCrop
   const activeImageRef = imageToolsController.activeImageRef
   const isImageCropActive = imageToolsController.isCropActive
+  const hasActiveImageToolsState = imageToolsController.hasActiveState
   const closeImageTools = imageToolsController.close
   const closeImageToolsIfSelectedImageMissing = imageToolsController.closeIfSelectedImageMissing
   const refreshImageToolsPosition = imageToolsController.refreshPosition
@@ -3446,6 +3456,7 @@ export function useAppController(): AppController {
   const beginInlineCropMouseDrag = imageToolsController.beginCropMouseDrag
   closeImageToolsRef.current = closeImageTools
   closeImageToolsIfSelectedImageMissingRef.current = closeImageToolsIfSelectedImageMissing
+  hasActiveImageToolsStateRef.current = hasActiveImageToolsState
 
   const mediaToolsController = useMediaTools({
     editorRef,

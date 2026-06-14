@@ -15,6 +15,16 @@ export function shouldUseFastSameAisleActivation({
   return !switchingAisle && editorRefMatches && pluginKeyMatches && activeAisleStateMatches
 }
 
+export function shouldSkipActiveEditorActivationForEditorChange({
+  editorRefMatches,
+  activeAisleStateMatches,
+}: {
+  editorRefMatches: boolean
+  activeAisleStateMatches: boolean
+}) {
+  return editorRefMatches && activeAisleStateMatches
+}
+
 export function shouldClearPendingCursorRestoreForAisleActivation(
   source: AisleActivationSource | undefined,
 ): boolean {
