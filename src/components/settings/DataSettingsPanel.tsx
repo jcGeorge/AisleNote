@@ -33,8 +33,12 @@ type DataSettingsPanelProps = {
   onCreateNotebook: () => void
   onRenameNotebook: () => void
   onOpenNotebook: () => void
-  onSwitchNotebook: (notebookPath: string) => void
-  onForgetNotebook: (notebookPath: string) => void
+  onSwitchNotebook: (selector: { notebookId?: string; notebookPath?: string }) => void
+  onForgetNotebook: (selector: { notebookId?: string; notebookPath?: string }) => void
+  onDeleteNotebook: () => void
+  onAttachNotebookSyncTarget: () => void
+  onDetachNotebookSyncTarget: () => void
+  onReconnectNotebookSyncTarget: () => void
   onMoveStorageProfile: () => void
   onRevealStorageProfile: () => void
   onRetryStorageProfile: () => void
@@ -139,6 +143,10 @@ function StorageDataSection({
   onOpenNotebook,
   onSwitchNotebook,
   onForgetNotebook,
+  onDeleteNotebook,
+  onAttachNotebookSyncTarget,
+  onDetachNotebookSyncTarget,
+  onReconnectNotebookSyncTarget,
   onMoveStorageProfile,
   onRevealStorageProfile,
   onRetryStorageProfile,
@@ -151,6 +159,10 @@ function StorageDataSection({
   | 'onOpenNotebook'
   | 'onSwitchNotebook'
   | 'onForgetNotebook'
+  | 'onDeleteNotebook'
+  | 'onAttachNotebookSyncTarget'
+  | 'onDetachNotebookSyncTarget'
+  | 'onReconnectNotebookSyncTarget'
   | 'onMoveStorageProfile'
   | 'onRevealStorageProfile'
   | 'onRetryStorageProfile'
@@ -160,7 +172,11 @@ function StorageDataSection({
   const storageIssues = storageProfileStatus?.issues ?? []
   const knownNotebooks = storageProfileStatus?.knownNotebooks ?? []
   const activeNotebookPath = storageProfileStatus?.notebookPath ?? storageProfileStatus?.profileRootPath ?? ''
+  const activeNotebookKey = storageProfileStatus?.activeNotebookId ?? activeNotebookPath
+  const activeLocalMirrorPath = storageProfileStatus?.localMirrorPath ?? storageProfileStatus?.profileRootPath ?? ''
+  const activeSyncTargetPath = storageProfileStatus?.syncTargetPath ?? ''
   const showRetry = Boolean(storageProfileStatus && (storageProfileStatus.status === 'error' || storageHealth !== 'healthy'))
+  const showSyncTargetControls = Boolean(storageProfileStatus?.activeNotebookId)
   const storageProfileCardClassName = [
     'storage-profile-card',
     storageHealth === 'error' ? 'is-error' : '',
@@ -203,10 +219,16 @@ function StorageDataSection({
           <select
             id="settings-notebook-select"
             className="settings-select-input"
-            value={activeNotebookPath}
+            value={activeNotebookKey}
             onChange={(event) => {
-              if (event.target.value && event.target.value !== activeNotebookPath) {
-                onSwitchNotebook(event.target.value)
+              if (event.target.value && event.target.value !== activeNotebookKey) {
+                const selected = knownNotebooks.find((notebook) =>
+                  (notebook.notebookId ?? notebook.notebookPath) === event.target.value
+                )
+                onSwitchNotebook({
+                  notebookId: selected?.notebookId ?? undefined,
+                  notebookPath: selected?.notebookPath ?? event.target.value,
+                })
               }
             }}
           >
@@ -215,15 +237,17 @@ function StorageDataSection({
               : [{
                   notebookPath: activeNotebookPath,
                   notebookName: storageProfileStatus?.notebookName ?? 'desktop notebook unavailable',
+                  notebookId: storageProfileStatus?.activeNotebookId,
+                  syncStatus: storageProfileStatus?.syncStatus,
                   available: Boolean(activeNotebookPath),
                 }]
             ).map((notebook) => (
               <option
-                key={notebook.notebookPath}
-                value={notebook.notebookPath}
+                key={notebook.notebookId ?? notebook.notebookPath}
+                value={notebook.notebookId ?? notebook.notebookPath}
                 disabled={!notebook.available}
               >
-                {notebook.notebookName}{notebook.available ? '' : ' (missing)'}
+                {notebook.notebookName}{notebook.available ? '' : ' (local missing)'}{notebook.syncStatus === 'offline' ? ' (offline)' : ''}
               </option>
             ))}
           </select>
@@ -253,10 +277,20 @@ function StorageDataSection({
         <details>
           <summary>notebook details</summary>
           <div className="storage-profile-row">
-            <span className="settings-hotkey-label">notebook folder</span>
+            <span className="settings-hotkey-label">local mirror</span>
             <code className="storage-profile-path">
-              {activeNotebookPath || 'desktop notebook folder unavailable'}
+              {activeLocalMirrorPath || 'desktop notebook mirror unavailable'}
             </code>
+          </div>
+          <div className="storage-profile-row">
+            <span className="settings-hotkey-label">sync folder</span>
+            <code className="storage-profile-path">
+              {activeSyncTargetPath || 'not attached'}
+            </code>
+          </div>
+          <div className="storage-profile-row">
+            <span className="settings-hotkey-label">sync</span>
+            <span>{storageProfileStatus?.syncStatus ?? 'local-only'}</span>
           </div>
           <div className="storage-profile-row">
             <span className="settings-hotkey-label">status</span>
@@ -281,9 +315,30 @@ function StorageDataSection({
             <button type="button" className="btn btn-sm settings-action-btn" onClick={onMoveStorageProfile}>
               move folder
             </button>
+            {showSyncTargetControls && (
+              activeSyncTargetPath ? (
+                <>
+                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onReconnectNotebookSyncTarget}>
+                    reconnect
+                  </button>
+                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onDetachNotebookSyncTarget}>
+                    detach sync
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="btn btn-sm settings-action-btn" onClick={onAttachNotebookSyncTarget}>
+                  attach sync folder
+                </button>
+              )
+            )}
             <button type="button" className="btn btn-sm settings-action-btn" onClick={onRevealStorageProfile}>
               open notebook folder
             </button>
+            {storageProfileStatus?.activeNotebookId && (
+              <button type="button" className="btn btn-sm settings-action-btn" onClick={onDeleteNotebook}>
+                delete notebook
+              </button>
+            )}
             {showRetry && (
               <button
                 type="button"
@@ -297,16 +352,19 @@ function StorageDataSection({
           {knownNotebooks.length > 0 && (
             <div className="storage-profile-issues" aria-label="remembered notebooks">
               {knownNotebooks.map((notebook) => (
-                <div key={notebook.notebookPath} className="storage-profile-row">
+                <div key={notebook.notebookId ?? notebook.notebookPath} className="storage-profile-row">
                   <span className="settings-hotkey-label">
-                    {notebook.notebookName}{notebook.isActive ? ' (current)' : notebook.available ? '' : ' (missing)'}
+                    {notebook.notebookName}{notebook.isActive ? ' (current)' : notebook.available ? '' : ' (local missing)'}{notebook.syncStatus === 'offline' ? ' (offline)' : ''}
                   </span>
                   <code className="storage-profile-path">{notebook.notebookPath}</code>
                   {!notebook.isActive && !notebook.isDefault && (
                     <button
                       type="button"
                       className="btn btn-sm settings-action-btn"
-                      onClick={() => onForgetNotebook(notebook.notebookPath)}
+                      onClick={() => onForgetNotebook({
+                        notebookId: notebook.notebookId ?? undefined,
+                        notebookPath: notebook.notebookPath,
+                      })}
                     >
                       remove from list
                     </button>

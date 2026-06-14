@@ -6887,6 +6887,10 @@ export function useAppController(): AppController {
           onOpenNotebook={storageProfileController.openNotebook}
           onSwitchNotebook={storageProfileController.switchNotebook}
           onForgetNotebook={storageProfileController.forgetNotebook}
+          onDeleteNotebook={storageProfileController.deleteNotebook}
+          onAttachNotebookSyncTarget={storageProfileController.attachNotebookSyncTarget}
+          onDetachNotebookSyncTarget={storageProfileController.detachNotebookSyncTarget}
+          onReconnectNotebookSyncTarget={storageProfileController.reconnectNotebookSyncTarget}
           onMoveStorageProfile={storageProfileController.moveStorageProfile}
           onRevealStorageProfile={storageProfileController.revealStorageProfile}
           onRetryStorageProfile={storageProfileController.retryStorageProfile}
@@ -7154,9 +7158,25 @@ export function useAppController(): AppController {
       {storageProfileStatus?.status === 'error' && (
         <div className="storage-status-banner" role="alert">
           <span>{storageProfileStatus.error ?? 'Notebook folder could not be loaded. Saves are paused.'}</span>
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={storageProfileController.revealStorageProfile}>
-            reveal folder
-          </button>
+          {storageProfileStatus.event === 'notebook-setup-required' ? (
+            <>
+              <button type="button" className="btn btn-sm settings-action-btn" onClick={openCreateNotebookModal}>
+                new notebook
+              </button>
+              <button type="button" className="btn btn-sm settings-action-btn" onClick={storageProfileController.openNotebook}>
+                open notebook...
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="btn btn-sm settings-action-btn" onClick={storageProfileController.revealStorageProfile}>
+                reveal folder
+              </button>
+              <button type="button" className="btn btn-sm settings-action-btn" onClick={storageProfileController.retryStorageProfile}>
+                retry
+              </button>
+            </>
+          )}
         </div>
       )}
 

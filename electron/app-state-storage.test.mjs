@@ -691,7 +691,7 @@ describe('Electron app state storage load result', () => {
       expect(parsed.ui.headingCollapseState).toEqual({ 'body-1': { 'aisle-1': ['heading'] } })
     }))
 
-  it('ignores stale profile-settings and rejects unsupported root manifests', () =>
+  it('ignores stale profile-settings and loads schema 2 root manifests', () =>
     withTempUserDataPath((userDataPath) => {
       saveAppState(userDataPath, serializedAppState())
       const rootPath = userDataPath
@@ -727,10 +727,14 @@ describe('Electron app state storage load result', () => {
 
       writeFileSync(
         manifestPath,
-        `${JSON.stringify({ schemaVersion: 2, files: rootManifest.files }, null, 2)}\n`,
+        `${JSON.stringify({ schemaVersion: 2, notebookId: 'notebook-test-schema-2', files: rootManifest.files }, null, 2)}\n`,
         'utf8',
       )
-      expect(loadAppStateResult(userDataPath).ok).toBe(false)
+      expect(loadAppStateResult(userDataPath)).toMatchObject({
+        ok: true,
+        schemaVersion: 2,
+        notebookId: 'notebook-test-schema-2',
+      })
     }))
 
   it('loads manually replaced app-settings without changing notebook content', () =>
@@ -1707,7 +1711,7 @@ describe('Electron app state storage load result', () => {
       })
     }))
 
-  for (const schemaVersion of [2, 3, 4, 999]) {
+  for (const schemaVersion of [3, 4, 999]) {
     it(`rejects unsupported schema ${schemaVersion} profiles`, () =>
       withTempUserDataPath((userDataPath) => {
         const root = userDataPath

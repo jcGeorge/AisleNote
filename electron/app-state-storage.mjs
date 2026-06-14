@@ -64,7 +64,8 @@ import {
 
 export const HYBRID_ROOT_DIR = ''
 const SCHEMA_VERSION = 1
-const SUPPORTED_SCHEMA_VERSIONS = new Set([SCHEMA_VERSION])
+const NOTEBOOK_ID_SCHEMA_VERSION = 2
+const SUPPORTED_SCHEMA_VERSIONS = new Set([SCHEMA_VERSION, NOTEBOOK_ID_SCHEMA_VERSION])
 const DOMAINS_DIR = 'domains'
 const FRONTMATTER_OPEN_RE = /^---[ \t]*(?:\r?\n|$)/
 const FRONTMATTER_CLOSE_RE = /(?:^|\r?\n)---[ \t]*(?:\r?\n|$)/
@@ -1441,10 +1442,18 @@ function buildNavigationState(appState) {
   }
 }
 
-function buildRootManifest() {
+function buildRootManifest(options = {}) {
+  const notebookId = typeof options.notebookId === 'string' && options.notebookId.trim()
+    ? options.notebookId.trim()
+    : ''
+  const syncStateFile = options.syncMetadata ? '_internal/sync-state.json' : null
   return {
-    schemaVersion: SCHEMA_VERSION,
-    files: ROOT_SPLIT_FILES,
+    schemaVersion: notebookId ? NOTEBOOK_ID_SCHEMA_VERSION : SCHEMA_VERSION,
+    ...(notebookId ? { notebookId } : {}),
+    files: {
+      ...ROOT_SPLIT_FILES,
+      ...(syncStateFile ? { syncState: syncStateFile } : {}),
+    },
   }
 }
 
@@ -1825,7 +1834,16 @@ function writeHybridStorage(tempRoot, serializedState, options = {}) {
       deletedSpaces: ensureArray(parsedState.deletedSpaces).filter(isRecord),
     })
     setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.noteRegistry, { noteBodies: noteBodyEntries, aisleBodies: aisleBodyEntries })
-    setStorageJsonFile(fileMap, 'manifest.json', buildRootManifest())
+    if (options.syncMetadata) {
+      setStorageJsonFile(fileMap, '_internal/sync-state.json', {
+        notebookId: typeof options.notebookId === 'string' ? options.notebookId : undefined,
+        ...options.syncMetadata,
+      })
+    }
+    setStorageJsonFile(fileMap, 'manifest.json', buildRootManifest({
+      notebookId: options.notebookId,
+      syncMetadata: options.syncMetadata,
+    }))
   })
   addMetricPhaseDuration(metrics, 'buildFileMap', nowMs() - buildStartedAt)
   addStorageFileMapMetrics(metrics, fileMap, assetBank)
@@ -2858,6 +2876,7 @@ function readHybridAppStateResultFromRoot(rootPath, profileRootPath = path.dirna
   return {
     serializedState: readHybridAppStateFromRootManifest(rootPath, rawRootManifest, issues, profileRootPath, options),
     schemaVersion: rawRootManifest.schemaVersion,
+    notebookId: typeof rawRootManifest.notebookId === 'string' ? rawRootManifest.notebookId : null,
     issues,
   }
 }
@@ -2901,6 +2920,7 @@ export function loadAppStateResult(profileRootPath, options = {}) {
       serializedState: hybridResult.serializedState,
       source: 'hybrid',
       schemaVersion: hybridResult.schemaVersion,
+      notebookId: hybridResult.notebookId ?? null,
     }, hybridResult.issues)
   }
 
@@ -2944,6 +2964,8 @@ export function saveAppState(profileRootPath, serializedState, options = {}) {
   return measureSlowMainOperation('hybrid app-state write', () =>
     writeHybridStorage(finalRoot, serializedState, {
       assetSourceRoot: typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : finalRoot,
+      notebookId: typeof options.notebookId === 'string' ? options.notebookId : undefined,
+      syncMetadata: options.syncMetadata,
       userSettingsRoot,
     }),
   )

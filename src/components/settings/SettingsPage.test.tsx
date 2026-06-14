@@ -234,6 +234,10 @@ function renderSettingsPage(
       onOpenNotebook={() => undefined}
       onSwitchNotebook={() => undefined}
       onForgetNotebook={() => undefined}
+      onDeleteNotebook={() => undefined}
+      onAttachNotebookSyncTarget={() => undefined}
+      onDetachNotebookSyncTarget={() => undefined}
+      onReconnectNotebookSyncTarget={() => undefined}
       onMoveStorageProfile={() => undefined}
       onRevealStorageProfile={() => undefined}
       onRetryStorageProfile={() => undefined}
@@ -457,7 +461,7 @@ describe('frontmatter settings page', () => {
     expect(storageHtml).toContain('current notebook')
     expect(storageHtml).toContain('settings-notebook-select')
     expect(storageHtml).toContain('Tabs Notebook')
-    expect(storageHtml).toContain('Missing Notebook (missing)')
+    expect(storageHtml).toContain('Missing Notebook (local missing)')
     expect(storageHtml).toContain('new notebook')
     expect(storageHtml).toContain('open notebook...')
     expect(storageHtml).toContain('notebook details')

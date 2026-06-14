@@ -69,6 +69,26 @@ type SaveAppStateResult =
       serializedState?: string | null
     }
 
+type NotebookSelectorPayload = {
+  notebookId?: string
+  notebookPath?: string
+}
+
+type NotebookSyncTargetPayload = NotebookSelectorPayload & {
+  syncTargetPath?: string
+  locationPath?: string
+}
+
+type NotebookDeletePayload = NotebookSelectorPayload & {
+  trashSyncTarget?: boolean
+  skipConfirmation?: boolean
+}
+
+type StorageProfileActionResult =
+  | { canceled: true; status: StorageProfileStatus }
+  | { ok: true; status: StorageProfileStatus; warning?: string }
+  | { ok: false; error?: string; status: StorageProfileStatus }
+
 type ImportImageAssetPayload = {
   bytes: ArrayBuffer
   name?: string
@@ -297,41 +317,20 @@ declare global {
         | { ok: true; locationPath: string }
         | { ok: false; error: string }
       >
-      createNotebook?: (payload: { name: string; locationPath: string; serializedState: string }) => Promise<
-        | { canceled: true; status: StorageProfileStatus }
-        | { ok: true; status: StorageProfileStatus }
-        | { ok: false; error: string; status: StorageProfileStatus }
-      >
+      createNotebook?: (payload: { name: string; locationPath: string; serializedState: string }) => Promise<StorageProfileActionResult>
       resetLocalNotebookToBlank?: () => Promise<
         { ok: true; status: StorageProfileStatus } | { ok: false; error?: string; status: StorageProfileStatus }
       >
-      renameNotebook?: (payload: { name: string }) => Promise<
-        | { ok: true; status: StorageProfileStatus }
-        | { ok: false; error: string; status: StorageProfileStatus }
-      >
-      openNotebook?: () => Promise<
-        | { canceled: true; status: StorageProfileStatus }
-        | { ok: true; status: StorageProfileStatus }
-        | { ok: false; error: string; status: StorageProfileStatus }
-      >
-      switchNotebook?: (payload: { notebookPath: string }) => Promise<
-        | { ok: true; status: StorageProfileStatus }
-        | { ok: false; error: string; status: StorageProfileStatus }
-      >
-      forgetNotebook?: (payload: { notebookPath: string }) => Promise<
-        | { ok: true; status: StorageProfileStatus }
-        | { ok: false; error: string; status: StorageProfileStatus }
-      >
-      chooseStorageFolder?: () => Promise<
-        | { canceled: true; status: StorageProfileStatus }
-        | { ok: true; status: StorageProfileStatus }
-        | { ok: false; error: string; status: StorageProfileStatus }
-      >
-      moveStorageProfile?: () => Promise<
-        | { canceled: true; status: StorageProfileStatus }
-        | { ok: true; status: StorageProfileStatus; warning?: string }
-        | { ok: false; error: string; status: StorageProfileStatus }
-      >
+      renameNotebook?: (payload: { name: string }) => Promise<StorageProfileActionResult>
+      openNotebook?: () => Promise<StorageProfileActionResult>
+      switchNotebook?: (payload: NotebookSelectorPayload) => Promise<StorageProfileActionResult>
+      forgetNotebook?: (payload: NotebookSelectorPayload) => Promise<StorageProfileActionResult>
+      deleteNotebook?: (payload?: NotebookDeletePayload) => Promise<StorageProfileActionResult>
+      attachNotebookSyncTarget?: (payload?: NotebookSyncTargetPayload) => Promise<StorageProfileActionResult>
+      detachNotebookSyncTarget?: (payload?: NotebookSelectorPayload) => Promise<StorageProfileActionResult>
+      reconnectNotebookSyncTarget?: (payload?: NotebookSyncTargetPayload) => Promise<StorageProfileActionResult>
+      chooseStorageFolder?: () => Promise<StorageProfileActionResult>
+      moveStorageProfile?: () => Promise<StorageProfileActionResult>
       chooseUserSettingsFolder?: () => Promise<
         | { canceled: true; status: UserSettingsLocationStatus }
         | { ok: true; status: UserSettingsLocationStatus }
@@ -352,7 +351,7 @@ declare global {
         { ok: true } | { ok: false; error: string }
       >
       retryStorageProfile?: () => Promise<
-        { ok: true; status: StorageProfileStatus } | { ok: false; error?: string; status: StorageProfileStatus }
+        { ok: true; status: StorageProfileStatus; warning?: string } | { ok: false; error?: string; status: StorageProfileStatus }
       >
       onStorageProfileStatusUpdated?: (handler: (payload: StorageProfileStatus) => void) => () => void
       onUserSettingsLocationStatusUpdated?: (handler: (payload: UserSettingsLocationStatus) => void) => () => void

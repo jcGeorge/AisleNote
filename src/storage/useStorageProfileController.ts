@@ -14,6 +14,21 @@ type CreateNotebookPayload = {
   serializedState: SerializedStateSource
 }
 
+type NotebookSelectorPayload = {
+  notebookId?: string
+  notebookPath?: string
+}
+
+type NotebookSyncTargetPayload = NotebookSelectorPayload & {
+  syncTargetPath?: string
+  locationPath?: string
+}
+
+type NotebookDeletePayload = NotebookSelectorPayload & {
+  trashSyncTarget?: boolean
+  skipConfirmation?: boolean
+}
+
 type RevealRecoveredNotebookLocationPayload = {
   messageId?: string
   signature?: string
@@ -31,6 +46,7 @@ export function getStorageProfileStatusToast(nextStatus: StorageProfileStatus): 
   tone: ToastTone
   durationMs?: number
 } | null {
+  if (nextStatus.event === 'notebook-setup-required') return null
   if (nextStatus.event === 'external-loaded') {
     return { message: 'External notebook folder changes loaded.', tone: 'success' }
   }
@@ -152,9 +168,12 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     return handleStorageProfileResult(result, 'Notebook opened.')
   }
 
-  const switchNotebook = async (notebookPath: string) => {
+  const normalizeNotebookSelector = (selector: string | NotebookSelectorPayload): NotebookSelectorPayload =>
+    typeof selector === 'string' ? { notebookPath: selector } : selector
+
+  const switchNotebook = async (selector: string | NotebookSelectorPayload) => {
     await beforeStorageActionRef.current?.()
-    const result = await window.electronAPI?.switchNotebook?.({ notebookPath })
+    const result = await window.electronAPI?.switchNotebook?.(normalizeNotebookSelector(selector))
     if (!result) {
       pushToastRef.current('Notebook switching is only available in the desktop app.', 'warning')
       return false
@@ -162,13 +181,53 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     return handleStorageProfileResult(result, 'Notebook switched.')
   }
 
-  const forgetNotebook = async (notebookPath: string) => {
-    const result = await window.electronAPI?.forgetNotebook?.({ notebookPath })
+  const forgetNotebook = async (selector: string | NotebookSelectorPayload) => {
+    const result = await window.electronAPI?.forgetNotebook?.(normalizeNotebookSelector(selector))
     if (!result) {
       pushToastRef.current('Notebook list management is only available in the desktop app.', 'warning')
       return false
     }
     return handleStorageProfileResult(result, 'Notebook removed from list.')
+  }
+
+  const deleteNotebook = async (payload: NotebookDeletePayload = {}) => {
+    await beforeStorageActionRef.current?.()
+    const result = await window.electronAPI?.deleteNotebook?.(payload)
+    if (!result) {
+      pushToastRef.current('Notebook deletion is only available in the desktop app.', 'warning')
+      return false
+    }
+    return handleStorageProfileResult(result, 'Notebook deleted.')
+  }
+
+  const attachNotebookSyncTarget = async (payload: NotebookSyncTargetPayload = {}) => {
+    await beforeStorageActionRef.current?.()
+    const result = await window.electronAPI?.attachNotebookSyncTarget?.(payload)
+    if (!result) {
+      pushToastRef.current('Notebook sync folders are only available in the desktop app.', 'warning')
+      return false
+    }
+    return handleStorageProfileResult(result, 'Sync folder attached.')
+  }
+
+  const detachNotebookSyncTarget = async (payload: NotebookSelectorPayload = {}) => {
+    await beforeStorageActionRef.current?.()
+    const result = await window.electronAPI?.detachNotebookSyncTarget?.(payload)
+    if (!result) {
+      pushToastRef.current('Notebook sync folders are only available in the desktop app.', 'warning')
+      return false
+    }
+    return handleStorageProfileResult(result, 'Sync folder detached.')
+  }
+
+  const reconnectNotebookSyncTarget = async (payload: NotebookSyncTargetPayload = {}) => {
+    await beforeStorageActionRef.current?.()
+    const result = await window.electronAPI?.reconnectNotebookSyncTarget?.(payload)
+    if (!result) {
+      pushToastRef.current('Notebook sync folders are only available in the desktop app.', 'warning')
+      return false
+    }
+    return handleStorageProfileResult(result, 'Sync folder reconnected.')
   }
 
   const moveStorageProfile = async () => {
@@ -218,6 +277,10 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     openNotebook,
     switchNotebook,
     forgetNotebook,
+    deleteNotebook,
+    attachNotebookSyncTarget,
+    detachNotebookSyncTarget,
+    reconnectNotebookSyncTarget,
     moveStorageProfile,
     revealStorageProfile,
     revealRecoveredNotebookLocation,

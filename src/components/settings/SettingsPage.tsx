@@ -199,8 +199,12 @@ type SettingsPageProps = {
   onCreateNotebook: () => void
   onRenameNotebook: () => void
   onOpenNotebook: () => void
-  onSwitchNotebook: (notebookPath: string) => void
-  onForgetNotebook: (notebookPath: string) => void
+  onSwitchNotebook: (selector: { notebookId?: string; notebookPath?: string }) => void
+  onForgetNotebook: (selector: { notebookId?: string; notebookPath?: string }) => void
+  onDeleteNotebook: () => void
+  onAttachNotebookSyncTarget: () => void
+  onDetachNotebookSyncTarget: () => void
+  onReconnectNotebookSyncTarget: () => void
   onMoveStorageProfile: () => void
   onRevealStorageProfile: () => void
   onRetryStorageProfile: () => void
@@ -299,6 +303,10 @@ export function SettingsPage({
   onOpenNotebook,
   onSwitchNotebook,
   onForgetNotebook,
+  onDeleteNotebook,
+  onAttachNotebookSyncTarget,
+  onDetachNotebookSyncTarget,
+  onReconnectNotebookSyncTarget,
   onMoveStorageProfile,
   onRevealStorageProfile,
   onRetryStorageProfile,
@@ -608,6 +616,10 @@ export function SettingsPage({
             onOpenNotebook={onOpenNotebook}
             onSwitchNotebook={onSwitchNotebook}
             onForgetNotebook={onForgetNotebook}
+            onDeleteNotebook={onDeleteNotebook}
+            onAttachNotebookSyncTarget={onAttachNotebookSyncTarget}
+            onDetachNotebookSyncTarget={onDetachNotebookSyncTarget}
+            onReconnectNotebookSyncTarget={onReconnectNotebookSyncTarget}
             onMoveStorageProfile={onMoveStorageProfile}
             onRevealStorageProfile={onRevealStorageProfile}
             onRetryStorageProfile={onRetryStorageProfile}

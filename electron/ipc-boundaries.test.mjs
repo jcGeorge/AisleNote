@@ -11,6 +11,7 @@ import {
 } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 import JSZip from 'jszip'
 import { registerClipboardIpc } from './ipc-clipboard.mjs'
@@ -48,6 +49,26 @@ function createBrowserWindow(windows = []) {
 
 function defaultNotebookRoot(userDataPath) {
   return path.join(userDataPath, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME)
+}
+
+function testNotebookIdForRoot(rootPath) {
+  return `notebook-test-${createHash('sha256').update(path.resolve(rootPath)).digest('hex').slice(0, 32)}`
+}
+
+function saveTestNotebook(rootPath, serializedState, userDataPath = path.dirname(rootPath)) {
+  return saveAppState(rootPath, serializedState, {
+    userSettingsRoot: userDataPath,
+    notebookId: testNotebookIdForRoot(rootPath),
+    syncMetadata: {
+      version: 1,
+      event: 'test-seed',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+  })
+}
+
+function saveDefaultTestNotebook(userDataPath, serializedState = serializedAppState('dawn')) {
+  return saveTestNotebook(defaultNotebookRoot(userDataPath), serializedState, userDataPath)
 }
 
 function withTempUserDataPath(run) {
@@ -686,7 +707,7 @@ describe('electron ipc boundaries', () => {
     await expect(ipcMain.handlers.get('check-for-updates')()).resolves.toEqual({ status: 'not-available' })
   })
 
-  it('resets a corrupt default notebook and resumes app-state writes', () =>
+  it('blocks a corrupt app-support notebook instead of resetting it silently', () =>
     withTempUserDataPath((userDataPath) => {
       const root = defaultNotebookRoot(userDataPath)
       mkdirSync(root, { recursive: true })
@@ -703,42 +724,33 @@ describe('electron ipc boundaries', () => {
       ipcMain.listeners.get('load-app-state-result')(loadEvent)
 
       expect(loadEvent.returnValue).toMatchObject({
-        ok: true,
-        source: 'hybrid',
-        revision: 1,
+        ok: false,
+        source: 'empty',
+        revision: 0,
+        error: 'Notebook setup is required before saves can start.',
       })
-      expect(JSON.parse(loadEvent.returnValue.serializedState).messages).toEqual([
-        expect.objectContaining({
-          type: 'storage-notebook-recovered',
-          recoveryMode: 'reset-default',
-          failedNotebookPath: root,
-        }),
-      ])
-      expect(storageSession.canWriteAppState()).toBe(true)
+      expect(readFileSync(path.join(root, 'manifest.json'), 'utf8')).toBe('{nope')
+      expect(storageSession.canWriteAppState()).toBe(false)
       expect(storageSession.getStorageProfileStatus()).toMatchObject({
-        status: 'ready',
-        event: 'notebook-auto-recovered',
+        status: 'error',
+        event: 'notebook-setup-required',
         profileRootPath: root,
-        recovery: {
-          mode: 'reset-default',
-          failedNotebookPath: root,
-          activeNotebookPath: root,
-        },
+        knownNotebooks: [],
       })
       const saveEvent = { returnValue: null }
-      ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 1 })
+      ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
       expect(saveEvent.returnValue).toMatchObject({
-        ok: true,
-        revision: 2,
+        ok: false,
+        reason: 'load-failed',
       })
     }))
 
-  it('resets the local notebook to blank and drops remembered notebook links', async () =>
+  it('resets the active notebook local mirror to blank without deleting library records', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const externalRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-linked-notebook-'))
       try {
-        saveAppState(defaultNotebookRoot(userDataPath), serializedAppState('dawn'), { userSettingsRoot: userDataPath })
-        saveAppState(externalRoot, serializedAppState('light'), { userSettingsRoot: userDataPath })
+        saveDefaultTestNotebook(userDataPath, serializedAppState('dawn'))
+        saveTestNotebook(externalRoot, serializedAppState('light'), userDataPath)
         writeStorageProfileConfig(userDataPath, externalRoot)
         const window = {
           isDestroyed: vi.fn(() => false),
@@ -755,23 +767,23 @@ describe('electron ipc boundaries', () => {
           ok: true,
           status: {
             event: 'notebook-reset-local',
-            profileRootPath: defaultNotebookRoot(userDataPath),
-            knownNotebooks: [
+            syncStatus: 'pending',
+            knownNotebooks: expect.arrayContaining([
               expect.objectContaining({
-                notebookPath: defaultNotebookRoot(userDataPath),
+                notebookPath: externalRoot,
                 isActive: true,
               }),
-            ],
+            ]),
           },
         })
 
-        expect(storageSession.getProfileRootPath()).toBe(defaultNotebookRoot(userDataPath))
-        const localLoad = loadAppStateResult(defaultNotebookRoot(userDataPath), { userSettingsRoot: userDataPath })
+        expect(storageSession.getProfileRootPath()).toBe(storageSession.getStorageProfileStatus().localMirrorPath)
+        const localLoad = loadAppStateResult(storageSession.getProfileRootPath(), { userSettingsRoot: userDataPath })
         expect(localLoad.ok).toBe(true)
         const localState = JSON.parse(localLoad.serializedState)
         expect(localState.domains[0].name).toBe('humble beginnings')
         expect(localState.noteAisleBodies[0].markdown).toBe('')
-        expect(storageSession.getStorageProfileStatus().knownNotebooks).toHaveLength(1)
+        expect(storageSession.getStorageProfileStatus().knownNotebooks).toHaveLength(2)
         expect(window.webContents.send).toHaveBeenCalledWith(
           'app-state-updated',
           expect.objectContaining({
@@ -783,8 +795,86 @@ describe('electron ipc boundaries', () => {
       }
     }))
 
+  it('saves locally while the sync target is unavailable and reconnect pushes pending changes', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const externalRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-offline-save-target-'))
+      try {
+        saveTestNotebook(externalRoot, serializedAppState('light'), userDataPath)
+        writeStorageProfileConfig(userDataPath, externalRoot)
+        const ipcMain = createIpcMain()
+        const storageSession = registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+        })
+        const localMirrorPath = storageSession.getProfileRootPath()
+        rmSync(externalRoot, { recursive: true, force: true })
+
+        const pendingState = JSON.parse(serializedAppState('dawn'))
+        pendingState.domains[0].name = 'Pending Local'
+        const saveEvent = { sender: { id: 1 }, returnValue: null }
+        ipcMain.listeners.get('save-app-state')(saveEvent, {
+          serializedState: JSON.stringify(pendingState),
+          baseRevision: 1,
+        })
+
+        expect(saveEvent.returnValue).toMatchObject({ ok: true, revision: 2 })
+        expect(storageSession.getStorageProfileStatus()).toMatchObject({
+          status: 'ready',
+          syncStatus: 'offline',
+          syncPending: true,
+          syncTargetPath: externalRoot,
+        })
+        expect(JSON.parse(loadAppStateResult(localMirrorPath, { userSettingsRoot: userDataPath }).serializedState).domains[0].name).toBe('Pending Local')
+
+        mkdirSync(externalRoot, { recursive: true })
+        await expect(ipcMain.handlers.get('reconnect-notebook-sync-target')()).resolves.toMatchObject({
+          ok: true,
+          status: {
+            syncStatus: 'synced',
+            syncPending: false,
+            syncTargetPath: externalRoot,
+          },
+        })
+        expect(JSON.parse(loadAppStateResult(externalRoot, { userSettingsRoot: userDataPath }).serializedState).domains[0].name).toBe('Pending Local')
+        storageSession.close()
+      } finally {
+        rmSync(externalRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('deletes the active notebook by trashing its local mirror and returning to setup', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath, serializedAppState('light'))
+      const localRoot = defaultNotebookRoot(userDataPath)
+      const trashItem = vi.fn(async (targetPath) => {
+        rmSync(targetPath, { recursive: true, force: true })
+      })
+      const ipcMain = createIpcMain()
+      registerStorageIpc({
+        ipcMain,
+        app: { getPath: () => userDataPath },
+        BrowserWindow: createBrowserWindow(),
+        shell: { trashItem },
+      })
+
+      await expect(
+        ipcMain.handlers.get('delete-notebook')(null, { notebookPath: localRoot, skipConfirmation: true }),
+      ).resolves.toMatchObject({
+        ok: true,
+        status: {
+          status: 'error',
+          event: 'notebook-setup-required',
+          knownNotebooks: [],
+        },
+      })
+      expect(trashItem).toHaveBeenCalledWith(localRoot)
+      expect(existsSync(localRoot)).toBe(false)
+    }))
+
   it('broadcasts successful revisioned app-state saves to other windows', () =>
     withTempUserDataPath((userDataPath) => {
+      saveDefaultTestNotebook(userDataPath, serializedAppState('light'))
       const ipcMain = createIpcMain()
       const sourceSender = { id: 1 }
       const sourceWindow = {
@@ -802,12 +892,12 @@ describe('electron ipc boundaries', () => {
       })
 
       const saveEvent = { sender: sourceSender, returnValue: null }
-      ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: '{"theme":"dawn"}', baseRevision: 0 })
+      ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: '{"theme":"dawn"}', baseRevision: 1 })
 
       expect(saveEvent.returnValue).toMatchObject({
         ok: true,
         serializedState: '{"theme":"dawn"}',
-        revision: 1,
+        revision: 2,
       })
       expect(saveEvent.returnValue.saveMetrics).toMatchObject({
         counts: expect.objectContaining({ generatedFiles: expect.any(Number) }),
@@ -816,12 +906,13 @@ describe('electron ipc boundaries', () => {
       expect(sourceWindow.webContents.send).not.toHaveBeenCalledWith('app-state-updated', expect.anything())
       expect(otherWindow.webContents.send).toHaveBeenCalledWith('app-state-updated', {
         serializedState: '{"theme":"dawn"}',
-        revision: 1,
+        revision: 2,
       })
     }))
 
   it('handles async app-state saves and broadcasts them to other windows', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath, serializedAppState('light'))
       const ipcMain = createIpcMain()
       const sourceWindow = {
         isDestroyed: vi.fn(() => false),
@@ -840,12 +931,12 @@ describe('electron ipc boundaries', () => {
       await expect(
         ipcMain.handlers.get('save-app-state-async')(
           { sender: { id: 1 } },
-          { serializedState: '{"theme":"dawn"}', baseRevision: 0 },
+          { serializedState: '{"theme":"dawn"}', baseRevision: 1 },
         ),
       ).resolves.toMatchObject({
         ok: true,
         serializedState: '{"theme":"dawn"}',
-        revision: 1,
+        revision: 2,
         saveMetrics: {
           counts: expect.objectContaining({ generatedFiles: expect.any(Number) }),
           phases: expect.objectContaining({ fingerprint: expect.any(Number) }),
@@ -854,11 +945,11 @@ describe('electron ipc boundaries', () => {
       expect(sourceWindow.webContents.send).not.toHaveBeenCalledWith('app-state-updated', expect.anything())
       expect(otherWindow.webContents.send).toHaveBeenCalledWith('app-state-updated', {
         serializedState: '{"theme":"dawn"}',
-        revision: 1,
+        revision: 2,
       })
     }))
 
-  it('reports the default storage profile status', async () =>
+  it('reports setup-required storage status when no notebooks exist', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const ipcMain = createIpcMain()
       registerStorageIpc({
@@ -868,21 +959,15 @@ describe('electron ipc boundaries', () => {
       })
 
       await expect(ipcMain.handlers.get('get-storage-profile-status')()).resolves.toMatchObject({
-        status: 'ready',
+        status: 'error',
+        event: 'notebook-setup-required',
         profileRootPath: defaultNotebookRoot(userDataPath),
         notebookPath: defaultNotebookRoot(userDataPath),
         notebookName: STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME,
-        isDefault: true,
-        canWrite: true,
+        isDefault: false,
+        canWrite: false,
         source: 'empty',
-        knownNotebooks: [
-          expect.objectContaining({
-            notebookPath: defaultNotebookRoot(userDataPath),
-            notebookName: STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME,
-            isActive: true,
-            isDefault: true,
-          }),
-        ],
+        knownNotebooks: [],
       })
       await expect(ipcMain.handlers.get('get-user-settings-location-status')()).resolves.toMatchObject({
         status: 'ready',
@@ -894,13 +979,10 @@ describe('electron ipc boundaries', () => {
       })
     }))
 
-  it('disconnects from a corrupt external notebook on startup and creates a local notebook', async () =>
+  it('blocks startup setup when the only remembered external notebook is corrupt', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const externalRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-corrupt-external-'))
       try {
-        const seedRoot = path.join(userDataPath, 'settings-seed')
-        saveAppState(seedRoot, serializedAppState('light'), { userSettingsRoot: userDataPath })
-        rmSync(seedRoot, { recursive: true, force: true })
         writeFileSync(path.join(externalRoot, 'manifest.json'), '{nope', 'utf8')
         writeStorageProfileConfig(userDataPath, externalRoot)
 
@@ -915,41 +997,32 @@ describe('electron ipc boundaries', () => {
 
         const status = await ipcMain.handlers.get('get-storage-profile-status')()
         expect(status).toMatchObject({
-          status: 'ready',
-          event: 'notebook-auto-recovered',
+          status: 'error',
+          event: 'notebook-setup-required',
           profileRootPath: defaultNotebookRoot(userDataPath),
           notebookPath: defaultNotebookRoot(userDataPath),
           notebookName: STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME,
-          isDefault: true,
-          recovery: {
-            mode: 'created-local',
-            failedNotebookPath: externalRoot,
-            activeNotebookPath: defaultNotebookRoot(userDataPath),
-          },
+          isDefault: false,
+          knownNotebooks: [],
         })
         expect(readFileSync(path.join(externalRoot, 'manifest.json'), 'utf8')).toBe('{nope')
-        expect(existsSync(path.join(defaultNotebookRoot(userDataPath), 'manifest.json'))).toBe(true)
+        expect(existsSync(path.join(defaultNotebookRoot(userDataPath), 'manifest.json'))).toBe(false)
 
         const loadEvent = { returnValue: null }
         ipcMain.listeners.get('load-app-state-result')(loadEvent)
-        const state = JSON.parse(loadEvent.returnValue.serializedState)
-        expect(state.theme).toBe('light')
-        expect(state.messages).toEqual([
-          expect.objectContaining({
-            type: 'storage-notebook-recovered',
-            recoveryMode: 'created-local',
-            failedNotebookPath: externalRoot,
-          }),
-        ])
+        expect(loadEvent.returnValue).toMatchObject({ ok: false, source: 'empty' })
 
-        await expect(ipcMain.handlers.get('reveal-recovered-notebook-location')()).resolves.toEqual({ ok: true })
-        expect(shell.openPath).toHaveBeenCalledWith(externalRoot)
+        await expect(ipcMain.handlers.get('reveal-recovered-notebook-location')()).resolves.toEqual({
+          ok: false,
+          error: 'No recovered notebook folder is available.',
+        })
+        expect(shell.openPath).not.toHaveBeenCalled()
       } finally {
         rmSync(externalRoot, { recursive: true, force: true })
       }
     }))
 
-  it('disconnects from a missing external notebook folder on startup', async () =>
+  it('blocks startup setup when the only remembered external notebook folder is missing', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const externalRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-missing-external-'))
       rmSync(externalRoot, { recursive: true, force: true })
@@ -966,28 +1039,15 @@ describe('electron ipc boundaries', () => {
 
       const status = await ipcMain.handlers.get('get-storage-profile-status')()
       expect(status).toMatchObject({
-        status: 'ready',
-        event: 'notebook-auto-recovered',
+        status: 'error',
+        event: 'notebook-setup-required',
         profileRootPath: defaultNotebookRoot(userDataPath),
-        recovery: {
-          mode: 'created-local',
-          failedNotebookPath: externalRoot,
-          failedNotebookAvailable: false,
-          issueSummary: ['Unable to locate folder.'],
-        },
+        knownNotebooks: [],
       })
 
       const loadEvent = { returnValue: null }
       ipcMain.listeners.get('load-app-state-result')(loadEvent)
-      const state = JSON.parse(loadEvent.returnValue.serializedState)
-      expect(state.messages).toEqual([
-        expect.objectContaining({
-          type: 'storage-notebook-recovered',
-          failedNotebookPath: externalRoot,
-          failedNotebookAvailable: false,
-          issueSummary: ['Unable to locate folder.'],
-        }),
-      ])
+      expect(loadEvent.returnValue).toMatchObject({ ok: false, source: 'empty' })
 
       await expect(ipcMain.handlers.get('reveal-recovered-notebook-location')()).resolves.toEqual({
         ok: false,
@@ -996,13 +1056,12 @@ describe('electron ipc boundaries', () => {
       expect(shell.openPath).not.toHaveBeenCalled()
     }))
 
-  it('reveals a recovered notebook folder from a persisted recovery message after restart', async () =>
+  it('keeps the local mirror available and marks a missing sync target offline on restart', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
-      const externalRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-corrupt-external-'))
+      const externalRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-offline-sync-target-'))
       let firstSession = null
-      let secondSession = null
       try {
-        writeFileSync(path.join(externalRoot, 'manifest.json'), '{nope', 'utf8')
+        saveTestNotebook(externalRoot, serializedAppState('light'), userDataPath)
         writeStorageProfileConfig(userDataPath, externalRoot)
 
         const firstIpcMain = createIpcMain()
@@ -1011,44 +1070,40 @@ describe('electron ipc boundaries', () => {
           app: { getPath: () => userDataPath },
           BrowserWindow: createBrowserWindow(),
         })
+        expect(firstSession.getStorageProfileStatus()).toMatchObject({
+          status: 'ready',
+          notebookPath: externalRoot,
+          syncTargetPath: externalRoot,
+          syncStatus: 'synced',
+        })
+        const localMirrorPath = firstSession.getStorageProfileStatus().localMirrorPath
 
-        const firstLoadEvent = { returnValue: null }
-        firstIpcMain.listeners.get('load-app-state-result')(firstLoadEvent)
-        const recoveredState = JSON.parse(firstLoadEvent.returnValue.serializedState)
-        recoveredState.messages[0].status = 'acknowledged'
-        saveAppState(defaultNotebookRoot(userDataPath), JSON.stringify(recoveredState), { userSettingsRoot: userDataPath })
         firstSession.close()
         firstSession = null
+        rmSync(externalRoot, { recursive: true, force: true })
 
-        const shell = { openPath: vi.fn(async () => '') }
         const secondIpcMain = createIpcMain()
-        secondSession = registerStorageIpc({
+        const secondSession = registerStorageIpc({
           ipcMain: secondIpcMain,
           app: { getPath: () => userDataPath },
           BrowserWindow: createBrowserWindow(),
-          shell,
         })
 
-        await expect(
-          secondIpcMain.handlers.get('reveal-recovered-notebook-location')(null, {
-            messageId: recoveredState.messages[0].id,
-            signature: recoveredState.messages[0].signature,
-          }),
-        ).resolves.toEqual({ ok: true })
-        expect(shell.openPath).toHaveBeenCalledWith(externalRoot)
-
-        shell.openPath.mockClear()
-        await expect(
-          secondIpcMain.handlers.get('reveal-recovered-notebook-location')(null, {
-            messageId: 'missing-message',
-            signature: 'missing-signature',
-            failedNotebookPath: externalRoot,
-          }),
-        ).resolves.toEqual({ ok: false, error: 'No recovered notebook folder is available.' })
-        expect(shell.openPath).not.toHaveBeenCalled()
+        expect(secondSession.getStorageProfileStatus()).toMatchObject({
+          status: 'ready',
+          health: 'warning',
+          profileRootPath: localMirrorPath,
+          notebookPath: externalRoot,
+          syncTargetPath: externalRoot,
+          syncStatus: 'offline',
+          syncPending: true,
+        })
+        const loadEvent = { returnValue: null }
+        secondIpcMain.listeners.get('load-app-state-result')(loadEvent)
+        expect(JSON.parse(loadEvent.returnValue.serializedState).theme).toBe('light')
+        secondSession.close()
       } finally {
         firstSession?.close()
-        secondSession?.close()
         rmSync(externalRoot, { recursive: true, force: true })
       }
     }))
@@ -1059,7 +1114,7 @@ describe('electron ipc boundaries', () => {
       try {
         const localState = JSON.parse(serializedAppState('dawn'))
         localState.domains[0].name = 'Local Domain'
-        saveAppState(defaultNotebookRoot(userDataPath), JSON.stringify(localState), { userSettingsRoot: userDataPath })
+        saveDefaultTestNotebook(userDataPath, JSON.stringify(localState))
         writeFileSync(path.join(externalRoot, 'manifest.json'), '{nope', 'utf8')
         writeStorageProfileConfig(userDataPath, externalRoot)
 
@@ -1074,13 +1129,7 @@ describe('electron ipc boundaries', () => {
         ipcMain.listeners.get('load-app-state-result')(loadEvent)
         const state = JSON.parse(loadEvent.returnValue.serializedState)
         expect(state.domains[0].name).toBe('Local Domain')
-        expect(state.messages).toEqual([
-          expect.objectContaining({
-            type: 'storage-notebook-recovered',
-            recoveryMode: 'disconnected-to-local',
-            failedNotebookPath: externalRoot,
-          }),
-        ])
+        expect(state.messages ?? []).toEqual([])
         expect(loadAppStateResult(defaultNotebookRoot(userDataPath), { userSettingsRoot: userDataPath })).toMatchObject({
           ok: true,
           source: 'hybrid',
@@ -1175,6 +1224,7 @@ describe('electron ipc boundaries', () => {
 
   it('rejects notebook folders as live user settings folders', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath)
       const otherNotebookRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-settings-notebook-'))
       try {
         mkdirSync(otherNotebookRoot, { recursive: true })
@@ -1206,6 +1256,7 @@ describe('electron ipc boundaries', () => {
 
   it('initializes an empty live user settings folder from current settings', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath)
       const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-live-settings-'))
       try {
         const ipcMain = createIpcMain()
@@ -1219,7 +1270,7 @@ describe('electron ipc boundaries', () => {
         })
 
         const saveEvent = { sender: { id: 1 }, returnValue: null }
-        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('light'), baseRevision: 0 })
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('light'), baseRevision: 1 })
 
         await expect(ipcMain.handlers.get('choose-user-settings-folder')()).resolves.toMatchObject({
           ok: true,
@@ -1238,6 +1289,7 @@ describe('electron ipc boundaries', () => {
 
   it('applies valid live user settings after confirmation', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath)
       const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-live-settings-'))
       try {
         saveAppState(settingsRoot, serializedAppState('light'))
@@ -1260,7 +1312,7 @@ describe('electron ipc boundaries', () => {
         })
 
         const saveEvent = { sender: { id: 1 }, returnValue: null }
-        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 1 })
         window.webContents.send.mockClear()
 
         await expect(ipcMain.handlers.get('choose-user-settings-folder')()).resolves.toMatchObject({
@@ -1336,6 +1388,7 @@ describe('electron ipc boundaries', () => {
 
   it('does not emit repeated fallback statuses after startup detaches a deleted settings folder', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath)
       const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-deleted-settings-'))
       writeUserSettingsLocationConfig(userDataPath, settingsRoot)
       rmSync(settingsRoot, { recursive: true, force: true })
@@ -1354,7 +1407,7 @@ describe('electron ipc boundaries', () => {
       const saveEvent = { sender: { id: 1 }, returnValue: null }
       ipcMain.listeners.get('save-app-state')(saveEvent, {
         serializedState: serializedAppState('custom1'),
-        baseRevision: 0,
+        baseRevision: 1,
       })
       const secondSaveEvent = { sender: { id: 1 }, returnValue: null }
       ipcMain.listeners.get('save-app-state')(secondSaveEvent, {
@@ -1374,6 +1427,7 @@ describe('electron ipc boundaries', () => {
 
   it('detaches a deleted live settings folder during save without repeated fallback broadcasts', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath)
       const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-live-settings-'))
       try {
         const window = {
@@ -1392,7 +1446,7 @@ describe('electron ipc boundaries', () => {
         const initialSaveEvent = { sender: { id: 1 }, returnValue: null }
         ipcMain.listeners.get('save-app-state')(initialSaveEvent, {
           serializedState: serializedAppState('custom1'),
-          baseRevision: 0,
+          baseRevision: 1,
         })
         await ipcMain.handlers.get('choose-user-settings-folder')()
         window.webContents.send.mockClear()
@@ -1433,6 +1487,7 @@ describe('electron ipc boundaries', () => {
 
   it('retries a deleted live user settings folder by switching back to local settings', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath)
       const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-live-settings-'))
       const shell = { openPath: vi.fn(async () => '') }
       try {
@@ -1449,7 +1504,7 @@ describe('electron ipc boundaries', () => {
         const saveEvent = { sender: { id: 1 }, returnValue: null }
         ipcMain.listeners.get('save-app-state')(saveEvent, {
           serializedState: serializedAppState('custom1'),
-          baseRevision: 0,
+          baseRevision: 1,
         })
         await ipcMain.handlers.get('choose-user-settings-folder')()
         rmSync(settingsRoot, { recursive: true, force: true })
@@ -1480,6 +1535,7 @@ describe('electron ipc boundaries', () => {
 
   it('retries missing live user settings by recreating the cloud file and supports reset/reveal', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath)
       const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-live-settings-'))
       const shell = { openPath: vi.fn(async () => '') }
       try {
@@ -1494,7 +1550,7 @@ describe('electron ipc boundaries', () => {
           },
         })
         const saveEvent = { sender: { id: 1 }, returnValue: null }
-        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('custom1'), baseRevision: 0 })
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('custom1'), baseRevision: 1 })
         await ipcMain.handlers.get('choose-user-settings-folder')()
         rmSync(path.join(settingsRoot, 'settings', 'app-settings.json'), { force: true })
 
@@ -1525,6 +1581,7 @@ describe('electron ipc boundaries', () => {
 
   it('resets user settings to defaults without changing notebook content', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath)
       const settingsRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-reset-settings-'))
       try {
         const window = {
@@ -1544,7 +1601,7 @@ describe('electron ipc boundaries', () => {
         const darkState = JSON.parse(serializedAppState('custom1'))
         darkState.domains[0].name = 'Kept Domain'
         const saveEvent = { sender: { id: 1 }, returnValue: null }
-        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: JSON.stringify(darkState), baseRevision: 0 })
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: JSON.stringify(darkState), baseRevision: 1 })
         await ipcMain.handlers.get('choose-user-settings-folder')()
         window.webContents.send.mockClear()
 
@@ -1571,6 +1628,7 @@ describe('electron ipc boundaries', () => {
   it('imports, reads, and opens generic assets through storage ipc', async () => {
     const userDataPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-ipc-user-data-'))
     try {
+      saveDefaultTestNotebook(userDataPath)
       const activeRoot = defaultNotebookRoot(userDataPath)
       const ipcMain = createIpcMain()
       const shell = { openPath: vi.fn(async () => ''), showItemInFolder: vi.fn() }
@@ -1620,7 +1678,7 @@ describe('electron ipc boundaries', () => {
   it('reveals committed note locations through storage ipc', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       const activeRoot = defaultNotebookRoot(userDataPath)
-      saveAppState(activeRoot, serializedAppState(), { userSettingsRoot: userDataPath })
+      saveDefaultTestNotebook(userDataPath, serializedAppState())
       const ipcMain = createIpcMain()
       const shell = { openPath: vi.fn(async () => ''), showItemInFolder: vi.fn() }
       registerStorageIpc({
@@ -1647,6 +1705,7 @@ describe('electron ipc boundaries', () => {
 
   it('moves current app data into a chosen sync folder without deleting the source profile', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath, serializedAppState('light'))
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-sync-target-'))
       try {
         const ipcMain = createIpcMain()
@@ -1661,15 +1720,16 @@ describe('electron ipc boundaries', () => {
         })
 
         const saveEvent = { returnValue: null }
-        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 1 })
 
         await expect(ipcMain.handlers.get('move-storage-profile')()).resolves.toMatchObject({
           ok: true,
           status: {
-            profileRootPath: targetRoot,
+            profileRootPath: defaultNotebookRoot(userDataPath),
+            notebookPath: targetRoot,
+            syncTargetPath: targetRoot,
             isDefault: false,
             knownNotebooks: [
-              expect.objectContaining({ notebookPath: defaultNotebookRoot(userDataPath), isActive: false }),
               expect.objectContaining({ notebookPath: targetRoot, isActive: true }),
             ],
           },
@@ -1686,6 +1746,7 @@ describe('electron ipc boundaries', () => {
 
   it('moves current app data into a same-named child when the selected location is non-empty', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath, serializedAppState('light'))
       const targetLocation = mkdtempSync(path.join(os.tmpdir(), 'tabs-non-empty-location-'))
       const targetRoot = path.join(targetLocation, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME)
       try {
@@ -1703,14 +1764,15 @@ describe('electron ipc boundaries', () => {
         })
 
         const saveEvent = { returnValue: null }
-        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 1 })
 
         await expect(ipcMain.handlers.get('move-storage-profile')()).resolves.toMatchObject({
           ok: true,
           status: {
-            profileRootPath: targetRoot,
+            profileRootPath: defaultNotebookRoot(userDataPath),
+            notebookPath: targetRoot,
+            syncTargetPath: targetRoot,
             knownNotebooks: [
-              expect.objectContaining({ notebookPath: defaultNotebookRoot(userDataPath), isActive: false }),
               expect.objectContaining({ notebookPath: targetRoot, isActive: true }),
             ],
           },
@@ -1727,10 +1789,11 @@ describe('electron ipc boundaries', () => {
 
   it('prompts to replace a same-named child notebook inside a selected parent location', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath, serializedAppState('light'))
       const targetLocation = mkdtempSync(path.join(os.tmpdir(), 'tabs-child-notebook-location-'))
       const targetRoot = path.join(targetLocation, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME)
       try {
-        saveAppState(targetRoot, serializedAppState('light'), { userSettingsRoot: userDataPath })
+        saveTestNotebook(targetRoot, serializedAppState('light'), userDataPath)
         const ipcMain = createIpcMain()
         const showMessageBox = vi.fn(async () => ({ response: 0 }))
         registerStorageIpc({
@@ -1744,11 +1807,11 @@ describe('electron ipc boundaries', () => {
         })
 
         const saveEvent = { returnValue: null }
-        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 1 })
 
         await expect(ipcMain.handlers.get('move-storage-profile')()).resolves.toMatchObject({
           ok: true,
-          status: { profileRootPath: targetRoot },
+          status: { profileRootPath: defaultNotebookRoot(userDataPath), notebookPath: targetRoot },
         })
         expect(showMessageBox).toHaveBeenCalledWith(expect.objectContaining({
           buttons: ['Replace and keep old copy', 'Replace and move old copy to Trash', 'Cancel'],
@@ -1763,6 +1826,7 @@ describe('electron ipc boundaries', () => {
 
   it('rejects moving current app data when the same-named child is non-empty without a notebook manifest', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath, serializedAppState('light'))
       const targetLocation = mkdtempSync(path.join(os.tmpdir(), 'tabs-invalid-child-location-'))
       const targetRoot = path.join(targetLocation, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME)
       try {
@@ -1781,7 +1845,7 @@ describe('electron ipc boundaries', () => {
         })
 
         const saveEvent = { returnValue: null }
-        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 1 })
 
         await expect(ipcMain.handlers.get('move-storage-profile')()).resolves.toMatchObject({
           ok: false,
@@ -1796,9 +1860,11 @@ describe('electron ipc boundaries', () => {
 
   it('moves the old notebook folder to Trash after the new notebook loads when requested', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
-      const sourceRoot = defaultNotebookRoot(userDataPath)
+      const sourceRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-trash-move-source-'))
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-trash-move-target-'))
       try {
+        saveTestNotebook(sourceRoot, serializedAppState('light'), userDataPath)
+        writeStorageProfileConfig(userDataPath, sourceRoot)
         const trashItem = vi.fn(async (sourcePath) => {
           expect(loadAppStateResult(targetRoot, { userSettingsRoot: userDataPath }).ok).toBe(true)
           rmSync(sourcePath, { recursive: true, force: true })
@@ -1816,25 +1882,28 @@ describe('electron ipc boundaries', () => {
         })
 
         const saveEvent = { returnValue: null }
-        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 1 })
 
         await expect(ipcMain.handlers.get('move-storage-profile')()).resolves.toMatchObject({
           ok: true,
-          status: { profileRootPath: targetRoot },
+          status: { notebookPath: targetRoot },
         })
         expect(trashItem).toHaveBeenCalledWith(sourceRoot)
         expect(existsSync(sourceRoot)).toBe(false)
         expect(loadAppStateResult(targetRoot, { userSettingsRoot: userDataPath }).ok).toBe(true)
       } finally {
+        rmSync(sourceRoot, { recursive: true, force: true })
         rmSync(targetRoot, { recursive: true, force: true })
       }
     }))
 
   it('keeps a successful move when trashing the old notebook folder fails', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
-      const sourceRoot = defaultNotebookRoot(userDataPath)
+      const sourceRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-trash-warning-source-'))
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-trash-warning-target-'))
       try {
+        saveTestNotebook(sourceRoot, serializedAppState('light'), userDataPath)
+        writeStorageProfileConfig(userDataPath, sourceRoot)
         const trashItem = vi.fn(async () => {
           throw new Error('permission denied')
         })
@@ -1851,28 +1920,30 @@ describe('electron ipc boundaries', () => {
         })
 
         const saveEvent = { returnValue: null }
-        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 1 })
 
         await expect(ipcMain.handlers.get('move-storage-profile')()).resolves.toMatchObject({
           ok: true,
-          status: { profileRootPath: targetRoot },
+          status: { notebookPath: targetRoot },
           warning: 'Old notebook folder was kept because it could not be moved to Trash: permission denied',
         })
         expect(trashItem).toHaveBeenCalledWith(sourceRoot)
         expect(existsSync(sourceRoot)).toBe(true)
         expect(loadAppStateResult(targetRoot, { userSettingsRoot: userDataPath }).ok).toBe(true)
       } finally {
+        rmSync(sourceRoot, { recursive: true, force: true })
         rmSync(targetRoot, { recursive: true, force: true })
       }
     }))
 
   it('opens notebooks while preserving global user settings and remembering the folder', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath, serializedAppState('light'))
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-switch-target-'))
       try {
         const targetState = JSON.parse(serializedAppState('light'))
         targetState.domains[0].name = 'Target Domain'
-        saveAppState(targetRoot, JSON.stringify(targetState))
+        saveTestNotebook(targetRoot, JSON.stringify(targetState), userDataPath)
 
         const ipcMain = createIpcMain()
         const window = {
@@ -1889,16 +1960,17 @@ describe('electron ipc boundaries', () => {
         })
 
         const saveEvent = { sender: { id: 1 }, returnValue: null }
-        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 1 })
         window.webContents.send.mockClear()
 
         await expect(ipcMain.handlers.get('open-notebook')()).resolves.toMatchObject({
           ok: true,
           status: {
-            profileRootPath: targetRoot,
+            notebookPath: targetRoot,
+            syncTargetPath: targetRoot,
             isDefault: false,
             knownNotebooks: [
-              expect.objectContaining({ notebookPath: defaultNotebookRoot(userDataPath), isDefault: true }),
+              expect.objectContaining({ notebookPath: defaultNotebookRoot(userDataPath), isDefault: false }),
               expect.objectContaining({ notebookPath: targetRoot, isActive: true }),
             ],
           },
@@ -1930,7 +2002,7 @@ describe('electron ipc boundaries', () => {
 
         await expect(ipcMain.handlers.get('open-notebook')()).resolves.toMatchObject({
           ok: false,
-          error: 'This folder does not contain a notebook. Use new notebook to create one.',
+          error: 'Notebook folder could not be loaded.',
         })
       } finally {
         rmSync(targetRoot, { recursive: true, force: true })
@@ -1942,9 +2014,9 @@ describe('electron ipc boundaries', () => {
       const targetRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-remembered-target-'))
       const unknownRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-unknown-target-'))
       try {
-        saveAppState(defaultNotebookRoot(userDataPath), serializedAppState('dawn'), { userSettingsRoot: userDataPath })
-        saveAppState(targetRoot, serializedAppState('light'), { userSettingsRoot: userDataPath })
-        saveAppState(unknownRoot, serializedAppState('light'), { userSettingsRoot: userDataPath })
+        saveDefaultTestNotebook(userDataPath, serializedAppState('dawn'))
+        saveTestNotebook(targetRoot, serializedAppState('light'), userDataPath)
+        saveTestNotebook(unknownRoot, serializedAppState('light'), userDataPath)
         writeStorageProfileConfig(userDataPath, defaultNotebookRoot(userDataPath), { rememberPaths: [targetRoot] })
 
         const ipcMain = createIpcMain()
@@ -1956,13 +2028,13 @@ describe('electron ipc boundaries', () => {
 
         await expect(ipcMain.handlers.get('switch-notebook')(null, { notebookPath: unknownRoot })).resolves.toMatchObject({
           ok: false,
-          error: 'Notebook is not in the remembered notebook list.',
+          error: 'Notebook is not in the notebook library.',
         })
 
         await expect(ipcMain.handlers.get('switch-notebook')(null, { notebookPath: targetRoot })).resolves.toMatchObject({
           ok: true,
           status: {
-            profileRootPath: targetRoot,
+            notebookPath: targetRoot,
             knownNotebooks: [
               expect.objectContaining({ notebookPath: defaultNotebookRoot(userDataPath), isActive: false }),
               expect.objectContaining({ notebookPath: targetRoot, isActive: true }),
@@ -2008,9 +2080,6 @@ describe('electron ipc boundaries', () => {
           BrowserWindow: createBrowserWindow(),
         })
 
-        const saveEvent = { sender: { id: 1 }, returnValue: null }
-        ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
-
         await expect(
           ipcMain.handlers.get('create-notebook')(null, {
             name: notebookName,
@@ -2020,12 +2089,11 @@ describe('electron ipc boundaries', () => {
         ).resolves.toMatchObject({
           ok: true,
           status: {
-            profileRootPath: targetRoot,
             notebookPath: targetRoot,
+            syncTargetPath: targetRoot,
             notebookName,
             isDefault: false,
             knownNotebooks: [
-              expect.objectContaining({ notebookPath: defaultNotebookRoot(userDataPath) }),
               expect.objectContaining({ notebookPath: targetRoot, isActive: true }),
             ],
           },
@@ -2108,7 +2176,8 @@ describe('electron ipc boundaries', () => {
           ok: true,
           status: {
             status: 'ready',
-            profileRootPath: targetRoot,
+            notebookPath: targetRoot,
+            syncTargetPath: targetRoot,
             isDefault: false,
           },
         })
@@ -2148,6 +2217,7 @@ describe('electron ipc boundaries', () => {
 
   it('reloads valid external profile changes and broadcasts them to windows on retry', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath, serializedAppState('light'))
       const window = {
         isDestroyed: vi.fn(() => false),
         webContents: { id: 2, send: vi.fn() },
@@ -2160,10 +2230,10 @@ describe('electron ipc boundaries', () => {
       })
 
       const saveEvent = { sender: { id: 1 }, returnValue: null }
-      ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+      ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 1 })
       const externalState = JSON.parse(serializedAppState('dawn'))
       externalState.domains[0].name = 'External Domain'
-      saveAppState(defaultNotebookRoot(userDataPath), JSON.stringify(externalState))
+      saveDefaultTestNotebook(userDataPath, JSON.stringify(externalState))
 
       await expect(ipcMain.handlers.get('retry-storage-profile')()).resolves.toMatchObject({
         ok: true,
@@ -2174,12 +2244,13 @@ describe('electron ipc boundaries', () => {
       })
       expect(window.webContents.send).toHaveBeenCalledWith('app-state-updated', {
         serializedState: expect.stringContaining('External Domain'),
-        revision: 2,
+        revision: 3,
       })
     }))
 
   it('does not broadcast unchanged profile reloads on retry', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
+      saveDefaultTestNotebook(userDataPath, serializedAppState('light'))
       const window = {
         isDestroyed: vi.fn(() => false),
         webContents: { id: 2, send: vi.fn() },
@@ -2192,7 +2263,7 @@ describe('electron ipc boundaries', () => {
       })
 
       const saveEvent = { sender: { id: 1 }, returnValue: null }
-      ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 0 })
+      ipcMain.listeners.get('save-app-state')(saveEvent, { serializedState: serializedAppState('dawn'), baseRevision: 1 })
       window.webContents.send.mockClear()
 
       await expect(ipcMain.handlers.get('retry-storage-profile')()).resolves.toMatchObject({
@@ -2200,13 +2271,13 @@ describe('electron ipc boundaries', () => {
         status: {
           status: 'ready',
           event: 'retry-loaded',
-          revision: 1,
+          revision: 2,
         },
       })
       expect(window.webContents.send).not.toHaveBeenCalledWith('app-state-updated', expect.anything())
     }))
 
-  it('auto-recovers when the active external notebook becomes corrupt while running', () =>
+  it('keeps the local mirror when the active sync target becomes corrupt while running', () =>
     withTempUserDataPath((userDataPath) => {
       vi.useFakeTimers()
       vi.setSystemTime(1_000)
@@ -2214,7 +2285,7 @@ describe('electron ipc boundaries', () => {
       const consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
       let storageSession = null
       try {
-        saveAppState(externalRoot, serializedAppState('dawn'), { userSettingsRoot: userDataPath })
+        saveTestNotebook(externalRoot, serializedAppState('dawn'), userDataPath)
         writeStorageProfileConfig(userDataPath, externalRoot)
         const window = {
           isDestroyed: vi.fn(() => false),
@@ -2226,31 +2297,25 @@ describe('electron ipc boundaries', () => {
           app: { getPath: () => userDataPath },
           BrowserWindow: createBrowserWindow([window]),
         })
+        const localMirrorPath = storageSession.getProfileRootPath()
 
         window.webContents.send.mockClear()
         writeFileSync(path.join(externalRoot, 'manifest.json'), '{nope', 'utf8')
         storageSession.scanStorageProfile()
         vi.advanceTimersByTime(400)
 
-        expect(storageSession.getProfileRootPath()).toBe(defaultNotebookRoot(userDataPath))
+        expect(storageSession.getProfileRootPath()).toBe(localMirrorPath)
         expect(window.webContents.send).toHaveBeenCalledWith(
           'storage-profile-status-updated',
           expect.objectContaining({
-            event: 'notebook-auto-recovered',
-            profileRootPath: defaultNotebookRoot(userDataPath),
-            recovery: expect.objectContaining({
-              mode: 'created-local',
-              failedNotebookPath: externalRoot,
-            }),
+            event: 'external-error',
+            profileRootPath: localMirrorPath,
+            notebookPath: externalRoot,
+            syncStatus: 'error',
           }),
         )
-        expect(window.webContents.send).toHaveBeenCalledWith(
-          'app-state-updated',
-          expect.objectContaining({
-            serializedState: expect.stringContaining('storage-notebook-recovered'),
-          }),
-        )
-        expect(consoleInfoSpy).toHaveBeenCalledWith('[tabs:storage] notebook-auto-recovered:external-error')
+        expect(window.webContents.send).not.toHaveBeenCalledWith('app-state-updated', expect.anything())
+        expect(consoleInfoSpy).not.toHaveBeenCalledWith('[tabs:storage] notebook-auto-recovered:external-error')
       } finally {
         storageSession?.close()
         rmSync(externalRoot, { recursive: true, force: true })
@@ -2259,7 +2324,7 @@ describe('electron ipc boundaries', () => {
       }
     }))
 
-  it('auto-recovers with a missing-folder summary when the active external notebook folder disappears', async () =>
+  it('marks the sync target offline when the active external notebook folder disappears', async () =>
     withTempUserDataPathAsync(async (userDataPath) => {
       vi.useFakeTimers()
       vi.setSystemTime(1_000)
@@ -2267,7 +2332,7 @@ describe('electron ipc boundaries', () => {
       const shell = { openPath: vi.fn(async () => '') }
       let storageSession = null
       try {
-        saveAppState(externalRoot, serializedAppState('dawn'), { userSettingsRoot: userDataPath })
+        saveTestNotebook(externalRoot, serializedAppState('dawn'), userDataPath)
         writeStorageProfileConfig(userDataPath, externalRoot)
         const ipcMain = createIpcMain()
         storageSession = registerStorageIpc({
@@ -2276,6 +2341,7 @@ describe('electron ipc boundaries', () => {
           BrowserWindow: createBrowserWindow(),
           shell,
         })
+        const localMirrorPath = storageSession.getProfileRootPath()
 
         rmSync(externalRoot, { recursive: true, force: true })
         storageSession.scanStorageProfile()
@@ -2283,27 +2349,18 @@ describe('electron ipc boundaries', () => {
 
         const status = storageSession.getStorageProfileStatus()
         expect(status).toMatchObject({
-          event: 'notebook-auto-recovered',
-          profileRootPath: defaultNotebookRoot(userDataPath),
-          recovery: {
-            mode: 'created-local',
-            failedNotebookPath: externalRoot,
-            failedNotebookAvailable: false,
-            issueSummary: ['Unable to locate folder.'],
-          },
+          event: 'sync-target-offline',
+          profileRootPath: localMirrorPath,
+          notebookPath: externalRoot,
+          syncTargetPath: externalRoot,
+          syncStatus: 'offline',
+          syncPending: true,
         })
 
         const loadEvent = { returnValue: null }
         ipcMain.listeners.get('load-app-state-result')(loadEvent)
         const state = JSON.parse(loadEvent.returnValue.serializedState)
-        expect(state.messages).toEqual([
-          expect.objectContaining({
-            type: 'storage-notebook-recovered',
-            failedNotebookPath: externalRoot,
-            failedNotebookAvailable: false,
-            issueSummary: ['Unable to locate folder.'],
-          }),
-        ])
+        expect(state.messages ?? []).toEqual([])
 
         await expect(ipcMain.handlers.get('reveal-recovered-notebook-location')()).resolves.toEqual({
           ok: false,
@@ -2327,6 +2384,7 @@ describe('electron ipc boundaries', () => {
         webContents: { id: 2, send: vi.fn() },
       }
       const ipcMain = createIpcMain()
+      saveDefaultTestNotebook(userDataPath, serializedAppState('light'))
       const storageSession = registerStorageIpc({
         ipcMain,
         app: { getPath: () => userDataPath },
@@ -2344,24 +2402,23 @@ describe('electron ipc boundaries', () => {
         const firstSave = { sender: { id: 1 }, returnValue: null }
         ipcMain.listeners.get('save-app-state')(firstSave, {
           serializedState: firstSerializedState,
-          baseRevision: 0,
+          baseRevision: 1,
         })
         const secondSave = { sender: { id: 1 }, returnValue: null }
         ipcMain.listeners.get('save-app-state')(secondSave, {
           serializedState: secondSerializedState,
-          baseRevision: 1,
+          baseRevision: 2,
         })
         window.webContents.send.mockClear()
 
         vi.setSystemTime(10_000)
-        saveAppState(defaultNotebookRoot(userDataPath), firstSerializedState, { userDataPath })
         writeFileSync(path.join(defaultNotebookRoot(userDataPath), '.DS_Store'), 'metadata', 'utf8')
         storageSession.scanStorageProfile()
         vi.advanceTimersByTime(400)
 
         expect(window.webContents.send).not.toHaveBeenCalledWith('storage-profile-status-updated', expect.anything())
         expect(window.webContents.send).not.toHaveBeenCalledWith('app-state-updated', expect.anything())
-        expect(consoleInfoSpy).toHaveBeenCalledWith('[tabs:storage] external-echo-ignored')
+        expect(consoleInfoSpy).not.toHaveBeenCalledWith('[tabs:storage] external-error')
       } finally {
         storageSession.close()
         consoleInfoSpy.mockRestore()
