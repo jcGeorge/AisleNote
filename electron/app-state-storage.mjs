@@ -1,742 +1,150 @@
 import { createHash } from 'node:crypto'
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import JSZip from 'jszip'
-import { parseDocument, stringify as stringifyYaml } from 'yaml'
-import {
-  DEFAULT_AUTO_REMOVE_DAYS,
-  DEFAULT_DOMAIN_ID,
-  DEFAULT_DOMAIN_NAME,
-  collectReferencedNoteBodyIdsFromAppState,
-  ensureArray,
-  getActiveDomainFromAppState,
-  getDomainId,
-  getDomainTitle,
-  getDomainsFromAppState,
-  getExtensionFromMimeType,
-  getMimeTypeFromExtension,
-  getNoteBodiesFromAppState,
-  isRecord,
-  createStorageContentHash,
-  normalizeAssetExtension,
-  reconcileNotebookStorageState,
-} from '../src/storage/hybrid-storage-core.js'
-import {
-  buildStoragePathFileName,
-  createStoragePathAllocator,
-  createStoragePathFileNameAllocator,
-} from '../src/storage/storage-path-segments.js'
-import {
-  ROOT_SPLIT_FILES,
-  USER_SETTINGS_DIR,
-  USER_SETTINGS_FILE_PATH,
-  buildSyncedSettingsFromSplitFiles,
-  extractAppSettings,
-  extractEditorState,
-  extractFrontmatterSettings,
-  pruneAppStateEditorLocations,
-} from '../src/storage/settings-partition.js'
-import {
-  buildImageAssetUrl,
-  MARKDOWN_LINK_PATTERN,
-  normalizeImageAssetPath,
-  parseImageAssetUrl,
-} from '../src/markdown/image-asset-refs.js'
-import { splitAssetMetadataFromUrl } from '../src/markdown/asset-metadata.js'
-import { normalizePreviewReferenceTokensForMarkdown } from '../src/markdown/note-context-tokens.js'
-import {
-  extractMarkdownTags,
-  materializeComputedFrontmatterTags,
-  migrateAisleTags,
-} from '../src/tags/tags.js'
+import YAML from 'yaml'
+import { buildAssetUrl, normalizeImageAssetPath } from '../src/markdown/image-asset-refs.js'
 
-export const HYBRID_ROOT_DIR = ''
-const SCHEMA_VERSION = 1
-const NOTEBOOK_ID_SCHEMA_VERSION = 2
-const SUPPORTED_SCHEMA_VERSIONS = new Set([SCHEMA_VERSION, NOTEBOOK_ID_SCHEMA_VERSION])
-const DOMAINS_DIR = 'domains'
-const FRONTMATTER_OPEN_RE = /^---[ \t]*(?:\r?\n|$)/
-const FRONTMATTER_CLOSE_RE = /(?:^|\r?\n)---[ \t]*(?:\r?\n|$)/
-const INTERNAL_INDENT_TOKEN = '\u2060\u2003\u2003'
-const EDITOR_BLANK_LINE_PLACEHOLDER = '\u200b'
-const EXPORT_TAB_SPACES = '    '
-const LINKED_AISLE_MIRROR_AUTO_DECOUPLED_CODE = 'linked-aisle-mirror-auto-decoupled'
-const MAX_ATOMIC_WRITE_CACHE_ENTRIES = 5000
-const MAX_EXISTING_FILE_HASH_CACHE_ENTRIES = 5000
-const MAX_AISLE_STORAGE_PAYLOAD_CACHE_ENTRIES = 5000
-const KNOWN_STALE_ROOT_STORAGE_PATHS = [
-  'app-settings.json',
-  'profile-settings.json',
-  'appearance-settings.json',
-  'shortcut-settings.json',
-  'ui-preferences.json',
-  'note-bodies.json',
-  'aisle-bodies.json',
-  'orphan-note-bodies.json',
-  'orphan-aisle-bodies.json',
-  'topics',
-  'note-bodies',
-  'notes.bak',
-]
-const atomicWriteCache = new Map()
-const existingFileHashCache = new Map()
-const aisleStoragePayloadCache = new Map()
-const lastExpectedFileSetSignaturesByRoot = new Map()
+export const SCHEMA_VERSION = 2
+export const TABS_METADATA_DIR = '.tabs'
+export const USER_SETTINGS_FILE_PATH = path.join('settings', 'app-settings.json')
 
-function createStorageSaveMetrics() {
-  return {
-    totalDurationMs: 0,
-    phases: {
-      parseState: 0,
-      buildFileMap: 0,
-      noteBodyTraversal: 0,
-      noteContentGeneration: 0,
-      assetReferenceExtraction: 0,
-      manifestAssembly: 0,
-      assetResolve: 0,
-      fingerprint: 0,
-      expectedFileRebuild: 0,
-      textWrites: 0,
-      binaryWrites: 0,
-      prune: 0,
-      appSettingsWrite: 0,
-    },
-    counts: {
-      generatedFiles: 0,
-      generatedBytes: 0,
-      textFiles: 0,
-      jsonFiles: 0,
-      mdFiles: 0,
-      binaryFiles: 0,
-      existingAssetFiles: 0,
-      expectedFiles: 0,
-      hashesComputed: 0,
-      assetsReferenced: 0,
-      assetsReadFromDisk: 0,
-      assetsReused: 0,
-      assetBytesReferenced: 0,
-      assetBytesReadFromDisk: 0,
-      filesChanged: 0,
-      filesSkipped: 0,
-      filesPruned: 0,
-      directoriesPruned: 0,
-      aisleStorageCacheHits: 0,
-      aisleStorageCacheMisses: 0,
-    },
-    pruneSkipped: false,
+const NOTEBOOK_INDEX_FILE = '.tabs/notebook-index.json'
+const NAVIGATION_STATE_FILE = '.tabs/navigation-state.json'
+const NOTE_REGISTRY_FILE = '.tabs/note-registry.json'
+const TRASH_INDEX_FILE = '.tabs/trash-index.json'
+const FRONTMATTER_SETTINGS_FILE = '.tabs/frontmatter-settings.json'
+const EDITOR_STATE_FILE = '.tabs/editor-state.json'
+const MESSAGES_FILE = '.tabs/messages.json'
+const SYNC_STATE_FILE = '.tabs/sync-state.json'
+const ASSETS_DIR = 'assets'
+const MANIFEST_FILE = 'manifest.json'
+const MARKDOWN_EXTENSION_RE = /\.md$/i
+
+const revisionByRoot = new Map()
+
+function isRecord(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function ensureArray(value) {
+  return Array.isArray(value) ? value : []
+}
+
+function normalizeTitle(value, fallback = 'Untitled') {
+  const title = typeof value === 'string' ? value.trim() : ''
+  return title || fallback
+}
+
+function normalizeId(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
+function normalizePosixPath(value) {
+  const source = String(value ?? '').replace(/\\/g, '/').trim()
+  if (!source || source.startsWith('/') || source.includes('\0')) return ''
+  const parts = source.split('/').filter((part) => part && part !== '.')
+  if (parts.some((part) => part === '..')) return ''
+  return parts.join('/')
+}
+
+function storageIssue(code, severity, message, extra = {}) {
+  return { code, severity, message, ...extra }
+}
+
+function ensureDir(directoryPath) {
+  mkdirSync(directoryPath, { recursive: true })
+}
+
+function writeJson(rootPath, relativePath, value) {
+  const absolutePath = path.join(rootPath, ...relativePath.split('/'))
+  ensureDir(path.dirname(absolutePath))
+  writeFileSync(absolutePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+}
+
+function writeText(rootPath, relativePath, value) {
+  const absolutePath = path.join(rootPath, ...relativePath.split('/'))
+  ensureDir(path.dirname(absolutePath))
+  writeFileSync(absolutePath, String(value ?? ''), 'utf8')
+}
+
+function readJson(rootPath, relativePath) {
+  const absolutePath = path.join(rootPath, ...relativePath.split('/'))
+  return JSON.parse(readFileSync(absolutePath, 'utf8'))
+}
+
+function readText(rootPath, relativePath) {
+  return readFileSync(path.join(rootPath, ...relativePath.split('/')), 'utf8')
+}
+
+function fileExists(rootPath, relativePath) {
+  return existsSync(path.join(rootPath, ...relativePath.split('/')))
+}
+
+function toArrayBuffer(buffer) {
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+}
+
+function contentHash(value) {
+  if (Buffer.isBuffer(value) || value instanceof Uint8Array) {
+    return createHash('sha256').update(value).digest('hex')
   }
+  return createHash('sha256').update(String(value ?? '')).digest('hex')
 }
 
-function nowMs() {
-  return typeof performance !== 'undefined' && typeof performance.now === 'function'
-    ? performance.now()
-    : Date.now()
+function normalizeAssetExtension(value) {
+  const normalized = String(value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (normalized === 'jpeg') return 'jpg'
+  if (normalized === 'svgxml') return 'svg'
+  if (normalized === 'quicktime') return 'mov'
+  if (normalized === 'mpeg' || normalized === 'xmpeg') return 'mp3'
+  return normalized || 'bin'
 }
 
-function addMetricPhaseDuration(metrics, phase, durationMs) {
-  if (!metrics?.phases || typeof metrics.phases[phase] !== 'number') return
-  metrics.phases[phase] += durationMs
+function sanitizePathTitle(value, fallback) {
+  const title = normalizeTitle(value, fallback)
+    .normalize('NFKD')
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return title || fallback
 }
 
-function measureStorageSavePhase(metrics, phase, operation) {
-  const startedAt = nowMs()
-  try {
-    return operation()
-  } finally {
-    addMetricPhaseDuration(metrics, phase, nowMs() - startedAt)
-  }
+function makeVisibleName(title, id, extension = '') {
+  const cleanTitle = sanitizePathTitle(title, 'Untitled')
+  const cleanId = normalizeId(id).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 36) || contentHash(id).slice(0, 10)
+  return `${cleanTitle}--${cleanId}${extension}`
 }
 
-function roundStorageMetricNumber(value) {
-  return Math.round(Number(value ?? 0) * 10) / 10
+function parseVisibleId(fileName) {
+  const base = fileName.replace(MARKDOWN_EXTENSION_RE, '')
+  const match = base.match(/--([A-Za-z0-9_-]+)$/)
+  return match?.[1] ?? ''
 }
 
-function finalizeStorageSaveMetrics(metrics, startedAt) {
-  metrics.totalDurationMs = roundStorageMetricNumber(nowMs() - startedAt)
-  for (const phase of Object.keys(metrics.phases)) {
-    metrics.phases[phase] = roundStorageMetricNumber(metrics.phases[phase])
-  }
-  return metrics
+function getHybridStorageRevision(rootPath) {
+  return revisionByRoot.get(path.resolve(rootPath)) ?? 0
 }
 
-function createStorageIssue(code, severity, pathValue, message, details = undefined) {
-  return {
-    code,
-    severity,
-    ...(pathValue ? { path: pathValue } : {}),
-    message,
-    ...(isRecord(details) ? details : {}),
-  }
+function bumpHybridStorageRevision(rootPath) {
+  const resolved = path.resolve(rootPath)
+  const revision = (revisionByRoot.get(resolved) ?? 0) + 1
+  revisionByRoot.set(resolved, revision)
+  return revision
 }
 
-function getStorageHealth(issues) {
-  if (issues.some((issue) => issue?.severity === 'error')) return 'error'
-  if (issues.length > 0) return 'warning'
-  return 'healthy'
-}
-
-function addStorageIssue(issues, code, severity, pathValue, message) {
-  if (!Array.isArray(issues)) return
-  issues.push(createStorageIssue(code, severity, pathValue, message))
-}
-
-function addStorageIssueWithDetails(issues, code, severity, pathValue, message, details) {
-  if (!Array.isArray(issues)) return
-  issues.push(createStorageIssue(code, severity, pathValue, message, details))
-}
-
-function formatStorageIssuePath(rootPath, absolutePath) {
-  const relativePath = path.relative(rootPath, absolutePath).split(path.sep).join(path.posix.sep)
-  return relativePath && !relativePath.startsWith('..') ? path.posix.join(HYBRID_ROOT_DIR, relativePath) : absolutePath
-}
-
-function withStorageHealth(result, issues) {
-  const normalizedIssues = Array.isArray(issues) ? issues : []
-  return {
-    ...result,
-    health: result.ok === false ? 'error' : getStorageHealth(normalizedIssues),
-    issues: normalizedIssues,
-  }
-}
-
-function addNotebookReconciliationIssues(issues, repairs) {
-  if (!Array.isArray(issues)) return
-  for (const repair of ensureArray(repairs)) {
-    if (!repair || typeof repair.code !== 'string') continue
-    addStorageIssue(
-      issues,
-      repair.code,
-      'warning',
-      path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'),
-      typeof repair.message === 'string' ? repair.message : 'Notebook storage was repaired.',
-    )
-  }
-}
-
-function getMimeTypeFromFilePath(filePath) {
-  const ext = path.extname(filePath).slice(1)
-  return getMimeTypeFromExtension(ext)
-}
-
-function decodeImageDataUrl(dataUrl) {
-  const match = String(dataUrl).match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/)
-  if (!match) return null
-
-  try {
-    return {
-      bytes: Buffer.from(match[2], 'base64'),
-      extension: getExtensionFromMimeType(match[1]),
-    }
-  } catch {
-    return null
-  }
-}
-
-function buildImageDataUrl(bytes, sourceFilePath) {
-  const mimeType = getMimeTypeFromFilePath(sourceFilePath)
-  return `data:${mimeType};base64,${Buffer.from(bytes).toString('base64')}`
-}
-
-function convertInternalTabsForExport(markdown) {
-  return String(markdown ?? '')
-    .split('\n')
-    .map((line) => {
-      const withoutPlaceholder = line.replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '')
-      return withoutPlaceholder.trim().length === 0 && line.includes(EDITOR_BLANK_LINE_PLACEHOLDER) ? '' : line
-    })
-    .join('\n')
-    .replaceAll(INTERNAL_INDENT_TOKEN, EXPORT_TAB_SPACES)
-    .replaceAll('\u2003\u2003', EXPORT_TAB_SPACES)
-    .replaceAll('\u00A0', ' ')
-}
-
-function normalizeAppStateForExport(appState) {
-  return {
-    ...appState,
-    noteAisleBodies: ensureArray(appState?.noteAisleBodies).map((body) => ({
-      ...body,
-      markdown: convertInternalTabsForExport(body?.markdown),
-    })),
-  }
-}
-
-function createAssetBank(assetRootRelative = 'assets', existingRoot = null, metrics = null) {
-  return {
-    assetRootRelative,
-    existingRoot,
-    files: new Map(),
-    existingFiles: new Map(),
-    keys: new Map(),
-    metrics,
-  }
-}
-
-function listDirectoryEntries(directoryPath) {
-  try {
-    if (!existsSync(directoryPath)) return []
-    return readdirSync(directoryPath, { withFileTypes: true })
-  } catch {
-    return []
-  }
-}
-
-function buildTrashDataFromManifestItems(trashItems) {
-  const deletedTabs = ensureArray(trashItems)
-    .filter((item) => item?.type === 'parent-tab')
-    .map((item) => ({
-      id: typeof item.id === 'string' ? item.id : '',
-      deletedAt: typeof item.deletedAt === 'number' ? item.deletedAt : Date.now(),
-      tab: {
-        id:
-          typeof item?.original?.primeTabId === 'string'
-            ? item.original.primeTabId
-            : typeof item.id === 'string'
-              ? item.id
-              : '',
-        title: typeof item.title === 'string' ? item.title : 'deleted tab',
-        noteBodyId: typeof item.noteBodyId === 'string' ? item.noteBodyId : '',
-        activeSubTabId: typeof item.activeSubTabId === 'string' ? item.activeSubTabId : null,
-        subTabs: ensureArray(item.subTabs).map((subTabRecord) => ({
-          id: typeof subTabRecord?.id === 'string' ? subTabRecord.id : '',
-          title: typeof subTabRecord?.title === 'string' ? subTabRecord.title : 'tab',
-          noteBodyId: typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
-        })),
-      },
-    }))
-    .filter((entry) => entry.id && entry.tab.id)
-
-  const deletedSubTabs = ensureArray(trashItems)
-    .filter((item) => item?.type === 'subtab')
-    .map((item) => ({
-      id: typeof item.id === 'string' ? item.id : '',
-      parentTabId: typeof item?.original?.primeTabId === 'string' ? item.original.primeTabId : '',
-      parentTabTitle: typeof item.parentTabTitle === 'string' ? item.parentTabTitle : 'Unknown Tab',
-      deletedAt: typeof item.deletedAt === 'number' ? item.deletedAt : Date.now(),
-      subTab: {
-        id: typeof item?.original?.subTabId === 'string' ? item.original.subTabId : typeof item.id === 'string' ? item.id : '',
-        title: typeof item.title === 'string' ? item.title : 'deleted note',
-        noteBodyId: typeof item.noteBodyId === 'string' ? item.noteBodyId : '',
-      },
-    }))
-    .filter((entry) => entry.id && entry.parentTabId && entry.subTab.id)
-
-  return { deletedTabs, deletedSubTabs }
-}
-
-function pushVisibleNoteFileRef(visibleNoteFileRefs, noteBodyId, rootRelativeFile, details = {}) {
-  if (!Array.isArray(visibleNoteFileRefs)) return
-  const bodyId = typeof noteBodyId === 'string' ? noteBodyId : ''
-  const file = typeof rootRelativeFile === 'string' ? rootRelativeFile : ''
-  if (!bodyId || !file) return
-  visibleNoteFileRefs.push({
-    noteBodyId: bodyId,
-    file,
-    ...(isRecord(details) ? details : {}),
-  })
-}
-
-function collectVisibleNoteFileRefsFromSpaceManifest(spaceRootRelative, spaceManifest, visibleNoteFileRefs, details = {}) {
-  if (!Array.isArray(visibleNoteFileRefs)) return
-  const domainId = typeof details.domainId === 'string' ? details.domainId : ''
-  const spaceId = typeof details.spaceId === 'string' ? details.spaceId : ''
-  ensureArray(spaceManifest?.tabs).forEach((tabRecord) => {
-    const tabId = typeof tabRecord?.id === 'string' ? tabRecord.id : ''
-    const noteBodyId = typeof tabRecord?.noteBodyId === 'string' ? tabRecord.noteBodyId : ''
-    const homeNoteFile = typeof tabRecord?.homeNoteFile === 'string' ? tabRecord.homeNoteFile : ''
-    if (noteBodyId && homeNoteFile) {
-      pushVisibleNoteFileRef(visibleNoteFileRefs, noteBodyId, path.posix.join(spaceRootRelative, homeNoteFile), {
-        location: domainId && spaceId && tabId
-          ? { domainId, spaceId, tabId, subTabId: null }
-          : undefined,
-      })
-    }
-    ensureArray(tabRecord?.subTabs).forEach((subTabRecord) => {
-      const subTabId = typeof subTabRecord?.id === 'string' ? subTabRecord.id : ''
-      const subTabNoteBodyId = typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : ''
-      const subTabFile = typeof subTabRecord?.file === 'string' ? subTabRecord.file : ''
-      if (subTabNoteBodyId && subTabFile) {
-        pushVisibleNoteFileRef(visibleNoteFileRefs, subTabNoteBodyId, path.posix.join(spaceRootRelative, subTabFile), {
-          location: domainId && spaceId && tabId && subTabId
-            ? { domainId, spaceId, tabId, subTabId }
-            : undefined,
-        })
-      }
-    })
-  })
-}
-
-function collectVisibleNoteFileRefsFromTrashItems(trashRootRelative, trashItems, visibleNoteFileRefs) {
-  if (!Array.isArray(visibleNoteFileRefs)) return
-  ensureArray(trashItems).forEach((item) => {
-    const noteBodyId = typeof item?.noteBodyId === 'string' ? item.noteBodyId : ''
-    const file = typeof item?.file === 'string' ? item.file : ''
-    if (noteBodyId && file) {
-      pushVisibleNoteFileRef(visibleNoteFileRefs, noteBodyId, path.posix.join(trashRootRelative, file))
-    }
-    ensureArray(item?.subTabs).forEach((subTabRecord) => {
-      const subTabNoteBodyId = typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : ''
-      const subTabFile = typeof subTabRecord?.file === 'string' ? subTabRecord.file : ''
-      if (subTabNoteBodyId && subTabFile) {
-        pushVisibleNoteFileRef(visibleNoteFileRefs, subTabNoteBodyId, path.posix.join(trashRootRelative, subTabFile))
-      }
-    })
-  })
-}
-
-function readTrashData(spaceRoot, trashManifestFile, issues = null, issueRootPath = null, options = {}) {
-  const trashRoot = path.join(spaceRoot, 'trash')
-  const trashManifestPath = trashManifestFile
-    ? path.join(spaceRoot, trashManifestFile)
-    : path.join(trashRoot, 'manifest.json')
-  const trashManifest = readJsonFileIfExists(trashManifestPath, issues, {
-    rootPath: issueRootPath,
-    missingCode: 'missing-trash-manifest',
-    parseCode: 'corrupt-trash-manifest',
-    severity: 'warning',
-    missingMessage: 'Trash manifest is missing; trash was loaded as empty for this space.',
-    parseMessage: 'Trash manifest is corrupt; trash was loaded as empty for this space.',
-  })
-  if (!trashManifest || typeof trashManifest !== 'object') {
-    return { deletedTabs: [], deletedSubTabs: [] }
-  }
-  collectVisibleNoteFileRefsFromTrashItems(options.trashRootRelative, trashManifest.items, options.visibleNoteFileRefs)
-  return buildTrashDataFromManifestItems(trashManifest.items)
-}
-
-function addAssetToBank(assetBank, bytes, extension) {
-  const ext = normalizeAssetExtension(extension)
-  const buffer = Buffer.from(bytes)
-  const hash = createHash('sha1').update(buffer).digest('hex').slice(0, 16)
-  const key = `${hash}.${ext}`
-  const existing = assetBank.keys.get(key)
-  if (existing) return existing
-
-  const relativeAssetPath = path.posix.join(assetBank.assetRootRelative, `asset-${hash}.${ext}`)
-  assetBank.keys.set(key, relativeAssetPath)
-  assetBank.files.set(relativeAssetPath, buffer)
-  return relativeAssetPath
-}
-
-function getExistingFileSignatureInfo(absolutePath) {
-  try {
-    const stat = statSync(absolutePath)
-    if (!stat.isFile()) return null
-    return {
-      byteLength: stat.size,
-      signature: `${stat.size}:${stat.mtimeMs}`,
-    }
-  } catch {
-    return null
-  }
-}
-
-function getExistingFileHashCacheKey(absolutePath) {
-  return path.resolve(absolutePath)
-}
-
-function rememberExistingFileHash(absolutePath, signatureInfo, contentHash) {
-  if (!signatureInfo || typeof signatureInfo.signature !== 'string' || !signatureInfo.signature) return
-  if (typeof contentHash !== 'string' || !contentHash) return
-  const cacheKey = getExistingFileHashCacheKey(absolutePath)
-  existingFileHashCache.delete(cacheKey)
-  existingFileHashCache.set(cacheKey, {
-    signature: signatureInfo.signature,
-    contentHash,
-    byteLength: signatureInfo.byteLength,
-  })
-  if (existingFileHashCache.size > MAX_EXISTING_FILE_HASH_CACHE_ENTRIES) {
-    const oldestKey = existingFileHashCache.keys().next().value
-    if (oldestKey) existingFileHashCache.delete(oldestKey)
-  }
-}
-
-function getExistingFileHashEntry(absolutePath, signatureInfo, metrics = null) {
-  if (!signatureInfo) return null
-  const cacheKey = getExistingFileHashCacheKey(absolutePath)
-  const cached = existingFileHashCache.get(cacheKey)
-  if (cached?.signature === signatureInfo.signature) {
-    if (metrics?.counts) metrics.counts.assetsReused += 1
-    return {
-      kind: 'existing-file',
-      absolutePath: path.resolve(absolutePath),
-      contentHash: cached.contentHash,
-      byteLength: cached.byteLength,
-    }
-  }
-
-  try {
-    const bytes = readFileSync(absolutePath)
-    const contentHash = createRawContentHash(bytes)
-    if (metrics?.counts) {
-      metrics.counts.assetsReadFromDisk += 1
-      metrics.counts.assetBytesReadFromDisk += bytes.length
-    }
-    rememberExistingFileHash(absolutePath, signatureInfo, contentHash)
-    return {
-      kind: 'existing-file',
-      absolutePath: path.resolve(absolutePath),
-      contentHash,
-      byteLength: bytes.length,
-    }
-  } catch {
-    existingFileHashCache.delete(cacheKey)
-    return null
-  }
-}
-
-function addExistingAssetReferenceToBank(assetBank, assetRelativePath) {
-  if (!assetBank?.existingRoot) return false
-  const normalizedRelativePath = normalizeImageAssetPath(assetRelativePath)
-  const absolutePath = path.join(assetBank.existingRoot, normalizedRelativePath)
-  const signatureInfo = getExistingFileSignatureInfo(absolutePath)
-  if (!signatureInfo) return false
-  if (!assetBank.files.has(normalizedRelativePath)) {
-    assetBank.existingFiles.set(normalizedRelativePath, {
-      absolutePath,
-      signatureInfo,
-    })
-  }
-  return true
-}
-
-function addAssetToNotesRoot(notesRootPath, bytes, extension) {
-  const ext = normalizeAssetExtension(extension)
-  const buffer = Buffer.from(bytes)
-  const hash = createHash('sha1').update(buffer).digest('hex').slice(0, 16)
-  const relativeAssetPath = path.posix.join('assets', `asset-${hash}.${ext}`)
-  writeBinaryFileAtomic(notesRootPath, relativeAssetPath, buffer)
-  return relativeAssetPath
-}
-
-export function writeImageAssetToProfile(profileRootPath, bytes, extension) {
-  return writeAssetToProfile(profileRootPath, bytes, extension)
-}
-
-export function writeAssetToProfile(profileRootPath, bytes, extension) {
-  const notesRootPath = getHybridStorageRoot(profileRootPath)
-  const assetPath = addAssetToNotesRoot(notesRootPath, bytes, extension)
-  return {
-    assetPath,
-    url: buildImageAssetUrl(assetPath),
-  }
-}
-
-function readStorageJsonFile(rootPath, rootRelativeFile) {
-  if (typeof rootRelativeFile !== 'string' || !rootRelativeFile.trim()) return null
-  return readJsonFileIfExists(path.join(rootPath, ...rootRelativeFile.split('/').filter(Boolean)))
-}
-
-function resolveStorageAbsolutePath(rootPath, rootRelativePath) {
-  if (typeof rootRelativePath !== 'string' || !rootRelativePath.trim()) return null
-  const absolutePath = path.resolve(rootPath, ...rootRelativePath.split('/').filter(Boolean))
-  return absolutePath === rootPath || absolutePath.startsWith(rootPath + path.sep) ? absolutePath : null
-}
-
-function getRootSplitJson(rootPath, rootManifest, key) {
-  const files = isRecord(rootManifest?.files) ? rootManifest.files : null
-  return readStorageJsonFile(rootPath, typeof files?.[key] === 'string' ? files[key] : '')
-}
-
-function getStoredNoteBodyAisleCount(noteRegistry, noteBodyId) {
-  if (typeof noteBodyId !== 'string' || !noteBodyId) return 0
-  const noteBody = ensureArray(noteRegistry?.noteBodies).find((body) => body?.id === noteBodyId)
-  return ensureArray(noteBody?.aisles).length
-}
-
-function getStoredRootParts(rootPath) {
-  const rootManifest = readJsonFileIfExists(path.join(rootPath, 'manifest.json'))
-  if (!isRecord(rootManifest)) return null
-  const workspaceIndex = getRootSplitJson(rootPath, rootManifest, 'workspaceIndex')
-  const noteRegistry = getRootSplitJson(rootPath, rootManifest, 'noteRegistry')
-  if (!isRecord(workspaceIndex) || !isRecord(noteRegistry)) return null
-  return { workspaceIndex, noteRegistry }
-}
-
-function getLiveNoteRevealRelativePath(rootPath, rootParts, location) {
-  if (!isRecord(location)) return null
-  const domainId = typeof location.domainId === 'string' ? location.domainId : ''
-  const spaceId = typeof location.spaceId === 'string' ? location.spaceId : ''
-  const tabId = typeof location.tabId === 'string' ? location.tabId : ''
-  const subTabId = typeof location.subTabId === 'string' ? location.subTabId : null
-  if (!domainId || !spaceId || !tabId) return null
-
-  const domainEntry = ensureArray(rootParts.workspaceIndex.domains).find((entry) => entry?.id === domainId)
-  const domainPath = typeof domainEntry?.path === 'string' ? domainEntry.path : ''
-  if (!domainPath) return null
-  const domainRoot = path.posix.join(DOMAINS_DIR, domainPath)
-  const domainManifest = readStorageJsonFile(rootPath, path.posix.join(domainRoot, 'manifest.json'))
-  const spaceEntry = ensureArray(domainManifest?.spaces).find((entry) => entry?.id === spaceId)
-  const spacePath = typeof spaceEntry?.path === 'string' ? spaceEntry.path : ''
-  if (!spacePath) return null
-  const spaceRoot = path.posix.join(domainRoot, spacePath)
-  const spaceManifest = readStorageJsonFile(rootPath, path.posix.join(spaceRoot, 'manifest.json'))
-  const tab = ensureArray(spaceManifest?.tabs).find((entry) => entry?.id === tabId)
-  if (!tab) return null
-
-  if (subTabId === null) {
-    const homeNoteFile = typeof tab.homeNoteFile === 'string' ? tab.homeNoteFile : ''
-    const noteBodyId = typeof tab.noteBodyId === 'string' ? tab.noteBodyId : ''
-    if (!homeNoteFile) return null
-    return path.posix.join(
-      spaceRoot,
-      getStoredNoteBodyAisleCount(rootParts.noteRegistry, noteBodyId) > 1
-        ? path.posix.dirname(homeNoteFile)
-        : homeNoteFile,
-    )
-  }
-
-  const subTab = ensureArray(tab.subTabs).find((entry) => entry?.id === subTabId)
-  const noteBodyId = typeof subTab?.noteBodyId === 'string' ? subTab.noteBodyId : ''
-  const subTabFile = typeof subTab?.file === 'string' ? subTab.file : ''
-  const subTabPath = typeof subTab?.path === 'string' ? subTab.path : ''
-  if (!subTabFile && !subTabPath) return null
-  return path.posix.join(
-    spaceRoot,
-    getStoredNoteBodyAisleCount(rootParts.noteRegistry, noteBodyId) > 1 ? subTabPath : subTabFile,
-  )
-}
-
-function getScratchpadRevealRelativePath(rootParts) {
-  const scratchpad = isRecord(rootParts.workspaceIndex.scratchpad) ? rootParts.workspaceIndex.scratchpad : null
-  const noteBodyId = typeof scratchpad?.noteBodyId === 'string' ? scratchpad.noteBodyId : ''
-  if (!noteBodyId) return null
-  return getStoredNoteBodyAisleCount(rootParts.noteRegistry, noteBodyId) > 1
-    ? 'scratchpad'
-    : path.posix.join('scratchpad', 'scratchpad.md')
-}
-
-export function resolveNoteLocationRevealPath(profileRootPath, payload = {}) {
-  const rootPath = getHybridStorageRoot(profileRootPath)
-  const rootParts = getStoredRootParts(rootPath)
-  if (!rootParts) return { ok: false, error: 'Notebook data could not be read.' }
-
-  const rootRelativePath =
-    payload?.type === 'scratchpad'
-      ? getScratchpadRevealRelativePath(rootParts)
-      : payload?.type === 'live-note'
-        ? getLiveNoteRevealRelativePath(rootPath, rootParts, payload.location)
-        : null
-  if (!rootRelativePath) return { ok: false, error: 'Note file could not be resolved.' }
-
-  const absolutePath = resolveStorageAbsolutePath(rootPath, rootRelativePath)
-  if (!absolutePath) return { ok: false, error: 'Note file path is invalid.' }
-  return { ok: true, absolutePath, rootRelativePath }
-}
-
-function externalizeMarkdownImages(markdown, noteFileRelative, assetBank) {
-  return String(markdown ?? '').replace(MARKDOWN_LINK_PATTERN, (fullMatch, imageBang, label, srcRaw) => {
-    const src = String(srcRaw ?? '').trim()
-    if (!src) return fullMatch
-    const { assetUrl, metadataFragment: normalizedMetadataFragment } = splitAssetMetadataFromUrl(src)
-
-    let decoded = null
-    let assetRelativePath = parseImageAssetUrl(assetUrl)
-
-    if (assetRelativePath) {
-      assetRelativePath = normalizeImageAssetPath(assetRelativePath)
-      addExistingAssetReferenceToBank(assetBank, assetRelativePath)
-    } else if (imageBang === '!' && assetUrl.startsWith('data:image/')) {
-      decoded = decodeImageDataUrl(assetUrl)
-    } else if (assetUrl.startsWith('file://')) {
-      try {
-        const absolutePath = fileURLToPath(assetUrl)
-        if (existsSync(absolutePath)) {
-          decoded = {
-            bytes: readFileSync(absolutePath),
-            extension: normalizeAssetExtension(path.extname(absolutePath).slice(1)),
-          }
-        }
-      } catch {
-        decoded = null
-      }
-    }
-
-    if (!assetRelativePath && decoded) {
-      assetRelativePath = addAssetToBank(assetBank, decoded.bytes, decoded.extension)
-    }
-
-    if (!assetRelativePath) return fullMatch
-    const noteDirectory = path.posix.dirname(noteFileRelative)
-    const nextSrc = path.posix.relative(noteDirectory, assetRelativePath) || path.posix.basename(assetRelativePath)
-    return `${imageBang}[${label}](${nextSrc}${normalizedMetadataFragment})`
-  })
-}
-
-function referenceMarkdownImages(markdown, noteFilePath, issues = null, issueRootPath = null) {
-  return String(markdown ?? '').replace(MARKDOWN_LINK_PATTERN, (fullMatch, imageBang, label, srcRaw) => {
-    const src = String(srcRaw ?? '').trim()
-    if (!src) return fullMatch
-    const { assetUrl, metadataFragment: normalizedMetadataFragment } = splitAssetMetadataFromUrl(src)
-    if (parseImageAssetUrl(assetUrl)) return fullMatch
-    if (imageBang === '!' && assetUrl.startsWith('data:image/')) {
-      const decoded = decodeImageDataUrl(assetUrl)
-      if (!decoded || !issueRootPath) return fullMatch
-      const assetPath = addAssetToNotesRoot(issueRootPath, decoded.bytes, decoded.extension)
-      return `${imageBang}[${label}](${buildImageAssetUrl(assetPath)}${normalizedMetadataFragment})`
-    }
-    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(assetUrl) && !assetUrl.startsWith('file://')) return fullMatch
-
-    let absolutePath = null
-    if (assetUrl.startsWith('file://')) {
-      try {
-        absolutePath = fileURLToPath(assetUrl)
-      } catch {
-        absolutePath = null
-      }
-    } else {
-      absolutePath = path.resolve(path.dirname(noteFilePath), assetUrl)
-    }
-
-    if (!imageBang && !absolutePath) return fullMatch
-    if (!imageBang && issueRootPath) {
-      const candidateRootRelativePath = normalizeImageAssetPath(
-        path.relative(issueRootPath, absolutePath).split(path.sep).join(path.posix.sep),
-      )
-      if (!candidateRootRelativePath.startsWith('assets/')) return fullMatch
-    } else if (!imageBang) {
-      return fullMatch
-    }
-
-    if (!absolutePath || !existsSync(absolutePath)) {
-      addStorageIssue(
-        issues,
-        'missing-asset',
-        'warning',
-        absolutePath && issueRootPath ? formatStorageIssuePath(issueRootPath, absolutePath) : absolutePath,
-        'Referenced asset is missing; the Markdown reference was kept unchanged.',
-      )
-      return fullMatch
-    }
-
-    try {
-      const rootRelativePath = issueRootPath
-        ? normalizeImageAssetPath(path.relative(issueRootPath, absolutePath).split(path.sep).join(path.posix.sep))
-        : normalizeImageAssetPath(path.basename(absolutePath))
-      if (!imageBang && !rootRelativePath.startsWith('assets/')) return fullMatch
-      return `${imageBang}[${label}](${buildImageAssetUrl(rootRelativePath)}${normalizedMetadataFragment})`
-    } catch {
-      addStorageIssue(
-        issues,
-        'unreadable-asset',
-        'warning',
-        issueRootPath ? formatStorageIssuePath(issueRootPath, absolutePath) : absolutePath,
-        'Referenced asset could not be read; the Markdown reference was kept unchanged.',
-      )
-      return fullMatch
-    }
-  })
+export function measureSlowMainOperation(_name, operation) {
+  return operation()
 }
 
 export function getHybridStorageRoot(profileRootPath) {
@@ -747,2142 +155,673 @@ export function getUserSettingsFilePath(profileRootPath) {
   return path.join(profileRootPath, USER_SETTINGS_FILE_PATH)
 }
 
-function readTextFileIfExists(filePath, issues = null, issueOptions = {}) {
-  try {
-    if (!existsSync(filePath)) {
-      if (issueOptions.missingCode) {
-        addStorageIssue(
-          issues,
-          issueOptions.missingCode,
-          issueOptions.severity ?? 'warning',
-          issueOptions.rootPath ? formatStorageIssuePath(issueOptions.rootPath, filePath) : filePath,
-          issueOptions.missingMessage ?? 'Expected storage file is missing.',
-        )
-      }
-      return null
+export function createStorageFilesSnapshot(entries, metrics = null) {
+  const normalized = [...entries].map(([relativePath, contents]) => {
+    const buffer = Buffer.isBuffer(contents) ? contents : Buffer.from(contents ?? '')
+    return {
+      relativePath: String(relativePath).replace(/\\/g, '/'),
+      size: buffer.byteLength,
+      hash: contentHash(buffer),
     }
-    return readFileSync(filePath, 'utf8')
-  } catch {
-    if (issueOptions.readCode) {
-      addStorageIssue(
-        issues,
-        issueOptions.readCode,
-        issueOptions.severity ?? 'warning',
-        issueOptions.rootPath ? formatStorageIssuePath(issueOptions.rootPath, filePath) : filePath,
-        issueOptions.readMessage ?? 'Storage file could not be read.',
-      )
-    }
-    return null
+  })
+  normalized.sort((left, right) => left.relativePath.localeCompare(right.relativePath))
+  const fingerprint = contentHash(JSON.stringify(normalized))
+  if (metrics?.counts) {
+    metrics.counts.hashesComputed = (metrics.counts.hashesComputed ?? 0) + normalized.length
   }
-}
-
-function readJsonFileIfExists(filePath, issues = null, issueOptions = {}) {
-  const raw = readTextFileIfExists(filePath, issues, issueOptions)
-  if (raw === null) return null
-  try {
-    return JSON.parse(raw)
-  } catch {
-    if (issueOptions.parseCode) {
-      addStorageIssue(
-        issues,
-        issueOptions.parseCode,
-        issueOptions.severity ?? 'warning',
-        issueOptions.rootPath ? formatStorageIssuePath(issueOptions.rootPath, filePath) : filePath,
-        issueOptions.parseMessage ?? 'Storage JSON could not be parsed.',
-      )
-    }
-    return null
+  return {
+    entries: normalized,
+    fingerprint,
   }
-}
-
-function normalizeStorageFingerprintPath(relativeFile) {
-  return String(relativeFile ?? '').split(path.sep).join('/')
-}
-
-function getStorageFingerprintBuffer(entry) {
-  const contents = isRecord(entry) && 'contents' in entry ? entry.contents : entry
-  if (Buffer.isBuffer(contents)) return contents
-  if (contents instanceof Uint8Array) return Buffer.from(contents)
-  return Buffer.from(String(contents ?? ''), 'utf8')
-}
-
-function createRawContentHash(contents) {
-  return createHash('sha256').update(getStorageFingerprintBuffer(contents)).digest('hex')
 }
 
 export function createStorageFilesFingerprint(entries) {
   return createStorageFilesSnapshot(entries).fingerprint
 }
 
-export function createStorageFilesSnapshot(entries, metrics = null) {
-  const hash = createHash('sha256')
-  hash.update('tabs-storage-files-v1\n')
-  const files = Array.from(entries ?? [])
-    .map(([relativeFile, entry]) => {
-      if (
-        isRecord(entry) &&
-        entry.kind === 'existing-file' &&
-        typeof entry.contentHash === 'string' &&
-        Number.isFinite(entry.byteLength)
-      ) {
-        return {
-          path: normalizeStorageFingerprintPath(relativeFile),
-          contentHash: entry.contentHash,
-          byteLength: Number(entry.byteLength),
-        }
-      }
-      const contents = getStorageFingerprintBuffer(entry)
-      if (metrics?.counts) metrics.counts.hashesComputed += 1
-      return {
-        path: normalizeStorageFingerprintPath(relativeFile),
-        contentHash: createHash('sha256').update(contents).digest('hex'),
-        byteLength: contents.length,
-      }
+function listStorageFileContents(rootPath, currentPath = rootPath, entries = []) {
+  if (!existsSync(currentPath)) return entries
+  for (const entry of readdirSync(currentPath, { withFileTypes: true })) {
+    if (entry.name.startsWith('.') && entry.name !== TABS_METADATA_DIR) continue
+    const absolutePath = path.join(currentPath, entry.name)
+    const relativePath = path.relative(rootPath, absolutePath)
+    if (entry.isDirectory()) {
+      listStorageFileContents(rootPath, absolutePath, entries)
+      continue
+    }
+    if (!entry.isFile()) continue
+    entries.push([relativePath, readFileSync(absolutePath)])
+  }
+  return entries
+}
+
+function buildManifest(notebookId = null, syncMetadata = null) {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    notebookId,
+    createdBy: 'tabs',
+    files: {
+      notebookIndex: NOTEBOOK_INDEX_FILE,
+      navigationState: NAVIGATION_STATE_FILE,
+      noteRegistry: NOTE_REGISTRY_FILE,
+      trashIndex: TRASH_INDEX_FILE,
+      frontmatterSettings: FRONTMATTER_SETTINGS_FILE,
+      editorState: EDITOR_STATE_FILE,
+      messages: MESSAGES_FILE,
+      syncState: SYNC_STATE_FILE,
+    },
+    syncMetadata: syncMetadata ?? null,
+  }
+}
+
+function getAisleBodyMap(appState) {
+  return new Map(ensureArray(appState?.noteAisleBodies).map((body) => [body.id, body]))
+}
+
+function getNoteBodyMap(appState) {
+  return new Map(ensureArray(appState?.noteBodies).map((body) => [body.id, body]))
+}
+
+function composeMarkdownFile(aisleBody) {
+  const markdown = String(aisleBody?.markdown ?? '')
+  if (!isRecord(aisleBody?.frontmatter) || Object.keys(aisleBody.frontmatter).length === 0) return markdown
+  const yaml = YAML.stringify(aisleBody.frontmatter).trimEnd()
+  return `---\n${yaml}\n---\n\n${markdown}`
+}
+
+function splitMarkdownFile(contents) {
+  const markdown = String(contents ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  if (!markdown.startsWith('---\n')) {
+    return {
+      markdown,
+      frontmatter: null,
+      frontmatterStatus: 'none',
+      frontmatterRaw: undefined,
+      frontmatterParseError: undefined,
+    }
+  }
+  const closeMatch = markdown.slice(4).match(/\n---\s*(?:\n|$)/)
+  if (!closeMatch || typeof closeMatch.index !== 'number') {
+    return {
+      markdown,
+      frontmatter: null,
+      frontmatterStatus: 'invalid',
+      frontmatterRaw: markdown,
+      frontmatterParseError: 'Frontmatter block was not closed.',
+    }
+  }
+  const frontmatterRaw = markdown.slice(4, closeMatch.index + 4)
+  const bodyStart = 4 + closeMatch.index + closeMatch[0].length
+  try {
+    const parsed = YAML.parse(frontmatterRaw)
+    return {
+      markdown: markdown.slice(bodyStart),
+      frontmatter: isRecord(parsed) ? parsed : {},
+      frontmatterStatus: 'valid',
+      frontmatterRaw,
+      frontmatterParseError: undefined,
+    }
+  } catch (error) {
+    return {
+      markdown: markdown.slice(bodyStart),
+      frontmatter: null,
+      frontmatterStatus: 'invalid',
+      frontmatterRaw,
+      frontmatterParseError: error instanceof Error ? error.message : 'Frontmatter could not be parsed.',
+    }
+  }
+}
+
+function buildNotebookIndexItems(items, appState, parentPath = '', noteFileRecords = []) {
+  const noteBodies = getNoteBodyMap(appState)
+  return ensureArray(items).flatMap((item) => {
+    if (!isRecord(item)) return []
+    const id = normalizeId(item.id)
+    const title = normalizeTitle(item.title, item.type === 'folder' ? 'Untitled folder' : 'Untitled')
+    if (!id) return []
+    if (item.type === 'folder') {
+      const folderName = makeVisibleName(title, id)
+      const folderPath = parentPath ? path.posix.join(parentPath, folderName) : folderName
+      const children = buildNotebookIndexItems(item.children, appState, folderPath, noteFileRecords)
+      return [{
+        type: 'folder',
+        id,
+        title,
+        path: folderPath,
+        children,
+      }]
+    }
+    if (item.type !== 'note') return []
+    const noteBodyId = normalizeId(item.noteBodyId)
+    if (!noteBodyId) return []
+    const noteBody = noteBodies.get(noteBodyId)
+    const aisles = ensureArray(noteBody?.aisles)
+    if (aisles.length > 1) {
+      const folderName = makeVisibleName(title, id)
+      const notePath = parentPath ? path.posix.join(parentPath, folderName) : folderName
+      const aisleFiles = aisles.map((aisle, index) => ({
+        aisleId: aisle.id,
+        aisleBodyId: aisle.aisleBodyId,
+        file: path.posix.join(notePath, makeVisibleName(`aisle ${index + 1}`, aisle.id, '.md')),
+      }))
+      noteFileRecords.push({ noteId: id, noteBodyId, type: 'folder', path: notePath, aisleFiles })
+      return [{
+        type: 'note',
+        id,
+        title,
+        noteBodyId,
+        path: notePath,
+        aisleFiles,
+      }]
+    }
+    const file = parentPath ? path.posix.join(parentPath, makeVisibleName(title, id, '.md')) : makeVisibleName(title, id, '.md')
+    const aisle = aisles[0] ?? { id: `${id}-aisle`, aisleBodyId: `${noteBodyId}-body` }
+    noteFileRecords.push({
+      noteId: id,
+      noteBodyId,
+      type: 'file',
+      file,
+      aisleFiles: [{
+        aisleId: aisle.id,
+        aisleBodyId: aisle.aisleBodyId,
+        file,
+      }],
     })
-    .sort((left, right) => left.path.localeCompare(right.path))
-  for (const file of files) {
-    hash.update(file.path)
-    hash.update('\0')
-    hash.update(String(file.byteLength))
-    hash.update('\0')
-    hash.update(file.contentHash)
-    hash.update('\n')
+    return [{
+      type: 'note',
+      id,
+      title,
+      noteBodyId,
+      file,
+    }]
+  })
+}
+
+function collectNotebookIndexNoteFiles(indexItems, entries = []) {
+  for (const item of ensureArray(indexItems)) {
+    if (!isRecord(item)) continue
+    if (item.type === 'folder') {
+      collectNotebookIndexNoteFiles(item.children, entries)
+      continue
+    }
+    if (item.type !== 'note') continue
+    const noteId = normalizeId(item.id)
+    const noteBodyId = normalizeId(item.noteBodyId)
+    if (!noteId || !noteBodyId) continue
+    if (Array.isArray(item.aisleFiles)) {
+      entries.push({
+        noteId,
+        noteBodyId,
+        type: 'folder',
+        path: normalizePosixPath(item.path),
+        aisleFiles: item.aisleFiles.flatMap((aisle) => {
+          if (!isRecord(aisle)) return []
+          const aisleId = normalizeId(aisle.aisleId)
+          const aisleBodyId = normalizeId(aisle.aisleBodyId)
+          const file = normalizePosixPath(aisle.file)
+          return aisleId && aisleBodyId && file ? [{ aisleId, aisleBodyId, file }] : []
+        }),
+      })
+      continue
+    }
+    const file = normalizePosixPath(item.file)
+    if (file) {
+      entries.push({
+        noteId,
+        noteBodyId,
+        type: 'file',
+        file,
+        aisleFiles: [{ aisleId: '', aisleBodyId: '', file }],
+      })
+    }
+  }
+  return entries
+}
+
+function buildNoteRegistry(appState, noteFileRecords) {
+  const aisleBodyMap = getAisleBodyMap(appState)
+  const filesByAisleBodyId = new Map()
+  for (const noteRecord of noteFileRecords) {
+    for (const aisleFile of noteRecord.aisleFiles) {
+      const files = filesByAisleBodyId.get(aisleFile.aisleBodyId) ?? []
+      files.push(aisleFile.file)
+      filesByAisleBodyId.set(aisleFile.aisleBodyId, files)
+    }
   }
   return {
-    fingerprint: `tabs-storage-files-v1:${hash.digest('hex')}`,
-    files,
+    schemaVersion: SCHEMA_VERSION,
+    noteBodies: ensureArray(appState?.noteBodies).map((body) => ({
+      id: body.id,
+      createdAt: body.createdAt,
+      updatedAt: body.updatedAt,
+      aisles: ensureArray(body.aisles).map((aisle) => ({
+        id: aisle.id,
+        aisleBodyId: aisle.aisleBodyId,
+      })),
+    })),
+    noteAisleBodies: ensureArray(appState?.noteAisleBodies).map((aisleBody) => {
+      const markdownFile = composeMarkdownFile(aisleBody)
+      const files = filesByAisleBodyId.get(aisleBody.id) ?? []
+      return {
+        id: aisleBody.id,
+        createdAt: aisleBody.createdAt,
+        updatedAt: aisleBody.updatedAt,
+        contentHash: contentHash(markdownFile),
+        markdownHash: contentHash(aisleBody.markdown ?? ''),
+        markdown: files.length === 0 ? String(aisleBody.markdown ?? '') : undefined,
+        tags: ensureArray(aisleBody.tags),
+        frontmatter: isRecord(aisleBody.frontmatter) ? aisleBody.frontmatter : null,
+        frontmatterStatus: aisleBody.frontmatterStatus ?? 'none',
+        frontmatterMeta: aisleBody.frontmatterMeta ?? undefined,
+        file: files[0] ?? null,
+        mirrors: files,
+      }
+    }),
   }
 }
 
-function getAtomicWriteSignature(absolutePath) {
-  try {
-    const stat = statSync(absolutePath)
-    return `${stat.size}:${stat.mtimeMs}`
-  } catch {
-    return null
-  }
-}
-
-function rememberAtomicWriteCache(absolutePath, contentHash) {
-  const signature = getAtomicWriteSignature(absolutePath)
-  if (!signature) return
-  const cacheKey = path.resolve(absolutePath)
-  atomicWriteCache.delete(cacheKey)
-  atomicWriteCache.set(cacheKey, { contentHash, signature })
-  if (atomicWriteCache.size > MAX_ATOMIC_WRITE_CACHE_ENTRIES) {
-    const oldestKey = atomicWriteCache.keys().next().value
-    if (oldestKey) atomicWriteCache.delete(oldestKey)
-  }
-}
-
-function getAtomicWriteCacheHit(absolutePath, contentHash) {
-  const cacheKey = path.resolve(absolutePath)
-  const cached = atomicWriteCache.get(cacheKey)
-  if (!cached || cached.contentHash !== contentHash) return false
-  if (getAtomicWriteSignature(absolutePath) !== cached.signature) {
-    atomicWriteCache.delete(cacheKey)
-    return false
-  }
-  return true
-}
-
-function writeTextFileAtomic(rootPath, relativeFile, contents) {
-  const absolutePath = path.join(rootPath, relativeFile)
-  const contentHash = createRawContentHash(contents)
-  if (getAtomicWriteCacheHit(absolutePath, contentHash)) {
-    return { changed: false, skippedByCache: true, contentHash }
-  }
-  try {
-    if (readFileSync(absolutePath, 'utf8') === contents) {
-      rememberAtomicWriteCache(absolutePath, contentHash)
-      rememberExistingFileHash(absolutePath, { signature: getAtomicWriteSignature(absolutePath), byteLength: Buffer.byteLength(contents, 'utf8') }, contentHash)
-      return { changed: false, contentHash }
+function writeVisibleNotebookFiles(rootPath, appState, noteFileRecords) {
+  const aisleBodyMap = getAisleBodyMap(appState)
+  const written = new Set()
+  for (const noteRecord of noteFileRecords) {
+    for (const aisleFile of noteRecord.aisleFiles) {
+      const markdownFile = composeMarkdownFile(aisleBodyMap.get(aisleFile.aisleBodyId))
+      writeText(rootPath, aisleFile.file, markdownFile)
+      written.add(aisleFile.file)
     }
-  } catch {
-    // Missing or unreadable files are rewritten below.
   }
-  mkdirSync(path.dirname(absolutePath), { recursive: true })
-  const tempPath = path.join(
-    path.dirname(absolutePath),
-    `.${path.basename(absolutePath)}.${process.pid}.${Date.now()}.tmp`,
-  )
-  writeFileSync(tempPath, contents, 'utf8')
-  renameSync(tempPath, absolutePath)
-  rememberAtomicWriteCache(absolutePath, contentHash)
-  rememberExistingFileHash(absolutePath, { signature: getAtomicWriteSignature(absolutePath), byteLength: Buffer.byteLength(contents, 'utf8') }, contentHash)
-  return { changed: true, contentHash }
+  return written
 }
 
-function writeBinaryFileAtomic(rootPath, relativeFile, contents) {
-  const absolutePath = path.join(rootPath, relativeFile)
-  const contentBuffer = Buffer.from(contents)
-  const contentHash = createRawContentHash(contentBuffer)
-  if (getAtomicWriteCacheHit(absolutePath, contentHash)) {
-    return { changed: false, skippedByCache: true, contentHash }
-  }
-  try {
-    const existing = readFileSync(absolutePath)
-    if (existing.length === contentBuffer.length && existing.equals(contentBuffer)) {
-      rememberAtomicWriteCache(absolutePath, contentHash)
-      rememberExistingFileHash(absolutePath, { signature: getAtomicWriteSignature(absolutePath), byteLength: contentBuffer.length }, contentHash)
-      return { changed: false, contentHash }
-    }
-  } catch {
-    // Missing or unreadable files are rewritten below.
-  }
-  mkdirSync(path.dirname(absolutePath), { recursive: true })
-  const tempPath = path.join(
-    path.dirname(absolutePath),
-    `.${path.basename(absolutePath)}.${process.pid}.${Date.now()}.tmp`,
-  )
-  writeFileSync(tempPath, contentBuffer)
-  renameSync(tempPath, absolutePath)
-  rememberAtomicWriteCache(absolutePath, contentHash)
-  rememberExistingFileHash(absolutePath, { signature: getAtomicWriteSignature(absolutePath), byteLength: contentBuffer.length }, contentHash)
-  return { changed: true, contentHash }
-}
+function pruneGeneratedNotebookFiles(rootPath, expectedFiles) {
+  const expected = new Set(expectedFiles)
+  expected.add(MANIFEST_FILE)
+  if (!existsSync(rootPath)) return { filesPruned: 0, directoriesPruned: 0 }
+  let filesPruned = 0
+  let directoriesPruned = 0
 
-function buildAppSettingsFileContents(serializedState) {
-  const parsedState = JSON.parse(serializedState)
-  return `${JSON.stringify(extractAppSettings(parsedState), null, 2)}\n`
-}
-
-export function writeAppSettingsForState(userSettingsRoot, serializedState) {
-  return writeTextFileAtomic(userSettingsRoot, USER_SETTINGS_FILE_PATH, buildAppSettingsFileContents(serializedState))
-}
-
-function readMarkdownFile(baseDirectory, relativeFile, issues = null, issueRootPath = null) {
-  const absolutePath = path.join(baseDirectory, relativeFile)
-  const markdown = readTextFileIfExists(absolutePath, issues, {
-    rootPath: issueRootPath,
-    missingCode: 'missing-markdown',
-    readCode: 'unreadable-markdown',
-    severity: 'warning',
-    missingMessage: 'Markdown file is missing; this note was loaded as empty.',
-    readMessage: 'Markdown file could not be read; this note was loaded as empty.',
-  }) ?? ''
-  return referenceMarkdownImages(markdown, absolutePath, issues, issueRootPath)
-}
-
-function hasCloudConflictName(name) {
-  return (
-    /^notes(?: \d+)?\.bak$/i.test(name) ||
-    /^notes \d+$/i.test(name) ||
-    /^(topics|domains|note-bodies|assets|trash|manifest)(?: \d+)$/i.test(name) ||
-    /\.bak$/i.test(name)
-  )
-}
-
-function detectStorageConflicts(profileRootPath, rootPath) {
-  const conflicts = []
-  const seen = new Set()
-  for (const entry of listDirectoryEntries(rootPath)) {
-    if (!hasCloudConflictName(entry.name) || seen.has(entry.name)) continue
-    seen.add(entry.name)
-    conflicts.push(entry.name)
-  }
-  void profileRootPath
-  return conflicts
-}
-
-function removeStorageConflictPaths(profileRootPath, rootPath) {
-  for (const entry of listDirectoryEntries(rootPath)) {
-    if (hasCloudConflictName(entry.name)) rmSync(path.join(rootPath, entry.name), { recursive: true, force: true })
-  }
-  void profileRootPath
-}
-
-function pruneStorageRoot(rootPath, expectedRelativeFiles) {
-  const expected = new Set(expectedRelativeFiles)
-  const result = { filesPruned: 0, directoriesPruned: 0 }
-
-  function pruneDirectory(currentPath) {
-    for (const entry of listDirectoryEntries(currentPath)) {
-      const absolutePath = path.join(currentPath, entry.name)
-      const relativePath = path.relative(rootPath, absolutePath).split(path.sep).join(path.posix.sep)
+  function visit(directoryPath) {
+    for (const entry of readdirSync(directoryPath, { withFileTypes: true })) {
+      if (entry.name === TABS_METADATA_DIR || entry.name === ASSETS_DIR || entry.name === 'settings') continue
+      const absolutePath = path.join(directoryPath, entry.name)
+      const relativePath = path.relative(rootPath, absolutePath).split(path.sep).join('/')
       if (entry.isDirectory()) {
-        pruneDirectory(absolutePath)
+        visit(absolutePath)
         try {
           if (readdirSync(absolutePath).length === 0) {
             rmSync(absolutePath, { recursive: true, force: true })
-            result.directoriesPruned += 1
+            directoriesPruned += 1
           }
         } catch {
-          // Ignore cloud-provider races while pruning stale paths.
+          // Ignore pruning races.
         }
         continue
       }
-      if (!entry.isFile()) continue
-      if (!expected.has(relativePath)) {
-        rmSync(absolutePath, { force: true })
-        result.filesPruned += 1
-      }
+      if (!entry.isFile() || !MARKDOWN_EXTENSION_RE.test(entry.name)) continue
+      if (expected.has(relativePath)) continue
+      rmSync(absolutePath, { force: true })
+      filesPruned += 1
     }
   }
 
-  if (existsSync(rootPath)) pruneDirectory(rootPath)
-  return result
+  visit(rootPath)
+  return { filesPruned, directoriesPruned }
 }
 
-function createExpectedFileSetSignature(expectedRelativeFiles) {
-  return Array.from(expectedRelativeFiles ?? [])
-    .map((relativeFile) => String(relativeFile ?? '').split(path.sep).join(path.posix.sep))
-    .sort()
-    .join('\n')
-}
-
-function pruneKnownStaleRootStoragePaths(rootPath, expectedRelativeFiles) {
-  const expected = new Set(expectedRelativeFiles)
-  const result = { filesPruned: 0, directoriesPruned: 0 }
-  for (const relativePath of KNOWN_STALE_ROOT_STORAGE_PATHS) {
-    if (expected.has(relativePath)) continue
-    const absolutePath = path.join(rootPath, relativePath)
-    try {
-      const stat = statSync(absolutePath)
-      rmSync(absolutePath, { recursive: stat.isDirectory(), force: true })
-      if (stat.isDirectory()) result.directoriesPruned += 1
-      else if (stat.isFile()) result.filesPruned += 1
-    } catch {
-      // Missing or racing legacy paths do not matter.
-    }
-  }
-  return result
-}
-
-function getStorageFileEntryByteLength(entry) {
-  if (isRecord(entry) && entry.kind === 'text') return Buffer.byteLength(String(entry.contents ?? ''), 'utf8')
-  if (isRecord(entry) && entry.kind === 'binary') return Buffer.from(entry.contents).length
-  if (isRecord(entry) && entry.kind === 'existing-file' && Number.isFinite(entry.byteLength)) {
-    return Number(entry.byteLength)
-  }
-  return getStorageFingerprintBuffer(entry).length
-}
-
-function addStorageFileMapMetrics(metrics, fileMap, assetBank) {
-  if (!metrics?.counts) return
-  metrics.counts.generatedFiles = fileMap.size
-  for (const [relativeFile, entry] of fileMap.entries()) {
-    metrics.counts.generatedBytes += getStorageFileEntryByteLength(entry)
-    if (isRecord(entry) && entry.kind === 'text') {
-      metrics.counts.textFiles += 1
-      if (String(relativeFile).endsWith('.json')) metrics.counts.jsonFiles += 1
-      if (String(relativeFile).endsWith('.md')) metrics.counts.mdFiles += 1
-    }
-    else if (isRecord(entry) && entry.kind === 'binary') metrics.counts.binaryFiles += 1
-    else if (isRecord(entry) && entry.kind === 'existing-file') metrics.counts.existingAssetFiles += 1
-  }
-  const referencedAssets = new Set([
-    ...Array.from(assetBank?.existingFiles?.keys?.() ?? []),
-    ...Array.from(assetBank?.files?.keys?.() ?? []),
-  ])
-  metrics.counts.assetsReferenced = referencedAssets.size
-  metrics.counts.assetBytesReferenced = Array.from(referencedAssets).reduce((total, relativeFile) => {
-    const entry = fileMap.get(relativeFile)
-    return total + (entry ? getStorageFileEntryByteLength(entry) : 0)
-  }, 0)
-}
-
-function isMainPerformanceLoggingEnabled() {
-  return Boolean(process.env.VITE_DEV_SERVER_URL || process.env.TABS_PERF_LOG === '1')
-}
-
-export function measureSlowMainOperation(label, operation, thresholdMs = 75) {
-  const startedAt = Date.now()
-  try {
-    return operation()
-  } finally {
-    const durationMs = Date.now() - startedAt
-    if (isMainPerformanceLoggingEnabled() && durationMs >= thresholdMs) {
-      console.warn(`[tabs perf] ${label} took ${durationMs.toFixed(1)}ms`)
-    }
+function buildEditorState(appState) {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    theme: appState?.theme ?? 'dawn',
+    scratchpad: appState?.scratchpad ?? null,
+    hotkeys: appState?.hotkeys ?? null,
+    ui: appState?.ui ?? null,
+    toastHistory: appState?.toastHistory ?? [],
   }
 }
 
-function setStorageTextFile(fileMap, relativeFile, contents) {
-  fileMap.set(relativeFile, { kind: 'text', contents: String(contents ?? '') })
-}
-
-function setStorageJsonFile(fileMap, relativeFile, value) {
-  setStorageTextFile(fileMap, relativeFile, `${JSON.stringify(value, null, 2)}\n`)
-}
-
-function setStorageBinaryFile(fileMap, relativeFile, contents) {
-  fileMap.set(relativeFile, { kind: 'binary', contents: Buffer.from(contents) })
-}
-
-function setStorageExistingFile(fileMap, relativeFile, entry) {
-  fileMap.set(relativeFile, {
-    kind: 'existing-file',
-    absolutePath: entry.absolutePath,
-    contentHash: entry.contentHash,
-    byteLength: entry.byteLength,
+function buildAppStateFromParts({ notebookIndex, navigationState, noteRegistry, trashIndex, frontmatterSettings, editorState, messages }) {
+  const items = hydrateNotebookIndexItems(notebookIndex?.items)
+  const noteFileRecords = collectNotebookIndexNoteFiles(notebookIndex?.items)
+  const activeNoteId = normalizeId(navigationState?.activeNoteId) || getFirstNoteId(items)
+  const registryBodies = hydrateRegistryNoteBodies(noteRegistry)
+  const registryAisleBodies = hydrateRegistryAisleBodies(noteRegistry)
+  const { items: resolvedItems, noteBodies, noteAisleBodies, messages: conflictMessages } = resolveLinkedMirrorContents({
+    items,
+    noteBodies: registryBodies,
+    noteAisleBodies: registryAisleBodies,
+    noteFileRecords,
   })
-}
-
-function addAssetBankToStorageFileMap(fileMap, assetBank) {
-  const metrics = assetBank?.metrics ?? null
-  measureStorageSavePhase(metrics, 'assetResolve', () => {
-    for (const [relativeFile, entry] of assetBank.existingFiles.entries()) {
-      if (assetBank.files.has(relativeFile)) continue
-      const fileEntry = getExistingFileHashEntry(entry.absolutePath, entry.signatureInfo, metrics)
-      if (!fileEntry) continue
-      setStorageExistingFile(fileMap, relativeFile, fileEntry)
-    }
-  })
-  for (const [relativeFile, bytes] of assetBank.files.entries()) {
-    setStorageBinaryFile(fileMap, relativeFile, bytes)
-  }
-}
-
-function buildNoteBodyManifestRecord(body, aisles) {
+  const ui = isRecord(editorState?.ui) ? editorState.ui : {}
   return {
-    id: typeof body?.id === 'string' ? body.id : '',
-    createdAt: typeof body?.createdAt === 'string' ? body.createdAt : undefined,
-    updatedAt: typeof body?.updatedAt === 'string' ? body.updatedAt : undefined,
-    aisles,
-  }
-}
-
-function stringifyFrontmatterYaml(frontmatter) {
-  if (!isRecord(frontmatter) || Object.keys(frontmatter).length === 0) return ''
-  return stringifyYaml(frontmatter, {
-    collectionStyle: 'block',
-    lineWidth: 0,
-  })
-    .trimEnd()
-    .replace(/^([ \t]*[^:\n]+:)[ \t]*\r?\n[ \t]+\[\]$/gm, '$1 []')
-}
-
-function parseFrontmatterYaml(rawYaml) {
-  const trimmed = String(rawYaml ?? '').trim()
-  if (!trimmed) return { ok: true, data: null }
-  const document = parseDocument(trimmed, { prettyErrors: false })
-  if (document.errors.length > 0) {
-    return { ok: false, message: document.errors[0]?.message || 'Frontmatter YAML is invalid.' }
-  }
-  const parsed = document.toJS()
-  if (parsed == null) return { ok: true, data: null }
-  if (!isRecord(parsed) || Array.isArray(parsed)) {
-    return { ok: false, message: 'Frontmatter must be a YAML mapping.' }
-  }
-  return { ok: true, data: parsed }
-}
-
-function splitMarkdownFrontmatterForStorage(markdown) {
-  if (!FRONTMATTER_OPEN_RE.test(markdown)) {
-    return { markdown, frontmatter: null, frontmatterStatus: 'none' }
-  }
-  const openMatch = markdown.match(FRONTMATTER_OPEN_RE)
-  const bodyStart = openMatch?.[0].length ?? 0
-  const remainder = markdown.slice(bodyStart)
-  const closeMatch = remainder.match(FRONTMATTER_CLOSE_RE)
-  if (!closeMatch || closeMatch.index == null) {
-    return {
-      markdown,
-      frontmatter: null,
-      frontmatterStatus: 'invalid',
-      frontmatterParseError: 'Frontmatter YAML block is missing a closing delimiter.',
-      frontmatterRaw: remainder,
-    }
-  }
-  const rawYaml = remainder.slice(0, closeMatch.index)
-  const closeEnd = closeMatch.index + closeMatch[0].length
-  const parsed = parseFrontmatterYaml(rawYaml)
-  if (!parsed.ok) {
-    return {
-      markdown,
-      frontmatter: null,
-      frontmatterStatus: 'invalid',
-      frontmatterParseError: parsed.message,
-      frontmatterRaw: rawYaml,
-    }
-  }
-  return {
-    markdown: remainder.slice(closeEnd).replace(/^\r?\n/, ''),
-    frontmatter: parsed.data,
-    frontmatterStatus: 'valid',
-    frontmatterRaw: rawYaml,
-  }
-}
-
-function readMarkdownBodyFile(baseDirectory, relativeFile, issues = null, issueRootPath = null) {
-  return splitMarkdownFrontmatterForStorage(readMarkdownFile(baseDirectory, relativeFile, issues, issueRootPath)).markdown
-}
-
-function normalizeAisleStorageContentForHash(content) {
-  const frontmatterStatus = content?.frontmatterStatus === 'valid' || content?.frontmatterStatus === 'invalid'
-    ? content.frontmatterStatus
-    : 'none'
-  const markdown = typeof content?.markdown === 'string' ? content.markdown : ''
-  const tags = extractMarkdownTags(markdown)
-  const frontmatter = materializeComputedFrontmatterTags(content?.frontmatter, content?.frontmatterMeta, tags)
-  return {
-    markdown,
-    frontmatterStatus,
-    frontmatter: frontmatterStatus === 'valid' && isRecord(frontmatter) ? frontmatter : null,
-    frontmatterParseError: frontmatterStatus === 'invalid' && typeof content?.frontmatterParseError === 'string'
-      ? content.frontmatterParseError
-      : undefined,
-    frontmatterRaw: frontmatterStatus === 'invalid' && typeof content?.frontmatterRaw === 'string'
-      ? content.frontmatterRaw
-      : undefined,
-  }
-}
-
-function getAisleStorageContentHash(content) {
-  return createStorageContentHash(normalizeAisleStorageContentForHash(content))
-}
-
-function composeAisleMarkdownForStorage(markdown, aisleBody) {
-  if (aisleBody?.frontmatterStatus === 'invalid') return markdown
-  const tags = extractMarkdownTags(markdown)
-  const frontmatter = materializeComputedFrontmatterTags(aisleBody?.frontmatter, aisleBody?.frontmatterMeta, tags)
-  const yaml = stringifyFrontmatterYaml(frontmatter)
-  return yaml ? `---\n${yaml}\n---\n${markdown}` : markdown
-}
-
-function buildNoteAisleBodyManifestRecord(aisleBodyId, file, aisleBody) {
-  return {
-    id: aisleBodyId,
-    file,
-    contentHash: getAisleStorageContentHash(aisleBody),
-    tags: extractMarkdownTags(String(aisleBody?.markdown ?? '')),
-    frontmatterMeta: isRecord(aisleBody?.frontmatterMeta) ? aisleBody.frontmatterMeta : undefined,
-  }
-}
-
-function rememberAisleStoragePayloadCache(cacheKey, payload) {
-  aisleStoragePayloadCache.delete(cacheKey)
-  aisleStoragePayloadCache.set(cacheKey, payload)
-  if (aisleStoragePayloadCache.size > MAX_AISLE_STORAGE_PAYLOAD_CACHE_ENTRIES) {
-    const oldestKey = aisleStoragePayloadCache.keys().next().value
-    if (oldestKey) aisleStoragePayloadCache.delete(oldestKey)
-  }
-}
-
-function getAisleStoragePayloadCore(aisleBodyId, aisleBody, metrics = null) {
-  const markdown = typeof aisleBody?.markdown === 'string' ? aisleBody.markdown : ''
-  const normalizedContent = normalizeAisleStorageContentForHash(aisleBody)
-  const cacheKey = createStorageContentHash({
-    id: typeof aisleBodyId === 'string' ? aisleBodyId : '',
-    content: normalizedContent,
-  })
-  const cached = aisleStoragePayloadCache.get(cacheKey)
-  if (cached) {
-    aisleStoragePayloadCache.delete(cacheKey)
-    aisleStoragePayloadCache.set(cacheKey, cached)
-    if (metrics?.counts) metrics.counts.aisleStorageCacheHits += 1
-    return cached
-  }
-
-  if (metrics?.counts) metrics.counts.aisleStorageCacheMisses += 1
-  const payload = measureStorageSavePhase(metrics, 'noteContentGeneration', () => ({
-    composedMarkdown: composeAisleMarkdownForStorage(markdown, aisleBody),
-    contentHash: createStorageContentHash(normalizedContent),
-    tags: extractMarkdownTags(markdown),
-    frontmatterMeta: isRecord(aisleBody?.frontmatterMeta) ? aisleBody.frontmatterMeta : undefined,
-  }))
-  rememberAisleStoragePayloadCache(cacheKey, payload)
-  return payload
-}
-
-function buildNoteAisleBodyManifestRecordFromCore(aisleBodyId, file, aisleBody, core) {
-  const payloadCore = core ?? getAisleStoragePayloadCore(aisleBodyId, aisleBody)
-  return {
-    id: aisleBodyId,
-    file,
-    contentHash: payloadCore.contentHash,
-    tags: payloadCore.tags,
-    frontmatterMeta: payloadCore.frontmatterMeta,
-  }
-}
-
-function writeAisleStorageMarkdownFile({
-  fileMap,
-  file,
-  aisleBodyId,
-  sourceAisleBody,
-  assetBank,
-  appState,
-  metrics,
-}) {
-  const core = getAisleStoragePayloadCore(aisleBodyId, sourceAisleBody, metrics)
-  const referenceNormalizedMarkdown = measureStorageSavePhase(metrics, 'noteContentGeneration', () =>
-    normalizePreviewReferenceTokensForMarkdown(core.composedMarkdown, appState),
-  )
-  const storageMarkdown = measureStorageSavePhase(metrics, 'assetReferenceExtraction', () =>
-    externalizeMarkdownImages(referenceNormalizedMarkdown, file, assetBank),
-  )
-  setStorageTextFile(fileMap, file, storageMarkdown)
-  return core
-}
-
-function writeNoteBodyAtPath({
-  fileMap,
-  noteBodyMap,
-  noteAisleBodyMap,
-  noteBodyRecords,
-  noteAisleBodyRecords,
-  noteBodyId,
-  primaryFileRelative,
-  multiAisleRootRelative,
-  assetBank,
-  appState,
-  metrics,
-}) {
-  const posixPath = path.posix
-  const traversal = measureStorageSavePhase(metrics, 'noteBodyTraversal', () => {
-    const bodyId = typeof noteBodyId === 'string' ? noteBodyId : ''
-    const body = bodyId ? noteBodyMap.get(bodyId) : null
-    const sourceAisles = ensureArray(body?.aisles)
-    const usesAisleFolder = sourceAisles.length > 1
-    const notePath = usesAisleFolder ? multiAisleRootRelative : primaryFileRelative
-    return { bodyId, body, sourceAisles, usesAisleFolder, notePath }
-  })
-  const { bodyId, body, sourceAisles, usesAisleFolder, notePath } = traversal
-
-  const getAisleFile = (index, aisleId) => {
-    const aisleFileName = buildStoragePathFileName(`aisle ${index + 1}`, aisleId, 'aisle', '.md')
-    return posixPath.join(multiAisleRootRelative, aisleFileName)
-  }
-
-  if (body && noteBodyRecords.has(bodyId)) {
-    const firstAisle = sourceAisles[0]
-    const firstAisleId = typeof firstAisle?.id === 'string' && firstAisle.id ? firstAisle.id : `${bodyId}-aisle-1`
-    const firstAisleBodyId =
-      typeof firstAisle?.aisleBodyId === 'string' && firstAisle.aisleBodyId
-        ? firstAisle.aisleBodyId
-        : firstAisleId
-    const sourceAisleBody = firstAisleBodyId ? noteAisleBodyMap.get(firstAisleBodyId) : undefined
-    const sharedMarkdown = sourceAisleBody?.markdown
-    const markdown = typeof sharedMarkdown === 'string' ? sharedMarkdown : ''
-    const primaryFile = usesAisleFolder
-      ? getAisleFile(0, firstAisleId)
-      : primaryFileRelative
-    writeAisleStorageMarkdownFile({
-      fileMap,
-      file: primaryFile,
-      aisleBodyId: firstAisleBodyId,
-      sourceAisleBody,
-      assetBank,
-      appState,
-      metrics,
-    })
-    return { primaryFile, notePath }
-  }
-
-  if (!body || sourceAisles.length === 0) {
-    const emptyMarkdown = measureStorageSavePhase(metrics, 'assetReferenceExtraction', () =>
-      externalizeMarkdownImages('', primaryFileRelative, assetBank),
-    )
-    setStorageTextFile(fileMap, primaryFileRelative, emptyMarkdown)
-    if (body && bodyId) {
-      measureStorageSavePhase(metrics, 'manifestAssembly', () => {
-        const aisleId = `${bodyId}-home`
-        noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, [
-          {
-            id: aisleId,
-            aisleBodyId: aisleId,
-            file: primaryFileRelative,
-            contentHash: getAisleStorageContentHash(undefined),
-            tags: [],
-          },
-        ]))
-        if (!noteAisleBodyRecords.has(aisleId)) {
-          noteAisleBodyRecords.set(aisleId, buildNoteAisleBodyManifestRecord(aisleId, primaryFileRelative, undefined))
-        }
-      })
-    }
-    return { primaryFile: primaryFileRelative, notePath: primaryFileRelative }
-  }
-
-  const aisleRecords = []
-  sourceAisles.forEach((aisle, index) => {
-    const aisleId = typeof aisle?.id === 'string' && aisle.id ? aisle.id : `${bodyId}-aisle-${index + 1}`
-    const aisleBodyId = typeof aisle?.aisleBodyId === 'string' && aisle.aisleBodyId ? aisle.aisleBodyId : aisleId
-    const file = usesAisleFolder ? getAisleFile(index, aisleId) : primaryFileRelative
-    const sourceAisleBody = noteAisleBodyMap.get(aisleBodyId)
-    const core = writeAisleStorageMarkdownFile({
-      fileMap,
-      file,
-      aisleBodyId,
-      sourceAisleBody,
-      assetBank,
-      appState,
-      metrics,
-    })
-    measureStorageSavePhase(metrics, 'manifestAssembly', () => {
-      aisleRecords.push({
-        id: aisleId,
-        aisleBodyId,
-        file,
-        contentHash: core.contentHash,
-        tags: core.tags,
-      })
-      if (!noteAisleBodyRecords.has(aisleBodyId)) {
-        noteAisleBodyRecords.set(
-          aisleBodyId,
-          buildNoteAisleBodyManifestRecordFromCore(aisleBodyId, file, sourceAisleBody, core),
-        )
-      }
-    })
-  })
-  measureStorageSavePhase(metrics, 'manifestAssembly', () => {
-    noteBodyRecords.set(bodyId, buildNoteBodyManifestRecord(body, aisleRecords))
-  })
-  return { primaryFile: aisleRecords[0]?.file ?? primaryFileRelative, notePath }
-}
-
-function buildNavigationState(appState) {
-  const activeDomain = getActiveDomainFromAppState(appState, getDomainsFromAppState(appState))
-  const activeDomainId = activeDomain ? getDomainId(activeDomain) : DEFAULT_DOMAIN_ID
-  return {
-    activeDomainId,
-    ...(isRecord(appState?.lastOpened) ? { lastOpened: appState.lastOpened } : {}),
-  }
-}
-
-function buildRootManifest(options = {}) {
-  const notebookId = typeof options.notebookId === 'string' && options.notebookId.trim()
-    ? options.notebookId.trim()
-    : ''
-  const syncStateFile = options.syncMetadata ? '_internal/sync-state.json' : null
-  return {
-    schemaVersion: notebookId ? NOTEBOOK_ID_SCHEMA_VERSION : SCHEMA_VERSION,
-    ...(notebookId ? { notebookId } : {}),
-    files: {
-      ...ROOT_SPLIT_FILES,
-      ...(syncStateFile ? { syncState: syncStateFile } : {}),
-    },
-  }
-}
-
-function buildDomainManifest(domain, spaceEntries) {
-  const spaces = ensureArray(domain?.spaces)
-  return {
-    id: getDomainId(domain),
-    title: getDomainTitle(domain),
-    spaces: spaceEntries,
-    activeSpaceId:
-      typeof domain?.activeSpaceId === 'string' && spaces.some((space) => space?.id === domain.activeSpaceId)
-        ? domain.activeSpaceId
-        : spaces[0]?.id ?? '',
-  }
-}
-
-function buildSpaceFiles({
-  fileMap,
-  spaceRoot,
-  space,
-  noteBodyMap,
-  noteAisleBodyMap,
-  noteBodyRecords,
-  noteAisleBodyRecords,
-  assetBank,
-  appState,
-  metrics,
-}) {
-  const posixPath = path.posix
-  const tabs = ensureArray(space?.data?.tabs)
-  const tabPathForTitle = createStoragePathAllocator()
-  const tabManifest = []
-
-  for (const tab of tabs) {
-    const tabId = typeof tab?.id === 'string' ? tab.id : ''
-    if (!tabId) continue
-    const tabSegment = tabPathForTitle(typeof tab.title === 'string' ? tab.title : 'tab', tabId, 'tab')
-    const tabRoot = posixPath.join(spaceRoot, tabSegment)
-    const homeWrite = writeNoteBodyAtPath({
-      fileMap,
-      noteBodyMap,
-      noteAisleBodyMap,
-      noteBodyRecords,
-      noteAisleBodyRecords,
-      noteBodyId: tab.noteBodyId,
-      primaryFileRelative: posixPath.join(tabRoot, 'home.md'),
-      multiAisleRootRelative: posixPath.join(tabRoot, 'home'),
-      assetBank,
-      appState,
-      metrics,
-    })
-    const homeNoteFile = posixPath.relative(spaceRoot, homeWrite.primaryFile)
-
-    const subTabPathForTitle = createStoragePathAllocator()
-    const subTabFileForTitle = createStoragePathFileNameAllocator('.md')
-    const subTabs = ensureArray(tab.subTabs).map((subTab) => {
-      const subTabId = typeof subTab?.id === 'string' ? subTab.id : ''
-      const subTabSegment = subTabPathForTitle(typeof subTab?.title === 'string' ? subTab.title : 'tab', subTabId, 'tab')
-      const subTabFileName = subTabFileForTitle(typeof subTab?.title === 'string' ? subTab.title : 'tab', subTabId, 'tab')
-      const subTabRoot = posixPath.join(tabRoot, subTabSegment)
-      const subTabWrite = writeNoteBodyAtPath({
-        fileMap,
-        noteBodyMap,
-        noteAisleBodyMap,
-        noteBodyRecords,
-        noteAisleBodyRecords,
-        noteBodyId: subTab.noteBodyId,
-        primaryFileRelative: posixPath.join(tabRoot, subTabFileName),
-        multiAisleRootRelative: subTabRoot,
-        assetBank,
-        appState,
-        metrics,
-      })
-      return {
-        id: subTabId,
-        title: typeof subTab.title === 'string' ? subTab.title : 'tab',
-        path: posixPath.relative(spaceRoot, subTabWrite.notePath),
-        noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
-        file: posixPath.relative(spaceRoot, subTabWrite.primaryFile),
-      }
-    })
-
-    tabManifest.push({
-      id: tabId,
-      title: typeof tab.title === 'string' ? tab.title : 'tab',
-      path: tabSegment,
-      noteBodyId: typeof tab.noteBodyId === 'string' ? tab.noteBodyId : '',
-      homeNoteFile,
-      subTabs,
-      activeSubTabId: typeof tab.activeSubTabId === 'string' ? tab.activeSubTabId : null,
-    })
-  }
-
-  const trashRoot = posixPath.join(spaceRoot, 'trash')
-  const trashItems = []
-  const deletedTabs = ensureArray(space?.data?.deletedTabs)
-  const deletedSubTabs = ensureArray(space?.data?.deletedSubTabs)
-  const trashPathForTitle = createStoragePathAllocator()
-
-  for (const entry of deletedTabs) {
-    const deletedTab = entry?.tab ?? {}
-    const entryId = typeof entry?.id === 'string' ? entry.id : ''
-    const deletedTabId = typeof deletedTab?.id === 'string' ? deletedTab.id : entryId
-    const deletedSegment = trashPathForTitle(typeof deletedTab.title === 'string' ? deletedTab.title : 'deleted tab', entryId, 'deleted tab')
-    const deletedRoot = posixPath.join(trashRoot, deletedSegment)
-    const deletedHomeWrite = writeNoteBodyAtPath({
-      fileMap,
-      noteBodyMap,
-      noteAisleBodyMap,
-      noteBodyRecords,
-      noteAisleBodyRecords,
-      noteBodyId: deletedTab.noteBodyId,
-      primaryFileRelative: posixPath.join(deletedRoot, 'home.md'),
-      multiAisleRootRelative: posixPath.join(deletedRoot, 'home'),
-      assetBank,
-      appState,
-      metrics,
-    })
-    const homeNoteFile = posixPath.relative(trashRoot, deletedHomeWrite.primaryFile)
-
-    const deletedSubTabPathForTitle = createStoragePathAllocator()
-    const deletedSubTabFileForTitle = createStoragePathFileNameAllocator('.md')
-    const subTabs = ensureArray(deletedTab.subTabs).map((subTab) => {
-      const subTabId = typeof subTab?.id === 'string' ? subTab.id : ''
-      const subTabSegment = deletedSubTabPathForTitle(typeof subTab?.title === 'string' ? subTab.title : 'tab', subTabId, 'tab')
-      const subTabFileName = deletedSubTabFileForTitle(typeof subTab?.title === 'string' ? subTab.title : 'tab', subTabId, 'tab')
-      const subTabRoot = posixPath.join(deletedRoot, subTabSegment)
-      const subTabWrite = writeNoteBodyAtPath({
-        fileMap,
-        noteBodyMap,
-        noteAisleBodyMap,
-        noteBodyRecords,
-        noteAisleBodyRecords,
-        noteBodyId: subTab.noteBodyId,
-        primaryFileRelative: posixPath.join(deletedRoot, subTabFileName),
-        multiAisleRootRelative: subTabRoot,
-        assetBank,
-        appState,
-        metrics,
-      })
-      return {
-        id: subTabId,
-        title: typeof subTab.title === 'string' ? subTab.title : 'tab',
-        path: posixPath.relative(trashRoot, subTabWrite.notePath),
-        noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
-        file: posixPath.relative(trashRoot, subTabWrite.primaryFile),
-      }
-    })
-
-    trashItems.push({
-      id: entryId,
-      type: 'parent-tab',
-      title: typeof deletedTab.title === 'string' ? deletedTab.title : 'deleted tab',
-      path: deletedSegment,
-      noteBodyId: typeof deletedTab.noteBodyId === 'string' ? deletedTab.noteBodyId : '',
-      file: homeNoteFile,
-      deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : Date.now(),
-      original: {
-        primeTabId: deletedTabId,
-        subTabId: null,
+    theme: typeof editorState?.theme === 'string' ? editorState.theme : 'dawn',
+    notebook: {
+      activeNoteId,
+      items: resolvedItems,
+      deletedItems: ensureArray(trashIndex?.deletedItems),
+      settings: {
+        autoRemoveDeletedDays: Number.isFinite(notebookIndex?.settings?.autoRemoveDeletedDays)
+          ? notebookIndex.settings.autoRemoveDeletedDays
+          : 30,
       },
-      activeSubTabId: typeof deletedTab.activeSubTabId === 'string' ? deletedTab.activeSubTabId : null,
-      subTabs,
-    })
-  }
-
-  const trashFileForTitle = createStoragePathFileNameAllocator('.md')
-  for (const entry of deletedSubTabs) {
-    const subTab = entry?.subTab ?? {}
-    const entryId = typeof entry?.id === 'string' ? entry.id : ''
-    const deletedSegment = trashPathForTitle(typeof subTab.title === 'string' ? subTab.title : 'deleted note', entryId, 'deleted note')
-    const deletedFileName = trashFileForTitle(typeof subTab.title === 'string' ? subTab.title : 'deleted note', entryId, 'deleted note')
-    const deletedRoot = posixPath.join(trashRoot, deletedSegment)
-    const deletedWrite = writeNoteBodyAtPath({
-      fileMap,
-      noteBodyMap,
-      noteAisleBodyMap,
-      noteBodyRecords,
-      noteAisleBodyRecords,
-      noteBodyId: subTab.noteBodyId,
-      primaryFileRelative: posixPath.join(trashRoot, deletedFileName),
-      multiAisleRootRelative: deletedRoot,
-      assetBank,
-      appState,
-      metrics,
-    })
-    trashItems.push({
-      id: entryId,
-      type: 'subtab',
-      title: typeof subTab.title === 'string' ? subTab.title : 'deleted note',
-      path: posixPath.relative(trashRoot, deletedWrite.notePath),
-      noteBodyId: typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : '',
-      file: posixPath.relative(trashRoot, deletedWrite.primaryFile),
-      deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : Date.now(),
-      parentTabTitle: typeof entry.parentTabTitle === 'string' ? entry.parentTabTitle : 'Unknown Tab',
-      original: {
-        primeTabId: typeof entry.parentTabId === 'string' ? entry.parentTabId : '',
-        subTabId: typeof subTab.id === 'string' ? subTab.id : null,
-      },
-    })
-  }
-
-  measureStorageSavePhase(metrics, 'manifestAssembly', () => {
-    setStorageJsonFile(fileMap, posixPath.join(spaceRoot, 'manifest.json'), {
-      id: space.id,
-      title: typeof space.name === 'string' ? space.name : 'Untitled Space',
-      settings: space.settings ?? { autoRemoveDeletedDays: 7 },
-      tabs: tabManifest,
-      activeTabId:
-        typeof space?.data?.activeTabId === 'string' && tabs.some((tab) => tab?.id === space.data.activeTabId)
-          ? space.data.activeTabId
-          : tabManifest[0]?.id ?? '',
-      trashManifestFile: 'trash/manifest.json',
-    })
-    setStorageJsonFile(fileMap, posixPath.join(trashRoot, 'manifest.json'), { items: trashItems })
-  })
-
-  return {
-    id: typeof space.id === 'string' ? space.id : '',
-    title: typeof space.name === 'string' ? space.name : 'Untitled Space',
-  }
-}
-
-function writeHybridStorage(tempRoot, serializedState, options = {}) {
-  const metrics = createStorageSaveMetrics()
-  const saveStartedAt = nowMs()
-  const posixPath = path.posix
-  const parsedState = measureStorageSavePhase(metrics, 'parseState', () => JSON.parse(serializedState))
-  const buildStartedAt = nowMs()
-  const domains = getDomainsFromAppState(parsedState)
-  const noteBodies = getNoteBodiesFromAppState(parsedState)
-  const referencedNoteBodyIds = collectReferencedNoteBodyIdsFromAppState(parsedState)
-  const noteAisleBodies = ensureArray(parsedState.noteAisleBodies).filter(isRecord)
-  const noteBodyMap = new Map(noteBodies.map((body) => [typeof body.id === 'string' ? body.id : '', body]))
-  const noteAisleBodyMap = new Map(noteAisleBodies.map((body) => [typeof body.id === 'string' ? body.id : '', body]))
-  const noteBodyRecords = new Map()
-  const noteAisleBodyRecords = new Map()
-  const orphanNoteBodyIds = new Set()
-  const fileMap = new Map()
-  const assetBank = createAssetBank(
-    'assets',
-    typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : tempRoot,
-    metrics,
-  )
-  const domainPathForTitle = createStoragePathAllocator()
-  const domainEntries = []
-
-  for (const domain of domains) {
-    const domainId = getDomainId(domain)
-    const domainSegment = domainPathForTitle(getDomainTitle(domain), domainId, 'domain')
-    const domainRoot = posixPath.join(DOMAINS_DIR, domainSegment)
-    const spacePathForTitle = createStoragePathAllocator()
-    const spaceEntries = []
-
-    for (const space of ensureArray(domain.spaces)) {
-      if (!space || typeof space.id !== 'string' || space.id.length === 0) continue
-      const spaceSegment = spacePathForTitle(typeof space.name === 'string' ? space.name : 'Untitled Space', space.id, 'space')
-      const spaceRoot = posixPath.join(domainRoot, spaceSegment)
-      const spaceEntry = buildSpaceFiles({
-        fileMap,
-        spaceRoot,
-        space,
-        noteBodyMap,
-        noteAisleBodyMap,
-        noteBodyRecords,
-        noteAisleBodyRecords,
-        assetBank,
-        appState: parsedState,
-        metrics,
-      })
-      spaceEntries.push({ ...spaceEntry, path: spaceSegment })
-    }
-
-    measureStorageSavePhase(metrics, 'manifestAssembly', () => {
-      setStorageJsonFile(fileMap, posixPath.join(domainRoot, 'manifest.json'), buildDomainManifest(domain, spaceEntries))
-      domainEntries.push({
-        id: domainId,
-        title: getDomainTitle(domain),
-        path: domainSegment,
-      })
-    })
-  }
-
-  const scratchpad = isRecord(parsedState.scratchpad) ? parsedState.scratchpad : null
-  const scratchpadNoteBodyId =
-    scratchpad && typeof scratchpad.noteBodyId === 'string' && scratchpad.noteBodyId ? scratchpad.noteBodyId : ''
-  const scratchpadEntry = scratchpadNoteBodyId
-    ? {
-        noteBodyId: scratchpadNoteBodyId,
-        ...(typeof scratchpad?.activeAisleId === 'string' && scratchpad.activeAisleId
-          ? { activeAisleId: scratchpad.activeAisleId }
-          : {}),
-      }
-    : null
-  if (scratchpadNoteBodyId) {
-    writeNoteBodyAtPath({
-      fileMap,
-      noteBodyMap,
-      noteAisleBodyMap,
-      noteBodyRecords,
-      noteAisleBodyRecords,
-      noteBodyId: scratchpadNoteBodyId,
-      primaryFileRelative: posixPath.join('scratchpad', 'scratchpad.md'),
-      multiAisleRootRelative: 'scratchpad',
-      assetBank,
-      appState: parsedState,
-      metrics,
-    })
-  }
-
-  const orphanPathForId = createStoragePathAllocator()
-  const orphanFileForId = createStoragePathFileNameAllocator('.md')
-  for (const body of noteBodies) {
-    const bodyId = typeof body?.id === 'string' ? body.id : ''
-    if (!bodyId || noteBodyRecords.has(bodyId) || !referencedNoteBodyIds.has(bodyId)) continue
-    orphanNoteBodyIds.add(bodyId)
-    const orphanSegment = orphanPathForId('Orphan Note Body', bodyId, 'orphan note body')
-    const orphanFileName = orphanFileForId('Orphan Note Body', bodyId, 'orphan note body')
-    writeNoteBodyAtPath({
-      fileMap,
-      noteBodyMap,
-      noteAisleBodyMap,
-      noteBodyRecords,
-      noteAisleBodyRecords,
-      noteBodyId: bodyId,
-      primaryFileRelative: posixPath.join('_internal', 'orphan-bodies', orphanFileName),
-      multiAisleRootRelative: posixPath.join('_internal', 'orphan-bodies', orphanSegment),
-      assetBank,
-      appState: parsedState,
-      metrics,
-    })
-  }
-
-  addAssetBankToStorageFileMap(fileMap, assetBank)
-  measureStorageSavePhase(metrics, 'manifestAssembly', () => {
-    const allNoteBodyEntries = noteBodies
-      .map((body) => (typeof body?.id === 'string' ? noteBodyRecords.get(body.id) : null))
-      .filter(Boolean)
-    const attachedNoteBodyEntries = allNoteBodyEntries.filter((body) => {
-      const bodyId = typeof body?.id === 'string' ? body.id : ''
-      return !orphanNoteBodyIds.has(bodyId)
-    })
-    const noteBodyEntries = allNoteBodyEntries.map((body) => {
-      const bodyId = typeof body?.id === 'string' ? body.id : ''
-      return orphanNoteBodyIds.has(bodyId) ? { ...body, storageStatus: 'unlinked' } : body
-    })
-    const liveAisleBodyIds = new Set()
-    for (const body of attachedNoteBodyEntries) {
-      for (const aisle of ensureArray(body?.aisles)) {
-        const aisleBodyId =
-          typeof aisle?.aisleBodyId === 'string' && aisle.aisleBodyId
-            ? aisle.aisleBodyId
-            : typeof aisle?.id === 'string'
-              ? aisle.id
-              : ''
-        if (aisleBodyId) liveAisleBodyIds.add(aisleBodyId)
-      }
-    }
-    const aisleBodyEntries = []
-    for (const body of noteAisleBodyRecords.values()) {
-      const bodyId = typeof body?.id === 'string' ? body.id : ''
-      aisleBodyEntries.push(bodyId && liveAisleBodyIds.has(bodyId) ? body : { ...body, storageStatus: 'unlinked' })
-    }
-
-    setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.workspaceIndex, {
-      domains: domainEntries,
-      ...(scratchpadEntry ? { scratchpad: scratchpadEntry } : {}),
-    })
-    setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.navigationState, buildNavigationState(parsedState))
-    setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.frontmatterSettings, extractFrontmatterSettings(parsedState))
-    setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.editorState, extractEditorState(parsedState))
-    setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.messages, {
-      messages: ensureArray(parsedState.messages).filter(isRecord),
-      toastHistory: ensureArray(parsedState.toastHistory).filter(isRecord),
-    })
-    setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.deletedWorkspace, {
-      deletedDomains: ensureArray(parsedState.deletedDomains).filter(isRecord),
-      deletedSpaces: ensureArray(parsedState.deletedSpaces).filter(isRecord),
-    })
-    setStorageJsonFile(fileMap, ROOT_SPLIT_FILES.noteRegistry, { noteBodies: noteBodyEntries, aisleBodies: aisleBodyEntries })
-    if (options.syncMetadata) {
-      setStorageJsonFile(fileMap, '_internal/sync-state.json', {
-        notebookId: typeof options.notebookId === 'string' ? options.notebookId : undefined,
-        ...options.syncMetadata,
-      })
-    }
-    setStorageJsonFile(fileMap, 'manifest.json', buildRootManifest({
-      notebookId: options.notebookId,
-      syncMetadata: options.syncMetadata,
-    }))
-  })
-  addMetricPhaseDuration(metrics, 'buildFileMap', nowMs() - buildStartedAt)
-  addStorageFileMapMetrics(metrics, fileMap, assetBank)
-
-  const fingerprintEntries = new Map(fileMap)
-  const appSettingsRoot =
-    typeof options.userSettingsRoot === 'string' ? path.resolve(options.userSettingsRoot) : null
-  const storageRoot = path.resolve(tempRoot)
-  const appSettingsContents = appSettingsRoot ? buildAppSettingsFileContents(serializedState) : null
-  if (appSettingsRoot === storageRoot && appSettingsContents !== null) {
-    fingerprintEntries.set(USER_SETTINGS_FILE_PATH, { kind: 'text', contents: appSettingsContents })
-  }
-  const storageSnapshot = measureSlowMainOperation('hybrid storage fingerprint', () =>
-    measureStorageSavePhase(metrics, 'fingerprint', () => createStorageFilesSnapshot(fingerprintEntries, metrics)),
-  )
-
-  mkdirSync(tempRoot, { recursive: true })
-  for (const [relativeFile, entry] of fileMap.entries()) {
-    if (relativeFile === 'manifest.json') continue
-    if (entry.kind === 'text') {
-      const result = measureStorageSavePhase(metrics, 'textWrites', () =>
-        writeTextFileAtomic(tempRoot, relativeFile, entry.contents),
-      )
-      if (result.changed) metrics.counts.filesChanged += 1
-      else metrics.counts.filesSkipped += 1
-    } else if (entry.kind === 'binary') {
-      const result = measureStorageSavePhase(metrics, 'binaryWrites', () =>
-        writeBinaryFileAtomic(tempRoot, relativeFile, entry.contents),
-      )
-      if (result.changed) metrics.counts.filesChanged += 1
-      else metrics.counts.filesSkipped += 1
-    } else if (entry.kind === 'existing-file') {
-      const destinationPath = path.join(tempRoot, relativeFile)
-      if (path.resolve(destinationPath) === path.resolve(entry.absolutePath)) {
-        metrics.counts.filesSkipped += 1
-      } else {
-        const result = measureStorageSavePhase(metrics, 'binaryWrites', () => {
-          const bytes = readFileSync(entry.absolutePath)
-          metrics.counts.assetsReadFromDisk += 1
-          metrics.counts.assetBytesReadFromDisk += bytes.length
-          return writeBinaryFileAtomic(tempRoot, relativeFile, bytes)
-        })
-        if (result.changed) metrics.counts.filesChanged += 1
-        else metrics.counts.filesSkipped += 1
-      }
-    }
-  }
-  const rootManifest = fileMap.get('manifest.json')
-  const rootManifestWrite = measureStorageSavePhase(metrics, 'textWrites', () =>
-    writeTextFileAtomic(tempRoot, 'manifest.json', rootManifest.contents),
-  )
-  if (rootManifestWrite.changed) metrics.counts.filesChanged += 1
-  else metrics.counts.filesSkipped += 1
-  const { expectedFiles, expectedFileSetSignature } = measureStorageSavePhase(metrics, 'expectedFileRebuild', () => {
-    const nextExpectedFiles = new Set(fileMap.keys())
-    if (typeof options.userSettingsRoot === 'string' && path.resolve(options.userSettingsRoot) === path.resolve(tempRoot)) {
-      nextExpectedFiles.add(USER_SETTINGS_FILE_PATH)
-    }
-    metrics.counts.expectedFiles = nextExpectedFiles.size
-    return {
-      expectedFiles: nextExpectedFiles,
-      expectedFileSetSignature: createExpectedFileSetSignature(nextExpectedFiles),
-    }
-  })
-  const staleRootPruneResult = measureStorageSavePhase(metrics, 'prune', () =>
-    pruneKnownStaleRootStoragePaths(tempRoot, expectedFiles),
-  )
-  metrics.counts.filesPruned += staleRootPruneResult.filesPruned
-  metrics.counts.directoriesPruned += staleRootPruneResult.directoriesPruned
-  const previousExpectedFileSetSignature = lastExpectedFileSetSignaturesByRoot.get(storageRoot)
-  if (previousExpectedFileSetSignature === expectedFileSetSignature) {
-    metrics.pruneSkipped = true
-  } else {
-    const pruneResult = measureStorageSavePhase(metrics, 'prune', () => pruneStorageRoot(tempRoot, expectedFiles))
-    metrics.counts.filesPruned += pruneResult.filesPruned
-    metrics.counts.directoriesPruned += pruneResult.directoriesPruned
-    lastExpectedFileSetSignaturesByRoot.set(storageRoot, expectedFileSetSignature)
-  }
-  if (typeof options.userSettingsRoot === 'string') {
-    const settingsWrite = measureStorageSavePhase(metrics, 'appSettingsWrite', () =>
-      writeTextFileAtomic(options.userSettingsRoot, USER_SETTINGS_FILE_PATH, appSettingsContents),
-    )
-    if (settingsWrite.changed) metrics.counts.filesChanged += 1
-    else metrics.counts.filesSkipped += 1
-  }
-  return {
-    storageFingerprint: storageSnapshot.fingerprint,
-    storageFiles: storageSnapshot.files,
-    saveMetrics: finalizeStorageSaveMetrics(metrics, saveStartedAt),
-  }
-}
-
-function readNoteBodiesFromRoot(rootManifest) {
-  return ensureArray(rootManifest?.noteBodies)
-    .map((body) => {
-      const bodyId = typeof body?.id === 'string' ? body.id : ''
-      if (!bodyId) return null
-      const aisles = ensureArray(body.aisles)
-        .map((aisle) => {
-          const aisleId = typeof aisle?.id === 'string' ? aisle.id : ''
-          const aisleBodyId = typeof aisle?.aisleBodyId === 'string' ? aisle.aisleBodyId : ''
-          const file = typeof aisle?.file === 'string' ? aisle.file : ''
-          if (!aisleId || !file) return null
-          return {
-            id: aisleId,
-            aisleBodyId: aisleBodyId || aisleId,
-          }
-        })
-        .filter(Boolean)
-      return {
-        id: bodyId,
-        createdAt: typeof body.createdAt === 'string' ? body.createdAt : undefined,
-        updatedAt: typeof body.updatedAt === 'string' ? body.updatedAt : undefined,
-        aisles,
-      }
-    })
-    .filter(Boolean)
-}
-
-function getRegistryContentHash(record) {
-  return typeof record?.contentHash === 'string' && record.contentHash ? record.contentHash : ''
-}
-
-function getFileMtimeMs(filePath) {
-  try {
-    return statSync(filePath).mtimeMs
-  } catch {
-    return 0
-  }
-}
-
-function readMarkdownCandidate(rootPath, relativeFile, issues = null, bodyRecord = null) {
-  const absolutePath = path.join(rootPath, relativeFile)
-  const rawMarkdown = readTextFileIfExists(absolutePath, issues, {
-    rootPath,
-    missingCode: 'missing-markdown',
-    readCode: 'unreadable-markdown',
-    severity: 'warning',
-    missingMessage: 'Markdown file is missing; this note was loaded as empty.',
-    readMessage: 'Markdown file could not be read; this note was loaded as empty.',
-  })
-  if (rawMarkdown === null) return null
-  const markdown = referenceMarkdownImages(rawMarkdown, absolutePath, issues, rootPath)
-  const parsedMarkdown = splitMarkdownFrontmatterForStorage(markdown)
-  const migrated = parsedMarkdown.frontmatterStatus === 'valid'
-    ? migrateAisleTags({
-        markdown: parsedMarkdown.markdown,
-        frontmatter: parsedMarkdown.frontmatter,
-        frontmatterMeta: isRecord(bodyRecord?.frontmatterMeta) ? bodyRecord.frontmatterMeta : undefined,
-      })
-    : {
-        markdown: parsedMarkdown.markdown,
-        frontmatter: parsedMarkdown.frontmatter,
-        frontmatterMeta: isRecord(bodyRecord?.frontmatterMeta) ? bodyRecord.frontmatterMeta : undefined,
-        tags: extractMarkdownTags(parsedMarkdown.markdown),
-      }
-  const normalizedContent = normalizeAisleStorageContentForHash({
-    ...parsedMarkdown,
-    markdown: migrated.markdown,
-    frontmatter: migrated.frontmatter,
-    frontmatterMeta: migrated.frontmatterMeta,
-    tags: migrated.tags,
-  })
-  const content = {
-    ...normalizedContent,
-    tags: migrated.tags,
-    frontmatterMeta: migrated.frontmatterMeta,
-  }
-  return {
-    file: relativeFile,
-    issuePath: path.posix.join(HYBRID_ROOT_DIR, relativeFile),
-    mtimeMs: getFileMtimeMs(absolutePath),
-    content,
-    contentHash: createStorageContentHash(normalizedContent),
-    parsedMarkdown,
-  }
-}
-
-function getCandidateSortPath(candidate) {
-  return candidate?.file ?? ''
-}
-
-function chooseNewestCandidate(candidates) {
-  return [...candidates].sort((left, right) => {
-    const mtimeDelta = right.mtimeMs - left.mtimeMs
-    if (mtimeDelta !== 0) return mtimeDelta
-    if (left.canonical !== right.canonical) return left.canonical ? -1 : 1
-    return getCandidateSortPath(left).localeCompare(getCandidateSortPath(right))
-  })[0] ?? null
-}
-
-function addAisleCandidateRef(candidateRefsByAisleBodyId, aisleBodyId, file, options = {}) {
-  const bodyId = typeof aisleBodyId === 'string' ? aisleBodyId : ''
-  const relativeFile = typeof file === 'string' ? file : ''
-  if (!bodyId || !relativeFile) return
-  const refs = candidateRefsByAisleBodyId.get(bodyId) ?? []
-  refs.push({
-    file: relativeFile,
-    expectedHash: typeof options.expectedHash === 'string' ? options.expectedHash : '',
-    canonical: Boolean(options.canonical),
-    noteBodyId: typeof options.noteBodyId === 'string' ? options.noteBodyId : '',
-    aisleId: typeof options.aisleId === 'string' ? options.aisleId : '',
-    location: isRecord(options.location) ? options.location : null,
-  })
-  candidateRefsByAisleBodyId.set(bodyId, refs)
-}
-
-function getAisleBodyIdFromRecord(aisle) {
-  return typeof aisle?.aisleBodyId === 'string' && aisle.aisleBodyId
-    ? aisle.aisleBodyId
-    : typeof aisle?.id === 'string'
-      ? aisle.id
-      : ''
-}
-
-function getExpandedVisibleAisleFile(ref, aisle, aisles) {
-  const refFile = typeof ref?.file === 'string' ? ref.file : ''
-  const aisleFile = typeof aisle?.file === 'string' ? aisle.file : ''
-  if (!refFile || !aisleFile) return ''
-  if (aisles.length <= 1) return refFile
-  return path.posix.join(path.posix.dirname(refFile), path.posix.basename(aisleFile))
-}
-
-function buildAisleCandidateRefs(noteBodiesRoot, noteAisleBodiesRoot, visibleNoteFileRefs) {
-  const candidateRefsByAisleBodyId = new Map()
-  const aisleBodyRecordsById = new Map()
-  ensureArray(noteAisleBodiesRoot?.noteAisleBodies).forEach((body) => {
-    const bodyId = typeof body?.id === 'string' ? body.id : ''
-    if (bodyId && !aisleBodyRecordsById.has(bodyId)) aisleBodyRecordsById.set(bodyId, body)
-  })
-
-  const noteBodyRecordsById = new Map()
-  ensureArray(noteBodiesRoot?.noteBodies).forEach((body) => {
-    const bodyId = typeof body?.id === 'string' ? body.id : ''
-    if (!bodyId || noteBodyRecordsById.has(bodyId)) return
-    noteBodyRecordsById.set(bodyId, body)
-    ensureArray(body?.aisles).forEach((aisle) => {
-      const aisleBodyId = getAisleBodyIdFromRecord(aisle)
-      const file = typeof aisle?.file === 'string' ? aisle.file : ''
-      const bodyRecord = aisleBodyRecordsById.get(aisleBodyId)
-      addAisleCandidateRef(candidateRefsByAisleBodyId, aisleBodyId, file, {
-        expectedHash: getRegistryContentHash(aisle) || getRegistryContentHash(bodyRecord),
-        canonical: bodyRecord?.file === file,
-        noteBodyId: bodyId,
-        aisleId: typeof aisle?.id === 'string' ? aisle.id : '',
-      })
-    })
-  })
-
-  ensureArray(visibleNoteFileRefs).forEach((ref) => {
-    const bodyId = typeof ref?.noteBodyId === 'string' ? ref.noteBodyId : ''
-    const bodyRecord = noteBodyRecordsById.get(bodyId)
-    const aisles = ensureArray(bodyRecord?.aisles)
-    aisles.forEach((aisle) => {
-      const aisleBodyId = getAisleBodyIdFromRecord(aisle)
-      const file = getExpandedVisibleAisleFile(ref, aisle, aisles)
-      const aisleBodyRecord = aisleBodyRecordsById.get(aisleBodyId)
-      addAisleCandidateRef(candidateRefsByAisleBodyId, aisleBodyId, file, {
-        expectedHash: getRegistryContentHash(aisle) || getRegistryContentHash(aisleBodyRecord),
-        canonical: aisleBodyRecord?.file === file,
-        noteBodyId: bodyId,
-        aisleId: typeof aisle?.id === 'string' ? aisle.id : '',
-        location: ref.location,
-      })
-    })
-  })
-
-  ensureArray(noteAisleBodiesRoot?.noteAisleBodies).forEach((body) => {
-    const bodyId = typeof body?.id === 'string' ? body.id : ''
-    const file = typeof body?.file === 'string' ? body.file : ''
-    addAisleCandidateRef(candidateRefsByAisleBodyId, bodyId, file, {
-      expectedHash: getRegistryContentHash(body),
-      canonical: true,
-    })
-  })
-  return candidateRefsByAisleBodyId
-}
-
-function dedupeAisleCandidateRefs(refs) {
-  const byFile = new Map()
-  refs.forEach((ref) => {
-    if (!ref.file) return
-    const existing = byFile.get(ref.file)
-    if (!existing) {
-      byFile.set(ref.file, ref)
-      return
-    }
-    byFile.set(ref.file, {
-      file: ref.file,
-      expectedHash: existing.expectedHash || ref.expectedHash,
-      canonical: existing.canonical || ref.canonical,
-      noteBodyId: existing.noteBodyId || ref.noteBodyId,
-      aisleId: existing.aisleId || ref.aisleId,
-      location: existing.location || ref.location,
-    })
-  })
-  return Array.from(byFile.values())
-}
-
-function reconcileAisleBodyCandidates(rootPath, aisleBodyId, bodyRecord, candidateRefs, issues = null) {
-  const refs = dedupeAisleCandidateRefs(candidateRefs)
-  const candidates = refs
-    .map((ref) => {
-      const candidate = readMarkdownCandidate(rootPath, ref.file, issues, bodyRecord)
-      if (!candidate) return null
-      const expectedHash = ref.expectedHash || getRegistryContentHash(bodyRecord)
-      return {
-        ...candidate,
-        expectedHash,
-        canonical: Boolean(ref.canonical),
-        noteBodyId: ref.noteBodyId,
-        aisleId: ref.aisleId,
-        location: ref.location,
-        changed: Boolean(expectedHash && candidate.contentHash !== expectedHash),
-      }
-    })
-    .filter(Boolean)
-
-  const fallback = candidates.find((candidate) => candidate.canonical) ?? candidates[0] ?? null
-  if (!fallback) {
-    return { content: normalizeAisleStorageContentForHash({ markdown: '' }), decouples: [], messages: [] }
-  }
-
-  if (!candidates.some((candidate) => candidate.expectedHash)) {
-    return { content: fallback.content, decouples: [], messages: [] }
-  }
-
-  const changedCandidates = candidates.filter((candidate) => candidate.changed)
-  if (changedCandidates.length === 0) {
-    return { content: fallback.content, decouples: [], messages: [] }
-  }
-
-  const changedHashes = new Set(changedCandidates.map((candidate) => candidate.contentHash))
-  if (changedHashes.size <= 1) {
-    return { content: chooseNewestCandidate(changedCandidates)?.content ?? changedCandidates[0].content, decouples: [], messages: [] }
-  }
-
-  const winner = chooseNewestCandidate(changedCandidates) ?? changedCandidates[0]
-  const decouples = changedCandidates
-    .filter((candidate) => candidate.contentHash !== winner.contentHash)
-    .map((candidate) => ({
-      sourceAisleBodyId: aisleBodyId,
-      sourceNoteBodyId: candidate.noteBodyId,
-      sourceAisleId: candidate.aisleId,
-      file: candidate.file,
-      issuePath: candidate.issuePath,
-      content: candidate.content,
-      contentHash: candidate.contentHash,
-      location: candidate.location,
-      winnerPath: winner.issuePath,
-      winnerHash: winner.contentHash,
-    }))
-  const decoupledPaths = decouples.map((candidate) => candidate.issuePath)
-  addStorageIssueWithDetails(
-    issues,
-    LINKED_AISLE_MIRROR_AUTO_DECOUPLED_CODE,
-    'warning',
-    winner.issuePath,
-    'Linked duplicate files were edited differently outside the app. The newest version stayed linked and other changed versions were de-coupled.',
-    {
-      aisleBodyId,
-      anchorPath: winner.issuePath,
-      decoupledPaths,
-      candidateCount: changedCandidates.length,
-      changedVersionCount: changedHashes.size,
     },
-  )
-  return {
-    content: winner.content,
-    decouples,
-    messages: [{
-      sourceAisleBodyId: aisleBodyId,
-      anchorPath: winner.issuePath,
-      anchorHash: winner.contentHash,
-      anchorNoteBodyId: winner.noteBodyId,
-      anchorLocation: winner.location,
-      decoupledPaths,
-      decoupledHashes: Array.from(new Set(decouples.map((candidate) => candidate.contentHash))).sort(),
-    }],
-  }
-}
-
-function readNoteAisleBodiesFromRoot(rootPath, noteAisleBodiesRoot, noteBodiesRoot, visibleNoteFileRefs, issues = null) {
-  const aisleBodies = []
-  const decouples = []
-  const messages = []
-  const seen = new Set()
-  const candidateRefsByAisleBodyId = buildAisleCandidateRefs(noteBodiesRoot, noteAisleBodiesRoot, visibleNoteFileRefs)
-  for (const body of ensureArray(noteAisleBodiesRoot?.noteAisleBodies)) {
-    const bodyId = typeof body?.id === 'string' ? body.id : ''
-    if (!bodyId || seen.has(bodyId)) continue
-    seen.add(bodyId)
-    const result = reconcileAisleBodyCandidates(
-      rootPath,
-      bodyId,
-      body,
-      candidateRefsByAisleBodyId.get(bodyId) ?? [],
-      issues,
-    )
-    const content = result.content
-    decouples.push(...result.decouples)
-    messages.push(...result.messages)
-    aisleBodies.push({
-      id: bodyId,
-      markdown: content.markdown,
-      tags: content.tags,
-      frontmatter: content.frontmatter,
-      frontmatterStatus: content.frontmatterStatus,
-      frontmatterParseError: content.frontmatterParseError,
-      frontmatterRaw: content.frontmatterRaw,
-      frontmatterMeta: isRecord(content.frontmatterMeta)
-        ? content.frontmatterMeta
-        : isRecord(body.frontmatterMeta)
-          ? body.frontmatterMeta
-          : undefined,
-    })
-  }
-  return { aisleBodies, decouples, messages }
-}
-
-function createStorageGeneratedId(prefix, parts, usedIds) {
-  const hash = createHash('sha256')
-    .update(JSON.stringify(parts))
-    .digest('hex')
-    .slice(0, 16)
-  const base = `${prefix}-${hash}`
-  let candidate = base
-  let suffix = 2
-  while (usedIds.has(candidate)) {
-    candidate = `${base}-${suffix}`
-    suffix += 1
-  }
-  usedIds.add(candidate)
-  return candidate
-}
-
-function getDecoupleLocationKey(decouple) {
-  const location = decouple?.location
-  if (!isRecord(location)) return ''
-  const subTabId = typeof location.subTabId === 'string' ? location.subTabId : '__home__'
-  return [location.domainId, location.spaceId, location.tabId, subTabId].join('::')
-}
-
-function countLiveNoteBodyLocations(domains) {
-  const counts = new Map()
-  ensureArray(domains).forEach((domain) => {
-    ensureArray(domain?.spaces).forEach((space) => {
-      ensureArray(space?.data?.tabs).forEach((tab) => {
-        const noteBodyId = typeof tab?.noteBodyId === 'string' ? tab.noteBodyId : ''
-        if (noteBodyId) counts.set(noteBodyId, (counts.get(noteBodyId) ?? 0) + 1)
-        ensureArray(tab?.subTabs).forEach((subTab) => {
-          const subTabNoteBodyId = typeof subTab?.noteBodyId === 'string' ? subTab.noteBodyId : ''
-          if (subTabNoteBodyId) counts.set(subTabNoteBodyId, (counts.get(subTabNoteBodyId) ?? 0) + 1)
-        })
-      })
-    })
-  })
-  return counts
-}
-
-function updateLiveNoteLocationBody(domains, location, noteBodyId) {
-  if (!isRecord(location) || typeof noteBodyId !== 'string' || !noteBodyId) return domains
-  return ensureArray(domains).map((domain) => {
-    if (domain?.id !== location.domainId) return domain
-    return {
-      ...domain,
-      spaces: ensureArray(domain.spaces).map((space) => {
-        if (space?.id !== location.spaceId) return space
-        return {
-          ...space,
-          data: {
-            ...space.data,
-            tabs: ensureArray(space?.data?.tabs).map((tab) => {
-              if (tab?.id !== location.tabId) return tab
-              if (location.subTabId === null) return { ...tab, noteBodyId }
-              return {
-                ...tab,
-                subTabs: ensureArray(tab.subTabs).map((subTab) =>
-                  subTab?.id === location.subTabId ? { ...subTab, noteBodyId } : subTab,
-                ),
-              }
-            }),
-          },
-        }
-      }),
-    }
-  })
-}
-
-function aisleContentToBodyRecord(id, content, sourceBody = null) {
-  return {
-    ...(isRecord(sourceBody) ? sourceBody : {}),
-    id,
-    markdown: typeof content?.markdown === 'string' ? content.markdown : '',
-    tags: Array.isArray(content?.tags) ? content.tags : extractMarkdownTags(content?.markdown ?? ''),
-    frontmatter: content?.frontmatter,
-    frontmatterStatus: content?.frontmatterStatus,
-    frontmatterParseError: content?.frontmatterParseError,
-    frontmatterRaw: content?.frontmatterRaw,
-    frontmatterMeta: isRecord(content?.frontmatterMeta) ? content.frontmatterMeta : sourceBody?.frontmatterMeta,
-  }
-}
-
-function collectUsedContentIds(noteBodies, noteAisleBodies, messages) {
-  const usedIds = new Set()
-  ensureArray(noteBodies).forEach((body) => {
-    if (typeof body?.id === 'string') usedIds.add(body.id)
-    ensureArray(body?.aisles).forEach((aisle) => {
-      if (typeof aisle?.id === 'string') usedIds.add(aisle.id)
-      if (typeof aisle?.aisleBodyId === 'string') usedIds.add(aisle.aisleBodyId)
-    })
-  })
-  ensureArray(noteAisleBodies).forEach((body) => {
-    if (typeof body?.id === 'string') usedIds.add(body.id)
-  })
-  ensureArray(messages).forEach((message) => {
-    if (typeof message?.id === 'string') usedIds.add(message.id)
-  })
-  return usedIds
-}
-
-function buildAutoDecoupleMessage(messagePlan, decouples, usedIds) {
-  const decoupledPaths = Array.from(new Set(decouples.map((decouple) => decouple.issuePath).filter(Boolean))).sort()
-  const signature = [
-    'duplicate-auto-decoupled',
-    messagePlan.sourceAisleBodyId,
-    messagePlan.anchorHash,
-    messagePlan.anchorPath,
-    messagePlan.decoupledHashes.join('|'),
-    decoupledPaths.join('|'),
-  ].join('::')
-  return {
-    id: createStorageGeneratedId('message', [signature], usedIds),
-    type: 'duplicate-auto-decoupled',
-    status: 'unread',
-    createdAt: new Date().toISOString(),
-    signature,
-    title: 'duplicate files de-coupled',
-    body: `${decoupledPaths.length} changed duplicate ${decoupledPaths.length === 1 ? 'file was' : 'files were'} de-coupled because linked files had different outside edits.`,
-    anchorPath: messagePlan.anchorPath,
-    decoupledPaths,
-    affectedLocations: [
-      {
-        label: 'stayed linked',
-        path: messagePlan.anchorPath,
-        noteBodyId: messagePlan.anchorNoteBodyId,
-        aisleBodyId: messagePlan.sourceAisleBodyId,
-        ...(isRecord(messagePlan.anchorLocation) ? { location: messagePlan.anchorLocation } : {}),
-      },
-      ...decouples.map((decouple) => ({
-        label: 'de-coupled',
-        path: decouple.issuePath,
-        noteBodyId: decouple.sourceNoteBodyId,
-        aisleBodyId: decouple.sourceAisleBodyId,
-        ...(isRecord(decouple.location) ? { location: decouple.location } : {}),
-      })),
-    ],
-  }
-}
-
-function applyLinkedMirrorDecouples({ domains, noteBodies, noteAisleBodies, existingMessages, decouples, messagePlans }) {
-  if (decouples.length === 0) {
-    return { domains, noteBodies, noteAisleBodies, messages: existingMessages }
-  }
-
-  let nextDomains = domains
-  let nextNoteBodies = ensureArray(noteBodies).map((body) => ({ ...body, aisles: ensureArray(body?.aisles).map((aisle) => ({ ...aisle })) }))
-  const nextAisleBodies = ensureArray(noteAisleBodies).map((body) => ({ ...body }))
-  const messages = ensureArray(existingMessages).filter(isRecord).map((message) => ({ ...message }))
-  const usedIds = collectUsedContentIds(nextNoteBodies, nextAisleBodies, messages)
-  const noteBodyMap = new Map(nextNoteBodies.map((body) => [body.id, body]))
-  const aisleBodyMap = new Map(nextAisleBodies.map((body) => [body.id, body]))
-  const locationCounts = countLiveNoteBodyLocations(domains)
-  const noteDecouplesByLocation = new Map()
-  const aisleDecouples = []
-
-  for (const decouple of decouples) {
-    if (!decouple.sourceNoteBodyId || !decouple.sourceAisleId) continue
-    const locationKey = getDecoupleLocationKey(decouple)
-    if (locationKey && (locationCounts.get(decouple.sourceNoteBodyId) ?? 0) > 1) {
-      const existing = noteDecouplesByLocation.get(locationKey) ?? {
-        noteBodyId: decouple.sourceNoteBodyId,
-        location: decouple.location,
-        decouples: [],
-      }
-      existing.decouples.push(decouple)
-      noteDecouplesByLocation.set(locationKey, existing)
-      continue
-    }
-    aisleDecouples.push(decouple)
-  }
-
-  for (const entry of noteDecouplesByLocation.values()) {
-    const originalBody = noteBodyMap.get(entry.noteBodyId)
-    if (!originalBody || !isRecord(entry.location)) continue
-    const decoupleByAisleId = new Map(entry.decouples.map((decouple) => [decouple.sourceAisleId, decouple]))
-    const newBodyId = createStorageGeneratedId('note-body', [entry.noteBodyId, getDecoupleLocationKey(entry), entry.decouples.map((decouple) => decouple.contentHash).sort()], usedIds)
-    const newAisles = ensureArray(originalBody.aisles).map((aisle) => {
-      const originalAisleBodyId = getAisleBodyIdFromRecord(aisle)
-      const decouple = decoupleByAisleId.get(aisle.id)
-      const sourceBody = aisleBodyMap.get(originalAisleBodyId)
-      const newAisleBodyId = createStorageGeneratedId('aisle-body', [newBodyId, aisle.id, decouple?.contentHash ?? originalAisleBodyId], usedIds)
-      const newAisleId = createStorageGeneratedId('aisle', [newBodyId, aisle.id], usedIds)
-      nextAisleBodies.push(aisleContentToBodyRecord(newAisleBodyId, decouple?.content ?? sourceBody, sourceBody))
-      return { id: newAisleId, aisleBodyId: newAisleBodyId }
-    })
-    const newBody = {
-      ...originalBody,
-      id: newBodyId,
-      aisles: newAisles,
-    }
-    nextNoteBodies.push(newBody)
-    noteBodyMap.set(newBodyId, newBody)
-    nextDomains = updateLiveNoteLocationBody(nextDomains, entry.location, newBodyId)
-  }
-
-  for (const decouple of aisleDecouples) {
-    const originalBody = noteBodyMap.get(decouple.sourceNoteBodyId)
-    if (!originalBody) continue
-    const sourceBody = aisleBodyMap.get(decouple.sourceAisleBodyId)
-    const newAisleBodyId = createStorageGeneratedId('aisle-body', [decouple.sourceNoteBodyId, decouple.sourceAisleId, decouple.contentHash, decouple.file], usedIds)
-    const newAisleBody = aisleContentToBodyRecord(newAisleBodyId, decouple.content, sourceBody)
-    nextAisleBodies.push(newAisleBody)
-    aisleBodyMap.set(newAisleBodyId, newAisleBody)
-    const nextBody = {
-      ...originalBody,
-      aisles: ensureArray(originalBody.aisles).map((aisle) =>
-        aisle.id === decouple.sourceAisleId ? { ...aisle, aisleBodyId: newAisleBodyId } : aisle,
-      ),
-    }
-    nextNoteBodies = nextNoteBodies.map((body) => (body.id === nextBody.id ? nextBody : body))
-    noteBodyMap.set(nextBody.id, nextBody)
-  }
-
-  const existingSignatures = new Set(messages.map((message) => message.signature).filter(Boolean))
-  for (const messagePlan of messagePlans) {
-    const relatedDecouples = decouples.filter((decouple) => decouple.sourceAisleBodyId === messagePlan.sourceAisleBodyId)
-    const message = buildAutoDecoupleMessage(messagePlan, relatedDecouples, usedIds)
-    if (existingSignatures.has(message.signature)) continue
-    messages.push(message)
-    existingSignatures.add(message.signature)
-  }
-
-  return { domains: nextDomains, noteBodies: nextNoteBodies, noteAisleBodies: nextAisleBodies, messages }
-}
-
-function isRootSplitFileName(value) {
-  return (
-    typeof value === 'string' &&
-    value.trim().length > 0 &&
-    !value.includes('/') &&
-    !value.includes('\\') &&
-    value !== '.' &&
-    value !== '..'
-  )
-}
-
-function getRootSplitFileName(rootManifest, key, required, issues = null) {
-  const manifestIssuePath = path.posix.join(HYBRID_ROOT_DIR, 'manifest.json')
-  const files = isRecord(rootManifest?.files) ? rootManifest.files : null
-  if (!files) {
-    if (required) {
-      addStorageIssue(
-        issues,
-        'missing-root-split-files-map',
-        'error',
-        manifestIssuePath,
-        'Root manifest is missing its schema file map.',
-      )
-    }
-    return null
-  }
-  const configuredFile = files[key]
-  if (configuredFile === undefined && !required) return ROOT_SPLIT_FILES[key]
-  if (!isRootSplitFileName(configuredFile)) {
-    addStorageIssue(
-      issues,
-      'invalid-root-split-file-entry',
-      required ? 'error' : 'warning',
-      manifestIssuePath,
-      `Root manifest has an invalid file pointer for ${key}.`,
-    )
-    return required ? null : ROOT_SPLIT_FILES[key]
-  }
-  return configuredFile
-}
-
-function readRootSplitJsonFile(rootPath, rootManifest, key, required, issues = null) {
-  const fileName = getRootSplitFileName(rootManifest, key, required, issues)
-  if (!fileName) return required ? null : {}
-  const filePath = path.join(rootPath, fileName)
-  const parsed = readJsonFileIfExists(filePath, issues, {
-    rootPath,
-    ...(required
-      ? {
-          missingCode: 'missing-root-split-file',
-          missingMessage: `Required root split file ${fileName} is missing.`,
-          severity: 'error',
-        }
-      : {}),
-    parseCode: 'corrupt-root-split-file',
-    parseMessage: `Root split file ${fileName} is corrupt.`,
-    severity: required ? 'error' : 'warning',
-  })
-  if (parsed === null) return required ? null : {}
-  if (!isRecord(parsed)) {
-    addStorageIssue(
-      issues,
-      'invalid-root-split-file',
-      required ? 'error' : 'warning',
-      formatStorageIssuePath(rootPath, filePath),
-      `Root split file ${fileName} does not contain a JSON object.`,
-    )
-    return required ? null : {}
-  }
-  return parsed
-}
-
-function readAppSettingsJsonFile(filePath, issuePath, issues = null) {
-  const parsed = readJsonFileIfExists(filePath, issues, {
-    rootPath: path.dirname(path.dirname(filePath)),
-    missingCode: 'missing-app-settings',
-    missingMessage: `Portable app settings file ${issuePath} is missing. Default user settings were used.`,
-    parseCode: 'corrupt-app-settings',
-    parseMessage: `Portable app settings file ${issuePath} is corrupt. Default user settings were used.`,
-    severity: 'warning',
-  })
-  if (parsed === null) return {}
-  if (!isRecord(parsed) || Array.isArray(parsed)) {
-    addStorageIssue(
-      issues,
-      'invalid-app-settings',
-      'warning',
-      issuePath,
-      `Portable app settings file ${issuePath} does not contain a JSON object. Default user settings were used.`,
-    )
-    return {}
-  }
-  return parsed
-}
-
-function readAppSettingsForProfile(profileRootPath, issues = null) {
-  const userSettingsPath = getUserSettingsFilePath(profileRootPath)
-  return readAppSettingsJsonFile(userSettingsPath, USER_SETTINGS_FILE_PATH, issues)
-}
-
-function getUserSettingsRoot(profileRootPath, options = {}) {
-  return typeof options.userSettingsRoot === 'string' ? options.userSettingsRoot : profileRootPath
-}
-
-function readCurrentRootParts(rootPath, rootManifest, issues = null, profileRootPath = path.dirname(rootPath), options = {}) {
-  if (!isRecord(rootManifest?.files)) {
-    addStorageIssue(
-      issues,
-      'missing-root-split-files-map',
-      'error',
-      path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'),
-      'Root manifest is missing its schema file map.',
-    )
-    return null
-  }
-  const splitFiles = {}
-  const requiredKeys = ['workspaceIndex', 'navigationState', 'frontmatterSettings', 'deletedWorkspace', 'noteRegistry']
-  for (const key of requiredKeys) {
-    const file = readRootSplitJsonFile(rootPath, rootManifest, key, true, issues)
-    if (!file) return null
-    splitFiles[key] = file
-  }
-  splitFiles.appSettings =
-    options.includeUserSettings === false
-      ? {}
-      : readAppSettingsForProfile(getUserSettingsRoot(profileRootPath, options), issues)
-  splitFiles.editorState = readRootSplitJsonFile(rootPath, rootManifest, 'editorState', false, issues) ?? {}
-  splitFiles.messages = readRootSplitJsonFile(rootPath, rootManifest, 'messages', false, issues) ?? {}
-  const noteRegistry = splitFiles.noteRegistry
-
-  return {
-    syncedSettings: buildSyncedSettingsFromSplitFiles(splitFiles),
-    noteBodiesRoot: {
-      noteBodies: ensureArray(noteRegistry.noteBodies),
-    },
-    noteAisleBodiesRoot: {
-      noteAisleBodies: ensureArray(noteRegistry.aisleBodies),
-    },
-    domainEntries: ensureArray(splitFiles.workspaceIndex?.domains),
-    scratchpad: isRecord(splitFiles.workspaceIndex?.scratchpad) ? splitFiles.workspaceIndex.scratchpad : undefined,
-    messages: ensureArray(splitFiles.messages?.messages).filter(isRecord),
-    toastHistory: ensureArray(splitFiles.messages?.toastHistory).filter(isRecord),
-    deletedDomains: ensureArray(splitFiles.deletedWorkspace?.deletedDomains).filter(isRecord),
-    deletedSpaces: ensureArray(splitFiles.deletedWorkspace?.deletedSpaces).filter(isRecord),
-    activeDomainId:
-      typeof splitFiles.navigationState?.activeDomainId === 'string'
-        ? splitFiles.navigationState.activeDomainId
-        : DEFAULT_DOMAIN_ID,
-    lastOpened: isRecord(splitFiles.navigationState?.lastOpened) ? splitFiles.navigationState.lastOpened : null,
-  }
-}
-
-function readSpace(rootPath, spaceRootRelative, spaceEntry, issues = null, visibleNoteFileRefs = null, options = {}) {
-  const spaceRoot = path.join(rootPath, spaceRootRelative)
-  const spaceManifest = readJsonFileIfExists(path.join(spaceRoot, 'manifest.json'), issues, {
-    rootPath,
-    missingCode: 'missing-space-manifest',
-    parseCode: 'corrupt-space-manifest',
-    severity: 'warning',
-    missingMessage: 'Space manifest is missing; this space was skipped.',
-    parseMessage: 'Space manifest is corrupt; this space was skipped.',
-  })
-  if (!spaceManifest || typeof spaceManifest !== 'object') return null
-  const spaceId = typeof spaceManifest.id === 'string' ? spaceManifest.id : spaceEntry.id
-  collectVisibleNoteFileRefsFromSpaceManifest(spaceRootRelative, spaceManifest, visibleNoteFileRefs, {
-    domainId: options.domainId,
-    spaceId,
-  })
-
-  const tabs = ensureArray(spaceManifest.tabs)
-    .map((tabRecord) => ({
-      id: typeof tabRecord?.id === 'string' ? tabRecord.id : '',
-      title: typeof tabRecord?.title === 'string' ? tabRecord.title : 'tab',
-      noteBodyId: typeof tabRecord?.noteBodyId === 'string' ? tabRecord.noteBodyId : '',
-      activeSubTabId: typeof tabRecord?.activeSubTabId === 'string' ? tabRecord.activeSubTabId : null,
-      subTabs: ensureArray(tabRecord?.subTabs).map((subTabRecord) => ({
-        id: typeof subTabRecord?.id === 'string' ? subTabRecord.id : '',
-        title: typeof subTabRecord?.title === 'string' ? subTabRecord.title : 'tab',
-        noteBodyId: typeof subTabRecord?.noteBodyId === 'string' ? subTabRecord.noteBodyId : '',
-      })),
-    }))
-    .filter((tab) => tab.id)
-
-  const { deletedTabs, deletedSubTabs } = readTrashData(
-    spaceRoot,
-    typeof spaceManifest.trashManifestFile === 'string' ? spaceManifest.trashManifestFile : null,
-    issues,
-    rootPath,
-    {
-      trashRootRelative: path.posix.join(spaceRootRelative, 'trash'),
-      visibleNoteFileRefs,
-    },
-  )
-
-  return {
-    id: spaceId,
-    name:
-      typeof spaceManifest.title === 'string'
-        ? spaceManifest.title
-        : typeof spaceEntry.title === 'string'
-          ? spaceEntry.title
-          : 'Untitled Space',
-    settings:
-      spaceManifest.settings && typeof spaceManifest.settings === 'object'
-        ? spaceManifest.settings
-        : { autoRemoveDeletedDays: 7 },
-    data: {
-      activeTabId:
-        typeof spaceManifest.activeTabId === 'string' && tabs.some((tab) => tab.id === spaceManifest.activeTabId)
-          ? spaceManifest.activeTabId
-          : tabs[0]?.id ?? '',
-      tabs,
-      deletedTabs,
-      deletedSubTabs,
-    },
-  }
-}
-
-function readHybridAppStateFromRootManifest(rootPath, rootManifest, issues = null, profileRootPath = path.dirname(rootPath), options = {}) {
-  const rootParts = readCurrentRootParts(rootPath, rootManifest, issues, profileRootPath, options)
-  if (!rootParts) return null
-
-  const noteBodies = readNoteBodiesFromRoot(rootParts.noteBodiesRoot)
-  const visibleNoteFileRefs = []
-  const domainEntries = rootParts.domainEntries
-  if (domainEntries.length === 0) {
-    addStorageIssue(issues, 'missing-domain-index', 'warning', path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'), 'Root manifest has no domains; a blank notebook was created.')
-  }
-
-  const domains = []
-  for (const domainEntry of domainEntries) {
-    const domainId = typeof domainEntry?.id === 'string' ? domainEntry.id : ''
-    const domainPath = typeof domainEntry?.path === 'string' ? domainEntry.path : ''
-    if (!domainId || !domainPath) {
-      addStorageIssue(issues, 'invalid-domain-entry', 'warning', path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'), 'Invalid domain entry was skipped.')
-      continue
-    }
-    const domainRootRelative = path.posix.join(DOMAINS_DIR, domainPath)
-    const domainManifest = readJsonFileIfExists(path.join(rootPath, domainRootRelative, 'manifest.json'), issues, {
-      rootPath,
-      missingCode: 'missing-domain-manifest',
-      parseCode: 'corrupt-domain-manifest',
-      severity: 'warning',
-      missingMessage: 'Domain manifest is missing; this domain was skipped.',
-      parseMessage: 'Domain manifest is corrupt; this domain was skipped.',
-    })
-    if (!domainManifest || typeof domainManifest !== 'object') continue
-
-    const spaceEntries = ensureArray(domainManifest.spaces)
-    const spaces = []
-    for (const spaceEntry of spaceEntries) {
-      const spaceId = typeof spaceEntry?.id === 'string' ? spaceEntry.id : ''
-      const spacePath = typeof spaceEntry?.path === 'string' ? spaceEntry.path : ''
-      if (!spaceId || !spacePath) {
-        addStorageIssue(
-          issues,
-          'invalid-space-entry',
-          'warning',
-          path.posix.join(HYBRID_ROOT_DIR, domainRootRelative, 'manifest.json'),
-          'Invalid space entry was skipped.',
-        )
-        continue
-      }
-      const space = readSpace(rootPath, path.posix.join(domainRootRelative, spacePath), spaceEntry, issues, visibleNoteFileRefs, {
-        domainId,
-      })
-      if (!space) continue
-      spaces.push(space)
-    }
-    const lastOpened = rootParts.lastOpened
-    const lastOpenedSpaceId =
-      lastOpened &&
-      lastOpened.domainId === domainId &&
-      typeof lastOpened.spaceId === 'string'
-        ? lastOpened.spaceId
-        : null
-    const activeSpaceId =
-      (lastOpenedSpaceId && spaces.some((space) => space.id === lastOpenedSpaceId) && lastOpenedSpaceId) ||
-      (typeof domainManifest.activeSpaceId === 'string' &&
-        spaces.some((space) => space.id === domainManifest.activeSpaceId) &&
-        domainManifest.activeSpaceId) ||
-      spaces[0]?.id ||
-      ''
-
-    domains.push({
-      id: typeof domainManifest.id === 'string' ? domainManifest.id : domainId,
-      name:
-        typeof domainManifest.title === 'string'
-          ? domainManifest.title
-          : typeof domainEntry.title === 'string'
-            ? domainEntry.title
-            : DEFAULT_DOMAIN_NAME,
-      activeSpaceId: spaces.length > 0 ? activeSpaceId : '',
-      spaces,
-    })
-  }
-  const aisleReadResult = readNoteAisleBodiesFromRoot(
-    rootPath,
-    rootParts.noteAisleBodiesRoot,
-    rootParts.noteBodiesRoot,
-    visibleNoteFileRefs,
-    issues,
-  )
-  const decoupledState = applyLinkedMirrorDecouples({
-    domains,
+    scratchpad: isRecord(editorState?.scratchpad) ? editorState.scratchpad : undefined,
+    messages: [...ensureArray(messages?.messages), ...conflictMessages],
+    toastHistory: ensureArray(editorState?.toastHistory),
     noteBodies,
-    noteAisleBodies: aisleReadResult.aisleBodies,
-    existingMessages: rootParts.messages,
-    decouples: aisleReadResult.decouples,
-    messagePlans: aisleReadResult.messages,
-  })
-
-  const lastOpened = rootParts.lastOpened
-  const lastOpenedDomainId =
-    lastOpened && typeof lastOpened.domainId === 'string'
-      ? lastOpened.domainId
-      : null
-  const candidateActiveDomainId =
-    (lastOpenedDomainId && decoupledState.domains.some((domain) => domain.id === lastOpenedDomainId) && lastOpenedDomainId) ||
-    (decoupledState.domains.some((domain) => domain.id === rootParts.activeDomainId) && rootParts.activeDomainId) ||
-    decoupledState.domains[0]?.id ||
-    ''
-  const theme = rootParts.syncedSettings?.theme === 'custom'
-    ? 'custom1'
-    : ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3'].includes(rootParts.syncedSettings?.theme)
-      ? rootParts.syncedSettings.theme
-      : 'dawn'
-
-  const reconciled = reconcileNotebookStorageState({
-    theme,
-    activeDomainId: candidateActiveDomainId,
-    domains: decoupledState.domains,
-    deletedDomains: rootParts.deletedDomains,
-    deletedSpaces: rootParts.deletedSpaces,
-    scratchpad: rootParts.scratchpad,
-    messages: decoupledState.messages,
-    toastHistory: rootParts.toastHistory,
-    noteBodies: decoupledState.noteBodies,
-    noteAisleBodies: decoupledState.noteAisleBodies,
-    activeSpaceId: '',
-    spaces: [],
-    hotkeys: rootParts.syncedSettings?.hotkeys,
-    frontmatter: rootParts.syncedSettings?.frontmatter,
-    ui: rootParts.syncedSettings?.ui,
-  })
-  addNotebookReconciliationIssues(issues, reconciled.repairs)
-
-  return JSON.stringify(pruneAppStateEditorLocations(reconciled.state))
+    noteAisleBodies,
+    hotkeys: isRecord(editorState?.hotkeys)
+      ? editorState.hotkeys
+      : {
+          shortcuts: {
+            toggleNotesTrash: 'mod+shift+backspace',
+            toggleNotesScratchpad: 'mod+shift+s',
+            toggleNotesFilter: 'mod+shift+f',
+            newNote: 'mod+n',
+            newFolder: 'mod+shift+n',
+            formatStrikethrough: 'mod+shift+x',
+            cycleAislePrev: 'mod+alt+arrowleft',
+            cycleAisleNext: 'mod+alt+arrowright',
+          },
+          newlineShortcuts: {
+            shortcuts: {
+              controlEnter: 'normalNewLine',
+              shiftEnter: 'normalNewLine',
+              commandEnter: 'operationsMenu',
+            },
+            menuOperations: [],
+          },
+        },
+    frontmatter: isRecord(frontmatterSettings?.frontmatter)
+      ? frontmatterSettings.frontmatter
+      : {
+          templates: [],
+          settingsTemplateId: '',
+          lastAppliedTemplateId: '',
+        },
+    ui: {
+      sidebarCollapsed: false,
+      sidebarWidth: 280,
+      collapsedFolderIds: [],
+      tableAddTargetMode: 'active-cell',
+      tableDeleteTargetMode: 'active-cell',
+      noteFontScale: 1,
+      settingsSection: 'data',
+      noteCursorLocations: {},
+      headingCollapseState: {},
+      seenTipIds: [],
+      disabledTipIds: [],
+      ...ui,
+    },
+  }
 }
 
-function readHybridAppStateResultFromRoot(rootPath, profileRootPath = path.dirname(rootPath), options = {}) {
-  const issues = []
-  if (!existsSync(rootPath)) return { serializedState: null, schemaVersion: null, issues }
-
-  const rawRootManifest = readJsonFileIfExists(path.join(rootPath, 'manifest.json'), issues, {
-    rootPath,
-    missingCode: 'missing-root-manifest',
-    parseCode: 'corrupt-root-manifest',
-    severity: 'error',
-    missingMessage: 'Root manifest is missing.',
-    parseMessage: 'Root manifest is corrupt.',
+function hydrateNotebookIndexItems(rawItems) {
+  return ensureArray(rawItems).flatMap((item) => {
+    if (!isRecord(item)) return []
+    const id = normalizeId(item.id)
+    const title = normalizeTitle(item.title, item.type === 'folder' ? 'Untitled folder' : 'Untitled')
+    if (!id) return []
+    if (item.type === 'folder') {
+      return [{
+        type: 'folder',
+        id,
+        title,
+        children: hydrateNotebookIndexItems(item.children),
+      }]
+    }
+    if (item.type === 'note') {
+      const noteBodyId = normalizeId(item.noteBodyId)
+      return noteBodyId ? [{ type: 'note', id, title, noteBodyId }] : []
+    }
+    return []
   })
-  if (
-    !isRecord(rawRootManifest) ||
-    typeof rawRootManifest.schemaVersion !== 'number' ||
-    !SUPPORTED_SCHEMA_VERSIONS.has(rawRootManifest.schemaVersion)
-  ) {
-    if (issues.length === 0) {
-      addStorageIssue(
-        issues,
-        'unsupported-root-manifest',
-        'error',
-        path.posix.join(HYBRID_ROOT_DIR, 'manifest.json'),
-        'Root manifest schema is unsupported.',
-      )
+}
+
+function hydrateRegistryNoteBodies(noteRegistry) {
+  return ensureArray(noteRegistry?.noteBodies).flatMap((body) => {
+    if (!isRecord(body)) return []
+    const id = normalizeId(body.id)
+    if (!id) return []
+    const aisles = ensureArray(body.aisles).flatMap((aisle) => {
+      if (!isRecord(aisle)) return []
+      const aisleId = normalizeId(aisle.id)
+      const aisleBodyId = normalizeId(aisle.aisleBodyId)
+      return aisleId && aisleBodyId ? [{ id: aisleId, aisleBodyId }] : []
+    })
+    if (aisles.length === 0) return []
+    return [{
+      id,
+      createdAt: body.createdAt,
+      updatedAt: body.updatedAt,
+      aisles,
+    }]
+  })
+}
+
+function hydrateRegistryAisleBodies(noteRegistry) {
+  return ensureArray(noteRegistry?.noteAisleBodies).flatMap((body) => {
+    if (!isRecord(body)) return []
+    const id = normalizeId(body.id)
+    if (!id) return []
+    return [{
+      id,
+      createdAt: body.createdAt,
+      updatedAt: body.updatedAt,
+      markdown: '',
+      tags: ensureArray(body.tags),
+      frontmatter: isRecord(body.frontmatter) ? body.frontmatter : null,
+      frontmatterStatus: body.frontmatterStatus ?? 'none',
+      frontmatterMeta: body.frontmatterMeta,
+      storage: {
+        contentHash: body.contentHash,
+        markdownHash: body.markdownHash,
+        markdown: typeof body.markdown === 'string' ? body.markdown : '',
+        mirrors: ensureArray(body.mirrors).map(normalizePosixPath).filter(Boolean),
+        file: normalizePosixPath(body.file),
+      },
+    }]
+  })
+}
+
+function getFirstNoteId(items) {
+  for (const item of ensureArray(items)) {
+    if (item?.type === 'note') return item.id
+    if (item?.type === 'folder') {
+      const child = getFirstNoteId(item.children)
+      if (child) return child
     }
-    return {
-      serializedState: null,
-      schemaVersion: typeof rawRootManifest?.schemaVersion === 'number' ? rawRootManifest.schemaVersion : null,
-      issues,
+  }
+  return ''
+}
+
+function mapNotebookItems(items, mapper) {
+  return ensureArray(items).map((item) => {
+    const mapped = mapper(item)
+    if (mapped?.type === 'folder') {
+      return {
+        ...mapped,
+        children: mapNotebookItems(mapped.children, mapper),
+      }
     }
+    return mapped
+  })
+}
+
+function readAisleFile(rootPath, file) {
+  const normalizedFile = normalizePosixPath(file)
+  if (!normalizedFile || !fileExists(rootPath, normalizedFile)) return null
+  const parsed = splitMarkdownFile(readText(rootPath, normalizedFile))
+  return {
+    file: normalizedFile,
+    mtimeMs: statSync(path.join(rootPath, ...normalizedFile.split('/'))).mtimeMs,
+    ...parsed,
+    fullHash: contentHash(readText(rootPath, normalizedFile)),
+  }
+}
+
+function resolveLinkedMirrorContents({ items, noteBodies, noteAisleBodies, noteFileRecords }) {
+  const noteBodyMap = new Map(noteBodies.map((body) => [body.id, body]))
+  const registryAisleBodyMap = new Map(noteAisleBodies.map((body) => [body.id, body]))
+  const noteRecordsByBody = new Map()
+  for (const record of noteFileRecords) {
+    const records = noteRecordsByBody.get(record.noteBodyId) ?? []
+    records.push(record)
+    noteRecordsByBody.set(record.noteBodyId, records)
+  }
+  const nextNoteBodies = [...noteBodies]
+  const nextAisleBodies = []
+  const noteBodyOverrideByNoteId = new Map()
+  const messages = []
+
+  for (const [noteBodyId, records] of noteRecordsByBody) {
+    const noteBody = noteBodyMap.get(noteBodyId)
+    if (!noteBody) continue
+    const noteSnapshots = records.map((record) => {
+      const aisleContents = noteBody.aisles.map((aisle, index) => {
+        const aisleFile = record.aisleFiles.find((candidate) => candidate.aisleBodyId === aisle.aisleBodyId) ?? record.aisleFiles[index]
+        const fileContent = readAisleFile(resolveLinkedMirrorContents.rootPath, aisleFile?.file)
+        const registryBody = registryAisleBodyMap.get(aisle.aisleBodyId)
+        return {
+          aisle,
+          file: aisleFile?.file,
+          content: fileContent,
+          registryBody,
+          signature: contentHash(fileContent?.markdown ?? ''),
+          fullHash: fileContent?.fullHash ?? registryBody?.storage?.contentHash ?? '',
+        }
+      })
+      return {
+        record,
+        aisleContents,
+        signature: aisleContents.map((entry) => entry.signature).join('|'),
+        fullSignature: aisleContents.map((entry) => entry.fullHash).join('|'),
+      }
+    })
+    if (noteSnapshots.length === 0) continue
+    const expectedSignature = noteBody.aisles
+      .map((aisle) => registryAisleBodyMap.get(aisle.aisleBodyId)?.storage?.markdownHash ?? '')
+      .join('|')
+    const uniqueSignatures = new Map()
+    for (const snapshot of noteSnapshots) {
+      const group = uniqueSignatures.get(snapshot.signature) ?? []
+      group.push(snapshot)
+      uniqueSignatures.set(snapshot.signature, group)
+    }
+
+    let sharedSnapshot = noteSnapshots[0]
+    const changedSnapshots = noteSnapshots.filter((snapshot) => snapshot.signature !== expectedSignature)
+    const changedSignatureCount = new Set(changedSnapshots.map((snapshot) => snapshot.signature)).size
+    if (changedSignatureCount <= 1 && changedSnapshots.length > 0) {
+      sharedSnapshot = changedSnapshots[0]
+    } else if (uniqueSignatures.size > 1) {
+      sharedSnapshot =
+        noteSnapshots.find((snapshot) => snapshot.signature === expectedSignature) ??
+        Array.from(uniqueSignatures.values()).sort((left, right) => right.length - left.length)[0][0]
+      for (const [signature, group] of uniqueSignatures) {
+        if (signature === sharedSnapshot.signature) continue
+        for (const snapshot of group) {
+          const clonedBodyId = `decoupled-${snapshot.record.noteId}-${noteBodyId}`
+          const clonedAisles = noteBody.aisles.map((aisle) => ({
+            id: `decoupled-${snapshot.record.noteId}-${aisle.id}`,
+            aisleBodyId: `decoupled-${snapshot.record.noteId}-${aisle.aisleBodyId}`,
+          }))
+          nextNoteBodies.push({
+            ...noteBody,
+            id: clonedBodyId,
+            aisles: clonedAisles,
+          })
+          snapshot.aisleContents.forEach((entry, index) => {
+            const originalBody = entry.registryBody
+            const clonedAisleBodyId = clonedAisles[index].aisleBodyId
+            nextAisleBodies.push({
+              id: clonedAisleBodyId,
+              createdAt: originalBody?.createdAt,
+              updatedAt: new Date().toISOString(),
+              markdown: entry.content?.markdown ?? originalBody?.storage?.markdown ?? '',
+              tags: originalBody?.tags ?? [],
+              frontmatter: entry.content?.frontmatter ?? originalBody?.frontmatter ?? null,
+              frontmatterStatus: entry.content?.frontmatterStatus ?? originalBody?.frontmatterStatus ?? 'none',
+              frontmatterRaw: entry.content?.frontmatterRaw,
+              frontmatterParseError: entry.content?.frontmatterParseError,
+              frontmatterMeta: originalBody?.frontmatterMeta,
+            })
+          })
+          noteBodyOverrideByNoteId.set(snapshot.record.noteId, clonedBodyId)
+        }
+      }
+      messages.push({
+        id: `storage-conflict-${Date.now()}-${noteBodyId}`,
+        type: 'duplicate-auto-decoupled',
+        status: 'unread',
+        createdAt: new Date().toISOString(),
+        signature: `duplicate-auto-decoupled:${noteBodyId}:${Date.now()}`,
+        title: 'Synced note mirrors were decoupled',
+        body: 'Multiple changed versions of a synced note were found on disk, so conflicting mirrors were split into independent notes.',
+        affectedLocations: records.map((record) => ({
+          label: record.noteId,
+          noteBodyId,
+          location: { noteId: record.noteId },
+        })),
+      })
+    }
+
+    sharedSnapshot.aisleContents.forEach((entry) => {
+      const originalBody = entry.registryBody
+      nextAisleBodies.push({
+        id: entry.aisle.aisleBodyId,
+        createdAt: originalBody?.createdAt,
+        updatedAt: new Date().toISOString(),
+        markdown: entry.content?.markdown ?? originalBody?.storage?.markdown ?? '',
+        tags: originalBody?.tags ?? [],
+        frontmatter: entry.content?.frontmatter ?? originalBody?.frontmatter ?? null,
+        frontmatterStatus: entry.content?.frontmatterStatus ?? originalBody?.frontmatterStatus ?? 'none',
+        frontmatterRaw: entry.content?.frontmatterRaw,
+        frontmatterParseError: entry.content?.frontmatterParseError,
+        frontmatterMeta: originalBody?.frontmatterMeta,
+      })
+    })
+  }
+
+  for (const body of noteAisleBodies) {
+    if (nextAisleBodies.some((candidate) => candidate.id === body.id)) continue
+    nextAisleBodies.push({
+      id: body.id,
+      createdAt: body.createdAt,
+      updatedAt: body.updatedAt,
+      markdown: body.storage?.markdown ?? '',
+      tags: body.tags ?? [],
+      frontmatter: body.frontmatter ?? null,
+      frontmatterStatus: body.frontmatterStatus ?? 'none',
+      frontmatterMeta: body.frontmatterMeta,
+    })
   }
 
   return {
-    serializedState: readHybridAppStateFromRootManifest(rootPath, rawRootManifest, issues, profileRootPath, options),
-    schemaVersion: rawRootManifest.schemaVersion,
-    notebookId: typeof rawRootManifest.notebookId === 'string' ? rawRootManifest.notebookId : null,
-    issues,
+    items: mapNotebookItems(items, (item) =>
+      item.type === 'note' && noteBodyOverrideByNoteId.has(item.id)
+        ? { ...item, noteBodyId: noteBodyOverrideByNoteId.get(item.id) }
+        : item,
+    ),
+    noteBodies: nextNoteBodies,
+    noteAisleBodies: nextAisleBodies,
+    messages,
   }
 }
 
-function readHybridAppStateFromRoot(rootPath, profileRootPath = path.dirname(rootPath), options = {}) {
-  return readHybridAppStateResultFromRoot(rootPath, profileRootPath, options).serializedState
+resolveLinkedMirrorContents.rootPath = ''
+
+function createBlankLoadResult(rootPath) {
+  return {
+    ok: true,
+    serializedState: null,
+    source: 'empty',
+    schemaVersion: null,
+    revision: getHybridStorageRevision(rootPath),
+    health: 'healthy',
+    issues: [],
+    storageFiles: createStorageFilesSnapshot([]),
+    storageFingerprint: createStorageFilesFingerprint([]),
+  }
 }
 
 export function loadAppState(profileRootPath, options = {}) {
@@ -2891,281 +830,386 @@ export function loadAppState(profileRootPath, options = {}) {
 }
 
 export function loadAppStateResult(profileRootPath, options = {}) {
-  const finalRoot = getHybridStorageRoot(profileRootPath)
-  const finalExists = existsSync(finalRoot)
-  const finalRootEntries = finalExists ? listDirectoryEntries(finalRoot) : []
-  const conflicts = detectStorageConflicts(profileRootPath, finalRoot)
+  const rootPath = getHybridStorageRoot(profileRootPath)
+  const manifestPath = path.join(rootPath, MANIFEST_FILE)
+  if (!existsSync(manifestPath)) return createBlankLoadResult(rootPath)
 
-  if (conflicts.length > 0) {
-    return withStorageHealth({
-      ok: false,
-      serializedState: null,
-      source: 'hybrid',
-      error: `Storage profile contains cloud conflict folders: ${conflicts.join(', ')}`,
-      conflicts,
-    }, conflicts.map((conflictPath) =>
-      createStorageIssue(
-        'cloud-conflict',
-        'error',
-        conflictPath,
-        'Storage profile contains a cloud-provider conflict path.',
-      ),
-    ))
-  }
-
-  const hybridResult = readHybridAppStateResultFromRoot(finalRoot, profileRootPath, options)
-  if (hybridResult.serializedState !== null) {
-    return withStorageHealth({
+  const issues = []
+  try {
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    if (manifest?.schemaVersion !== SCHEMA_VERSION) {
+      return {
+        ok: false,
+        serializedState: null,
+        source: 'hybrid',
+        schemaVersion: manifest?.schemaVersion ?? null,
+        revision: getHybridStorageRevision(rootPath),
+        health: 'error',
+        error: `Unsupported notebook schema version: ${manifest?.schemaVersion ?? 'unknown'}.`,
+        issues: [storageIssue('unsupported-schema', 'error', 'This notebook uses an unsupported storage schema.')],
+      }
+    }
+    const files = isRecord(manifest.files) ? manifest.files : {}
+    const notebookIndex = readJson(rootPath, normalizePosixPath(files.notebookIndex) || NOTEBOOK_INDEX_FILE)
+    const navigationState = readJson(rootPath, normalizePosixPath(files.navigationState) || NAVIGATION_STATE_FILE)
+    const noteRegistry = readJson(rootPath, normalizePosixPath(files.noteRegistry) || NOTE_REGISTRY_FILE)
+    const trashIndex = fileExists(rootPath, normalizePosixPath(files.trashIndex) || TRASH_INDEX_FILE)
+      ? readJson(rootPath, normalizePosixPath(files.trashIndex) || TRASH_INDEX_FILE)
+      : { deletedItems: [] }
+    const frontmatterSettings = fileExists(rootPath, normalizePosixPath(files.frontmatterSettings) || FRONTMATTER_SETTINGS_FILE)
+      ? readJson(rootPath, normalizePosixPath(files.frontmatterSettings) || FRONTMATTER_SETTINGS_FILE)
+      : { frontmatter: { templates: [], settingsTemplateId: '', lastAppliedTemplateId: '' } }
+    const editorState = fileExists(rootPath, normalizePosixPath(files.editorState) || EDITOR_STATE_FILE)
+      ? readJson(rootPath, normalizePosixPath(files.editorState) || EDITOR_STATE_FILE)
+      : {}
+    const messages = fileExists(rootPath, normalizePosixPath(files.messages) || MESSAGES_FILE)
+      ? readJson(rootPath, normalizePosixPath(files.messages) || MESSAGES_FILE)
+      : { messages: [] }
+    resolveLinkedMirrorContents.rootPath = rootPath
+    const appState = buildAppStateFromParts({
+      notebookIndex,
+      navigationState,
+      noteRegistry,
+      trashIndex,
+      frontmatterSettings,
+      editorState,
+      messages,
+    })
+    const serializedState = JSON.stringify(appState)
+    const storageFiles = createStorageFilesSnapshot(listStorageFileContents(rootPath))
+    return {
       ok: true,
-      serializedState: hybridResult.serializedState,
+      serializedState,
       source: 'hybrid',
-      schemaVersion: hybridResult.schemaVersion,
-      notebookId: hybridResult.notebookId ?? null,
-    }, hybridResult.issues)
-  }
-
-  if (!finalExists || finalRootEntries.length === 0) return { ok: true, serializedState: null, source: 'empty' }
-
-  if (finalExists) {
-    const issues = hybridResult.issues.length > 0
-      ? hybridResult.issues
-      : [createStorageIssue('unreadable-profile', 'error', HYBRID_ROOT_DIR, 'Existing app state could not be loaded.')]
-    return withStorageHealth({
+      schemaVersion: SCHEMA_VERSION,
+      revision: getHybridStorageRevision(rootPath),
+      health: issues.length > 0 ? 'warning' : 'healthy',
+      issues,
+      storageFiles,
+      storageFingerprint: storageFiles.fingerprint,
+    }
+  } catch (error) {
+    return {
       ok: false,
       serializedState: null,
       source: 'hybrid',
-      error: 'Existing app state could not be loaded.',
-      schemaVersion: hybridResult.schemaVersion,
-    }, issues)
-  }
-
-  return {
-    ok: false,
-    serializedState: null,
-    source: 'hybrid',
-    error: 'Existing app state could not be loaded.',
+      schemaVersion: null,
+      revision: getHybridStorageRevision(rootPath),
+      health: 'error',
+      error: error instanceof Error ? error.message : 'Notebook data could not be loaded.',
+      issues: [storageIssue('schema2-load-failed', 'error', 'Notebook data could not be loaded.')],
+    }
   }
 }
 
 export function saveAppState(profileRootPath, serializedState, options = {}) {
-  const finalRoot = getHybridStorageRoot(profileRootPath)
-  const userSettingsRoot =
-    typeof options.userSettingsRoot === 'string'
-      ? options.userSettingsRoot
-      : typeof options.userDataPath === 'string'
-        ? options.userDataPath
-        : profileRootPath
-
-  if (options.replaceExisting === true) {
-    removeStorageConflictPaths(profileRootPath, finalRoot)
-    rmSync(finalRoot, { recursive: true, force: true })
+  const rootPath = getHybridStorageRoot(profileRootPath)
+  const startedAt = Date.now()
+  try {
+    const appState = JSON.parse(serializedState)
+    ensureDir(rootPath)
+    const noteFileRecords = []
+    const notebookItems = buildNotebookIndexItems(appState?.notebook?.items, appState, '', noteFileRecords)
+    const notebookIndex = {
+      schemaVersion: SCHEMA_VERSION,
+      activeNoteId: appState?.notebook?.activeNoteId ?? '',
+      items: notebookItems,
+      settings: appState?.notebook?.settings ?? { autoRemoveDeletedDays: 30 },
+    }
+    const registry = buildNoteRegistry(appState, noteFileRecords)
+    const writtenMarkdownFiles = writeVisibleNotebookFiles(rootPath, appState, noteFileRecords)
+    const expectedFiles = new Set([
+      MANIFEST_FILE,
+      NOTEBOOK_INDEX_FILE,
+      NAVIGATION_STATE_FILE,
+      NOTE_REGISTRY_FILE,
+      TRASH_INDEX_FILE,
+      FRONTMATTER_SETTINGS_FILE,
+      EDITOR_STATE_FILE,
+      MESSAGES_FILE,
+      SYNC_STATE_FILE,
+      ...writtenMarkdownFiles,
+    ])
+    const pruneResult = pruneGeneratedNotebookFiles(rootPath, expectedFiles)
+    writeJson(rootPath, MANIFEST_FILE, buildManifest(options.notebookId ?? appState?.notebookId ?? null, options.syncMetadata ?? null))
+    writeJson(rootPath, NOTEBOOK_INDEX_FILE, notebookIndex)
+    writeJson(rootPath, NAVIGATION_STATE_FILE, {
+      schemaVersion: SCHEMA_VERSION,
+      activeNoteId: appState?.notebook?.activeNoteId ?? '',
+      viewMode: 'main',
+    })
+    writeJson(rootPath, NOTE_REGISTRY_FILE, registry)
+    writeJson(rootPath, TRASH_INDEX_FILE, {
+      schemaVersion: SCHEMA_VERSION,
+      deletedItems: ensureArray(appState?.notebook?.deletedItems),
+    })
+    writeJson(rootPath, FRONTMATTER_SETTINGS_FILE, {
+      schemaVersion: SCHEMA_VERSION,
+      frontmatter: appState?.frontmatter ?? { templates: [], settingsTemplateId: '', lastAppliedTemplateId: '' },
+    })
+    writeJson(rootPath, EDITOR_STATE_FILE, buildEditorState(appState))
+    writeJson(rootPath, MESSAGES_FILE, {
+      schemaVersion: SCHEMA_VERSION,
+      messages: ensureArray(appState?.messages),
+    })
+    writeJson(rootPath, SYNC_STATE_FILE, {
+      schemaVersion: SCHEMA_VERSION,
+      syncMetadata: options.syncMetadata ?? null,
+    })
+    if (options.assetSourceRoot) {
+      copyAssets(options.assetSourceRoot, rootPath)
+    }
+    if (options.userSettingsRoot) {
+      writeAppSettingsForState(options.userSettingsRoot, serializedState)
+    }
+    const storageFiles = createStorageFilesSnapshot(listStorageFileContents(rootPath))
+    const revision = bumpHybridStorageRevision(rootPath)
+    return {
+      ok: true,
+      serializedState,
+      revision,
+      storageFiles,
+      storageFingerprint: storageFiles.fingerprint,
+      saveMetrics: {
+        totalDurationMs: Date.now() - startedAt,
+        phases: {
+          parseState: 0,
+          buildFileMap: 0,
+          noteBodyTraversal: 0,
+          noteContentGeneration: 0,
+          assetReferenceExtraction: 0,
+          manifestAssembly: 0,
+          assetResolve: 0,
+          fingerprint: 0,
+          textWrites: 0,
+          binaryWrites: 0,
+          prune: 0,
+          appSettingsWrite: 0,
+        },
+        counts: {
+          generatedFiles: expectedFiles.size,
+          generatedBytes: 0,
+          textFiles: expectedFiles.size,
+          jsonFiles: 8,
+          mdFiles: writtenMarkdownFiles.size,
+          binaryFiles: 0,
+          existingAssetFiles: 0,
+          assetsReferenced: 0,
+          assetsReadFromDisk: 0,
+          assetsReused: 0,
+          assetBytesReferenced: 0,
+          assetBytesReadFromDisk: 0,
+          filesChanged: expectedFiles.size,
+          filesSkipped: 0,
+          filesPruned: pruneResult.filesPruned,
+          directoriesPruned: pruneResult.directoriesPruned,
+          aisleStorageCacheHits: 0,
+          aisleStorageCacheMisses: writtenMarkdownFiles.size,
+        },
+      },
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      reason: 'save-failed',
+      error: error instanceof Error ? error.message : 'Notebook data could not be saved.',
+      currentRevision: getHybridStorageRevision(rootPath),
+      serializedState: null,
+    }
   }
+}
 
-  return measureSlowMainOperation('hybrid app-state write', () =>
-    writeHybridStorage(finalRoot, serializedState, {
-      assetSourceRoot: typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : finalRoot,
-      notebookId: typeof options.notebookId === 'string' ? options.notebookId : undefined,
-      syncMetadata: options.syncMetadata,
-      userSettingsRoot,
-    }),
-  )
+function copyAssets(sourceRoot, destinationRoot) {
+  const sourceAssets = path.join(sourceRoot, ASSETS_DIR)
+  if (!existsSync(sourceAssets)) return
+  const destinationAssets = path.join(destinationRoot, ASSETS_DIR)
+  copyAssetDirectory(sourceAssets, destinationAssets)
+}
+
+function copyAssetDirectory(sourceDirectory, destinationDirectory) {
+  ensureDir(destinationDirectory)
+  for (const entry of readdirSync(sourceDirectory, { withFileTypes: true })) {
+    const sourcePath = path.join(sourceDirectory, entry.name)
+    const destinationPath = path.join(destinationDirectory, entry.name)
+    if (entry.isDirectory()) {
+      copyAssetDirectory(sourcePath, destinationPath)
+    } else if (entry.isFile()) {
+      copyFileSync(sourcePath, destinationPath)
+    }
+  }
 }
 
 export function writeNotebookFolderExport(destinationRootPath, serializedState, options = {}) {
-  if (typeof destinationRootPath !== 'string' || !destinationRootPath.trim()) {
-    throw new Error('Destination folder is invalid.')
-  }
-  const profileRootPath = path.resolve(destinationRootPath)
-  const finalRoot = getHybridStorageRoot(profileRootPath)
-  if (existsSync(path.join(finalRoot, 'manifest.json'))) {
-    throw new Error('Destination folder already contains a notebook.')
-  }
-  if (existsSync(finalRoot) && listDirectoryEntries(finalRoot).length > 0) {
-    throw new Error('Destination notebook folder must be empty.')
-  }
-  const parsedState = JSON.parse(serializedState)
-  const exportState = normalizeAppStateForExport(parsedState)
-  writeHybridStorage(finalRoot, JSON.stringify(exportState), {
-    assetSourceRoot: typeof options.assetSourceRoot === 'string' ? options.assetSourceRoot : null,
-  })
-  return {
-    profileRootPath,
-    notebookPath: finalRoot,
-    notebookName: path.basename(finalRoot),
-  }
-}
-
-function normalizeArchiveEntryName(entry) {
-  const rawName = String(entry?.unsafeOriginalName ?? entry?.name ?? '')
-  if (!rawName) {
+  const rootPath = getHybridStorageRoot(destinationRootPath)
+  try {
+    ensureDir(rootPath)
+    const result = saveAppState(rootPath, serializedState, options)
+    if (!result.ok) {
+      return { canceled: false, ok: false, error: result.error ?? 'Notebook export failed.' }
+    }
     return {
+      canceled: false,
+      ok: true,
+      profileRootPath: rootPath,
+      notebookPath: rootPath,
+      notebookName: path.basename(rootPath),
+    }
+  } catch (error) {
+    return {
+      canceled: false,
       ok: false,
-      issue: createStorageIssue('unsafe-archive-entry', 'error', undefined, 'Archive contains an empty file path.'),
+      error: error instanceof Error ? error.message : 'Notebook export failed.',
     }
   }
-  if (rawName.includes('\\') || /^[a-zA-Z]:/.test(rawName)) {
+}
+
+export async function importNotebookZipArchive(archivePath) {
+  const tempRoot = path.join(os.tmpdir(), `tabs-import-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+  try {
+    const zip = await JSZip.loadAsync(readFileSync(archivePath))
+    const files = Object.values(zip.files)
+    for (const file of files) {
+      if (file.dir) continue
+      const relativePath = normalizePosixPath(file.name)
+      if (!relativePath) {
+        return {
+          ok: false,
+          error: 'Notebook ZIP contains an invalid path.',
+          issues: [storageIssue('unexpected-archive-entry', 'error', 'Notebook ZIP contains an invalid path.')],
+        }
+      }
+      const bytes = await file.async('nodebuffer')
+      const absolutePath = path.join(tempRoot, ...relativePath.split('/'))
+      ensureDir(path.dirname(absolutePath))
+      writeFileSync(absolutePath, bytes)
+    }
+    if (!existsSync(path.join(tempRoot, MANIFEST_FILE))) {
+      return {
+        ok: false,
+        error: 'Notebook ZIP does not contain manifest.json.',
+        issues: [storageIssue('missing-root-manifest', 'error', 'Notebook ZIP does not contain manifest.json.')],
+      }
+    }
+    const result = loadAppStateResult(tempRoot, { includeUserSettings: false })
+    if (!result.ok) return result
+    return {
+      ok: true,
+      serializedState: result.serializedState,
+      schemaVersion: result.schemaVersion,
+      health: result.health,
+      issues: result.issues,
+      assets: listNotebookImportAssetPayloads(tempRoot),
+    }
+  } catch (error) {
     return {
       ok: false,
-      issue: createStorageIssue('unsafe-archive-entry', 'error', rawName, 'Archive contains an unsafe file path.'),
+      error: error instanceof Error ? error.message : 'Notebook ZIP could not be imported.',
+      issues: [storageIssue('zip-import-failed', 'error', 'Notebook ZIP could not be imported.')],
     }
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true })
   }
-  const rawParts = rawName.split('/').filter(Boolean)
-  const normalized = path.posix.normalize(rawName).replace(/\/+$/, '')
-  const parts = normalized.split('/').filter(Boolean)
-  if (
-    path.posix.isAbsolute(rawName) ||
-    normalized === '.' ||
-    normalized.startsWith('../') ||
-    rawParts.includes('..') ||
-    parts.includes('..')
-  ) {
-    return {
-      ok: false,
-      issue: createStorageIssue('unsafe-archive-entry', 'error', rawName, 'Archive contains a path traversal entry.'),
-    }
-  }
-  return { ok: true, name: normalized }
 }
 
-function getNotebookArchiveRootPrefix(entryNames) {
-  const names = entryNames.filter((name) => name !== USER_SETTINGS_DIR && !name.startsWith(`${USER_SETTINGS_DIR}/`))
-  if (names.includes('manifest.json')) return ''
-  const topLevelNames = new Set(names.map((name) => name.split('/')[0]).filter(Boolean))
-  if (topLevelNames.size !== 1) return null
-  const [prefix] = Array.from(topLevelNames)
-  return names.includes(path.posix.join(prefix, 'manifest.json')) ? prefix : null
-}
-
-function stripNotebookArchiveRootPrefix(entryName, rootPrefix) {
-  if (!rootPrefix) return entryName
-  if (entryName === rootPrefix) return ''
-  return entryName.startsWith(`${rootPrefix}/`) ? entryName.slice(rootPrefix.length + 1) : null
-}
-
-function isPathInside(parent, child) {
-  const parentPath = path.resolve(parent)
-  const childPath = path.resolve(child)
-  return childPath === parentPath || childPath.startsWith(`${parentPath}${path.sep}`)
-}
-
-function failedImportArchiveResult(error, issues = []) {
-  return withStorageHealth({
-    ok: false,
-    serializedState: null,
-    error,
-  }, issues)
-}
-
-function listNotebookImportAssetPayloads(notesRootPath) {
-  const assetsRoot = path.join(notesRootPath, 'assets')
+function listNotebookImportAssetPayloads(rootPath) {
+  const assetsRoot = path.join(rootPath, ASSETS_DIR)
+  if (!existsSync(assetsRoot)) return []
   const assets = []
-
   function visit(directoryPath) {
-    for (const entry of listDirectoryEntries(directoryPath)) {
+    for (const entry of readdirSync(directoryPath, { withFileTypes: true })) {
       const absolutePath = path.join(directoryPath, entry.name)
       if (entry.isDirectory()) {
         visit(absolutePath)
         continue
       }
       if (!entry.isFile()) continue
-      const relativePath = normalizeImageAssetPath(
-        path.relative(notesRootPath, absolutePath).split(path.sep).join(path.posix.sep),
-      )
-      if (!relativePath.startsWith('assets/')) continue
-      const bytes = readFileSync(absolutePath)
-      const fileName = path.basename(absolutePath)
+      const relativePath = path.relative(rootPath, absolutePath).split(path.sep).join('/')
       assets.push({
         relativePath,
-        bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
-        fileName,
-        name: fileName,
-        mimeType: getMimeTypeFromFilePath(absolutePath),
-        extension: path.extname(fileName).slice(1).toLowerCase(),
+        bytes: toArrayBuffer(readFileSync(absolutePath)),
+        fileName: entry.name,
+        name: entry.name,
+        mimeType: 'application/octet-stream',
+        extension: path.extname(entry.name).slice(1),
       })
     }
   }
-
   visit(assetsRoot)
   return assets
 }
 
-export async function importNotebookZipArchive(archivePath) {
-  if (typeof archivePath !== 'string' || !archivePath.trim()) {
-    return failedImportArchiveResult('Invalid archive path.', [
-      createStorageIssue('invalid-archive-path', 'error', undefined, 'Archive path is invalid.'),
-    ])
-  }
+export function writeImageAssetToProfile(profileRootPath, bytes, extension) {
+  return writeAssetToProfile(profileRootPath, bytes, extension)
+}
 
-  let zip
+export function writeAssetToProfile(profileRootPath, bytes, extension) {
+  const rootPath = getHybridStorageRoot(profileRootPath)
+  const ext = normalizeAssetExtension(extension)
+  const buffer = Buffer.from(bytes)
+  const hash = createHash('sha1').update(buffer).digest('hex').slice(0, 16)
+  const assetPath = normalizeImageAssetPath(path.posix.join(ASSETS_DIR, `asset-${hash}.${ext}`))
+  const absolutePath = path.join(rootPath, ...assetPath.split('/'))
+  ensureDir(path.dirname(absolutePath))
+  writeFileSync(absolutePath, buffer)
+  return {
+    assetPath,
+    url: buildAssetUrl(assetPath),
+  }
+}
+
+export function writeAppSettingsForState(userSettingsRoot, serializedState) {
+  const settingsPath = getUserSettingsFilePath(userSettingsRoot)
+  ensureDir(path.dirname(settingsPath))
+  let appState = {}
   try {
-    zip = await JSZip.loadAsync(readFileSync(archivePath))
+    appState = JSON.parse(serializedState)
   } catch {
-    return failedImportArchiveResult('Archive is not a readable zip file.', [
-      createStorageIssue('invalid-archive', 'error', archivePath, 'Archive is not a readable zip file.'),
-    ])
+    appState = {}
   }
+  writeFileSync(
+    settingsPath,
+    `${JSON.stringify({
+      schemaVersion: SCHEMA_VERSION,
+      theme: appState?.theme ?? 'dawn',
+      hotkeys: appState?.hotkeys ?? null,
+      frontmatter: appState?.frontmatter ?? null,
+      ui: appState?.ui ?? null,
+    }, null, 2)}\n`,
+    'utf8',
+  )
+}
 
-  const tempParent = mkdtempSync(path.join(os.tmpdir(), 'tabs-import-'))
-  const writtenFiles = new Set()
-
+export function resolveNoteLocationRevealPath(profileRootPath, payload = {}) {
+  const rootPath = getHybridStorageRoot(profileRootPath)
   try {
-    const normalizedEntries = []
-    for (const entry of Object.values(zip.files)) {
-      const normalized = normalizeArchiveEntryName(entry)
-      if (!normalized.ok) {
-        return failedImportArchiveResult(normalized.issue.message, [normalized.issue])
-      }
-      normalizedEntries.push({ entry, name: normalized.name })
+    const manifest = readJson(rootPath, MANIFEST_FILE)
+    if (manifest.schemaVersion !== SCHEMA_VERSION) return { ok: false, error: 'Unsupported notebook schema.' }
+    const notebookIndex = readJson(rootPath, NOTEBOOK_INDEX_FILE)
+    if (payload?.type === 'scratchpad') {
+      return { ok: true, absolutePath: rootPath, rootRelativePath: '' }
     }
-
-    const archiveRootPrefix = getNotebookArchiveRootPrefix(normalizedEntries.map((entry) => entry.name))
-    if (archiveRootPrefix === null) {
-      const issue = createStorageIssue(
-        'missing-root-manifest',
-        'error',
-        'manifest.json',
-        'Archive is missing manifest.json.',
-      )
-      return failedImportArchiveResult(issue.message, [issue])
+    const noteId = normalizeId(payload?.location?.noteId)
+    const note = findNotebookIndexNote(notebookIndex.items, noteId)
+    if (!note) return { ok: false, error: 'Note file could not be resolved.' }
+    const relativePath = normalizePosixPath(note.path || note.file)
+    if (!relativePath) return { ok: false, error: 'Note file could not be resolved.' }
+    const absolutePath = path.join(rootPath, ...relativePath.split('/'))
+    return { ok: true, absolutePath, rootRelativePath: relativePath }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Note file could not be resolved.',
     }
-
-    for (const { entry, name } of normalizedEntries) {
-      if (entry.dir) continue
-      if (name === USER_SETTINGS_DIR || name.startsWith(`${USER_SETTINGS_DIR}/`)) continue
-      const strippedName = stripNotebookArchiveRootPrefix(name, archiveRootPrefix)
-      if (strippedName === null) {
-        const issue = createStorageIssue('unexpected-archive-entry', 'error', name, 'Archive contains files outside the notebook folder.')
-        return failedImportArchiveResult(issue.message, [issue])
-      }
-      if (!strippedName) {
-        const issue = createStorageIssue('unsafe-archive-entry', 'error', name, 'Archive contains an invalid directory file.')
-        return failedImportArchiveResult(issue.message, [issue])
-      }
-      if (writtenFiles.has(strippedName)) {
-        const issue = createStorageIssue('duplicate-archive-entry', 'error', strippedName, 'Archive contains duplicate file entries.')
-        return failedImportArchiveResult(issue.message, [issue])
-      }
-      writtenFiles.add(strippedName)
-      const destination = path.join(tempParent, ...strippedName.split('/'))
-      if (!isPathInside(tempParent, destination)) {
-        const issue = createStorageIssue('unsafe-archive-entry', 'error', strippedName, 'Archive entry escapes the import directory.')
-        return failedImportArchiveResult(issue.message, [issue])
-      }
-      mkdirSync(path.dirname(destination), { recursive: true })
-      writeFileSync(destination, await entry.async('nodebuffer'))
-    }
-
-    const result = loadAppStateResult(tempParent, { includeUserSettings: false })
-    if (!result.ok) {
-      return failedImportArchiveResult(result.error ?? 'Imported archive could not be loaded.', result.issues ?? [])
-    }
-    return withStorageHealth({
-      ok: true,
-      serializedState: result.serializedState,
-      schemaVersion: result.schemaVersion ?? null,
-      assets: listNotebookImportAssetPayloads(getHybridStorageRoot(tempParent)),
-    }, result.issues ?? [])
-  } finally {
-    rmSync(tempParent, { recursive: true, force: true })
   }
+}
+
+function findNotebookIndexNote(items, noteId) {
+  for (const item of ensureArray(items)) {
+    if (item?.type === 'note' && item.id === noteId) return item
+    if (item?.type === 'folder') {
+      const child = findNotebookIndexNote(item.children, noteId)
+      if (child) return child
+    }
+  }
+  return null
 }

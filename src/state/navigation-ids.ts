@@ -1,4 +1,4 @@
-import type { AppState, Domain, Space, WorkspaceData } from '../types/app'
+import type { AppState, NotebookTreeItem } from '../types/app'
 
 export type IdGenerator = () => string
 
@@ -42,54 +42,23 @@ function addId(ids: Set<string>, id: unknown) {
   if (typeof id === 'string' && id) ids.add(id)
 }
 
-export function collectWorkspaceNavigationEntityIds(data: WorkspaceData, ids = new Set<string>()): Set<string> {
-  addId(ids, data.activeTabId)
-  data.tabs.forEach((tab) => {
-    addId(ids, tab.id)
-    addId(ids, tab.noteBodyId)
-    addId(ids, tab.activeSubTabId)
-    tab.subTabs.forEach((subTab) => {
-      addId(ids, subTab.id)
-      addId(ids, subTab.noteBodyId)
-    })
-  })
-  data.deletedTabs.forEach((entry) => {
-    addId(ids, entry.id)
-    addId(ids, entry.tab.id)
-    addId(ids, entry.tab.noteBodyId)
-    addId(ids, entry.tab.activeSubTabId)
-    entry.tab.subTabs.forEach((subTab) => {
-      addId(ids, subTab.id)
-      addId(ids, subTab.noteBodyId)
-    })
-  })
-  data.deletedSubTabs.forEach((entry) => {
-    addId(ids, entry.id)
-    addId(ids, entry.parentTabId)
-    addId(ids, entry.subTab.id)
-    addId(ids, entry.subTab.noteBodyId)
-  })
-  return ids
-}
-
-function collectSpaceNavigationEntityIds(space: Space, ids: Set<string>): Set<string> {
-  addId(ids, space.id)
-  return collectWorkspaceNavigationEntityIds(space.data, ids)
-}
-
-function collectDomainNavigationEntityIds(domain: Domain, ids: Set<string>): Set<string> {
-  addId(ids, domain.id)
-  addId(ids, domain.activeSpaceId)
-  domain.spaces.forEach((space) => collectSpaceNavigationEntityIds(space, ids))
-  return ids
+function collectNotebookItemIds(item: NotebookTreeItem, ids: Set<string>) {
+  addId(ids, item.id)
+  if (item.type === 'folder') {
+    item.children.forEach((child) => collectNotebookItemIds(child, ids))
+    return
+  }
+  addId(ids, item.noteBodyId)
 }
 
 export function collectAppNavigationEntityIds(state: AppState): Set<string> {
   const ids = new Set<string>()
-  addId(ids, state.activeDomainId)
-  addId(ids, state.activeSpaceId)
-  state.domains.forEach((domain) => collectDomainNavigationEntityIds(domain, ids))
-  state.spaces.forEach((space) => collectSpaceNavigationEntityIds(space, ids))
+  addId(ids, state.notebook.activeNoteId)
+  state.notebook.items.forEach((item) => collectNotebookItemIds(item, ids))
+  state.notebook.deletedItems.forEach((entry) => {
+    addId(ids, entry.id)
+    collectNotebookItemIds(entry.item, ids)
+  })
   state.noteBodies.forEach((body) => {
     addId(ids, body.id)
     body.aisles.forEach((aisle) => {

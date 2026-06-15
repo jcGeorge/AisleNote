@@ -15,8 +15,6 @@ import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { buildAisleEditorKey } from '../../editor/aisle-editor'
 import { clampAisleWidth } from '../../notes/aisle-widths'
-import type { HeadingOutlineItem } from '../../editor/heading-outline'
-import type { TableOfContentsLinkItem } from '../../editor/table-of-contents-links'
 import { RENDERED_MARKDOWN_SURFACE_CLASS } from '../../editor/rendered-markdown-surface'
 import { recordDiagnosticEvent } from '../../diagnostics/diagnostic-logger'
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
@@ -47,6 +45,18 @@ import {
   getLightweightPreviewText,
   getMarkdownWorkloadProfile,
 } from './note-workspace-preview'
+
+type HeadingOutlineItem = {
+  key: string
+  level: number
+  text: string
+}
+
+type TableOfContentsLinkItem = {
+  key: string
+  label: string
+  href?: string
+}
 
 const transformAislePreviewUrl = (url: string, key: string) => {
   if (key === 'href' && /^tabs-asset:/i.test(url)) return url

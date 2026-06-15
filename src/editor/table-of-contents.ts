@@ -1,6 +1,12 @@
 import type { ResolvedNoteAisle, TableOfContentsScope } from '../types/app'
 import type { HeadingOutlineItem } from './heading-outline'
-import type { TableOfContentsLinkItem } from './table-of-contents-links'
+
+export type TableOfContentsLinkItem = {
+  aisleId: string
+  key: string
+  label: string
+  href?: string
+}
 
 export const TABLE_OF_CONTENTS_EMPTY_MESSAGE =
   'Add headers or links to your notes to navigate via table of contents.'

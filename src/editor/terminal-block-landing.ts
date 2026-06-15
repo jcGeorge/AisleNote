@@ -1,4 +1,8 @@
-import { NOTE_PREVIEW_REFERENCE_RE, getPreviewReferenceTokenLengthAt, parseMarkdownNoteReferenceToken } from '../notes/note-references'
+import {
+  NOTE_PREVIEW_REFERENCE_RE,
+  getPreviewReferenceTokenLengthAt,
+  parseMarkdownNoteReferenceToken,
+} from '../markdown/note-context-tokens.js'
 import { getMediaKindFromUrl, MEDIA_PLAYER_SELECTOR } from '../media/media-utils'
 import { TextSelection } from 'prosemirror-state'
 

@@ -175,20 +175,18 @@ export function buildFrontmatterContext(
   const aisleBodyId = aisleBodyIdOverride || noteBody?.aisles[0]?.aisleBodyId || ''
   const aisleBody = aisleBodyId ? getAisleBody(state, aisleBodyId) : null
   const fallbackTimestamp = now.toISOString()
+  const folderPath = info.folderPath
+  const folderName = folderPath.split('/').filter(Boolean).at(-1) ?? ''
   return {
     now,
     noteBodyId,
     noteCreatedAt: noteBody?.createdAt ?? fallbackTimestamp,
     noteUpdatedAt: noteBody?.updatedAt ?? noteBody?.createdAt ?? fallbackTimestamp,
     noteTitle: info.title,
+    folderName,
+    folderPath,
     isLinked: isNoteBodyLinked(state, noteBodyId),
     tags: getAisleBodyTags(aisleBody),
-    tabId: location.tabId,
-    subTabId: location.subTabId,
-    spaceId: location.spaceId,
-    spaceName: info.space?.name ?? '',
-    domainId: location.domainId,
-    domainName: info.domain?.name ?? '',
   }
 }
 

@@ -1,4 +1,3 @@
-import type { TagFilterTagSummary } from './tag-filter'
 import { normalizeTagLabel } from './tags.js'
 
 export const TAG_AUTOCOMPLETE_RECENT_LIMIT = 8
@@ -12,6 +11,12 @@ export type TagAutocompleteQuery = {
 }
 
 export type TagAutocompleteSuggestion = {
+  key: string
+  label: string
+  count: number
+}
+
+export type TagFilterTagSummary = {
   key: string
   label: string
   count: number

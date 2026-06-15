@@ -8,7 +8,7 @@
     "dev": "kill-port 5173 && vite --port 5173 --strictPort",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "vitest run src/state/notebook.test.ts src/theme/notebook-themes.test.ts electron/app-state-storage.schema2.test.mjs",
     "preview": "vite preview",
     "electron": "node scripts/start-electron.mjs",
     "electron:mac": "node scripts/start-electron.mjs",

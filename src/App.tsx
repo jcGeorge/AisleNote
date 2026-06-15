@@ -1,10 +1,8 @@
 import './App.css'
-import { AppShell } from './app/AppShell'
-import { useAppController } from './app/useAppController'
+import { NotebookApp } from './app/NotebookApp'
 
 function App() {
-  const controller = useAppController()
-  return <AppShell controller={controller} />
+  return <NotebookApp />
 }
 
 export default App

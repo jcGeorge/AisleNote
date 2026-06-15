@@ -14,14 +14,10 @@ export type FrontmatterTemplateContext = {
   noteCreatedAt: string
   noteUpdatedAt: string
   noteTitle: string
+  folderName: string
+  folderPath: string
   isLinked: boolean
   tags: string[]
-  tabId: string
-  subTabId: string | null
-  spaceId: string
-  spaceName: string
-  domainId: string
-  domainName: string
 }
 
 export type ParseFrontmatterYamlResult =
@@ -46,7 +42,7 @@ export function getFrontmatterFieldTypes(): FrontmatterFieldType[] {
 }
 
 export function getFrontmatterComputedValues(): FrontmatterComputedValue[] {
-  return ['none', 'createdAt', 'updatedAt', 'noteTitle', 'spaceName', 'domainName', 'isLinked', 'tags']
+  return ['none', 'createdAt', 'updatedAt', 'noteTitle', 'folderName', 'folderPath', 'isLinked', 'tags']
 }
 
 export const FRONTMATTER_FIELD_TYPES: FrontmatterFieldType[] = getFrontmatterFieldTypes()
@@ -58,7 +54,7 @@ export function isFrontmatterComputedValueCompatibleWithFieldType(
 ) {
   if (computed === 'none') return true
   if (computed === 'createdAt' || computed === 'updatedAt') return type === 'date' || type === 'datetime'
-  if (computed === 'noteTitle' || computed === 'spaceName' || computed === 'domainName') return type === 'text'
+  if (computed === 'noteTitle' || computed === 'folderName' || computed === 'folderPath') return type === 'text'
   if (computed === 'isLinked') return type === 'boolean'
   if (computed === 'tags') return type === 'list'
   return false
@@ -358,15 +354,15 @@ function isCompatibleValue(type: FrontmatterFieldType, value: unknown): boolean 
 }
 
 export function isFrontmatterReferenceComputedValue(computed: FrontmatterComputedValue) {
-  return computed === 'noteTitle' || computed === 'spaceName' || computed === 'domainName'
+  return computed === 'noteTitle'
 }
 
 function getComputedValue(computed: FrontmatterComputedValue, context: FrontmatterTemplateContext): unknown {
   if (computed === 'createdAt') return context.noteCreatedAt
   if (computed === 'updatedAt') return context.noteUpdatedAt
   if (computed === 'noteTitle') return { id: context.noteBodyId, title: context.noteTitle }
-  if (computed === 'spaceName') return { id: context.spaceId, name: context.spaceName }
-  if (computed === 'domainName') return { id: context.domainId, name: context.domainName }
+  if (computed === 'folderName') return context.folderName
+  if (computed === 'folderPath') return context.folderPath
   if (computed === 'isLinked') return context.isLinked
   if (computed === 'tags') return context.tags
   return undefined
