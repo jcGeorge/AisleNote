@@ -137,6 +137,45 @@
   font-weight: 700;
 }
 
+.notebook-sidebar-toggle {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--app-shadow-color, #000) 18%, transparent);
+}
+
+.notebook-sidebar-settings {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notebook-sidebar-settings.is-active {
+  border-color: var(--notebook-sidebar-accent);
+  background: var(--notebook-sidebar-active-bg);
+  color: var(--notebook-sidebar-active-text);
+}
+
+.notebook-sidebar-toggle-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.notebook-sidebar-settings-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
 .notebook-sidebar-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -169,7 +208,7 @@
 
 .notebook-utility-nav {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   padding: 0 8px 10px;
 }
@@ -195,7 +234,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 0 6px 10px;
+  padding: 0 6px 54px;
 }
 
 .notebook-tree-row {
@@ -343,6 +382,100 @@
   line-height: 1.2;
 }
 
+.notebook-utility-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--app-text);
+  background: var(--app-page-bg);
+}
+
+.notebook-utility-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 58px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--app-border);
+  background: color-mix(in srgb, var(--app-surface) 92%, transparent);
+}
+
+.notebook-utility-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.notebook-utility-tabs button {
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1px solid var(--notebook-control-border);
+  border-radius: 6px;
+  background: var(--notebook-control-bg);
+  color: var(--notebook-control-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.notebook-utility-tabs button:hover {
+  background: var(--notebook-control-hover-bg);
+  color: var(--app-text-bright);
+}
+
+.notebook-utility-tabs button.is-active {
+  border-color: var(--notebook-sidebar-accent);
+  background: var(--notebook-sidebar-active-bg);
+  color: var(--notebook-sidebar-active-text);
+}
+
+.notebook-utility-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.notebook-utility-content .utility-page-wrap {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+}
+
+.notebook-utility-content .utility-page-card {
+  width: min(980px, 100%);
+}
+
+.notebook-utility-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  max-width: 980px;
+  margin: 0 0 14px;
+}
+
+.notebook-utility-panel-header h2 {
+  margin: 0 0 4px;
+  color: var(--app-text-heading);
+  font-size: 22px;
+}
+
+.notebook-utility-panel-header p,
+.notebook-settings-help {
+  margin: 0;
+  color: var(--app-text-muted);
+}
+
 .notebook-settings-section {
   max-width: 960px;
   margin: 0 0 18px;
@@ -352,27 +485,119 @@
   background: var(--app-surface);
 }
 
+.notebook-settings-stack,
+.notebook-settings-list {
+  display: grid;
+  gap: 12px;
+}
+
 .notebook-settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(220px, 1fr));
   gap: 14px;
 }
 
-.notebook-panel label {
+.notebook-panel label:not([class]),
+.notebook-utility-content label:not([class]),
+.notebook-utility-content .settings-modal-field {
   display: grid;
   gap: 6px;
   color: var(--app-text-heading);
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .notebook-panel input,
-.notebook-panel select {
+.notebook-panel select,
+.notebook-utility-content input,
+.notebook-utility-content select {
   min-height: 32px;
   border: 1px solid var(--settings-control-border, var(--app-border));
   border-radius: 6px;
   background: var(--settings-control-bg, var(--app-surface-raised));
   color: var(--settings-control-text, var(--app-text));
   font: inherit;
+}
+
+.notebook-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.notebook-utility-header .notebook-settings-action,
+.notebook-settings-actions .notebook-settings-action,
+.notebook-frontmatter-field .notebook-settings-action {
+  margin-top: 0;
+}
+
+.notebook-settings-row,
+.notebook-settings-toggle {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.45fr) minmax(220px, 1fr);
+  align-items: center;
+  gap: 12px;
+  max-width: 760px;
+}
+
+.notebook-settings-toggle {
+  grid-template-columns: minmax(180px, 1fr) auto;
+}
+
+.notebook-settings-toggle input[type="checkbox"] {
+  width: 18px;
+  min-width: 18px;
+  min-height: 18px;
+}
+
+.notebook-settings-toggle small {
+  display: block;
+  margin-top: 3px;
+  color: var(--app-text-muted);
+  font-weight: 400;
+}
+
+.notebook-settings-switch-row {
+  max-width: 760px;
+}
+
+.notebook-storage-card {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  max-width: 760px;
+}
+
+.notebook-storage-card div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--app-border-muted);
+  border-radius: 8px;
+  background: var(--app-surface-raised);
+}
+
+.notebook-storage-card span {
+  color: var(--app-text-muted);
+  font-size: var(--ui-font-xs);
+}
+
+.notebook-frontmatter-fields {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.notebook-frontmatter-field {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(120px, 0.5fr) minmax(160px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.notebook-trash-list {
+  display: grid;
+  gap: 4px;
+  max-width: 860px;
 }
 
 .notebook-trash-row,

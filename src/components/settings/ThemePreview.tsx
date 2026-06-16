@@ -1,4 +1,4 @@
-import type { CSSProperties, KeyboardEvent } from 'react'
+import * as React from 'react'
 import {
   DEFAULT_CUSTOM_THEME_PALETTE,
   isCustomTheme,
@@ -178,9 +178,9 @@ export function ThemePreview({
     '--toast-success': getPaletteValue('success'),
     '--toast-warning': getPaletteValue('warning'),
     '--toast-error': getPaletteValue('danger'),
-  } as CSSProperties
+  } as React.CSSProperties
 
-  const handleTaskKeyDown = (task: ThemePreviewTask, event: KeyboardEvent<HTMLLIElement>) => {
+  const handleTaskKeyDown = (task: ThemePreviewTask, event: React.KeyboardEvent<HTMLLIElement>) => {
     if (event.key !== 'Enter' && event.key !== ' ') return
     event.preventDefault()
     onTaskToggle(task)

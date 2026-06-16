@@ -1,0 +1,154 @@
+function createDefaultId() {
+  const randomUuid = globalThis.crypto?.randomUUID
+  if (typeof randomUuid === 'function') return randomUuid.call(globalThis.crypto)
+  return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function nowIso() {
+  return new Date().toISOString()
+}
+
+function createNoteBodyWithAisle(markdown = '', idGenerator = createDefaultId) {
+  const createdAt = nowIso()
+  const noteBodyId = idGenerator()
+  const aisleBodyId = idGenerator()
+  const aisleId = idGenerator()
+  return {
+    noteBody: {
+      id: noteBodyId,
+      createdAt,
+      updatedAt: createdAt,
+      aisles: [{ id: aisleId, aisleBodyId }],
+    },
+    aisleBody: {
+      id: aisleBodyId,
+      createdAt,
+      updatedAt: createdAt,
+      markdown,
+      tags: [],
+      frontmatter: null,
+      frontmatterStatus: 'none',
+    },
+    aisleId,
+  }
+}
+
+export const DEFAULT_SHORTCUTS = {
+  openSettings: 'mod+,',
+  toggleNotesTrash: 'mod+shift+backspace',
+  toggleNotesScratchpad: 'mod+shift+s',
+  toggleNotesFilter: 'mod+shift+f',
+  openDomains: 'mod+d',
+  openSpaces: 'mod+s',
+  newNote: 'mod+n',
+  newFolder: 'mod+shift+n',
+  newTab: 'mod+shift+n',
+  newSubTab: 'mod+n',
+  formatStrikethrough: 'mod+shift+x',
+  cycleParentTabNext: '',
+  cycleParentTabPrev: '',
+  cycleSubTabNext: 'ctrl+tab',
+  cycleSubTabPrev: 'ctrl+shift+tab',
+  cycleAislePrev: 'mod+alt+arrowleft',
+  cycleAisleNext: 'mod+alt+arrowright',
+}
+
+export const DEFAULT_NEWLINE_SHORTCUT_SETTINGS = {
+  shortcuts: {
+    controlEnter: 'normalNewLine',
+    shiftEnter: 'normalNewLine',
+    commandEnter: 'operationsMenu',
+  },
+  menuOperations: [
+    'task',
+    'dashList',
+    'bulletList',
+    'numberedList',
+    'aisleLeft',
+    'aisleRight',
+    'horizontalLine',
+    'codeBlock',
+    'blockQuote',
+    'blockIndent',
+    'strikethrough',
+  ],
+}
+
+export function createDefaultAppState(options = {}) {
+  const idGenerator = typeof options.idGenerator === 'function' ? options.idGenerator : createDefaultId
+  const welcome = createNoteBodyWithAisle('', idGenerator)
+  const scratchpad = createNoteBodyWithAisle('', idGenerator)
+  const welcomeNote = {
+    type: 'note',
+    id: idGenerator(),
+    title: 'Welcome',
+    noteBodyId: welcome.noteBody.id,
+  }
+
+  return {
+    theme: 'dawn',
+    notebook: {
+      activeNoteId: welcomeNote.id,
+      items: [welcomeNote],
+      deletedItems: [],
+      settings: {
+        autoRemoveDeletedDays: 30,
+      },
+    },
+    scratchpad: {
+      noteBodyId: scratchpad.noteBody.id,
+      activeAisleId: scratchpad.aisleId,
+    },
+    messages: Array.isArray(options.messages) ? options.messages : [],
+    toastHistory: [],
+    noteBodies: [welcome.noteBody, scratchpad.noteBody],
+    noteAisleBodies: [welcome.aisleBody, scratchpad.aisleBody],
+    hotkeys: {
+      shortcuts: { ...DEFAULT_SHORTCUTS },
+      newlineShortcuts: {
+        shortcuts: { ...DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts },
+        menuOperations: [...DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations],
+      },
+    },
+    frontmatter: {
+      templates: [],
+      settingsTemplateId: '',
+      lastAppliedTemplateId: '',
+    },
+    ui: {
+      sidebarCollapsed: false,
+      sidebarWidth: 280,
+      collapsedFolderIds: [],
+      showRegularNoteAisleAddButtons: true,
+      showRegularNoteAisleDeleteButton: true,
+      findCaseSensitive: false,
+      findWholeWord: false,
+      findRegex: false,
+      findReplaceMode: 'find',
+      findReplaceScope: 'note',
+      removeNoteReferencesOnTrash: false,
+      noteMentionCopyRequiresConfirmation: true,
+      deleteActiveAisleShortcutEnabled: false,
+      scratchpadAisleLimit: 16,
+      scratchpadNewAisleSide: 'right',
+      decoupledItemsKeepData: true,
+      tableAddTargetMode: 'active-cell',
+      tableDeleteTargetMode: 'active-cell',
+      tableOfContentsScope: 'all-aisles',
+      noteFontScale: 1,
+      toolbarButtonScale: 1,
+      settingsSection: 'data',
+      dataSettingsSection: 'storage',
+      visualsSettingsSection: 'theming',
+      selectedCustomTheme: 'custom1',
+      themePalettes: {},
+      noteCursorLocations: {},
+      headingCollapseState: {},
+      aisleWidths: {},
+      toolbarLayouts: [],
+      toolbarEditorShowNames: false,
+      seenTipIds: [],
+      disabledTipIds: [],
+    },
+  }
+}

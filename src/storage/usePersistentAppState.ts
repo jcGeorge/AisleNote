@@ -8,13 +8,6 @@ import {
 } from '../state/app-state'
 import type { AppState } from '../types/app'
 import { appPersistenceService } from './app-persistence-service'
-import {
-  extractDeviceSettingsFromAppState,
-  loadDeviceSettings,
-  loadDeviceSettingsRecord,
-  mergeLoadedSettings,
-  saveDeviceSettings,
-} from './device-settings-store'
 import { createPersistenceDebounceController } from './persistence-debounce'
 import {
   APP_STATE_EDITOR_CONTENT_PERSISTENCE_DEBOUNCE_MS,
@@ -46,11 +39,11 @@ function roundMetricMs(value: number): number {
 }
 
 function parsePersistedStateWithDeviceSettings(serializedState: string | null): AppState {
-  return mergeLoadedSettings(parseSavedState(serializedState), loadDeviceSettingsRecord())
+  return parseSavedState(serializedState)
 }
 
 function saveDeviceSettingsForState(state: AppState): void {
-  saveDeviceSettings(extractDeviceSettingsFromAppState(state, loadDeviceSettings()))
+  void state
 }
 
 export function usePersistentAppState(): PersistentAppStateController {
@@ -100,6 +93,7 @@ export function usePersistentAppState(): PersistentAppStateController {
     const nextState = typeof action === 'function'
       ? (action as (previous: AppState) => AppState)(stateRef.current)
       : action
+    if (Object.is(nextState, stateRef.current)) return
     stateRef.current = nextState
     setReactState(nextState)
   }, [])

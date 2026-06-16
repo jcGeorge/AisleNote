@@ -5,5 +5,5 @@ export type AppController = {
 }
 
 export function AppShell({ controller }: { controller: AppController }) {
-  return <>{controller.shell}</>
+  return controller.shell
 }

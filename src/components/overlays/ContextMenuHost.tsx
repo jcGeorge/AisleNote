@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import React, { Fragment, type ReactNode } from 'react'
 import type { ContextMenuState, LinkInsertMode } from '../../types/app'
 import type { CopyAsAction, CopyAsScope } from '../../notes/copy-as-clipboard'
 import { getCopyAsActionLabel } from '../../notes/copy-reference-labels'
@@ -134,11 +134,11 @@ function SubMenu({
   children: ReactNode
   onClick?: () => void
 }) {
-  const triggerRef = useRef<HTMLButtonElement | null>(null)
-  const panelRef = useRef<HTMLDivElement | null>(null)
-  const [panelPosition, setPanelPosition] = useState<MenuPosition>({ left: -9999, top: -9999 })
+  const triggerRef = React.useRef<HTMLButtonElement | null>(null)
+  const panelRef = React.useRef<HTMLDivElement | null>(null)
+  const [panelPosition, setPanelPosition] = React.useState<MenuPosition>({ left: -9999, top: -9999 })
 
-  const updatePanelPosition = useCallback(() => {
+  const updatePanelPosition = React.useCallback(() => {
     const trigger = triggerRef.current
     const panel = panelRef.current
     if (!trigger || !panel) return
@@ -211,10 +211,10 @@ export function ContextMenuHost({
   onCopyAs,
   onCopyAsUnavailable,
 }: ContextMenuHostProps) {
-  const rootRef = useRef<HTMLDivElement | null>(null)
-  const [rootPosition, setRootPosition] = useState<MenuPosition>({ left: 0, top: 0 })
+  const rootRef = React.useRef<HTMLDivElement | null>(null)
+  const [rootPosition, setRootPosition] = React.useState<MenuPosition>({ left: 0, top: 0 })
 
-  useLayoutEffect(() => {
+  React.useLayoutEffect(() => {
     if (!contextMenu) return
 
     const updateRootPosition = () => {

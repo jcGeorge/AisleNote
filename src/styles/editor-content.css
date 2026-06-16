@@ -175,6 +175,40 @@
 .aisle-editor-preview-fallback .tabs-block-indent,
 .aisle-edit-preview .tabs-block-indent {
   padding-left: calc(var(--editor-block-indent-offset, 1.75rem) * var(--tabs-block-indent-level, 1)) !important;
+  position: relative;
+}
+
+.toastui-editor .ProseMirror .tabs-block-indent.tabs-block-indent-boundary-active::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--editor-block-indent-offset, 1.75rem) * var(--tabs-block-indent-level, 1));
+  top: 0.23em;
+  z-index: 6;
+  display: block;
+  width: 1px;
+  height: 1.18em;
+  border-radius: 999px;
+  background: var(--editor-caret) !important;
+  opacity: 1;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toastui-editor .ProseMirror .tabs-block-indent.tabs-block-indent-boundary-active::before {
+    animation: tabs-block-indent-boundary-caret 1.05s steps(2, start) infinite;
+  }
+}
+
+@keyframes tabs-block-indent-boundary-caret {
+  0%,
+  45% {
+    opacity: 1;
+  }
+
+  46%,
+  100% {
+    opacity: 0;
+  }
 }
 
 .toastui-editor-contents .tabs-block-indent-token-hidden,
@@ -182,14 +216,16 @@
   display: inline-block !important;
   width: 0 !important;
   max-width: 0 !important;
+  height: 1em !important;
   overflow: hidden !important;
   color: transparent !important;
-  font-size: 0 !important;
-  line-height: 0 !important;
+  caret-color: var(--editor-caret) !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
   letter-spacing: 0 !important;
   pointer-events: none !important;
   user-select: none !important;
-  vertical-align: top !important;
+  vertical-align: -0.08em !important;
 }
 
 .toastui-editor-contents .tabs-tag-token,

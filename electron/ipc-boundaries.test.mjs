@@ -25,6 +25,7 @@ import {
   writeUserSettingsLocationConfig,
 } from './user-settings-location.mjs'
 import { STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME, writeStorageProfileConfig } from './storage-profile.mjs'
+import { createDefaultAppState } from '../src/state/default-app-state.js'
 
 function createIpcMain() {
   const handlers = new Map()
@@ -624,7 +625,7 @@ describe('electron ipc boundaries', () => {
       await expect(ipcMain.handlers.get('open-notebook-import-source')()).resolves.toMatchObject({
         canceled: false,
         ok: false,
-        issues: [expect.objectContaining({ code: 'unsupported-root-manifest', severity: 'error' })],
+        issues: [expect.objectContaining({ code: 'unsupported-schema', severity: 'error' })],
       })
     }))
 
@@ -781,17 +782,77 @@ describe('electron ipc boundaries', () => {
         const localLoad = loadAppStateResult(storageSession.getProfileRootPath(), { userSettingsRoot: userDataPath })
         expect(localLoad.ok).toBe(true)
         const localState = JSON.parse(localLoad.serializedState)
-        expect(localState.domains[0].name).toBe('humble beginnings')
+        expect(localState).not.toHaveProperty('domains')
+        expect(localState.notebook.items[0]).toMatchObject({ type: 'note', title: 'Welcome' })
         expect(localState.noteAisleBodies[0].markdown).toBe('')
         expect(storageSession.getStorageProfileStatus().knownNotebooks).toHaveLength(2)
         expect(window.webContents.send).toHaveBeenCalledWith(
           'app-state-updated',
           expect.objectContaining({
-            serializedState: expect.stringContaining('humble beginnings'),
+            serializedState: expect.stringContaining('Welcome'),
           }),
         )
       } finally {
         rmSync(externalRoot, { recursive: true, force: true })
+      }
+    }))
+
+  it('backs up an unsupported active local mirror and seeds schema 2 so saves continue', async () =>
+    withTempUserDataPathAsync(async (userDataPath) => {
+      const shell = { openPath: vi.fn(async () => '') }
+      let initialSession = null
+      let recoveredSession = null
+      try {
+        saveTestNotebook(defaultNotebookRoot(userDataPath), JSON.stringify(createDefaultAppState()), userDataPath)
+        initialSession = registerStorageIpc({
+          ipcMain: createIpcMain(),
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+        })
+        initialSession.close()
+
+        const localMirrorPath = defaultNotebookRoot(userDataPath)
+        writeFileSync(path.join(localMirrorPath, 'manifest.json'), JSON.stringify({ schemaVersion: 999 }), 'utf8')
+        writeFileSync(path.join(localMirrorPath, 'legacy-marker.txt'), 'legacy data', 'utf8')
+
+        const ipcMain = createIpcMain()
+        recoveredSession = registerStorageIpc({
+          ipcMain,
+          app: { getPath: () => userDataPath },
+          BrowserWindow: createBrowserWindow(),
+          shell,
+        })
+
+        const backupFolder = readdirSync(userDataPath)
+          .find((entry) => entry.startsWith(`${STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME}.unsupported-`))
+        expect(backupFolder).toBeTruthy()
+        const backupPath = path.join(userDataPath, backupFolder)
+        expect(readFileSync(path.join(backupPath, 'legacy-marker.txt'), 'utf8')).toBe('legacy data')
+
+        const loadEvent = { returnValue: null }
+        ipcMain.listeners.get('load-app-state-result')(loadEvent)
+        expect(loadEvent.returnValue).toMatchObject({ ok: true, schemaVersion: 2 })
+        expect(loadEvent.returnValue.serializedState).toContain('storage-notebook-recovered')
+        expect(recoveredSession.canWriteAppState()).toBe(true)
+
+        const recoveredState = JSON.parse(loadEvent.returnValue.serializedState)
+        expect(recoveredState).not.toHaveProperty('domains')
+        recoveredState.noteAisleBodies[0].markdown = 'saved after recovery'
+        const saveEvent = { sender: { id: 1 }, returnValue: null }
+        ipcMain.listeners.get('save-app-state')(saveEvent, {
+          serializedState: JSON.stringify(recoveredState),
+          baseRevision: loadEvent.returnValue.revision,
+        })
+        expect(saveEvent.returnValue).toMatchObject({ ok: true })
+
+        const reloadedState = JSON.parse(loadAppStateResult(localMirrorPath, { userSettingsRoot: userDataPath }).serializedState)
+        expect(reloadedState.noteAisleBodies[0].markdown).toBe('saved after recovery')
+
+        await expect(ipcMain.handlers.get('reveal-recovered-notebook-location')()).resolves.toEqual({ ok: true })
+        expect(shell.openPath).toHaveBeenCalledWith(backupPath)
+      } finally {
+        initialSession?.close()
+        recoveredSession?.close()
       }
     }))
 

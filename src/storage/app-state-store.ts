@@ -293,6 +293,36 @@ class ElectronAppStateStore implements AppStateStore {
     })
   }
 
+  private recordSaveBlockedDiagnostic(trigger: string, serializedState: string, options: AppStateSaveOptions = {}) {
+    this.recordSaveDiagnostic(
+      'app-state-save-blocked-load-failure',
+      serializedState,
+      'skip',
+      trigger,
+      options.pendingEditorCount,
+      0,
+      options,
+    )
+  }
+
+  private recordSaveFailureDiagnostic(
+    result: ReturnType<NonNullable<Window['electronAPI']>['saveAppState']> | undefined,
+    serializedState: string,
+    mode: 'async' | 'sync',
+    trigger: string,
+    options: AppStateSaveOptions = {},
+  ) {
+    if (result?.ok) return
+    recordDiagnosticEvent('storage', 'app-state-save-failed', {
+      level: 'error',
+      details: {
+        ...this.getSaveDiagnosticsDetails(serializedState, mode, trigger, options.pendingEditorCount, 0, options),
+        reason: result?.reason ?? 'unknown',
+        error: result?.error ?? 'App state save failed.',
+      },
+    })
+  }
+
   private runAsyncSaveQueue(): void {
     if (this.asyncSaveActive) return
     this.asyncSaveActive = true
@@ -343,6 +373,7 @@ class ElectronAppStateStore implements AppStateStore {
               saveOptions,
               ipcDurationMs,
             )
+            this.recordSaveFailureDiagnostic(result, serializedState, 'async', saveOptions.trigger ?? 'unknown', saveOptions)
             this.applySaveResult(result)
           }
         } finally {
@@ -353,8 +384,11 @@ class ElectronAppStateStore implements AppStateStore {
   }
 
   save(serializedState: string, options: AppStateSaveOptions = {}): void {
-    if (this.savesBlockedByLoadFailure) return
     const trigger = options.trigger ?? 'unknown'
+    if (this.savesBlockedByLoadFailure) {
+      this.recordSaveBlockedDiagnostic(trigger, serializedState, options)
+      return
+    }
     if (serializedState === this.lastSavedSerializedState && this.pendingAsyncSerializedState === null) {
       this.recordSaveDiagnostic('app-state-save-skipped', serializedState, 'skip', trigger, options.pendingEditorCount, 0, options)
       return
@@ -393,9 +427,16 @@ class ElectronAppStateStore implements AppStateStore {
       const result = measureSlowOperation('electron sync app-state save', () => window.electronAPI?.saveAppState(payload))
       const ipcDurationMs = roundMetricNumber(nowMs() - ipcStartedAt)
       this.recordSaveMetricsDiagnostic(result, serializedState, 'sync', trigger, options.pendingEditorCount, 0, options, ipcDurationMs)
+      this.recordSaveFailureDiagnostic(result, serializedState, 'sync', trigger, options)
       this.applySaveResult(result)
-    } catch {
-      // Keep current behavior non-fatal until a dedicated error surface is added.
+    } catch (error) {
+      recordDiagnosticEvent('storage', 'app-state-save-threw', {
+        level: 'error',
+        details: {
+          ...this.getSaveDiagnosticsDetails(serializedState, 'sync', trigger, options.pendingEditorCount, 0, options),
+          error: error instanceof Error ? error.message : 'Electron app-state save threw.',
+        },
+      })
     }
   }
 

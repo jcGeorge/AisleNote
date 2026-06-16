@@ -12,6 +12,8 @@ function currentSettingsJson() {
     theme: 'dawn',
     hotkeys: {
       shortcuts: {
+        openSettings: 'Ctrl+,',
+        newNote: 'Ctrl+Alt+N',
         newTab: 'Ctrl+Alt+N',
       },
     },
@@ -31,9 +33,12 @@ describe('portable app settings parsing', () => {
       theme: 'dawn',
       hotkeys: {
         shortcuts: {
+          openSettings: 'Mod+,',
           toggleNotesTrash: 'Mod+T',
           toggleNotesScratchpad: 'Mod+/',
           toggleNotesFilter: '',
+          newNote: 'Mod+N',
+          newFolder: 'Mod+Shift+N',
           newTab: 'Mod+Shift+N',
         },
         newlineShortcuts: {
@@ -43,12 +48,12 @@ describe('portable app settings parsing', () => {
           },
         },
       },
-        ui: {
-          settingsSection: 'hotkeys',
-          dataSettingsSection: 'transfer',
-          showRegularNoteAisleAddButtons: false,
-          showRegularNoteAisleDeleteButton: false,
-          tabRenameEnterBehavior: 'goes-to-note',
+      ui: {
+        settingsSection: 'hotkeys',
+        dataSettingsSection: 'transfer',
+        showRegularNoteAisleAddButtons: false,
+        showRegularNoteAisleDeleteButton: false,
+        tabRenameEnterBehavior: 'goes-to-note',
         noteFilter: {
           active: false,
           kind: 'tags',
@@ -68,6 +73,8 @@ describe('portable app settings parsing', () => {
         theme: 'dawn',
         hotkeys: {
           shortcuts: {
+            openSettings: 'Ctrl+,',
+            newNote: 'Ctrl+Alt+N',
             newTab: 'Ctrl+Alt+N',
           },
         },
@@ -166,9 +173,12 @@ describe('portable app settings parsing', () => {
       settings: {
         hotkeys: {
           shortcuts: {
+            openSettings: 'Mod+,',
             toggleNotesTrash: 'Mod+T',
             toggleNotesScratchpad: 'Mod+/',
             toggleNotesFilter: '',
+            newNote: 'Mod+N',
+            newFolder: 'Mod+Shift+N',
             newTab: 'Mod+Shift+N',
           },
           newlineShortcuts: {
@@ -227,8 +237,11 @@ describe('portable app settings parsing', () => {
     })
 
     expect(syncedSettings.hotkeys.shortcuts.toggleNotesTrash).toBe('Mod+T')
+    expect(syncedSettings.hotkeys.shortcuts.openSettings).toBe('Mod+,')
     expect(syncedSettings.hotkeys.shortcuts.toggleNotesScratchpad).toBe('Mod+/')
     expect(syncedSettings.hotkeys.shortcuts.toggleNotesFilter).toBe('')
+    expect(syncedSettings.hotkeys.shortcuts.newNote).toBe('Mod+N')
+    expect(syncedSettings.hotkeys.shortcuts.newFolder).toBe('Mod+Shift+N')
     expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Alt+]')
     expect(syncedSettings.hotkeys.newlineShortcuts.menuOperations).toEqual(['blockQuote', 'strikethrough'])
   })

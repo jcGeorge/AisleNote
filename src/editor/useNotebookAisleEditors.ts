@@ -27,16 +27,23 @@ import {
   restoreEditorDisplay,
   setEditorMarkdownForDisplay,
 } from './editor-markdown-display'
-import { importImageBlobAsAssetUrl } from '../markdown/image-asset-registry'
+import { importBlobAsAssetUrl, importImageBlobAsAssetUrl } from '../markdown/image-asset-registry'
 import { withDefaultInsertedImageDisplayWidth } from './image-insertion'
 import { buildAisleEditorKey, getAisleIdFromAisleEditorKey } from './aisle-editor'
 import { getWysiwygView } from './prosemirror-utils'
 import {
   finishEditorOperation,
+  insertEditorTextOperation,
   replaceSelectedTextWithTableOperation,
   runEditorCommandOperation,
   type EditorOperationRuntime,
 } from './editor-operation-runner'
+import {
+  readClipboardMarkdown,
+  type ClipboardMarkdownReadResult,
+} from './clipboard-paste-markdown'
+import { buildMediaMarkdownLink, insertAssetLinksIntoWysiwygView } from './media-file-insertion'
+import { insertVisualClipboardMarkdownIntoView, insertVisualClipboardTextIntoView } from './visual-clipboard'
 import { applyEditorNewlineOperation } from './newline-operations'
 import { applyListToolbarCommand, type ToolbarListCommand } from './list-marker-commands'
 import {
@@ -49,7 +56,12 @@ import {
   type HeadingOutlineItem,
 } from './heading-outline'
 import { recordDiagnosticEvent } from '../diagnostics/diagnostic-logger'
+import type { NotebookEditorMarkdownSnapshot } from '../app/notebook-editor-persistence'
 import type { ResolvedNoteAisle, ToastTone, ViewMode } from '../types/app'
+
+export type NotebookEditorClipboardAction = 'cut' | 'copy' | 'paste' | 'pastePlainText'
+export type NotebookEditorClipboardPasteAction = Extract<NotebookEditorClipboardAction, 'paste' | 'pastePlainText'>
+export type NotebookEditorClipboardReadResult = Extract<ClipboardMarkdownReadResult, { ok: true }>
 
 type NotebookAisleEditorMeta = {
   editor: Editor
@@ -238,6 +250,27 @@ export function useNotebookAisleEditors({
     },
     [commitEditorMarkdown],
   )
+
+  const getMountedEditorMarkdownSnapshots = useCallback((): NotebookEditorMarkdownSnapshot[] => {
+    return Array.from(editorMetaRef.current.values()).map((meta) => {
+      const markdown = getEditorMarkdownForPersistence(meta.editor)
+      meta.markdown = markdown
+      lastMarkdownByAisleBodyRef.current.set(meta.aisleBodyId, markdown)
+      return {
+        noteId,
+        noteBodyId: meta.noteBodyId,
+        aisleId: meta.aisleId,
+        aisleBodyId: meta.aisleBodyId,
+        markdown,
+      }
+    })
+  }, [noteId])
+
+  const commitMountedEditorMarkdownNow = useCallback(() => {
+    getMountedEditorMarkdownSnapshots().forEach((snapshot) => {
+      commitAisleMarkdown(snapshot.aisleBodyId, snapshot.markdown)
+    })
+  }, [commitAisleMarkdown, getMountedEditorMarkdownSnapshots])
 
   const replaceActiveEditorMarkdown = useCallback(
     (markdown: string) => {
@@ -616,6 +649,96 @@ export function useNotebookAisleEditors({
     [editorOperationRuntime, editorRef, pushToast, replaceActiveEditorMarkdown, scheduleToolbarFormatStateSync],
   )
 
+  const readClipboardMarkdownForPaste = useCallback(
+    async (action: NotebookEditorClipboardPasteAction): Promise<NotebookEditorClipboardReadResult | null> => {
+      const result = await readClipboardMarkdown({
+        mode: action === 'paste' ? 'rich' : 'plainText',
+        importImageBlobAsAssetUrl,
+        importBlobAsAssetUrl,
+      })
+      if (!result.ok) {
+        if (result.reason === 'unavailable') {
+          pushToast('Clipboard paste is unavailable here.', 'warning')
+        }
+        return null
+      }
+      return result
+    },
+    [pushToast],
+  )
+
+  const insertTextFromContextMenu = useCallback(
+    (text: string) => {
+      const editor = editorRef.current
+      if (!editor) {
+        pushToast('Open a note before using the editor menu.', 'warning')
+        return false
+      }
+      if (!text) return true
+      editor.focus()
+      const view = getWysiwygView(editor)
+      if (insertVisualClipboardTextIntoView(view, text)) {
+        commitActiveEditorMarkdownNow(editor)
+        scheduleToolbarFormatStateSync()
+        return true
+      }
+      return insertEditorTextOperation(editorOperationRuntime, text, {
+        commitMode: 'deferred',
+        syncToolbar: true,
+      }).handled
+    },
+    [commitActiveEditorMarkdownNow, editorOperationRuntime, editorRef, pushToast, scheduleToolbarFormatStateSync],
+  )
+
+  const insertClipboardMarkdownResult = useCallback(
+    (result: NotebookEditorClipboardReadResult) => {
+      const editor = editorRef.current
+      if (!editor) {
+        pushToast('Open a note before using the editor menu.', 'warning')
+        return false
+      }
+      if (result.source === 'plain-text') return insertTextFromContextMenu(result.markdown)
+
+      editor.focus()
+      const view = getWysiwygView(editor)
+      if (insertVisualClipboardMarkdownIntoView(view, result.markdown)) {
+        commitActiveEditorMarkdownNow(editor)
+        scheduleToolbarFormatStateSync()
+        return true
+      }
+      return insertTextFromContextMenu(result.markdown)
+    },
+    [
+      commitActiveEditorMarkdownNow,
+      editorRef,
+      insertTextFromContextMenu,
+      pushToast,
+      scheduleToolbarFormatStateSync,
+    ],
+  )
+
+  const runClipboardAction = useCallback(
+    (action: NotebookEditorClipboardAction) => {
+      const editor = editorRef.current
+      if (!editor) {
+        pushToast('Open a note before using the editor menu.', 'warning')
+        return false
+      }
+      editor.focus()
+      if (action === 'cut' || action === 'copy') {
+        document.execCommand(action)
+        return true
+      }
+      void readClipboardMarkdownForPaste(action)
+        .then((result) => {
+          if (result) insertClipboardMarkdownResult(result)
+        })
+        .catch(() => pushToast('Clipboard paste is unavailable here.', 'warning'))
+      return true
+    },
+    [editorRef, insertClipboardMarkdownResult, pushToast, readClipboardMarkdownForPaste],
+  )
+
   const insertImageFile = useCallback(() => {
     const editor = editorRef.current
     if (!editor) {
@@ -647,6 +770,82 @@ export function useNotebookAisleEditors({
     }
     input.click()
   }, [editorOperationRuntime, editorRef, pushToast])
+
+  const insertAttachmentFile = useCallback(() => {
+    const editor = editorRef.current
+    if (!editor) {
+      pushToast('Open a note before inserting an attachment.', 'warning')
+      return
+    }
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = [
+      'image/*',
+      'application/pdf',
+      'audio/*',
+      'video/*',
+      '.pdf',
+      '.mp3',
+      '.wav',
+      '.m4a',
+      '.ogg',
+      '.webm',
+      '.mp4',
+      '.mov',
+    ].join(',')
+    input.onchange = () => {
+      const file = input.files?.[0]
+      if (!file) return
+
+      const insertImageAttachment = async () => {
+        const assetUrl = await importImageBlobAsAssetUrl(file, file.name)
+        if (!assetUrl) {
+          pushToast('Could not import attachment.', 'warning')
+          return
+        }
+        const view = getWysiwygView(editor)
+        const displayUrl = await withDefaultInsertedImageDisplayWidth(
+          assetUrl,
+          file,
+          view?.dom instanceof HTMLElement ? view.dom : null,
+        )
+        editor.focus()
+        runEditorCommandOperation(editorOperationRuntime, 'addImage', { imageUrl: displayUrl, altText: file.name }, {
+          commitMode: 'deferred',
+          syncToolbar: true,
+        })
+      }
+
+      const insertLinkedAttachment = async () => {
+        const assetUrl = await importBlobAsAssetUrl(file, file.name)
+        if (!assetUrl) {
+          pushToast('Could not import attachment.', 'warning')
+          return
+        }
+        const label = file.name.trim() || 'attachment'
+        editor.focus()
+        if (insertAssetLinksIntoWysiwygView(getWysiwygView(editor), [{ label, url: assetUrl }])) {
+          commitActiveEditorMarkdownNow(editor)
+          scheduleToolbarFormatStateSync()
+          return
+        }
+        insertEditorTextOperation(editorOperationRuntime, buildMediaMarkdownLink(label, assetUrl), {
+          commitMode: 'deferred',
+          syncToolbar: true,
+        })
+      }
+
+      void (file.type.startsWith('image/') ? insertImageAttachment() : insertLinkedAttachment())
+        .catch(() => pushToast('Could not import attachment.', 'warning'))
+    }
+    input.click()
+  }, [
+    commitActiveEditorMarkdownNow,
+    editorOperationRuntime,
+    editorRef,
+    pushToast,
+    scheduleToolbarFormatStateSync,
+  ])
 
   const insertPromptedLink = useCallback(() => {
     const editor = editorRef.current
@@ -688,9 +887,14 @@ export function useNotebookAisleEditors({
     registerAisleEditorRoot,
     activateAisleEditor,
     runCommand,
+    runClipboardAction,
+    readClipboardMarkdownForPaste,
     insertImageFile,
+    insertAttachmentFile,
     insertPromptedLink,
     commitActiveEditorMarkdownNow,
+    commitMountedEditorMarkdownNow,
+    getMountedEditorMarkdownSnapshots,
     getPreviewMarkdownForAisle,
     getHeadingOutlineForAisle,
     scrollToAisleHeading,

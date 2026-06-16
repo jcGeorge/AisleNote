@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import * as React from 'react'
 import type {
   DiagnosticLogDisplayLimit,
   DiagnosticLogEntry,
@@ -41,7 +41,7 @@ type MessagesViewProps = {
   onDiagnosticCaptureEnabledChange?: (enabled: boolean) => void
   onOpenDiagnosticsFolder?: () => void
   onDismissMessage: (messageId: string) => void
-  onOpenRecoveredNotebookLocation: (message: AppMessage) => void
+  onOpenRecoveredNotebookLocation?: (message: AppMessage) => void
   onOpenLocation: (location: NoteLocation) => void
 }
 
@@ -117,8 +117,8 @@ const EDITOR_ABLATION_MODE_DESCRIPTIONS: Record<EditorAblationMode, string> = {
 
 function EditorDevMessagesSection() {
   const editorAblationEnabled = isEditorAblationEnabled()
-  const [mode, setMode] = useState<EditorAblationMode>(() => readEditorAblationMode())
-  const [status, setStatus] = useState('')
+  const [mode, setMode] = React.useState<EditorAblationMode>(() => readEditorAblationMode())
+  const [status, setStatus] = React.useState('')
 
   if (!editorAblationEnabled) {
     return (
@@ -443,7 +443,8 @@ export function MessagesView({
                     ))}
                   </div>
                 ) : null}
-                {message.type === 'storage-notebook-recovered' &&
+                {onOpenRecoveredNotebookLocation &&
+                message.type === 'storage-notebook-recovered' &&
                 message.failedNotebookPath &&
                 message.failedNotebookAvailable !== false ? (
                   <div className="message-actions">

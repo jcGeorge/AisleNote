@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
@@ -13,14 +14,26 @@ import '@toast-ui/editor/dist/toastui-editor.css'
 import type {
   AppState,
   AppTheme,
+  AboutSection,
   CustomThemeId,
   CustomThemePaletteSlot,
+  DataSettingsSection,
   FrontmatterData,
+  FrontmatterTemplate,
+  FrontmatterTemplateField,
+  MessagesSection,
   NoteAisle,
   NoteAisleBody,
   NoteBody,
   NotebookTreeItem,
+  NewlineOperationId,
+  NewlineShortcutId,
   ResolvedNoteAisle,
+  SettingsSection,
+  ShortcutId,
+  TableControlTargetMode,
+  TableOfContentsScope,
+  TipId,
   ViewMode,
 } from '../types/app'
 import {
@@ -30,6 +43,12 @@ import {
   syncNoteAisleBodyMarkdownInState,
 } from '../notes/aisle-body-state'
 import {
+  FRONTMATTER_FIELD_TYPES,
+  getFrontmatterComputedValuesForFieldType,
+  getFrontmatterDatePickerValue,
+  getFrontmatterDatetimePickerValue,
+  getFrontmatterDraftValueForType,
+  isFrontmatterComputedValueCompatibleWithFieldType,
   parseFrontmatterYaml,
   stringifyFrontmatterYaml,
 } from '../frontmatter/frontmatter'
@@ -38,17 +57,61 @@ import {
   filterNoteSearchEntries,
   listSearchableNoteLocations,
 } from '../notes/note-locations'
-import { getAisleIdFromAisleEditorKey } from '../editor/aisle-editor'
-import { DEFAULT_TOOLBAR_LAYOUT_ID, resolveToolbarLayout } from '../editor/toolbar-layouts'
+import { buildAisleEditorKey, getAisleIdFromAisleEditorKey } from '../editor/aisle-editor'
+import {
+  DEFAULT_TOOLBAR_LAYOUT_ID,
+  createCustomToolbarLayout,
+  createToolbarSpacerItem,
+  createToolbarToolItem,
+  getDefaultToolbarLayout,
+  getDuplicateToolbarLayoutName,
+  getNextCoolbarToolbarLayoutName,
+  getToolbarLayouts,
+  insertToolbarLayoutItemAtIndex,
+  isProtectedToolbarLayoutId,
+  isToolbarToolId,
+  moveToolbarLayoutItem,
+  moveToolbarLayoutItemToIndex,
+  normalizeToolbarLayouts,
+  removeToolbarLayout,
+  removeToolbarLayoutItem,
+  resolveToolbarLayout,
+  resolveToolbarLayoutId,
+  updateToolbarLayout,
+} from '../editor/toolbar-layouts'
 import { resetAisleWidthForLocation, setAisleWidthForLocation } from '../notes/aisle-widths'
 import { NoteWorkspace } from '../components/notes/NoteWorkspace'
 import { SharedEditorToolbar } from '../components/editor/SharedEditorToolbar'
 import { EditorToolbarPopovers } from '../components/editor/EditorToolbarPopovers'
 import { TableControlsOverlay } from '../components/editor/TableControlsOverlay'
 import { AisleEditModal } from '../components/notes/AisleEditModal'
+import {
+  NotebookEditorContextMenu,
+  getNotebookEditorContextMenuAisleIdFromTarget,
+  type NotebookEditorAisleInsertSide,
+  type NotebookEditorClipboardAction,
+  type NotebookEditorContextMenuState,
+  type NotebookEditorPasteDestination,
+} from '../components/overlays/NotebookEditorContextMenu'
+import { AppIcon } from '../components/icons/AppIcon'
+import { AboutView } from '../components/about/AboutView'
+import { MessagesView } from '../components/messages/MessagesView'
+import { ToolbarSettingsPanel } from '../components/settings/ToolbarSettingsPanel'
+import { ShortcutMenuSettingsPanel } from '../components/settings/ShortcutMenuSettingsPanel'
 import { useEditorToolbarState } from '../editor/useEditorToolbarState'
 import { useNotebookAisleEditors } from '../editor/useNotebookAisleEditors'
 import { useTableControls } from '../editor/useTableControls'
+import {
+  DEFAULT_SHORTCUTS,
+  NEWLINE_OPERATIONS,
+  NEWLINE_OPERATION_LABELS,
+  buildShortcutFromKeyboardEvent,
+  formatFixedNewlineShortcutLabel,
+  formatShortcutLabel,
+  normalizeHotkeySettings,
+} from '../hotkeys/shortcuts'
+import { useNotebookHotkeys } from '../hotkeys/useNotebookHotkeys'
+import { getTipDefinition } from '../tips/tips'
 import {
   buildTableOfContentsPanels,
   TABLE_OF_CONTENTS_EMPTY_MESSAGE,
@@ -57,6 +120,7 @@ import {
 import { MAX_AISLE_WARNING_MESSAGE, MAX_NOTE_AISLES } from '../editor/aisle-edit-draft'
 import { parseSavedState } from '../state/app-state'
 import { createRandomId, createReservedIdAllocator } from '../state/navigation-ids'
+import { usePersistentAppState } from '../storage/usePersistentAppState'
 import {
   BUILT_IN_THEME_PALETTE_SEEDS,
   CUSTOM_THEME_IDS,
@@ -85,11 +149,20 @@ import {
   renameNotebookItem,
   restoreDeletedNotebookItemInState,
 } from '../state/notebook'
+import {
+  DEFAULT_SCRATCHPAD_AISLE_LIMIT,
+  MAX_SCRATCHPAD_AISLE_LIMIT,
+  MIN_SCRATCHPAD_AISLE_LIMIT,
+  clampScratchpadAisleLimit,
+} from '../state/scratchpad-limits'
+import {
+  applyNotebookEditorMarkdownSnapshotsToState,
+  commitNotebookAisleMarkdownInState,
+} from './notebook-editor-persistence'
 
-const BROWSER_STATE_KEY = 'tabs:app-state-cache:v2'
-const SAVE_DELAY_MS = 350
 const SIDEBAR_MIN_WIDTH = 220
 const SIDEBAR_MAX_WIDTH = 520
+const NOTEBOOK_FOCUS_BOUNDARY_FLUSH_DELAY_MS = 60
 
 const THEME_LABELS: Record<AppTheme, string> = {
   dark: 'Dark',
@@ -100,9 +173,96 @@ const THEME_LABELS: Record<AppTheme, string> = {
   custom3: 'Custom 3',
 }
 
-type LoadedState = {
-  state: AppState
-  revision: number
+const ACTIVE_TOOLBAR_LAYOUT_STORAGE_KEY = 'tabs:notebook-active-toolbar-layout:v1'
+
+const UTILITY_VIEW_MODES = ['settings', 'messages', 'about', 'trash'] as const
+type UtilityViewMode = typeof UTILITY_VIEW_MODES[number]
+
+const SETTINGS_SECTION_TABS: Array<{ id: SettingsSection; label: string }> = [
+  { id: 'data', label: 'Data' },
+  { id: 'visuals', label: 'Themes' },
+  { id: 'toolbar', label: 'Toolbar' },
+  { id: 'hotkeys', label: 'Hotkeys' },
+  { id: 'shortcuts', label: 'Shortcuts' },
+  { id: 'frontmatter', label: 'Frontmatter' },
+  { id: 'misc', label: 'Misc' },
+  { id: 'tips', label: 'Tips' },
+]
+
+const DATA_SECTION_TABS: Array<{ id: DataSettingsSection; label: string }> = [
+  { id: 'transfer', label: 'Transfer' },
+  { id: 'storage', label: 'Storage' },
+  { id: 'trash', label: 'Trash' },
+]
+
+const MESSAGE_SECTION_TABS: Array<{ id: MessagesSection; label: string }> = [
+  { id: 'inbox', label: 'Inbox' },
+  { id: 'toast-history', label: 'Toast history' },
+  { id: 'diagnostics', label: 'Diagnostics' },
+]
+
+const ABOUT_SECTION_TABS: Array<{ id: AboutSection; label: string }> = [
+  { id: 'home', label: 'About' },
+  { id: 'tooltip-sources', label: 'Tooltip sources' },
+]
+
+const HOTKEY_ROWS: Array<{ id: ShortcutId; label: string }> = [
+  { id: 'openSettings', label: 'Open settings' },
+  { id: 'toggleNotesTrash', label: 'Toggle notes / trash' },
+  { id: 'toggleNotesFilter', label: 'Toggle filter' },
+  { id: 'newNote', label: 'New note' },
+  { id: 'newFolder', label: 'New folder' },
+  { id: 'formatStrikethrough', label: 'Strikethrough' },
+  { id: 'cycleAislePrev', label: 'Previous aisle' },
+  { id: 'cycleAisleNext', label: 'Next aisle' },
+]
+
+const NEWLINE_SHORTCUT_ROWS: Array<{ id: NewlineShortcutId; label: string }> = [
+  { id: 'controlEnter', label: 'Control enter' },
+  { id: 'shiftEnter', label: 'Shift enter' },
+  { id: 'commandEnter', label: 'Command enter' },
+]
+
+const TABLE_TARGET_OPTIONS: Array<{ id: TableControlTargetMode; label: string }> = [
+  { id: 'active-cell', label: 'Active cell' },
+  { id: 'bottom-right', label: 'Bottom right' },
+]
+
+const TABLE_OF_CONTENTS_SCOPE_OPTIONS: Array<{ id: TableOfContentsScope; label: string }> = [
+  { id: 'all-aisles', label: 'All aisles' },
+  { id: 'focused-aisle', label: 'Focused aisle' },
+]
+
+const SETTINGS_SECTION_SET = new Set<SettingsSection>(SETTINGS_SECTION_TABS.map((tab) => tab.id))
+const DATA_SECTION_SET = new Set<DataSettingsSection>(DATA_SECTION_TABS.map((tab) => tab.id))
+
+function isUtilityViewMode(viewMode: ViewMode): viewMode is UtilityViewMode {
+  return (UTILITY_VIEW_MODES as readonly string[]).includes(viewMode)
+}
+
+function loadNotebookActiveToolbarLayoutId(): string {
+  try {
+    return window.localStorage?.getItem(ACTIVE_TOOLBAR_LAYOUT_STORAGE_KEY)?.trim() || DEFAULT_TOOLBAR_LAYOUT_ID
+  } catch {
+    return DEFAULT_TOOLBAR_LAYOUT_ID
+  }
+}
+
+function saveNotebookActiveToolbarLayoutId(layoutId: string): void {
+  try {
+    window.localStorage?.setItem(ACTIVE_TOOLBAR_LAYOUT_STORAGE_KEY, layoutId.trim() || DEFAULT_TOOLBAR_LAYOUT_ID)
+  } catch {
+    // Device-local toolbar choice should not block the app.
+  }
+}
+
+function createFrontmatterTemplateId(): string {
+  return createRandomId()
+}
+
+function isFrontmatterBooleanTrue(value: string) {
+  const normalized = value.trim().toLowerCase()
+  return normalized === 'true' || normalized === 'yes' || normalized === 'on' || normalized === '1'
 }
 
 type ActiveNoteModel = {
@@ -131,57 +291,6 @@ type NotebookFrontmatterModalState = {
   aisleId: string
   aisleBodyId: string
   initialYaml: string
-}
-
-function loadInitialState(): LoadedState {
-  try {
-    const result = window.electronAPI?.loadAppStateResult?.()
-    if (result?.ok) {
-      return {
-        state: parseSavedState(result.serializedState),
-        revision: result.revision,
-      }
-    }
-    if (result && !result.ok) {
-      return {
-        state: parseSavedState(null),
-        revision: result.revision,
-      }
-    }
-  } catch {
-    // Fall through to browser cache.
-  }
-
-  try {
-    return {
-      state: parseSavedState(localStorage.getItem(BROWSER_STATE_KEY)),
-      revision: 0,
-    }
-  } catch {
-    return {
-      state: parseSavedState(null),
-      revision: 0,
-    }
-  }
-}
-
-function saveSerializedState(serializedState: string, revision: number): number {
-  try {
-    if (window.electronAPI?.saveAppState) {
-      const result = window.electronAPI.saveAppState({ serializedState, baseRevision: revision })
-      if (result?.ok) return result.revision
-      return typeof result?.currentRevision === 'number' ? result.currentRevision : revision
-    }
-  } catch {
-    // Browser cache fallback keeps development usable if Electron save fails.
-  }
-
-  try {
-    localStorage.setItem(BROWSER_STATE_KEY, serializedState)
-  } catch {
-    // Local cache writes are best-effort in the browser.
-  }
-  return revision
 }
 
 function getActiveNoteModel(state: AppState): ActiveNoteModel | null {
@@ -508,7 +617,7 @@ function NotebookAisleContextMenu({
   onDecoupleNote: () => void
   onDecoupleAisle: () => void
 }) {
-  if (!menu) return null
+  if (!menu || (!canDecoupleNote && !canDecoupleAisle)) return null
   return (
     <div
       className="tab-context-menu"
@@ -528,7 +637,7 @@ function NotebookAisleContextMenu({
         >
           De-couple note
         </button>
-      ) : canDecoupleAisle ? (
+      ) : (
         <button
           type="button"
           className="tab-context-delete"
@@ -538,10 +647,6 @@ function NotebookAisleContextMenu({
           }}
         >
           De-couple aisle
-        </button>
-      ) : (
-        <button type="button" className="tab-context-delete" disabled>
-          No synced item
         </button>
       )}
     </div>
@@ -606,6 +711,40 @@ function NotebookFrontmatterModal({
           </button>
         </footer>
       </section>
+    </div>
+  )
+}
+
+function NotebookSettingsSwitch({
+  label,
+  description,
+  checked,
+  onChange,
+  id,
+}: {
+  label: string
+  description?: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+  id?: string
+}) {
+  return (
+    <div className="settings-hotkey-row notebook-settings-switch-row">
+      <div className="settings-tip-copy">
+        <span className="settings-hotkey-label">{label}</span>
+        {description ? <span className="settings-help">{description}</span> : null}
+      </div>
+      <div className="form-check form-switch settings-switch">
+        <input
+          id={id}
+          className="form-check-input"
+          type="checkbox"
+          role="switch"
+          checked={checked}
+          aria-label={label}
+          onChange={(event) => onChange(event.target.checked)}
+        />
+      </div>
     </div>
   )
 }
@@ -778,36 +917,43 @@ function NotebookThemeSettings({
 }
 
 export function NotebookApp() {
-  const loadedStateRef = useRef<LoadedState | null>(null)
-  if (!loadedStateRef.current) loadedStateRef.current = loadInitialState()
-  const [state, setState] = useState<AppState>(loadedStateRef.current.state)
+  const { state, setState, stateRef, commitAppStateNow } = usePersistentAppState()
   const [viewMode, setViewMode] = useState<ViewMode>('main')
+  const [settingsSection, setSettingsSectionState] = useState<SettingsSection>(() =>
+    SETTINGS_SECTION_SET.has(state.ui.settingsSection) ? state.ui.settingsSection : 'data',
+  )
+  const [dataSettingsSection, setDataSettingsSectionState] = useState<DataSettingsSection>(() =>
+    DATA_SECTION_SET.has(state.ui.dataSettingsSection ?? 'transfer') ? state.ui.dataSettingsSection ?? 'transfer' : 'transfer',
+  )
+  const [messagesSection, setMessagesSection] = useState<MessagesSection>('inbox')
+  const [aboutSection, setAboutSection] = useState<AboutSection>('home')
+  const [activeToolbarLayoutId, setActiveToolbarLayoutIdState] = useState(loadNotebookActiveToolbarLayoutId)
+  const [toolbarEditorLayoutId, setToolbarEditorLayoutId] = useState(activeToolbarLayoutId)
   const [query, setQuery] = useState('')
   const [activeAisleId, setActiveAisleId] = useState('')
   const [aisleContextMenu, setAisleContextMenu] = useState<NotebookAisleContextMenuState | null>(null)
+  const [editorContextMenu, setEditorContextMenu] = useState<NotebookEditorContextMenuState | null>(null)
   const [aisleEditModalOpen, setAisleEditModalOpen] = useState(false)
   const [frontmatterModal, setFrontmatterModal] = useState<NotebookFrontmatterModalState | null>(null)
+  const [frontmatterDraft, setFrontmatterDraft] = useState<AppState['frontmatter']>(() => state.frontmatter)
+  const [editingShortcut, setEditingShortcut] = useState<ShortcutId | null>(null)
+  const [shortcutMenuSettingsOpen, setShortcutMenuSettingsOpen] = useState(false)
   const [tableOfContentsPanels, setTableOfContentsPanels] = useState<TableOfContentsPanelsState | null>(null)
-  const revisionRef = useRef(loadedStateRef.current.revision)
-  const stateRef = useRef(state)
-  const saveTimerRef = useRef<number | null>(null)
-  const hasMountedRef = useRef(false)
   const aisleScrollRef = useRef<HTMLDivElement | null>(null)
   const workspaceRootRef = useRef<HTMLElement | null>(null)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const editorRef = useRef<Editor | null>(null)
+  const frontmatterStateSnapshotRef = useRef(state.frontmatter)
   const sidebarResizeRef = useRef<{
     pointerId: number
     startClientX: number
     startWidth: number
   } | null>(null)
-
-  useEffect(() => {
-    stateRef.current = state
-  }, [state])
+  const isMacPlatform = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
 
   const toolbarState = useEditorToolbarState({
     viewMode,
-    isMacPlatform: /Mac|iPhone|iPad|iPod/i.test(navigator.platform),
+    isMacPlatform,
     editorRef,
     stateRef,
   })
@@ -824,10 +970,6 @@ export function NotebookApp() {
     if (activeModel.resolved.aisles.some((aisle) => aisle.id === activeAisleId)) return activeAisleId
     return activeModel.resolved.aisles[0]?.id ?? ''
   }, [activeAisleId, activeModel])
-  const activeAisle = useMemo(
-    () => activeModel?.resolved.aisles.find((aisle) => aisle.id === renderedActiveAisleId) ?? null,
-    [activeModel, renderedActiveAisleId],
-  )
   const aisleBodyReferenceCounts = useMemo(() => getAisleBodyReferenceCounts(state.noteBodies), [state.noteBodies])
   const linkedAisleIds = useMemo(() => {
     if (!activeModel) return new Set<string>()
@@ -858,38 +1000,20 @@ export function NotebookApp() {
     [state],
   )
   const toolbarLayout = useMemo(
-    () => resolveToolbarLayout(state.ui.toolbarLayouts, DEFAULT_TOOLBAR_LAYOUT_ID),
-    [state.ui.toolbarLayouts],
+    () => resolveToolbarLayout(state.ui.toolbarLayouts, activeToolbarLayoutId),
+    [activeToolbarLayoutId, state.ui.toolbarLayouts],
   )
+  const toolbarLayouts = useMemo(() => getToolbarLayouts(state.ui.toolbarLayouts), [state.ui.toolbarLayouts])
+  const normalizedHotkeys = useMemo(() => normalizeHotkeySettings(state.hotkeys), [state.hotkeys])
   const activeAisleWidthLocationKey = activeModel ? buildNoteLocationKey({ noteId: activeModel.noteId }) : ''
   const activeAisleWidths = activeAisleWidthLocationKey ? state.ui.aisleWidths?.[activeAisleWidthLocationKey] ?? {} : {}
-  const canDecoupleActiveAisle = Boolean(
-    activeAisle && !activeModel?.linked && (aisleBodyReferenceCounts.get(activeAisle.aisleBodyId) ?? 0) > 1,
+  const canDecoupleAisleById = useCallback(
+    (aisleId: string) => {
+      const aisle = activeModel?.resolved.aisles.find((candidate) => candidate.id === aisleId)
+      return Boolean(aisle && !activeModel?.linked && (aisleBodyReferenceCounts.get(aisle.aisleBodyId) ?? 0) > 1)
+    },
+    [activeModel, aisleBodyReferenceCounts],
   )
-
-  const flushSave = useCallback((nextState: AppState) => {
-    const serializedState = JSON.stringify(nextState)
-    revisionRef.current = saveSerializedState(serializedState, revisionRef.current)
-  }, [])
-
-  useEffect(() => {
-    if (!hasMountedRef.current) {
-      hasMountedRef.current = true
-      return undefined
-    }
-    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = window.setTimeout(() => {
-      saveTimerRef.current = null
-      flushSave(state)
-    }, SAVE_DELAY_MS)
-    return undefined
-  }, [flushSave, state])
-
-  useEffect(() => {
-    const flushOnUnload = () => flushSave(state)
-    window.addEventListener('beforeunload', flushOnUnload)
-    return () => window.removeEventListener('beforeunload', flushOnUnload)
-  }, [flushSave, state])
 
   useEffect(() => {
     if (!activeModel) return
@@ -902,9 +1026,270 @@ export function NotebookApp() {
     setState((previous) => updater(previous))
   }, [])
 
+  const setActiveToolbarLayoutId = useCallback((layoutId: string) => {
+    const nextLayoutId = layoutId.trim() || DEFAULT_TOOLBAR_LAYOUT_ID
+    setActiveToolbarLayoutIdState(nextLayoutId)
+    saveNotebookActiveToolbarLayoutId(nextLayoutId)
+  }, [])
+
+  useEffect(() => {
+    const nextLayoutId = resolveToolbarLayoutId(state.ui.toolbarLayouts, activeToolbarLayoutId)
+    if (nextLayoutId === activeToolbarLayoutId) return
+    setActiveToolbarLayoutId(nextLayoutId)
+    setToolbarEditorLayoutId(nextLayoutId)
+  }, [activeToolbarLayoutId, setActiveToolbarLayoutId, state.ui.toolbarLayouts])
+
+  useEffect(() => {
+    const nextSection = SETTINGS_SECTION_SET.has(state.ui.settingsSection) ? state.ui.settingsSection : 'data'
+    setSettingsSectionState(nextSection)
+    const nextDataSection = DATA_SECTION_SET.has(state.ui.dataSettingsSection ?? 'transfer')
+      ? state.ui.dataSettingsSection ?? 'transfer'
+      : 'transfer'
+    setDataSettingsSectionState(nextDataSection)
+  }, [state.ui.dataSettingsSection, state.ui.settingsSection])
+
+  useEffect(() => {
+    if (JSON.stringify(frontmatterDraft) === JSON.stringify(frontmatterStateSnapshotRef.current)) {
+      setFrontmatterDraft(state.frontmatter)
+    }
+    frontmatterStateSnapshotRef.current = state.frontmatter
+  }, [frontmatterDraft, state.frontmatter])
+
+  const openUtilityView = useCallback((targetViewMode: UtilityViewMode = 'settings') => {
+    setViewMode(targetViewMode)
+  }, [])
+
+  const setSettingsSection = useCallback(
+    (section: SettingsSection) => {
+      setSettingsSectionState(section)
+      mutateState((previous) => ({
+        ...previous,
+        ui: {
+          ...previous.ui,
+          settingsSection: section,
+        },
+      }))
+    },
+    [mutateState],
+  )
+
+  const setDataSettingsSection = useCallback(
+    (section: DataSettingsSection) => {
+      setDataSettingsSectionState(section)
+      mutateState((previous) => ({
+        ...previous,
+        ui: {
+          ...previous.ui,
+          dataSettingsSection: section,
+        },
+      }))
+    },
+    [mutateState],
+  )
+
+  const commitToolbarLayouts = useCallback(
+    (buildNextLayouts: (layouts: AppState['ui']['toolbarLayouts']) => AppState['ui']['toolbarLayouts']) => {
+      mutateState((previous) => ({
+        ...previous,
+        ui: {
+          ...previous.ui,
+          toolbarLayouts: normalizeToolbarLayouts(buildNextLayouts(previous.ui.toolbarLayouts)),
+        },
+      }))
+    },
+    [mutateState],
+  )
+
+  const selectToolbarLayoutForEditing = useCallback(
+    (layoutId: string) => {
+      const nextLayoutId = getToolbarLayouts(stateRef.current.ui.toolbarLayouts).some((layout) => layout.id === layoutId)
+        ? layoutId
+        : DEFAULT_TOOLBAR_LAYOUT_ID
+      setToolbarEditorLayoutId(nextLayoutId)
+      setActiveToolbarLayoutId(nextLayoutId)
+    },
+    [setActiveToolbarLayoutId, stateRef],
+  )
+
+  const createToolbarLayoutSetting = useCallback(() => {
+    const layouts = getToolbarLayouts(stateRef.current.ui.toolbarLayouts)
+    const layout = createCustomToolbarLayout(getNextCoolbarToolbarLayoutName(layouts), getDefaultToolbarLayout().items)
+    commitToolbarLayouts((currentLayouts) => [...normalizeToolbarLayouts(currentLayouts), layout])
+    setToolbarEditorLayoutId(layout.id)
+    setActiveToolbarLayoutId(layout.id)
+  }, [commitToolbarLayouts, setActiveToolbarLayoutId, stateRef])
+
+  const duplicateToolbarLayoutSetting = useCallback(
+    (layoutId: string) => {
+      const layouts = getToolbarLayouts(stateRef.current.ui.toolbarLayouts)
+      const source = layouts.find((layout) => layout.id === layoutId) ?? getDefaultToolbarLayout()
+      const layout = createCustomToolbarLayout(getDuplicateToolbarLayoutName(source.name, layouts), source.items)
+      commitToolbarLayouts((currentLayouts) => [...normalizeToolbarLayouts(currentLayouts), layout])
+      setToolbarEditorLayoutId(layout.id)
+      setActiveToolbarLayoutId(layout.id)
+    },
+    [commitToolbarLayouts, setActiveToolbarLayoutId, stateRef],
+  )
+
+  const renameToolbarLayoutSetting = useCallback(
+    (layoutId: string, name: string) => {
+      if (isProtectedToolbarLayoutId(layoutId)) return
+      commitToolbarLayouts((layouts) =>
+        updateToolbarLayout(layouts, layoutId, (layout) => ({
+          ...layout,
+          name: name.trim() || 'toolbar',
+        })),
+      )
+    },
+    [commitToolbarLayouts],
+  )
+
+  const deleteToolbarLayoutSetting = useCallback(
+    (layoutId: string) => {
+      if (isProtectedToolbarLayoutId(layoutId)) return
+      commitToolbarLayouts((layouts) => removeToolbarLayout(layouts, layoutId))
+      if (toolbarEditorLayoutId === layoutId) setToolbarEditorLayoutId(DEFAULT_TOOLBAR_LAYOUT_ID)
+      if (activeToolbarLayoutId === layoutId) setActiveToolbarLayoutId(DEFAULT_TOOLBAR_LAYOUT_ID)
+    },
+    [activeToolbarLayoutId, commitToolbarLayouts, setActiveToolbarLayoutId, toolbarEditorLayoutId],
+  )
+
+  const addToolbarToolSetting = useCallback(
+    (layoutId: string, toolId: string, targetIndex?: number) => {
+      if (isProtectedToolbarLayoutId(layoutId) || !isToolbarToolId(toolId)) return
+      commitToolbarLayouts((layouts) =>
+        updateToolbarLayout(layouts, layoutId, (layout) => ({
+          ...layout,
+          items: insertToolbarLayoutItemAtIndex(
+            layout.items,
+            createToolbarToolItem(toolId),
+            typeof targetIndex === 'number' ? targetIndex : layout.items.length,
+          ),
+        })),
+      )
+    },
+    [commitToolbarLayouts],
+  )
+
+  const addToolbarSpacerSetting = useCallback(
+    (layoutId: string, targetIndex?: number) => {
+      if (isProtectedToolbarLayoutId(layoutId)) return
+      commitToolbarLayouts((layouts) =>
+        updateToolbarLayout(layouts, layoutId, (layout) => ({
+          ...layout,
+          items: insertToolbarLayoutItemAtIndex(
+            layout.items,
+            createToolbarSpacerItem(),
+            typeof targetIndex === 'number' ? targetIndex : layout.items.length,
+          ),
+        })),
+      )
+    },
+    [commitToolbarLayouts],
+  )
+
+  const removeToolbarItemSetting = useCallback(
+    (layoutId: string, itemId: string) => {
+      if (isProtectedToolbarLayoutId(layoutId)) return
+      commitToolbarLayouts((layouts) =>
+        updateToolbarLayout(layouts, layoutId, (layout) => ({
+          ...layout,
+          items: removeToolbarLayoutItem(layout.items, itemId),
+        })),
+      )
+    },
+    [commitToolbarLayouts],
+  )
+
+  const moveToolbarItemSetting = useCallback(
+    (layoutId: string, itemId: string, direction: 'up' | 'down') => {
+      if (isProtectedToolbarLayoutId(layoutId)) return
+      commitToolbarLayouts((layouts) =>
+        updateToolbarLayout(layouts, layoutId, (layout) => ({
+          ...layout,
+          items: moveToolbarLayoutItem(layout.items, itemId, direction),
+        })),
+      )
+    },
+    [commitToolbarLayouts],
+  )
+
+  const moveToolbarItemToIndexSetting = useCallback(
+    (layoutId: string, itemId: string, targetIndex: number) => {
+      if (isProtectedToolbarLayoutId(layoutId)) return
+      commitToolbarLayouts((layouts) =>
+        updateToolbarLayout(layouts, layoutId, (layout) => ({
+          ...layout,
+          items: moveToolbarLayoutItemToIndex(layout.items, itemId, targetIndex),
+        })),
+      )
+    },
+    [commitToolbarLayouts],
+  )
+
+  const updateShortcutSetting = useCallback(
+    (shortcutId: ShortcutId, value: string) => {
+      mutateState((previous) => {
+        const hotkeys = normalizeHotkeySettings(previous.hotkeys)
+        return {
+          ...previous,
+          hotkeys: {
+            ...hotkeys,
+            shortcuts: {
+              ...hotkeys.shortcuts,
+              [shortcutId]: value,
+            },
+          },
+        }
+      })
+    },
+    [mutateState],
+  )
+
+  const updateNewlineShortcutSetting = useCallback(
+    (shortcutId: NewlineShortcutId, operation: NewlineOperationId) => {
+      mutateState((previous) => {
+        const hotkeys = normalizeHotkeySettings(previous.hotkeys)
+        return {
+          ...previous,
+          hotkeys: {
+            ...hotkeys,
+            newlineShortcuts: {
+              ...hotkeys.newlineShortcuts,
+              shortcuts: {
+                ...hotkeys.newlineShortcuts.shortcuts,
+                [shortcutId]: operation,
+              },
+            },
+          },
+        }
+      })
+    },
+    [mutateState],
+  )
+
+  const updateShortcutMenuOperationsSetting = useCallback(
+    (operations: NewlineOperationId[]) => {
+      mutateState((previous) => {
+        const hotkeys = normalizeHotkeySettings(previous.hotkeys)
+        return {
+          ...previous,
+          hotkeys: {
+            ...hotkeys,
+            newlineShortcuts: {
+              ...hotkeys.newlineShortcuts,
+              menuOperations: operations,
+            },
+          },
+        }
+      })
+    },
+    [mutateState],
+  )
+
   const commitAisleMarkdown = useCallback(
     (aisleBodyId: string, markdown: string) => {
-      mutateState((previous) => syncNoteAisleBodyMarkdownInState(previous, aisleBodyId, markdown))
+      mutateState((previous) => commitNotebookAisleMarkdownInState(previous, aisleBodyId, markdown))
     },
     [mutateState],
   )
@@ -921,6 +1306,59 @@ export function NotebookApp() {
     commitAisleMarkdown,
     scheduleToolbarFormatStateSync: toolbarState.scheduleToolbarFormatStateSync,
   })
+
+  const focusBoundaryFlushTimerRef = useRef<number | null>(null)
+
+  const clearNotebookFocusBoundaryFlush = useCallback(() => {
+    if (focusBoundaryFlushTimerRef.current === null) return
+    window.clearTimeout(focusBoundaryFlushTimerRef.current)
+    focusBoundaryFlushTimerRef.current = null
+  }, [])
+
+  const flushNotebookPersistenceNow = useCallback((eventName: 'blur' | 'visibilitychange' | 'beforeunload' | 'pagehide') => {
+    clearNotebookFocusBoundaryFlush()
+    const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
+    const latestState = applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots)
+    void commitAppStateNow(latestState, {
+      preferSync: eventName === 'beforeunload' || eventName === 'pagehide',
+      flushQueue: true,
+      trigger: `notebook-editor-focus-boundary:${eventName}`,
+      pendingEditorCount: snapshots.length,
+    })
+  }, [clearNotebookFocusBoundaryFlush, commitAppStateNow, notebookEditors, stateRef])
+
+  const scheduleNotebookFocusBoundaryFlush = useCallback((eventName: 'blur' | 'visibilitychange') => {
+    if (eventName === 'visibilitychange' && document.visibilityState !== 'hidden') return
+    if (focusBoundaryFlushTimerRef.current !== null) return
+    focusBoundaryFlushTimerRef.current = window.setTimeout(() => {
+      focusBoundaryFlushTimerRef.current = null
+      flushNotebookPersistenceNow(eventName)
+    }, NOTEBOOK_FOCUS_BOUNDARY_FLUSH_DELAY_MS)
+  }, [flushNotebookPersistenceNow])
+
+  useEffect(() => {
+    const flushOnExit = (event: PageTransitionEvent | Event) => {
+      flushNotebookPersistenceNow(event.type === 'pagehide' ? 'pagehide' : 'beforeunload')
+    }
+    window.addEventListener('beforeunload', flushOnExit)
+    window.addEventListener('pagehide', flushOnExit)
+    return () => {
+      window.removeEventListener('beforeunload', flushOnExit)
+      window.removeEventListener('pagehide', flushOnExit)
+    }
+  }, [flushNotebookPersistenceNow])
+
+  useEffect(() => {
+    const flushOnWindowBlur = () => scheduleNotebookFocusBoundaryFlush('blur')
+    const flushOnHidden = () => scheduleNotebookFocusBoundaryFlush('visibilitychange')
+    window.addEventListener('blur', flushOnWindowBlur)
+    document.addEventListener('visibilitychange', flushOnHidden)
+    return () => {
+      window.removeEventListener('blur', flushOnWindowBlur)
+      document.removeEventListener('visibilitychange', flushOnHidden)
+      clearNotebookFocusBoundaryFlush()
+    }
+  }, [clearNotebookFocusBoundaryFlush, scheduleNotebookFocusBoundaryFlush])
 
   const tableControlsController = useTableControls({
     visible: viewMode === 'main' && !aisleEditModalOpen,
@@ -1002,6 +1440,9 @@ export function NotebookApp() {
 
   const permanentlyDeleteDeletedItem = useCallback(
     (deletedItemId: string) => {
+      if (!window.confirm('Permanently delete this item? This cannot be undone.')) {
+        return
+      }
       mutateState((previous) =>
         pruneUnreferencedBodies({
           ...previous,
@@ -1029,6 +1470,18 @@ export function NotebookApp() {
     [mutateState],
   )
 
+  const toggleNotesTrashFromShortcut = useCallback(() => {
+    setViewMode((previous) => (previous === 'trash' ? 'main' : 'trash'))
+  }, [])
+
+  const focusNotesFilterFromShortcut = useCallback(() => {
+    setViewMode('main')
+    window.setTimeout(() => {
+      searchInputRef.current?.focus()
+      searchInputRef.current?.select()
+    }, 0)
+  }, [])
+
   const toggleFolder = useCallback(
     (folderId: string) => {
       mutateState((previous) => {
@@ -1048,14 +1501,14 @@ export function NotebookApp() {
   )
 
   const addAisle = useCallback(
-    (side: 'left' | 'right' | 'end', nearAisleId?: string) => {
+    (side: 'left' | 'right' | 'end', nearAisleId?: string, markdown = '') => {
       if (!activeModel) return
       mutateState((previous) => {
         const notePath = findNotebookNote(previous.notebook.items, activeModel.noteId)
         const body = notePath ? previous.noteBodies.find((candidate) => candidate.id === notePath.note.noteBodyId) : null
         if (!body) return previous
         const idGenerator = createReservedIdAllocator(collectNotebookIds(previous))
-        const { aisle, body: aisleBody } = createNewAisleBody(idGenerator)
+        const { aisle, body: aisleBody } = createNewAisleBody(idGenerator, markdown)
         const activeIndex = body.aisles.findIndex((candidate) => candidate.id === nearAisleId)
         const insertIndex =
           side === 'end'
@@ -1120,6 +1573,40 @@ export function NotebookApp() {
     },
     [activeModel, mutateState],
   )
+
+  const cycleActiveAisle = useCallback(
+    (direction: -1 | 1) => {
+      if (!activeModel || activeModel.resolved.aisles.length === 0) return
+      const currentIndex = activeModel.resolved.aisles.findIndex((aisle) => aisle.id === renderedActiveAisleId)
+      const safeCurrentIndex = currentIndex >= 0 ? currentIndex : 0
+      const nextIndex = (safeCurrentIndex + direction + activeModel.resolved.aisles.length) % activeModel.resolved.aisles.length
+      const nextAisle = activeModel.resolved.aisles[nextIndex]
+      if (!nextAisle) return
+      setActiveAisleId(nextAisle.id)
+      window.setTimeout(() => {
+        notebookEditors.activateAisleEditor(buildAisleEditorKey(activeModel.noteBody.id, nextAisle.id), { focus: true })
+      }, 0)
+    },
+    [activeModel, notebookEditors, renderedActiveAisleId],
+  )
+
+  useNotebookHotkeys({
+    hotkeys: state.hotkeys,
+    isMacPlatform,
+    viewMode,
+    actions: {
+      openSettings: () => openUtilityView('settings'),
+      newNote: createNote,
+      newFolder: createFolder,
+      toggleNotesTrash: toggleNotesTrashFromShortcut,
+      toggleNotesFilter: focusNotesFilterFromShortcut,
+      cycleAislePrev: () => cycleActiveAisle(-1),
+      cycleAisleNext: () => cycleActiveAisle(1),
+      formatStrikethrough: () => {
+        notebookEditors.runCommand('strike')
+      },
+    },
+  })
 
   const createSyncedCopy = useCallback(() => {
     if (!activeModel) return
@@ -1295,6 +1782,7 @@ export function NotebookApp() {
 
   const openCopyMenu = useCallback(() => {
     setAisleContextMenu(null)
+    setEditorContextMenu(null)
     toolbarState.setHeadingMenuOpen(false)
     toolbarState.setCopyMenuOpen((open) => !open)
     toolbarState.refreshToolbarPopoverPosition('copy')
@@ -1302,16 +1790,39 @@ export function NotebookApp() {
 
   const openHeadingMenu = useCallback(() => {
     setAisleContextMenu(null)
+    setEditorContextMenu(null)
     toolbarState.setCopyMenuOpen(false)
     toolbarState.setHeadingMenuOpen((open) => !open)
     toolbarState.refreshToolbarPopoverPosition('heading')
   }, [toolbarState])
 
-  const openAisleContextMenuAt = useCallback((aisleId: string, x: number, y: number) => {
-    setActiveAisleId(aisleId)
-    toolbarState.closeToolbarPopovers()
-    setAisleContextMenu({ aisleId, x, y })
-  }, [toolbarState])
+  const openAisleContextMenuAt = useCallback(
+    (aisleId: string, x: number, y: number) => {
+      if (!activeModel?.linked && !canDecoupleAisleById(aisleId)) {
+        setAisleContextMenu(null)
+        setEditorContextMenu(null)
+        toolbarState.closeToolbarPopovers()
+        return
+      }
+      setActiveAisleId(aisleId)
+      toolbarState.closeToolbarPopovers()
+      setEditorContextMenu(null)
+      setAisleContextMenu({ aisleId, x, y })
+    },
+    [activeModel?.linked, canDecoupleAisleById, toolbarState],
+  )
+
+  const openEditorContextMenuAt = useCallback(
+    (aisleId: string, x: number, y: number) => {
+      if (!activeModel) return
+      setActiveAisleId(aisleId)
+      notebookEditors.activateAisleEditor(buildAisleEditorKey(activeModel.noteBody.id, aisleId))
+      toolbarState.closeToolbarPopovers()
+      setAisleContextMenu(null)
+      setEditorContextMenu({ aisleId, x, y })
+    },
+    [activeModel, notebookEditors, toolbarState],
+  )
 
   const openAisleActionMenu = useCallback(
     (aisleId: string) => {
@@ -1323,17 +1834,15 @@ export function NotebookApp() {
     [openAisleContextMenuAt],
   )
 
-  const openAisleContextMenuFromPointer = useCallback(
+  const openNotebookEditorContextMenuFromPointer = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
       const target = event.target instanceof Element ? event.target : null
-      if (!target || target.closest('.note-shared-toolbar') || target.closest('.tab-context-menu')) return
-      const pane = target.closest<HTMLElement>('.note-aisle-pane')
-      const aisleId = pane?.dataset.aisleId
+      const aisleId = getNotebookEditorContextMenuAisleIdFromTarget(target)
       if (!aisleId) return
       event.preventDefault()
-      openAisleContextMenuAt(aisleId, event.clientX, event.clientY)
+      openEditorContextMenuAt(aisleId, event.clientX, event.clientY)
     },
-    [openAisleContextMenuAt],
+    [openEditorContextMenuAt],
   )
 
   useEffect(() => {
@@ -1348,11 +1857,13 @@ export function NotebookApp() {
         return
       }
       setAisleContextMenu(null)
+      setEditorContextMenu(null)
       toolbarState.closeToolbarPopovers()
     }
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       setAisleContextMenu(null)
+      setEditorContextMenu(null)
       toolbarState.closeToolbarPopovers()
     }
     document.addEventListener('pointerdown', closeFloatingUi)
@@ -1362,6 +1873,39 @@ export function NotebookApp() {
       document.removeEventListener('keydown', closeOnEscape)
     }
   }, [toolbarState])
+
+  useEffect(() => {
+    setAisleContextMenu(null)
+    setEditorContextMenu(null)
+  }, [activeModel?.noteId, viewMode])
+
+  const runEditorContextClipboardAction = useCallback(
+    (
+      action: NotebookEditorClipboardAction,
+      destination: NotebookEditorPasteDestination,
+      aisleId: string,
+    ) => {
+      if (destination === 'here' || action === 'cut' || action === 'copy') {
+        notebookEditors.runClipboardAction(action)
+        return
+      }
+
+      void notebookEditors.readClipboardMarkdownForPaste(action)
+        .then((result) => {
+          if (!result) return
+          addAisle(destination === 'new-aisle-left' ? 'left' : 'right', aisleId, result.markdown)
+        })
+        .catch(() => undefined)
+    },
+    [addAisle, notebookEditors],
+  )
+
+  const insertEditorContextAisle = useCallback(
+    (side: NotebookEditorAisleInsertSide, aisleId: string) => {
+      addAisle(side, aisleId)
+    },
+    [addAisle],
+  )
 
   const startSidebarResize = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -1452,6 +1996,807 @@ export function NotebookApp() {
     />
   ) : null
 
+  const renderSegmentedTabs = <T extends string,>(
+    label: string,
+    tabs: Array<{ id: T; label: string }>,
+    activeId: T,
+    onSelect: (id: T) => void,
+  ) => (
+    <div className="notebook-utility-tabs" role="tablist" aria-label={label}>
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          role="tab"
+          aria-selected={activeId === tab.id}
+          className={activeId === tab.id ? 'is-active' : ''}
+          onClick={() => onSelect(tab.id)}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  )
+
+  const renderDataSettings = () => (
+    <section className="notebook-settings-section" aria-label="Data settings">
+      {renderSegmentedTabs('Data settings sections', DATA_SECTION_TABS, dataSettingsSection, setDataSettingsSection)}
+      {dataSettingsSection === 'transfer' ? (
+        <div className="notebook-settings-stack">
+          <div className="notebook-settings-actions">
+            <button type="button" className="notebook-settings-action" onClick={importNotebook}>
+              Import notebook or Markdown
+            </button>
+            <button type="button" className="notebook-settings-action" onClick={exportNotebook}>
+              Export notebook
+            </button>
+          </div>
+          <p className="notebook-settings-help">
+            Import replaces the current local notebook with a Tabs notebook, notebook ZIP, or Markdown folder.
+          </p>
+        </div>
+      ) : null}
+      {dataSettingsSection === 'storage' ? (
+        <div className="notebook-settings-stack">
+          <div className="notebook-storage-card">
+            <div>
+              <span>Notebook</span>
+              <strong>{activeModel?.folderPath ? activeModel.folderPath : 'Local notebook'}</strong>
+            </div>
+            <div>
+              <span>Storage</span>
+              <strong>{window.electronAPI ? 'Desktop app storage' : 'Browser local storage'}</strong>
+            </div>
+            <div>
+              <span>Notes</span>
+              <strong>{listSearchableNoteLocations(state).length.toLocaleString()}</strong>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {dataSettingsSection === 'trash' ? (
+        <div className="notebook-settings-grid">
+          <label>
+            Auto-remove deleted items after
+            <input
+              type="number"
+              min={1}
+              max={3650}
+              value={state.notebook.settings.autoRemoveDeletedDays}
+              onChange={(event) => {
+                const days = Math.max(1, Math.min(3650, Number(event.target.value) || 1))
+                mutateState((previous) => ({
+                  ...previous,
+                  notebook: {
+                    ...previous.notebook,
+                    settings: {
+                      ...previous.notebook.settings,
+                      autoRemoveDeletedDays: days,
+                    },
+                  },
+                }))
+              }}
+            />
+          </label>
+        </div>
+      ) : null}
+    </section>
+  )
+
+  const renderToolbarSettings = () => (
+    <section className="notebook-settings-section" aria-label="Toolbar settings">
+      <p className="notebook-settings-help">
+        Drag tools and spacers in this editor to customize a layout. The note toolbar itself stays fixed.
+      </p>
+      <ToolbarSettingsPanel
+        toolbarLayouts={toolbarLayouts}
+        toolbarEditorLayoutId={toolbarEditorLayoutId}
+        toolbarEditorShowNames={state.ui.toolbarEditorShowNames ?? false}
+        onSelectToolbarLayout={selectToolbarLayoutForEditing}
+        onCreateToolbarLayout={createToolbarLayoutSetting}
+        onDuplicateToolbarLayout={duplicateToolbarLayoutSetting}
+        onRenameToolbarLayout={renameToolbarLayoutSetting}
+        onDeleteToolbarLayout={deleteToolbarLayoutSetting}
+        onAddToolbarTool={addToolbarToolSetting}
+        onAddToolbarSpacer={addToolbarSpacerSetting}
+        onRemoveToolbarItem={removeToolbarItemSetting}
+        onMoveToolbarItem={moveToolbarItemSetting}
+        onMoveToolbarItemToIndex={moveToolbarItemToIndexSetting}
+        onToolbarEditorShowNamesChange={(enabled) =>
+          mutateState((previous) => ({
+            ...previous,
+            ui: {
+              ...previous.ui,
+              toolbarEditorShowNames: enabled,
+            },
+          }))
+        }
+        onReadOnlyToolbarEditAttempt={() => window.alert('Duplicate the default layout or create a new layout to edit.')}
+      />
+    </section>
+  )
+
+  const handleShortcutRecorderKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, shortcutId: ShortcutId) => {
+    if (editingShortcut !== shortcutId) return
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setEditingShortcut(null)
+      return
+    }
+    const shortcut = buildShortcutFromKeyboardEvent(event.nativeEvent, isMacPlatform)
+    if (!shortcut) return
+    event.preventDefault()
+    updateShortcutSetting(shortcutId, shortcut)
+    setEditingShortcut(null)
+  }
+
+  const renderHotkeySettings = () => (
+    <section className="notebook-settings-section" aria-label="Hotkey settings">
+      <div className="settings-hotkeys-list">
+        {HOTKEY_ROWS.map((row) => {
+          const shortcut = normalizedHotkeys.shortcuts[row.id] ?? DEFAULT_SHORTCUTS[row.id] ?? ''
+          const label = formatShortcutLabel(shortcut, isMacPlatform) || 'unassigned'
+          return (
+            <div className="settings-hotkey-row" key={row.id}>
+              <span className="settings-hotkey-label">{row.label}</span>
+              <button
+                type="button"
+                className={`settings-shortcut-btn ${editingShortcut === row.id ? 'is-recording' : ''}`}
+                onClick={() => setEditingShortcut((current) => (current === row.id ? null : row.id))}
+                onKeyDown={(event) => handleShortcutRecorderKeyDown(event, row.id)}
+              >
+                {editingShortcut === row.id ? 'press keys...' : label}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+      <p className="notebook-settings-help">Select a hotkey to enter a new combination, escape to cancel.</p>
+    </section>
+  )
+
+  const renderShortcutSettings = () => (
+    <section className="notebook-settings-section" aria-label="Shortcut settings">
+      <div className="settings-hotkeys-list">
+        {NEWLINE_SHORTCUT_ROWS.map((row) => (
+          <label className="settings-hotkey-row" key={row.id} htmlFor={`notebook-settings-newline-${row.id}`}>
+            <span className="settings-hotkey-label">{formatFixedNewlineShortcutLabel(row.id, isMacPlatform)}</span>
+            <select
+              id={`notebook-settings-newline-${row.id}`}
+              className="settings-select-input settings-shortcut-select"
+              value={normalizedHotkeys.newlineShortcuts.shortcuts[row.id]}
+              onChange={(event) => updateNewlineShortcutSetting(row.id, event.target.value as NewlineOperationId)}
+            >
+              {NEWLINE_OPERATIONS.map((operation) => (
+                <option key={operation.id} value={operation.id}>
+                  {operation.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+      </div>
+      <div className="settings-divider" />
+      <div className="settings-hotkey-row">
+        <span className="settings-hotkey-label">{NEWLINE_OPERATION_LABELS.operationsMenu}</span>
+        <button
+          type="button"
+          className="btn btn-sm settings-action-btn"
+          onClick={() => setShortcutMenuSettingsOpen((open) => !open)}
+        >
+          {shortcutMenuSettingsOpen ? 'hide' : 'configure'}
+        </button>
+      </div>
+      {shortcutMenuSettingsOpen ? (
+        <ShortcutMenuSettingsPanel
+          operations={normalizedHotkeys.newlineShortcuts.menuOperations}
+          onChange={updateShortcutMenuOperationsSetting}
+        />
+      ) : null}
+      <p className="notebook-settings-help">Numbered menu entries use 1-9, then 0.</p>
+    </section>
+  )
+
+  const renderFrontmatterSettings = () => {
+    const templates = frontmatterDraft.templates
+    const activeTemplate =
+      templates.find((template) => template.id === frontmatterDraft.settingsTemplateId) ?? templates[0] ?? null
+    const frontmatterDraftDirty = JSON.stringify(frontmatterDraft) !== JSON.stringify(state.frontmatter)
+
+    const updateFrontmatterDraft = (update: (frontmatter: AppState['frontmatter']) => AppState['frontmatter']) => {
+      setFrontmatterDraft((previous) => update(previous))
+    }
+
+    const updateFrontmatterTemplate = (templateId: string, patch: Partial<Pick<FrontmatterTemplate, 'name'>>) => {
+      updateFrontmatterDraft((frontmatter) => ({
+        ...frontmatter,
+        templates: frontmatter.templates.map((template) =>
+          template.id === templateId
+            ? {
+                ...template,
+                name: typeof patch.name === 'string' ? patch.name : template.name,
+              }
+            : template,
+        ),
+      }))
+    }
+
+    const updateFrontmatterTemplateField = (
+      templateId: string,
+      fieldId: string,
+      patch: Partial<FrontmatterTemplateField>,
+    ) => {
+      updateFrontmatterDraft((frontmatter) => ({
+        ...frontmatter,
+        templates: frontmatter.templates.map((template) =>
+          template.id === templateId
+            ? {
+                ...template,
+                fields: template.fields.map((field) => {
+                  if (field.id !== fieldId) return field
+                  const requestedKey = typeof patch.key === 'string' ? patch.key.trim() : field.key
+                  const duplicateKey = template.fields.some(
+                    (candidate) => candidate.id !== fieldId && candidate.key.trim() === requestedKey,
+                  )
+                  const nextType = patch.type ?? field.type
+                  const requestedComputed = patch.computed ?? field.computed
+                  const nextDefaultValue = nextType === 'boolean'
+                    ? (isFrontmatterBooleanTrue(patch.defaultValue ?? field.defaultValue) ? 'true' : 'false')
+                    : patch.defaultValue ?? field.defaultValue
+                  return {
+                    ...field,
+                    ...patch,
+                    type: nextType,
+                    defaultValue: nextDefaultValue,
+                    computed: isFrontmatterComputedValueCompatibleWithFieldType(requestedComputed, nextType)
+                      ? requestedComputed
+                      : 'none',
+                    key: requestedKey && !duplicateKey ? requestedKey : field.key,
+                  }
+                }),
+              }
+            : template,
+        ),
+      }))
+    }
+
+    const renderFrontmatterDefaultControl = (templateId: string, field: FrontmatterTemplateField) => {
+      if (field.type === 'boolean') {
+        const checked = isFrontmatterBooleanTrue(field.defaultValue)
+        return (
+          <label className="frontmatter-boolean-switch form-check form-switch settings-switch frontmatter-default-input">
+            <input
+              className="form-check-input"
+              type="checkbox"
+              role="switch"
+              checked={checked}
+              disabled={field.computed !== 'none'}
+              aria-label="frontmatter default boolean value"
+              onChange={(event) =>
+                updateFrontmatterTemplateField(templateId, field.id, {
+                  defaultValue: event.target.checked ? 'true' : 'false',
+                })
+              }
+            />
+            <span className="frontmatter-boolean-switch-label">{checked ? 'true' : 'false'}</span>
+          </label>
+        )
+      }
+
+      if (field.type === 'date' || field.type === 'datetime') {
+        return (
+          <input
+            type={field.type === 'date' ? 'date' : 'datetime-local'}
+            className="settings-text-input frontmatter-default-input"
+            value={field.type === 'date'
+              ? getFrontmatterDatePickerValue(field.defaultValue)
+              : getFrontmatterDatetimePickerValue(field.defaultValue)}
+            aria-label="frontmatter default value"
+            disabled={field.computed !== 'none'}
+            onChange={(event) =>
+              updateFrontmatterTemplateField(templateId, field.id, {
+                defaultValue: event.target.value,
+              })
+            }
+          />
+        )
+      }
+
+      return (
+        <input
+          type="text"
+          className="settings-text-input frontmatter-default-input"
+          value={field.defaultValue}
+          aria-label="frontmatter default value"
+          placeholder={field.computed === 'none' ? 'default' : 'computed'}
+          disabled={field.computed !== 'none'}
+          onChange={(event) =>
+            updateFrontmatterTemplateField(templateId, field.id, {
+              defaultValue: event.target.value,
+            })
+          }
+        />
+      )
+    }
+
+    const saveFrontmatterTemplates = () => {
+      const nextFrontmatter = frontmatterDraft
+      frontmatterStateSnapshotRef.current = nextFrontmatter
+      mutateState((previous) => ({
+        ...previous,
+        frontmatter: nextFrontmatter,
+      }))
+    }
+
+    return (
+      <section className="notebook-settings-section" aria-label="Frontmatter settings">
+        <p className="notebook-settings-help">Template changes apply only after saving.</p>
+        <div className="settings-hotkey-row">
+          <label className="settings-hotkey-label" htmlFor="notebook-settings-frontmatter-template">
+            template
+          </label>
+          <select
+            id="notebook-settings-frontmatter-template"
+            className="settings-select-input settings-shortcut-select"
+            value={activeTemplate?.id ?? ''}
+            onChange={(event) =>
+              updateFrontmatterDraft((frontmatter) => ({
+                ...frontmatter,
+                settingsTemplateId: event.target.value,
+              }))
+            }
+          >
+            {templates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="notebook-settings-actions">
+          <button
+            type="button"
+            className="notebook-settings-action"
+            onClick={() => {
+              const template: FrontmatterTemplate = {
+                id: createFrontmatterTemplateId(),
+                name: 'new template',
+                fields: [],
+              }
+              updateFrontmatterDraft((frontmatter) => ({
+                ...frontmatter,
+                templates: [...frontmatter.templates, template],
+                settingsTemplateId: template.id,
+              }))
+            }}
+          >
+            New template
+          </button>
+          <button
+            type="button"
+            className="notebook-settings-action"
+            disabled={!activeTemplate || templates.length <= 1}
+            onClick={() => {
+              if (!activeTemplate) return
+              updateFrontmatterDraft((frontmatter) => {
+                const nextTemplates = frontmatter.templates.filter((template) => template.id !== activeTemplate.id)
+                return {
+                  ...frontmatter,
+                  templates: nextTemplates,
+                  settingsTemplateId: frontmatter.settingsTemplateId === activeTemplate.id ? '' : frontmatter.settingsTemplateId,
+                  lastAppliedTemplateId:
+                    frontmatter.lastAppliedTemplateId === activeTemplate.id ? '' : frontmatter.lastAppliedTemplateId,
+                }
+              })
+            }}
+          >
+            Delete template
+          </button>
+          <button
+            type="button"
+            className="notebook-settings-action"
+            disabled={!frontmatterDraftDirty}
+            onClick={() => setFrontmatterDraft(stateRef.current.frontmatter)}
+          >
+            Discard changes
+          </button>
+          <button
+            type="button"
+            className="notebook-settings-action"
+            disabled={!frontmatterDraftDirty}
+            onClick={saveFrontmatterTemplates}
+          >
+            Save template
+          </button>
+        </div>
+        {activeTemplate ? (
+          <>
+            <label className="settings-modal-field">
+              <span>name</span>
+              <input
+                type="text"
+                className="settings-text-input"
+                value={activeTemplate.name}
+                onChange={(event) => updateFrontmatterTemplate(activeTemplate.id, { name: event.target.value })}
+              />
+            </label>
+            <div className="settings-divider" />
+            <div className="frontmatter-template-fields">
+              <div className="frontmatter-template-field-row frontmatter-template-field-header" aria-hidden="true">
+                <span>key</span>
+                <span>type</span>
+                <span>computed</span>
+                <span>default</span>
+                <span>lock</span>
+                <span>action</span>
+              </div>
+              {activeTemplate.fields.map((field) => (
+                <div key={field.id} className={`frontmatter-template-field-row ${field.computed !== 'none' ? 'is-computed' : ''}`}>
+                  <input
+                    type="text"
+                    className="settings-text-input frontmatter-key-input"
+                    aria-label="Frontmatter key"
+                    value={field.key}
+                    onChange={(event) =>
+                      updateFrontmatterTemplateField(activeTemplate.id, field.id, { key: event.target.value })
+                    }
+                  />
+                  <select
+                    className="settings-select-input frontmatter-type-select"
+                    aria-label="Frontmatter type"
+                    value={field.type}
+                    onChange={(event) => {
+                      const type = event.target.value as FrontmatterTemplateField['type']
+                      updateFrontmatterTemplateField(activeTemplate.id, field.id, {
+                        type,
+                        defaultValue: type === 'boolean'
+                          ? (isFrontmatterBooleanTrue(field.defaultValue) ? 'true' : 'false')
+                          : type === 'date' || type === 'datetime'
+                            ? getFrontmatterDraftValueForType(type, field.defaultValue)
+                            : field.defaultValue,
+                        computed: isFrontmatterComputedValueCompatibleWithFieldType(field.computed, type)
+                          ? field.computed
+                          : 'none',
+                      })
+                    }}
+                  >
+                    {FRONTMATTER_FIELD_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="settings-select-input frontmatter-computed-select"
+                    value={field.computed}
+                    aria-label="Frontmatter computed value"
+                    onChange={(event) =>
+                      updateFrontmatterTemplateField(activeTemplate.id, field.id, {
+                        computed: event.target.value as FrontmatterTemplateField['computed'],
+                      })
+                    }
+                  >
+                    {getFrontmatterComputedValuesForFieldType(field.type).map((computed) => (
+                      <option key={computed} value={computed}>
+                        {computed}
+                      </option>
+                    ))}
+                  </select>
+                  {renderFrontmatterDefaultControl(activeTemplate.id, field)}
+                  <span
+                    className={`frontmatter-computed-lock ${field.computed !== 'none' ? 'is-visible' : ''}`}
+                    aria-label={field.computed !== 'none' ? 'Computed values cannot be manually changed.' : undefined}
+                    data-app-tooltip={field.computed !== 'none' ? 'Computed values cannot be manually changed.' : undefined}
+                  >
+                    {field.computed !== 'none' ? 'lock' : ''}
+                  </span>
+                  <button
+                    type="button"
+                    className="notebook-settings-action"
+                    onClick={() =>
+                      updateFrontmatterDraft((frontmatter) => ({
+                        ...frontmatter,
+                        templates: frontmatter.templates.map((template) =>
+                          template.id === activeTemplate.id
+                            ? {
+                                ...template,
+                                fields: template.fields.filter((candidate) => candidate.id !== field.id),
+                              }
+                            : template,
+                        ),
+                      }))
+                    }
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="notebook-settings-action"
+              onClick={() => {
+                const existingKeys = new Set(activeTemplate.fields.map((field) => field.key.trim()).filter(Boolean))
+                let key = 'field'
+                let index = 2
+                while (existingKeys.has(key)) {
+                  key = `field ${index}`
+                  index += 1
+                }
+                const field: FrontmatterTemplateField = {
+                  id: createFrontmatterTemplateId(),
+                  key,
+                  type: 'text',
+                  defaultValue: '',
+                  computed: 'none',
+                }
+                updateFrontmatterDraft((frontmatter) => ({
+                  ...frontmatter,
+                  templates: frontmatter.templates.map((template) =>
+                    template.id === activeTemplate.id
+                      ? { ...template, fields: [...template.fields, field] }
+                      : template,
+                  ),
+                }))
+              }}
+            >
+              Add field
+            </button>
+          </>
+        ) : (
+          <p className="notebook-settings-help">Create a template to add default frontmatter fields.</p>
+        )}
+      </section>
+    )
+  }
+
+  const renderMiscSettings = () => {
+    const renderSegmentedSetting = <T extends string,>(
+      label: string,
+      value: T,
+      options: Array<{ id: T; label: string }>,
+      onChange: (value: T) => void,
+    ) => {
+      const labelId = `notebook-settings-${label.replace(/\s+/g, '-')}-label`
+      return (
+        <div className="settings-hotkey-row">
+          <span className="settings-hotkey-label" id={labelId}>
+            {label}
+          </span>
+          <div className="settings-segmented-control settings-flag-segmented-control" role="radiogroup" aria-labelledby={labelId}>
+            {options.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={value === option.id}
+                className={`settings-segmented-option ${value === option.id ? 'is-selected' : ''}`}
+                onClick={() => onChange(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <section className="notebook-settings-section" aria-label="Misc settings">
+        <div className="settings-hotkeys-list">
+          <NotebookSettingsSwitch
+            label="Show aisle add buttons"
+            checked={state.ui.showRegularNoteAisleAddButtons ?? true}
+            onChange={(checked) =>
+              mutateState((previous) => ({
+                ...previous,
+                ui: {
+                  ...previous.ui,
+                  showRegularNoteAisleAddButtons: checked,
+                },
+              }))
+            }
+          />
+          <NotebookSettingsSwitch
+            label="Show aisle delete button"
+            checked={state.ui.showRegularNoteAisleDeleteButton ?? true}
+            onChange={(checked) =>
+              mutateState((previous) => ({
+                ...previous,
+                ui: {
+                  ...previous.ui,
+                  showRegularNoteAisleDeleteButton: checked,
+                },
+              }))
+            }
+          />
+          {renderSegmentedSetting(
+            'Table add target',
+            state.ui.tableAddTargetMode,
+            TABLE_TARGET_OPTIONS,
+            (tableAddTargetMode) =>
+              mutateState((previous) => ({
+                ...previous,
+                ui: {
+                  ...previous.ui,
+                  tableAddTargetMode,
+                },
+              })),
+          )}
+          {renderSegmentedSetting(
+            'Table delete target',
+            state.ui.tableDeleteTargetMode,
+            TABLE_TARGET_OPTIONS,
+            (tableDeleteTargetMode) =>
+              mutateState((previous) => ({
+                ...previous,
+                ui: {
+                  ...previous.ui,
+                  tableDeleteTargetMode,
+                },
+              })),
+          )}
+          {renderSegmentedSetting(
+            'Table of contents',
+            state.ui.tableOfContentsScope ?? 'all-aisles',
+            TABLE_OF_CONTENTS_SCOPE_OPTIONS,
+            (tableOfContentsScope) =>
+              mutateState((previous) => ({
+                ...previous,
+                ui: {
+                  ...previous.ui,
+                  tableOfContentsScope,
+                },
+              })),
+          )}
+          <label className="settings-hotkey-row" htmlFor="notebook-settings-scratchpad-aisle-limit">
+            <span className="settings-hotkey-label">Scratchpad aisle limit</span>
+            <input
+              id="notebook-settings-scratchpad-aisle-limit"
+              className="settings-text-input"
+              type="number"
+              min={MIN_SCRATCHPAD_AISLE_LIMIT}
+              max={MAX_SCRATCHPAD_AISLE_LIMIT}
+              value={state.ui.scratchpadAisleLimit ?? DEFAULT_SCRATCHPAD_AISLE_LIMIT}
+              onChange={(event) =>
+                mutateState((previous) => ({
+                  ...previous,
+                  ui: {
+                    ...previous.ui,
+                    scratchpadAisleLimit: clampScratchpadAisleLimit(event.target.value),
+                  },
+                }))
+              }
+            />
+          </label>
+        </div>
+      </section>
+    )
+  }
+
+  const renderTipsSettings = () => (
+    <section className="notebook-settings-section" aria-label="Tips settings">
+      {state.ui.seenTipIds.length === 0 ? (
+        <p className="notebook-settings-help">Tips you have seen will appear here.</p>
+      ) : (
+        <div className="notebook-settings-list">
+          {state.ui.seenTipIds.map((tipId: TipId) => {
+            const tip = getTipDefinition(tipId, { isMacPlatform })
+            const enabled = !state.ui.disabledTipIds.includes(tipId)
+            return (
+              <NotebookSettingsSwitch
+                key={tipId}
+                label={tip.label}
+                description={tip.message}
+                checked={enabled}
+                onChange={(checked) =>
+                  mutateState((previous) => ({
+                    ...previous,
+                    ui: {
+                      ...previous.ui,
+                      disabledTipIds: checked
+                        ? previous.ui.disabledTipIds.filter((id) => id !== tipId)
+                        : previous.ui.disabledTipIds.includes(tipId)
+                          ? previous.ui.disabledTipIds
+                          : [...previous.ui.disabledTipIds, tipId],
+                    },
+                  }))
+                }
+              />
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
+
+  const renderSettingsContent = () => (
+    <section className="notebook-utility-content notebook-settings-panel" aria-label="Settings">
+      {renderSegmentedTabs('Settings sections', SETTINGS_SECTION_TABS, settingsSection, setSettingsSection)}
+      {settingsSection === 'data' ? renderDataSettings() : null}
+      {settingsSection === 'visuals' ? <NotebookThemeSettings state={state} onMutateState={mutateState} /> : null}
+      {settingsSection === 'toolbar' ? renderToolbarSettings() : null}
+      {settingsSection === 'hotkeys' ? renderHotkeySettings() : null}
+      {settingsSection === 'shortcuts' ? renderShortcutSettings() : null}
+      {settingsSection === 'frontmatter' ? renderFrontmatterSettings() : null}
+      {settingsSection === 'misc' ? renderMiscSettings() : null}
+      {settingsSection === 'tips' ? renderTipsSettings() : null}
+    </section>
+  )
+
+  const renderMessagesContent = () => (
+    <section className="notebook-utility-content" aria-label="Messages">
+      {renderSegmentedTabs('Messages sections', MESSAGE_SECTION_TABS, messagesSection, setMessagesSection)}
+      <MessagesView
+        section={messagesSection}
+        messages={state.messages ?? []}
+        toastHistory={state.toastHistory ?? []}
+        onDismissMessage={(messageId) =>
+          mutateState((previous) => ({
+            ...previous,
+            messages: (previous.messages ?? []).map((message) =>
+              message.id === messageId ? { ...message, status: 'dismissed' } : message,
+            ),
+          }))
+        }
+        onOpenLocation={(location) => setActiveNote(location.noteId)}
+      />
+    </section>
+  )
+
+  const renderAboutContent = () => (
+    <section className="notebook-utility-content" aria-label="About">
+      {renderSegmentedTabs('About sections', ABOUT_SECTION_TABS, aboutSection, setAboutSection)}
+      <AboutView section={aboutSection} />
+    </section>
+  )
+
+  const renderTrashContent = () => (
+    <section className="notebook-utility-content notebook-trash-panel" aria-label="Trash">
+      <header className="notebook-utility-panel-header">
+        <div>
+          <h2>Trash</h2>
+          <p>{state.notebook.deletedItems.length.toLocaleString()} deleted item{state.notebook.deletedItems.length === 1 ? '' : 's'}</p>
+        </div>
+      </header>
+      {state.notebook.deletedItems.length === 0 ? <p className="notebook-settings-help">No deleted items.</p> : null}
+      <div className="notebook-trash-list">
+        {state.notebook.deletedItems.map((entry) => (
+          <div className="notebook-trash-row" key={entry.id}>
+            <span>{entry.item.title}</span>
+            <small>{entry.item.type}</small>
+            <button type="button" onClick={() => restoreDeletedItem(entry.id)}>Restore</button>
+            <button type="button" onClick={() => permanentlyDeleteDeletedItem(entry.id)}>Delete</button>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+
+  const renderUtilityShell = () => {
+    if (!isUtilityViewMode(viewMode)) return null
+    const utilityTabs: Array<{ id: UtilityViewMode; label: string }> = [
+      { id: 'settings', label: 'Settings' },
+      { id: 'messages', label: 'Messages' },
+      { id: 'about', label: 'About' },
+      { id: 'trash', label: 'Trash' },
+    ]
+    return (
+      <section className="notebook-utility-shell" aria-label="Utilities">
+        <header className="notebook-utility-header">
+          {renderSegmentedTabs('Utility sections', utilityTabs, viewMode, setViewMode)}
+          <button type="button" className="notebook-settings-action" onClick={() => setViewMode('main')}>
+            Return to notes
+          </button>
+        </header>
+        {viewMode === 'settings' ? renderSettingsContent() : null}
+        {viewMode === 'messages' ? renderMessagesContent() : null}
+        {viewMode === 'about' ? renderAboutContent() : null}
+        {viewMode === 'trash' ? renderTrashContent() : null}
+      </section>
+    )
+  }
+
   return (
     <div
       className={`app-shell notebook-shell ${getThemeClassName(state.theme)}`}
@@ -1462,25 +2807,11 @@ export function NotebookApp() {
         className={`notebook-sidebar ${state.ui.sidebarCollapsed ? 'is-collapsed' : ''}`}
         style={{ width: state.ui.sidebarCollapsed ? 48 : state.ui.sidebarWidth }}
       >
-        <div className="notebook-sidebar-header">
-          <button
-            className="notebook-icon-button"
-            type="button"
-            onClick={() =>
-              mutateState((previous) => ({
-                ...previous,
-                ui: {
-                  ...previous.ui,
-                  sidebarCollapsed: !previous.ui.sidebarCollapsed,
-                },
-              }))
-            }
-            title="Toggle sidebar"
-          >
-            =
-          </button>
-          {!state.ui.sidebarCollapsed ? <h1>Notebook</h1> : null}
-        </div>
+        {!state.ui.sidebarCollapsed ? (
+          <div className="notebook-sidebar-header">
+            <h1>Notebook</h1>
+          </div>
+        ) : null}
         {!state.ui.sidebarCollapsed ? (
           <>
             <div className="notebook-sidebar-actions">
@@ -1490,6 +2821,7 @@ export function NotebookApp() {
               <button type="button" onClick={exportNotebook}>Export</button>
             </div>
             <input
+              ref={searchInputRef}
               className="notebook-search-input"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -1499,13 +2831,7 @@ export function NotebookApp() {
               <button type="button" className={viewMode === 'main' ? 'is-active' : ''} onClick={() => setViewMode('main')}>
                 Notes
               </button>
-              <button type="button" className={viewMode === 'trash' ? 'is-active' : ''} onClick={() => setViewMode('trash')}>
-                Trash
-              </button>
-              <button type="button" className={viewMode === 'messages' ? 'is-active' : ''} onClick={() => setViewMode('messages')}>
-                Messages
-              </button>
-              <button type="button" className={viewMode === 'settings' ? 'is-active' : ''} onClick={() => setViewMode('settings')}>
+              <button type="button" className={isUtilityViewMode(viewMode) ? 'is-active' : ''} onClick={() => openUtilityView('settings')}>
                 Settings
               </button>
             </nav>
@@ -1551,6 +2877,37 @@ export function NotebookApp() {
             onPointerCancel={finishSidebarResize}
           />
         ) : null}
+        {state.ui.sidebarCollapsed ? (
+          <button
+            className={`notebook-icon-button notebook-sidebar-settings ${isUtilityViewMode(viewMode) ? 'is-active' : ''}`}
+            type="button"
+            onClick={() => openUtilityView('settings')}
+            aria-label="Open settings"
+            title="Open settings"
+          >
+            <AppIcon iconId="settings" className="notebook-sidebar-settings-icon" />
+          </button>
+        ) : null}
+        <button
+          className="notebook-icon-button notebook-sidebar-toggle"
+          type="button"
+          onClick={() =>
+            mutateState((previous) => ({
+              ...previous,
+              ui: {
+                ...previous.ui,
+                sidebarCollapsed: !previous.ui.sidebarCollapsed,
+              },
+            }))
+          }
+          aria-label={state.ui.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={state.ui.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          <AppIcon
+            iconId={state.ui.sidebarCollapsed ? 'arrowRightFromLine' : 'arrowLeftFromLine'}
+            className="notebook-sidebar-toggle-icon"
+          />
+        </button>
       </aside>
       <main className="notebook-main">
         {viewMode === 'main' ? (
@@ -1558,7 +2915,7 @@ export function NotebookApp() {
             <section
               className="notebook-editor-surface"
               aria-label={activeModel.title}
-              onContextMenu={openAisleContextMenuFromPointer}
+              onContextMenu={openNotebookEditorContextMenuFromPointer}
             >
               <NoteWorkspace
                 noteBodyId={activeModel.noteBody.id}
@@ -1647,10 +3004,24 @@ export function NotebookApp() {
               <NotebookAisleContextMenu
                 menu={aisleContextMenu}
                 canDecoupleNote={activeModel.linked}
-                canDecoupleAisle={canDecoupleActiveAisle}
+                canDecoupleAisle={canDecoupleAisleById(aisleContextMenu?.aisleId ?? '')}
                 onClose={() => setAisleContextMenu(null)}
                 onDecoupleNote={decoupleActiveNote}
                 onDecoupleAisle={() => decoupleAisle(aisleContextMenu?.aisleId ?? renderedActiveAisleId)}
+              />
+              <NotebookEditorContextMenu
+                menu={editorContextMenu}
+                canDecoupleNote={activeModel.linked}
+                canDecoupleAisle={canDecoupleAisleById(editorContextMenu?.aisleId ?? '')}
+                onClose={() => setEditorContextMenu(null)}
+                onClipboard={runEditorContextClipboardAction}
+                onCommand={notebookEditors.runCommand}
+                onInsertUrlLink={notebookEditors.insertPromptedLink}
+                onInsertAisle={insertEditorContextAisle}
+                onInsertAttachment={notebookEditors.insertAttachmentFile}
+                onCreateSyncedCopy={createSyncedCopy}
+                onDecoupleNote={decoupleActiveNote}
+                onDecoupleAisle={decoupleAisle}
               />
             </section>
           ) : (
@@ -1660,68 +3031,7 @@ export function NotebookApp() {
             </section>
           )
         ) : null}
-        {viewMode === 'trash' ? (
-          <section className="notebook-panel">
-            <header>
-              <h2>Trash</h2>
-            </header>
-            {state.notebook.deletedItems.length === 0 ? <p>No deleted items.</p> : null}
-            {state.notebook.deletedItems.map((entry) => (
-              <div className="notebook-trash-row" key={entry.id}>
-                <span>{entry.item.title}</span>
-                <button type="button" onClick={() => restoreDeletedItem(entry.id)}>Restore</button>
-                <button type="button" onClick={() => permanentlyDeleteDeletedItem(entry.id)}>Delete</button>
-              </div>
-            ))}
-          </section>
-        ) : null}
-        {viewMode === 'messages' ? (
-          <section className="notebook-panel">
-            <header>
-              <h2>Messages</h2>
-            </header>
-            {(state.messages ?? []).length === 0 ? <p>No messages.</p> : null}
-            {(state.messages ?? []).map((message) => (
-              <article className="notebook-message" key={message.id}>
-                <h3>{message.title}</h3>
-                <p>{message.body}</p>
-              </article>
-            ))}
-          </section>
-        ) : null}
-        {viewMode === 'settings' ? (
-          <section className="notebook-panel notebook-settings-panel">
-            <header>
-              <h2>Settings</h2>
-            </header>
-            <NotebookThemeSettings state={state} onMutateState={mutateState} />
-            <section className="notebook-settings-section" aria-label="Notebook settings">
-              <div className="notebook-settings-grid">
-                <label>
-                  Trash auto-remove days
-                  <input
-                    type="number"
-                    min={1}
-                    max={3650}
-                    value={state.notebook.settings.autoRemoveDeletedDays}
-                    onChange={(event) =>
-                      mutateState((previous) => ({
-                        ...previous,
-                        notebook: {
-                          ...previous.notebook,
-                          settings: {
-                            ...previous.notebook.settings,
-                            autoRemoveDeletedDays: Number(event.target.value),
-                          },
-                        },
-                      }))
-                    }
-                  />
-                </label>
-              </div>
-            </section>
-          </section>
-        ) : null}
+        {renderUtilityShell()}
       </main>
       <NotebookFrontmatterModal
         modal={frontmatterModal}

@@ -19,108 +19,21 @@ import type {
 } from '../types/app'
 import { syncNoteAisleBodyMarkdownInState, syncNoteBodyAislesInState } from '../notes/aisle-body-state'
 import { normalizeToolbarLayouts } from '../editor/toolbar-layouts'
-import { createDefaultNotebookState, createNoteBodyWithAisle, ensureValidActiveNote, purgeOldDeletedNotebookItems } from './notebook'
+import {
+  createDefaultAppState,
+  DEFAULT_SHORTCUTS as DEFAULT_APP_SHORTCUTS,
+} from './default-app-state.js'
+import { createNoteBodyWithAisle, ensureValidActiveNote, purgeOldDeletedNotebookItems } from './notebook'
 import { CUSTOM_THEME_IDS, normalizeThemePaletteOverrides } from '../theme/notebook-themes'
 
 const APP_THEMES: AppTheme[] = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
 const MAX_NORMALIZED_TOAST_HISTORY_ENTRIES = 70
 export const AUTO_PURGE_DAY_MS = 24 * 60 * 60 * 1000
 
-const DEFAULT_NEWLINE_SHORTCUT_SETTINGS = {
-  shortcuts: {
-    controlEnter: 'normalNewLine',
-    shiftEnter: 'normalNewLine',
-    commandEnter: 'operationsMenu',
-  },
-  menuOperations: [
-    'task',
-    'dashList',
-    'bulletList',
-    'numberedList',
-    'aisleLeft',
-    'aisleRight',
-    'horizontalLine',
-    'codeBlock',
-    'blockQuote',
-    'blockIndent',
-    'strikethrough',
-  ],
-} as const
-
-const DEFAULT_SHORTCUTS = {
-  toggleNotesTrash: 'mod+shift+backspace',
-  toggleNotesScratchpad: 'mod+shift+s',
-  toggleNotesFilter: 'mod+shift+f',
-  newNote: 'mod+n',
-  newFolder: 'mod+shift+n',
-  formatStrikethrough: 'mod+shift+x',
-  cycleAislePrev: 'mod+alt+arrowleft',
-  cycleAisleNext: 'mod+alt+arrowright',
-} as const
+const DEFAULT_SHORTCUTS = DEFAULT_APP_SHORTCUTS as AppState['hotkeys']['shortcuts']
 
 function createDefaultState(): AppState {
-  const defaultNotebook = createDefaultNotebookState()
-  const scratchpad = createNoteBodyWithAisle('')
-  return {
-    theme: 'dawn',
-    notebook: defaultNotebook.notebook,
-    scratchpad: {
-      noteBodyId: scratchpad.noteBody.id,
-      activeAisleId: scratchpad.aisleId,
-    },
-    messages: [],
-    toastHistory: [],
-    noteBodies: [...defaultNotebook.noteBodies, scratchpad.noteBody],
-    noteAisleBodies: [...defaultNotebook.noteAisleBodies, scratchpad.aisleBody],
-    hotkeys: {
-      shortcuts: { ...DEFAULT_SHORTCUTS },
-      newlineShortcuts: {
-        shortcuts: { ...DEFAULT_NEWLINE_SHORTCUT_SETTINGS.shortcuts },
-        menuOperations: [...DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations],
-      },
-    },
-    frontmatter: {
-      templates: [],
-      settingsTemplateId: '',
-      lastAppliedTemplateId: '',
-    },
-    ui: {
-      sidebarCollapsed: false,
-      sidebarWidth: 280,
-      collapsedFolderIds: [],
-      showRegularNoteAisleAddButtons: true,
-      showRegularNoteAisleDeleteButton: true,
-      findCaseSensitive: false,
-      findWholeWord: false,
-      findRegex: false,
-      findReplaceMode: 'find',
-      findReplaceScope: 'note',
-      removeNoteReferencesOnTrash: false,
-      noteMentionCopyRequiresConfirmation: true,
-      deleteActiveAisleShortcutEnabled: false,
-      scratchpadAisleLimit: 4,
-      scratchpadNewAisleSide: 'right',
-      decoupledItemsKeepData: true,
-      trashDeleteForRealRequiresConfirmation: true,
-      tableAddTargetMode: 'active-cell',
-      tableDeleteTargetMode: 'active-cell',
-      tableOfContentsScope: 'all-aisles',
-      noteFontScale: 1,
-      toolbarButtonScale: 1,
-      settingsSection: 'data',
-      dataSettingsSection: 'storage',
-      visualsSettingsSection: 'theming',
-      selectedCustomTheme: 'custom1',
-      themePalettes: {},
-      noteCursorLocations: {},
-      headingCollapseState: {},
-      aisleWidths: {},
-      toolbarLayouts: [],
-      toolbarEditorShowNames: false,
-      seenTipIds: [],
-      disabledTipIds: [],
-    },
-  }
+  return createDefaultAppState() as AppState
 }
 
 export const DEFAULT_STATE: AppState = createDefaultState()
@@ -505,10 +418,8 @@ export function parseSavedState(serializedState: string | null | undefined): App
 }
 
 export function applyAutoPurgeToAppState(state: AppState, now = Date.now()): AppState {
-  return {
-    ...state,
-    notebook: purgeOldDeletedNotebookItems(state.notebook, now),
-  }
+  const notebook = purgeOldDeletedNotebookItems(state.notebook, now)
+  return notebook === state.notebook ? state : { ...state, notebook }
 }
 
 export function getNextAutoPurgeTimeForAppState(state: AppState, now = Date.now()): number | null {

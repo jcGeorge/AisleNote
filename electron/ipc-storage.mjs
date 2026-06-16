@@ -1,8 +1,7 @@
-import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync } from 'node:fs'
 import path from 'node:path'
 import { createAppStateCoordinator, LOAD_FAILED_SAVE_ERROR } from './app-state-coordinator.mjs'
 import {
-  getUserSettingsFilePath,
   getHybridStorageRoot,
   loadAppStateResult,
   measureSlowMainOperation,
@@ -43,10 +42,7 @@ import {
   writeUserSettingsLocationFromState,
 } from './user-settings-location.mjs'
 import { normalizeImageAssetPath, parseImageAssetUrl } from '../src/markdown/image-asset-refs.js'
-import {
-  createDefaultPortableAppSettings,
-  parsePortableAppSettingsJson,
-} from '../src/storage/settings-partition.js'
+import { createDefaultAppState } from '../src/state/default-app-state.js'
 
 const STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE = 'storage-notebook-recovered'
 
@@ -268,54 +264,8 @@ function createMissingActiveNotebookResult(profileRootPath, loadResult = {}) {
   }
 }
 
-function readPortableAppSettings(userDataPath) {
-  try {
-    const settingsPath = getUserSettingsFilePath(userDataPath)
-    if (!existsSync(settingsPath)) return createDefaultPortableAppSettings()
-    const parsed = parsePortableAppSettingsJson(readFileSync(settingsPath, 'utf8'))
-    return parsed.ok ? parsed.settings : createDefaultPortableAppSettings()
-  } catch {
-    return createDefaultPortableAppSettings()
-  }
-}
-
-function createBlankNotebookState(userDataPath, messages = []) {
-  const portableSettings = readPortableAppSettings(userDataPath)
-  const space = {
-    id: 'space-1',
-    name: 'space',
-    settings: { autoRemoveDeletedDays: 7 },
-    data: {
-      activeTabId: 'tab-1',
-      tabs: [
-        {
-          id: 'tab-1',
-          title: 'tab',
-          noteBodyId: 'body-1',
-          activeSubTabId: null,
-          subTabs: [],
-        },
-      ],
-      deletedTabs: [],
-      deletedSubTabs: [],
-    },
-  }
-  return {
-    theme: portableSettings.theme,
-    activeDomainId: 'domain-1',
-    domains: [{ id: 'domain-1', name: 'humble beginnings', activeSpaceId: space.id, spaces: [space] }],
-    deletedDomains: [],
-    deletedSpaces: [],
-    messages,
-    toastHistory: [],
-    noteBodies: [{ id: 'body-1', aisles: [{ id: 'aisle-1', aisleBodyId: 'aisle-body-1' }] }],
-    noteAisleBodies: [{ id: 'aisle-body-1', markdown: '' }],
-    activeSpaceId: space.id,
-    spaces: [space],
-    hotkeys: portableSettings.hotkeys,
-    frontmatter: { templates: [], settingsTemplateId: '', lastAppliedTemplateId: '' },
-    ui: portableSettings.ui,
-  }
+function createBlankNotebookState(messages = []) {
+  return createDefaultAppState({ messages })
 }
 
 function createRecoveryMessage(recovery) {
@@ -331,6 +281,7 @@ function createRecoveryMessage(recovery) {
   const details = [
     body,
     recovery.failedNotebookPath ? `Failed folder: ${recovery.failedNotebookPath}` : '',
+    recovery.backupNotebookPath ? `Backup folder: ${recovery.backupNotebookPath}` : '',
     issueSummary.length > 0 ? `Issue summary: ${issueSummary.join(' ')}` : '',
   ].filter(Boolean)
   return {
@@ -357,6 +308,30 @@ function appendRecoveryMessage(serializedState, recovery) {
     : []
   parsed.messages = [...messages, createRecoveryMessage(recovery)]
   return JSON.stringify(parsed)
+}
+
+function createBackupTimestamp() {
+  return new Date().toISOString().replace(/[:.]/g, '-')
+}
+
+function createUniqueBackupPath(sourcePath) {
+  const parentPath = path.dirname(sourcePath)
+  const baseName = path.basename(sourcePath)
+  const timestamp = createBackupTimestamp()
+  for (let index = 0; index < 100; index += 1) {
+    const suffix = index === 0 ? '' : `-${index + 1}`
+    const candidate = path.join(parentPath, `${baseName}.unsupported-${timestamp}${suffix}`)
+    if (!existsSync(candidate)) return candidate
+  }
+  return path.join(parentPath, `${baseName}.unsupported-${timestamp}-${Math.random().toString(36).slice(2, 8)}`)
+}
+
+function moveNotebookFolderToBackup(sourcePath) {
+  if (!sourcePath || !existsSync(sourcePath)) return null
+  const backupPath = createUniqueBackupPath(sourcePath)
+  mkdirSync(path.dirname(backupPath), { recursive: true })
+  renameSync(sourcePath, backupPath)
+  return backupPath
 }
 
 function normalizeRecoveryRevealSelector(payload) {
@@ -680,9 +655,65 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
 
   const recoverActiveNotebookLoadFailure = (failedResult, trigger = 'startup-error') => {
     logExternalStorageEvent(trigger)
-    updateStatus('profile-error', failedResult?.error ?? 'Notebook local mirror could not be loaded.')
-    startWatcher()
-    return false
+    const activeRecord = getActiveNotebookRecord(notebookLibrary)
+    if (!activeRecord) {
+      updateStatus('profile-error', failedResult?.error ?? 'Notebook local mirror could not be loaded.')
+      startWatcher()
+      return false
+    }
+
+    const failedProfile = { ...profile }
+    try {
+      const recoveryBase = createRecoveryMetadata(failedProfile, failedResult, 'reset-default')
+      const backupNotebookPath = moveNotebookFolderToBackup(activeRecord.localMirrorPath)
+      const recovery = {
+        ...recoveryBase,
+        failedNotebookAvailable: backupNotebookPath ? true : recoveryBase.failedNotebookAvailable,
+        ...(backupNotebookPath ? { backupNotebookPath } : {}),
+      }
+      const serializedState = appendRecoveryMessage(JSON.stringify(createBlankNotebookState()), recovery)
+
+      watcher?.markAppWrite()
+      saveAppState(activeRecord.localMirrorPath, serializedState, {
+        userDataPath,
+        userSettingsRoot: userDataPath,
+        notebookId: activeRecord.id,
+        replaceExisting: true,
+        syncMetadata: createSyncMetadata('local-recovered'),
+      })
+      watcher?.markAppWrite()
+
+      notebookLibrary = upsertNotebookRecord(userDataPath, notebookLibrary, {
+        ...activeRecord,
+        syncStatus: activeRecord.syncTargetPath ? 'pending' : 'local-only',
+        syncPending: Boolean(activeRecord.syncTargetPath),
+        lastSyncError: activeRecord.syncTargetPath ? 'Local mirror was reset and needs to sync.' : undefined,
+      }, { activate: true })
+      refreshProfileFromLibrary()
+
+      const result = coordinator.reloadProfileRoot(activeRecord.localMirrorPath, {
+        requireSerializedState: true,
+        detectAppSaveEcho: false,
+      })
+      if (!result.ok) {
+        updateStatus('notebook-recovery-error', result.error ?? 'Local notebook could not be recovered.', { recovery })
+        startWatcher()
+        return false
+      }
+
+      updateStatus('notebook-auto-recovered', null, { recovery })
+      broadcastAppStateUpdate({
+        serializedState: result.serializedState,
+        revision: result.revision,
+      })
+      startWatcher()
+      return true
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Local notebook could not be recovered.'
+      updateStatus('notebook-recovery-error', message)
+      startWatcher()
+      return false
+    }
   }
 
   const retryThenRecoverActiveNotebook = (failedResult, trigger = 'startup-error') => {
@@ -1389,7 +1420,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   }
 
   const resetLocalNotebookToBlank = async () => {
-    const serializedState = JSON.stringify(createBlankNotebookState(userDataPath))
+    const serializedState = JSON.stringify(createBlankNotebookState())
     const activeRecord = getActiveNotebookRecord(notebookLibrary)
     if (!activeRecord) return { ok: false, error: 'No active notebook is available.', status }
 
@@ -1735,8 +1766,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     updateStatus('notebook-setup-required', 'Create a notebook or open an existing notebook to start saving.')
     startWatcher()
   } else if (!initialLoadResult.ok) {
-    updateStatus('profile-error', initialLoadResult.error ?? 'Notebook local mirror could not be loaded.')
-    startWatcher()
+    recoverActiveNotebookLoadFailure(initialLoadResult, 'startup-error')
   } else {
     startWatcher()
   }
@@ -1808,7 +1838,9 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     const selector = normalizeRecoveryRevealSelector(payload)
     const failedNotebookPath = selector.hasSelector
       ? getRecoveredNotebookPathFromSerializedState(getSerializedStateForRecoveryReveal(coordinator), selector)
-      : latestRecovery?.failedNotebookAvailable === false
+      : typeof latestRecovery?.backupNotebookPath === 'string'
+        ? latestRecovery.backupNotebookPath
+        : latestRecovery?.failedNotebookAvailable === false
         ? null
         : latestRecovery?.failedNotebookPath
     if (typeof failedNotebookPath !== 'string' || failedNotebookPath.length === 0) {

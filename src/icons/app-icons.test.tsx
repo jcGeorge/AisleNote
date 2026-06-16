@@ -1,3 +1,4 @@
+import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AppIcon } from '../components/icons/AppIcon'
@@ -51,7 +52,7 @@ describe('app icons', () => {
   })
 
   it('renders normalized React SVG icons without metadata or hard-coded colors', () => {
-    const html = renderToStaticMarkup(<AppIcon iconId="play" />)
+    const html = renderToStaticMarkup(createElement(AppIcon, { iconId: 'play' }))
 
     expect(html).toContain(`viewBox="${APP_ICON_VIEW_BOX}"`)
     expect(html).toContain('fill="none"')
@@ -66,7 +67,7 @@ describe('app icons', () => {
   })
 
   it('renders horizontal flips through a shared transform', () => {
-    const html = renderToStaticMarkup(<AppIcon iconId="aisleRight" flipHorizontal />)
+    const html = renderToStaticMarkup(createElement(AppIcon, { iconId: 'aisleRight', flipHorizontal: true }))
 
     expect(html).toContain(`transform="${APP_ICON_FLIP_HORIZONTAL_TRANSFORM}"`)
   })

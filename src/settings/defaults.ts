@@ -16,7 +16,7 @@ import { normalizeAisleWidths } from '../notes/aisle-widths'
 import { normalizeTipIds } from '../tips/tips'
 import { normalizeHeadingCollapseState } from '../editor/heading-collapse-state'
 import { normalizeToolbarLayouts } from '../editor/toolbar-layouts'
-import { clampScratchpadAisleLimit, DEFAULT_SCRATCHPAD_AISLE_LIMIT } from '../state/scratchpad'
+import { clampScratchpadAisleLimit, DEFAULT_SCRATCHPAD_AISLE_LIMIT } from '../state/scratchpad-limits'
 import {
   DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
   normalizeRegisteredSyncedUiSetting,

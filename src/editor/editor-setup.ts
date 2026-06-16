@@ -1,6 +1,6 @@
 import type { Editor } from '@toast-ui/editor'
 import { Fragment } from 'prosemirror-model'
-import { TextSelection } from 'prosemirror-state'
+import { Selection, TextSelection } from 'prosemirror-state'
 import { canSplit } from 'prosemirror-transform'
 import { applyBulletListMarkerCommand } from './list-marker-commands'
 import {
@@ -48,6 +48,7 @@ type ToastListMdNode = {
 const ANNOTATION_ARROW_BOUNDARY_CARET_CLASS_NAME = 'tabs-annotation-arrow-boundary-caret'
 export const BLOCK_INDENT_CLASS_NAME = 'tabs-block-indent'
 export const BLOCK_INDENT_TOKEN_HIDDEN_CLASS_NAME = 'tabs-block-indent-token-hidden'
+export const BLOCK_INDENT_BOUNDARY_ACTIVE_CLASS_NAME = 'tabs-block-indent-boundary-active'
 
 export type TagDecorationRange = {
   from: number
@@ -124,6 +125,11 @@ export type BlockIndentDecorationRange = {
   level: number
 }
 
+export type BlockIndentSelectionBoundaries = {
+  anchor: number
+  head: number
+}
+
 export function getBlockIndentDecorationRanges(doc: any): BlockIndentDecorationRange[] {
   const ranges: BlockIndentDecorationRange[] = []
   if (!doc || typeof doc.descendants !== 'function') return ranges
@@ -148,11 +154,243 @@ export function getBlockIndentDecorationRanges(doc: any): BlockIndentDecorationR
   return ranges
 }
 
+function getBlockIndentTokenBoundaryAtPosition(
+  doc: any,
+  position: number,
+): { tokenFrom: number; tokenTo: number } | null {
+  if (!doc || typeof doc.resolve !== 'function' || !Number.isFinite(position)) return null
+
+  try {
+    const docSize = Number(doc.content?.size)
+    const safePosition = Number.isFinite(docSize)
+      ? Math.max(0, Math.min(docSize, position))
+      : position
+    const resolved = doc.resolve(safePosition)
+    const parent = resolved?.parent
+    if (!parent?.isTextblock) return null
+
+    const prefixLength = getBlockIndentPrefixLength(String(parent.textContent ?? ''))
+    if (prefixLength <= 0) return null
+
+    const tokenFrom = resolved.start(resolved.depth)
+    const tokenTo = tokenFrom + prefixLength
+    return safePosition >= tokenFrom && safePosition < tokenTo ? { tokenFrom, tokenTo } : null
+  } catch {
+    return null
+  }
+}
+
+function getBlockIndentRangeAtPosition(doc: any, position: number): BlockIndentDecorationRange | null {
+  if (!doc || typeof doc.resolve !== 'function' || !Number.isFinite(position)) return null
+
+  try {
+    const docSize = Number(doc.content?.size)
+    const safePosition = Number.isFinite(docSize)
+      ? Math.max(0, Math.min(docSize, position))
+      : position
+    const resolved = doc.resolve(safePosition)
+    const parent = resolved?.parent
+    if (!parent?.isTextblock) return null
+
+    const text = String(parent.textContent ?? '')
+    const prefixLength = getBlockIndentPrefixLength(text)
+    if (prefixLength <= 0) return null
+
+    const tokenFrom = resolved.start(resolved.depth)
+    const tokenTo = tokenFrom + prefixLength
+    const nodeFrom = typeof resolved.before === 'function'
+      ? resolved.before(resolved.depth)
+      : Math.max(0, tokenFrom - 1)
+    const nodeTo = nodeFrom + (Number(parent.nodeSize) || 0)
+    if (safePosition < tokenFrom || safePosition > nodeTo) return null
+
+    return {
+      nodeFrom,
+      nodeTo,
+      tokenFrom,
+      tokenTo,
+      level: countBlockIndentLevels(text),
+    }
+  } catch {
+    return null
+  }
+}
+
+function getBlockIndentFirstVisibleBoundaryAtPosition(
+  doc: any,
+  position: number,
+): BlockIndentDecorationRange | null {
+  if (!doc || typeof doc.resolve !== 'function' || !Number.isFinite(position)) return null
+
+  try {
+    const docSize = Number(doc.content?.size)
+    const safePosition = Number.isFinite(docSize)
+      ? Math.max(0, Math.min(docSize, position))
+      : position
+    const resolved = doc.resolve(safePosition)
+    const parent = resolved?.parent
+    if (!parent?.isTextblock) return null
+
+    const prefixLength = getBlockIndentPrefixLength(String(parent.textContent ?? ''))
+    if (prefixLength <= 0) return null
+
+    const tokenFrom = resolved.start(resolved.depth)
+    const tokenTo = tokenFrom + prefixLength
+    if (safePosition !== tokenTo) return null
+    const nodeFrom = typeof resolved.before === 'function'
+      ? resolved.before(resolved.depth)
+      : Math.max(0, tokenFrom - 1)
+    return {
+      nodeFrom,
+      nodeTo: nodeFrom + (Number(parent.nodeSize) || 0),
+      tokenFrom,
+      tokenTo,
+      level: countBlockIndentLevels(String(parent.textContent ?? '')),
+    }
+  } catch {
+    return null
+  }
+}
+
+function isHorizontalLineStartEvent(event: KeyboardEvent): boolean {
+  if (event.key === 'Home') return true
+  if (event.key !== 'ArrowLeft') return false
+  return Boolean(event.metaKey || event.ctrlKey)
+}
+
+export function getBlockIndentVisibleLineStartPosition(
+  doc: any,
+  selection: { empty?: boolean; from?: number } | null | undefined,
+  mode: 'line-start' | 'word-boundary' = 'word-boundary',
+): number | null {
+  if (!selection?.empty || typeof selection.from !== 'number') return null
+  const range = getBlockIndentRangeAtPosition(doc, selection.from)
+  if (!range) return null
+  if (mode === 'line-start') return range.tokenTo
+  if (selection.from <= range.tokenTo + 1) return range.tokenTo
+  return null
+}
+
+function readCssPixels(value: string | undefined | null, fallback: number): number {
+  if (!value) return fallback
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function getComputedStyleForElement(element: any): CSSStyleDeclaration | null {
+  const ownerWindow = element?.ownerDocument?.defaultView
+  if (typeof ownerWindow?.getComputedStyle === 'function') return ownerWindow.getComputedStyle(element)
+  if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') return window.getComputedStyle(element)
+  return null
+}
+
+function getBlockIndentTextblockElement(view: any, boundary: BlockIndentDecorationRange): any | null {
+  const nodeDom = typeof view?.nodeDOM === 'function' ? view.nodeDOM(boundary.nodeFrom) : null
+  if (nodeDom && typeof nodeDom.getBoundingClientRect === 'function') return nodeDom
+  const parent = nodeDom?.parentElement
+  return parent && typeof parent.getBoundingClientRect === 'function' ? parent : null
+}
+
+export function getBlockIndentBoundaryArrowDownPosition(view: any): number | null {
+  const selection = view?.state?.selection
+  if (!selection?.empty || typeof selection.from !== 'number') return null
+  const boundary = getBlockIndentFirstVisibleBoundaryAtPosition(view?.state?.doc, selection.from)
+  if (!boundary) return null
+
+  const element = getBlockIndentTextblockElement(view, boundary)
+  const rect = element?.getBoundingClientRect?.()
+  const style = element ? getComputedStyleForElement(element) : null
+  if (!rect || !style || typeof view?.posAtCoords !== 'function') return null
+
+  const fontSize = readCssPixels(style.fontSize, 16)
+  const lineHeight = readCssPixels(style.lineHeight, fontSize * 1.4)
+  const paddingLeft = readCssPixels(style.paddingLeft, 0)
+  const visibleTextX = rect.left + paddingLeft + 1
+  const hasWrappedLine = rect.height > lineHeight * 1.35
+  const targetY = hasWrappedLine
+    ? rect.top + lineHeight * 1.5
+    : rect.bottom + Math.max(2, Math.min(8, lineHeight * 0.35))
+  const found = view.posAtCoords({ left: visibleTextX, top: targetY })
+  const foundPosition = typeof found?.pos === 'number' ? found.pos : null
+  if (foundPosition === null) return null
+
+  const normalizedPosition = normalizeBlockIndentBoundaryPosition(view.state.doc, foundPosition)
+  return normalizedPosition === selection.from ? null : normalizedPosition
+}
+
+export function getBlockIndentClickBoundaryPosition(view: any, event: Pick<MouseEvent, 'clientX' | 'clientY'>): number | null {
+  if (typeof view?.posAtCoords !== 'function') return null
+  const found = view.posAtCoords({ left: event.clientX, top: event.clientY })
+  const foundPosition = typeof found?.pos === 'number' ? found.pos : null
+  if (foundPosition === null) return null
+
+  const range = getBlockIndentRangeAtPosition(view?.state?.doc, foundPosition)
+  if (!range) return null
+  const element = getBlockIndentTextblockElement(view, range)
+  const rect = element?.getBoundingClientRect?.()
+  const style = element ? getComputedStyleForElement(element) : null
+  if (!rect || !style) return null
+
+  const paddingLeft = readCssPixels(style.paddingLeft, 0)
+  const visibleTextX = rect.left + paddingLeft
+  const boundarySlopPx = 8
+  const insideBlockY = event.clientY >= rect.top && event.clientY <= rect.bottom
+  const nearVisibleStart = event.clientX >= rect.left - boundarySlopPx && event.clientX <= visibleTextX + boundarySlopPx
+  return insideBlockY && nearVisibleStart ? range.tokenTo : null
+}
+
+export function normalizeBlockIndentBoundaryPosition(doc: any, position: number): number {
+  return getBlockIndentTokenBoundaryAtPosition(doc, position)?.tokenTo ?? position
+}
+
+export function normalizeBlockIndentSelectionBoundaries(
+  doc: any,
+  selection: { anchor?: number; head?: number; from?: number; to?: number } | null | undefined,
+): BlockIndentSelectionBoundaries | null {
+  if (!selection) return null
+  const anchor = typeof selection.anchor === 'number' ? selection.anchor : selection.from
+  const head = typeof selection.head === 'number' ? selection.head : selection.to
+  if (typeof anchor !== 'number' || typeof head !== 'number') return null
+
+  const normalizedAnchor = normalizeBlockIndentBoundaryPosition(doc, anchor)
+  const normalizedHead = normalizeBlockIndentBoundaryPosition(doc, head)
+  return normalizedAnchor === anchor && normalizedHead === head
+    ? null
+    : { anchor: normalizedAnchor, head: normalizedHead }
+}
+
+export function getBlockIndentBoundaryNavigationPosition(
+  doc: any,
+  selection: { empty?: boolean; from?: number } | null | undefined,
+  key: string,
+): number | null {
+  if ((key !== 'ArrowLeft' && key !== 'ArrowUp') || !selection?.empty || typeof selection.from !== 'number') return null
+  const boundary = getBlockIndentFirstVisibleBoundaryAtPosition(doc, selection.from)
+  if (!boundary) return null
+
+  try {
+    const nextSelection = Selection.near(doc.resolve(Math.max(0, boundary.tokenFrom - 1)), -1)
+    const nextFrom = typeof nextSelection.from === 'number' ? nextSelection.from : null
+    if (nextFrom === null || (nextFrom >= boundary.tokenFrom && nextFrom <= boundary.tokenTo)) return selection.from
+    return nextFrom
+  } catch {
+    return selection.from
+  }
+}
+
 export function blockIndentPlugin(context: {
   pmState: {
-    Plugin: new (spec: {
+      Plugin: new (spec: {
+      appendTransaction?: (
+        transactions: unknown[],
+        oldState: unknown,
+        newState: { doc: any; selection?: { anchor?: number; head?: number; from?: number; to?: number }; tr: any },
+      ) => unknown
       props?: {
-        decorations?: (state: { doc: any }) => unknown
+        decorations?: (state: { doc: any; selection?: { empty?: boolean; from?: number } }) => unknown
+        handleClick?: (view: any, pos: number, event: MouseEvent) => boolean
+        handleKeyDown?: (view: any, event: KeyboardEvent) => boolean
+        handleTextInput?: (view: any, from: number, to: number, text: string) => boolean
       }
     }) => unknown
   }
@@ -160,6 +398,7 @@ export function blockIndentPlugin(context: {
     Decoration: {
       node: (from: number, to: number, attrs: Record<string, string>, spec?: Record<string, unknown>) => unknown
       inline: (from: number, to: number, attrs: Record<string, string>, spec?: Record<string, unknown>) => unknown
+      widget: (pos: number, toDOM: () => HTMLElement, spec?: Record<string, unknown>) => unknown
     }
     DecorationSet: {
       create: (doc: unknown, decorations: unknown[]) => unknown
@@ -173,16 +412,102 @@ export function blockIndentPlugin(context: {
     wysiwygPlugins: [
       () =>
         new Plugin({
+          appendTransaction: (_transactions, _oldState, newState) => {
+            const normalized = normalizeBlockIndentSelectionBoundaries(newState.doc, newState.selection)
+            if (!normalized) return null
+            try {
+              return newState.tr
+                .setSelection(TextSelection.create(newState.doc, normalized.anchor, normalized.head))
+                .setMeta('addToHistory', false)
+            } catch {
+              return null
+            }
+          },
           props: {
-            decorations: (state: { doc: any }) => {
+            handleClick: (view: any, _pos: number, event: MouseEvent) => {
+              const nextPosition = getBlockIndentClickBoundaryPosition(view, event)
+              if (nextPosition === null) return false
+
+              const transaction = view.state.tr
+                .setSelection(TextSelection.create(view.state.doc, nextPosition, nextPosition))
+                .scrollIntoView()
+              view.dispatch?.(transaction)
+              return true
+            },
+            handleKeyDown: (view: any, event: KeyboardEvent) => {
+              if (isHorizontalLineStartEvent(event)) {
+                const nextPosition = getBlockIndentVisibleLineStartPosition(
+                  view?.state?.doc,
+                  view?.state?.selection,
+                  event.key === 'Home' ? 'line-start' : 'word-boundary',
+                )
+                if (nextPosition !== null) {
+                  event.preventDefault()
+                  const transaction = view.state.tr
+                    .setSelection(TextSelection.create(view.state.doc, nextPosition, nextPosition))
+                    .scrollIntoView()
+                  view.dispatch?.(transaction)
+                  return true
+                }
+              }
+
+              if (event.key === 'ArrowDown') {
+                const nextPosition = getBlockIndentBoundaryArrowDownPosition(view)
+                if (nextPosition === null) return false
+
+                event.preventDefault()
+                const transaction = view.state.tr
+                  .setSelection(TextSelection.create(view.state.doc, nextPosition, nextPosition))
+                  .scrollIntoView()
+                view.dispatch?.(transaction)
+                return true
+              }
+
+              const nextPosition = getBlockIndentBoundaryNavigationPosition(
+                view?.state?.doc,
+                view?.state?.selection,
+                event.key,
+              )
+              if (nextPosition === null) return false
+
+              event.preventDefault()
+              if (nextPosition === view.state.selection.from) return true
+
+              const transaction = view.state.tr
+                .setSelection(Selection.near(view.state.doc.resolve(nextPosition), -1))
+                .scrollIntoView()
+              view.dispatch?.(transaction)
+              return true
+            },
+            handleTextInput: (view: any, from: number, to: number, inputText: string) => {
+              if (!inputText || from !== to) return false
+              const boundary = getBlockIndentTokenBoundaryAtPosition(view?.state?.doc, from)
+              if (!boundary) return false
+              const insertTo = boundary.tokenTo + inputText.length
+              const transaction = view.state.tr.insertText(inputText, boundary.tokenTo, boundary.tokenTo)
+              view.dispatch?.(
+                transaction
+                  .setSelection(TextSelection.create(transaction.doc, insertTo, insertTo))
+                  .scrollIntoView(),
+              )
+              return true
+            },
+            decorations: (state: { doc: any; selection?: { empty?: boolean; from?: number } }) => {
               const decorations: unknown[] = []
+              const cursorPosition =
+                state.selection?.empty && typeof state.selection.from === 'number'
+                  ? state.selection.from
+                  : null
               getBlockIndentDecorationRanges(state.doc).forEach((range, index) => {
+                const activeAtBoundary = cursorPosition === range.tokenTo
                 decorations.push(
                   Decoration.node(
                     range.nodeFrom,
                     range.nodeTo,
                     {
-                      class: BLOCK_INDENT_CLASS_NAME,
+                      class: activeAtBoundary
+                        ? `${BLOCK_INDENT_CLASS_NAME} ${BLOCK_INDENT_BOUNDARY_ACTIVE_CLASS_NAME}`
+                        : BLOCK_INDENT_CLASS_NAME,
                       style: `--tabs-block-indent-level: ${range.level};`,
                     },
                     { key: `block-indent-node-${range.nodeFrom}-${index}` },

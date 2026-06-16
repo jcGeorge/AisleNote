@@ -105,6 +105,7 @@ describe('newline shortcut settings', () => {
     expect(normalized.shortcuts.toggleNotesTrash).toBe(DEFAULT_SHORTCUTS.toggleNotesTrash)
     expect(normalized.shortcuts.toggleNotesScratchpad).toBe(DEFAULT_SHORTCUTS.toggleNotesScratchpad)
     expect(normalized.shortcuts.toggleNotesFilter).toBe(DEFAULT_SHORTCUTS.toggleNotesFilter)
+    expect(normalized.shortcuts.openSettings).toBe(DEFAULT_SHORTCUTS.openSettings)
     expect(normalized.shortcuts.openSpaces).toBe(DEFAULT_SHORTCUTS.openSpaces)
     expect(normalized.newlineShortcuts.shortcuts.controlEnter).toBe('dashList')
     expect(normalized.newlineShortcuts.shortcuts.shiftEnter).toBe('dashList')
@@ -153,6 +154,25 @@ describe('newline shortcut settings', () => {
       eventMatchesShortcut(
         { key: '/', code: 'Slash', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
         DEFAULT_SHORTCUTS.toggleNotesScratchpad,
+        false,
+      ),
+    ).toBe(true)
+  })
+
+  it('defaults open settings to mod comma and matches comma key events', () => {
+    expect(DEFAULT_SHORTCUTS.openSettings).toBe('Mod+,')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.openSettings, true)).toBe('cmd+,')
+    expect(
+      eventMatchesShortcut(
+        { key: ',', code: 'Comma', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.openSettings,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      eventMatchesShortcut(
+        { key: ',', code: 'Comma', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.openSettings,
         false,
       ),
     ).toBe(true)

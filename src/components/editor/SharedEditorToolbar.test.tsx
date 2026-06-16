@@ -1,4 +1,4 @@
-import { createRef } from 'react'
+import React, { createRef } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { TOOLBAR_TOOL_IDS } from '../../editor/toolbar-layouts'

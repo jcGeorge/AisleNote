@@ -70,6 +70,7 @@ describe('app persistence service', () => {
 describe('Electron app state store', () => {
   it('blocks saves after a failed structured load result', () => {
     const saveAppState = vi.fn()
+    const appendDiagnosticLogEntry = vi.fn(async () => ({ ok: true }))
     vi.stubGlobal('window', {
       electronAPI: {
         loadAppStateResult: () => ({
@@ -80,14 +81,25 @@ describe('Electron app state store', () => {
           revision: 0,
         }),
         saveAppState,
+        appendDiagnosticLogEntry,
+        listDiagnosticLogDays: vi.fn(),
+        readDiagnosticLogEntries: vi.fn(),
       },
     })
 
     const store = createAppStateStore()
 
     expect(store.load()).toBeNull()
-    store.save('{}')
+    store.save('{}', { trigger: 'blocked-test', pendingEditorCount: 3 })
     expect(saveAppState).not.toHaveBeenCalled()
+    expect(appendDiagnosticLogEntry).toHaveBeenCalledWith(expect.objectContaining({
+      area: 'storage',
+      event: 'app-state-save-blocked-load-failure',
+      details: expect.objectContaining({
+        trigger: 'blocked-test',
+        pendingEditorCount: 3,
+      }),
+    }))
   })
 
   it('unblocks saves after a storage profile switch reports ready', () => {

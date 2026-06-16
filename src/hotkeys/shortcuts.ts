@@ -1,12 +1,21 @@
 import type { AppState, NewlineOperationId, NewlineShortcutId, ShortcutId } from '../types/app'
 
 export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
+  openSettings: 'Mod+,',
   toggleNotesTrash: 'Mod+T',
   toggleNotesScratchpad: 'Mod+/',
   toggleNotesFilter: '',
+  openDomains: 'Mod+D',
+  openSpaces: 'Mod+S',
   newNote: 'Mod+N',
   newFolder: 'Mod+Shift+N',
+  newTab: 'Mod+Shift+N',
+  newSubTab: 'Mod+N',
   formatStrikethrough: '',
+  cycleParentTabNext: '',
+  cycleParentTabPrev: '',
+  cycleSubTabNext: 'Ctrl+Tab',
+  cycleSubTabPrev: 'Ctrl+Shift+Tab',
   cycleAislePrev: 'Alt+[',
   cycleAisleNext: 'Alt+]',
 }

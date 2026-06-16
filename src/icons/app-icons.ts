@@ -8,6 +8,7 @@ export const GENERAL_ICON_IDS = [
   'flipY',
   'minimize',
   'maximize',
+  'settings',
   'filter',
   'plus',
   'cornerRightDown',
@@ -16,6 +17,8 @@ export const GENERAL_ICON_IDS = [
   'cornerLeftUp',
   'arrowLeft',
   'arrowRight',
+  'arrowLeftFromLine',
+  'arrowRightFromLine',
 ] as const
 
 export type GeneralIconId = (typeof GENERAL_ICON_IDS)[number]
@@ -89,6 +92,13 @@ export const APP_ICON_DEFINITIONS = {
   maximize: {
     shapes: [{ tag: 'path', d: 'm6 9 6 6 6-6' }],
   },
+  settings: {
+    shapes: [
+      { tag: 'path', d: 'M9.67 4.13 10.4 2h3.2l.73 2.13a8.2 8.2 0 0 1 1.34.78l2.21-.47 1.6 2.77-1.48 1.66c.08.38.13.76.13 1.13s-.05.75-.13 1.13l1.48 1.66-1.6 2.77-2.21-.47a8.2 8.2 0 0 1-1.34.78L13.6 18h-3.2l-.73-2.13a8.2 8.2 0 0 1-1.34-.78l-2.21.47-1.6-2.77L6 11.13A5.6 5.6 0 0 1 5.87 10c0-.37.05-.75.13-1.13L4.52 7.21l1.6-2.77 2.21.47a8.2 8.2 0 0 1 1.34-.78' },
+      { tag: 'circle', cx: '12', cy: '10', r: '3' },
+      { tag: 'path', d: 'M4 22h16' },
+    ],
+  },
   filter: {
     shapes: [
       { tag: 'path', d: 'm3 16 4 4 4-4' },
@@ -138,6 +148,20 @@ export const APP_ICON_DEFINITIONS = {
     shapes: [
       { tag: 'path', d: 'M18 8L22 12L18 16' },
       { tag: 'path', d: 'M2 12H22' },
+    ],
+  },
+  arrowLeftFromLine: {
+    shapes: [
+      { tag: 'path', d: 'm9 6-6 6 6 6' },
+      { tag: 'path', d: 'M3 12h14' },
+      { tag: 'path', d: 'M21 19V5' },
+    ],
+  },
+  arrowRightFromLine: {
+    shapes: [
+      { tag: 'path', d: 'M3 5v14' },
+      { tag: 'path', d: 'M21 12H7' },
+      { tag: 'path', d: 'm15 18 6-6-6-6' },
     ],
   },
 } satisfies Record<GeneralIconId, AppIconDefinition>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { APP_COMMANDS } from '../../commands/app-commands'
 import {
   formatFixedNewlineShortcutLabel,
@@ -50,7 +50,7 @@ import type {
   UserSettingsLocationStatus,
   VisualsSettingsSection,
 } from '../../types/app'
-import { MAX_SCRATCHPAD_AISLE_LIMIT, MIN_SCRATCHPAD_AISLE_LIMIT } from '../../state/scratchpad'
+import { MAX_SCRATCHPAD_AISLE_LIMIT, MIN_SCRATCHPAD_AISLE_LIMIT } from '../../state/scratchpad-limits'
 import { CustomThemeEditor } from './CustomThemeEditor'
 import { DataSettingsPanel } from './DataSettingsPanel'
 import { ThemePreview } from './ThemePreview'

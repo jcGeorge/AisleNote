@@ -367,6 +367,10 @@
 }
 
 .settings-switch .form-check-input {
+  width: 2.35rem;
+  min-width: 2.35rem;
+  height: 1.22rem;
+  min-height: 1.22rem;
   margin: 0 !important;
   float: none !important;
   cursor: pointer;
@@ -374,8 +378,9 @@
   background-image: radial-gradient(circle, var(--settings-switch-thumb-bg) 0 52%, transparent 54%);
   background-position: left center;
   background-repeat: no-repeat;
-  background-size: 1rem 1rem;
+  background-size: 1.05rem 1.05rem;
   border-color: var(--settings-switch-border);
+  border-radius: 999px;
 }
 
 .settings-switch .form-check-input:focus {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import * as React from 'react'
 import type { AboutSection } from '../../types/app'
 
 export type RuntimeInfo = {
@@ -34,7 +34,7 @@ export function AboutViewContent({
       <div className="utility-page-card about-view-card">
         <h2>Tabs</h2>
         <p>
-          Tabs is a local-first notebook for organizing notes across domains, spaces, parents, subtabs, and aisles.
+          Tabs is a local-first notebook for organizing notes in folders, with aisle-based editing inside each note.
         </p>
         <p>
           Toolbar and app icons include icons from Lucide.dev.
@@ -55,10 +55,10 @@ export function AboutViewContent({
 }
 
 export function AboutView({ section = 'home' }: { section?: AboutSection }) {
-  const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | null>(null)
-  const [runtimeUnavailable, setRuntimeUnavailable] = useState(false)
+  const [runtimeInfo, setRuntimeInfo] = React.useState<RuntimeInfo | null>(null)
+  const [runtimeUnavailable, setRuntimeUnavailable] = React.useState(false)
 
-  useEffect(() => {
+  React.useEffect(() => {
     let canceled = false
     const getRuntimeInfo = window.electronAPI?.getRuntimeInfo
     if (!getRuntimeInfo) {

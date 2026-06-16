@@ -39,7 +39,7 @@ import type {
 import {
   DEFAULT_SCRATCHPAD_AISLE_LIMIT,
   clampScratchpadAisleLimit,
-} from '../state/scratchpad'
+} from '../state/scratchpad-limits'
 import {
   clampAutoRemoveDays,
   clampNoteFontScale,

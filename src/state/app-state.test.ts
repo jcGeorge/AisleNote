@@ -348,6 +348,7 @@ describe('app state normalization', () => {
     expect(state.hotkeys.shortcuts.toggleNotesTrash).toBe(DEFAULT_SHORTCUTS.toggleNotesTrash)
     expect(state.hotkeys.shortcuts.toggleNotesScratchpad).toBe(DEFAULT_SHORTCUTS.toggleNotesScratchpad)
     expect(state.hotkeys.shortcuts.toggleNotesFilter).toBe(DEFAULT_SHORTCUTS.toggleNotesFilter)
+    expect(state.hotkeys.shortcuts.openSettings).toBe(DEFAULT_SHORTCUTS.openSettings)
     expect(state.hotkeys.shortcuts.openSpaces).toBe(DEFAULT_SHORTCUTS.openSpaces)
     expect(state.hotkeys.newlineShortcuts.shortcuts.controlEnter).toBe('blockQuote')
     expect(state.hotkeys.newlineShortcuts.shortcuts.shiftEnter).toBe(
