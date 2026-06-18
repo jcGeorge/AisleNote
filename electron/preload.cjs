@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openAsset: (payload) => ipcRenderer.invoke('open-asset', payload),
   revealAsset: (payload) => ipcRenderer.invoke('reveal-asset', payload),
   revealNoteLocation: (payload) => ipcRenderer.invoke('reveal-note-location', payload),
+  revealNotebookItemLocation: (payload) => ipcRenderer.invoke('reveal-notebook-item-location', payload),
   readAsset: (payload) => ipcRenderer.invoke('read-asset', payload),
   getEditorSpellcheckContext: (payload) => ipcRenderer.invoke('get-editor-spellcheck-context', payload),
   replaceMisspelling: (payload) => ipcRenderer.invoke('replace-misspelling', payload),

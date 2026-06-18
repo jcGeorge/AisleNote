@@ -1,3 +1,4 @@
+import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { FindReplaceMatch } from '../../notes/find-replace'
@@ -11,13 +12,8 @@ function match(
 ): FindReplaceMatch {
   return {
     id,
-    location: {
-      domainId: context.domainId,
-      spaceId: context.spaceId,
-      tabId: context.parentId,
-      subTabId: context.noteKind === 'subtab' ? context.noteId : null,
-    },
-    label: `${context.domainName} > ${context.spaceName} > ${context.parentName} > ${context.noteName}`,
+    location: { noteId: context.noteId },
+    label: context.folderPath ? `${context.folderPath} / ${context.noteName}` : context.noteName,
     context,
     noteBodyId: `body-${id}`,
     aisleId: `aisle-${id}`,
@@ -35,12 +31,9 @@ function match(
 }
 
 const SCRATCHPAD_CONTEXT: FindReplaceMatch['context'] = {
-  domainId: 'scratchpad',
-  domainName: 'scratchpad',
-  spaceId: 'scratchpad',
-  spaceName: 'scratchpad',
-  parentId: 'scratchpad',
-  parentName: 'scratchpad',
+  folderId: null,
+  folderName: '',
+  folderPath: '',
   noteId: 'scratchpad',
   noteName: 'scratchpad',
   noteKind: 'scratchpad',
@@ -80,17 +73,15 @@ function renderPanel(overrides: Partial<Parameters<typeof FindReplacePanel>[0]> 
 }
 
 describe('FindReplacePanel', () => {
-  it('renders find-only mode with scope buttons and regex option', () => {
+  it('renders find-only mode with notebook scopes and regex option', () => {
     const html = renderPanel()
 
     expect(html).toContain('aria-label="Find"')
     expect(html).toContain('and replace')
     expect(html).not.toContain('<span>replace</span>')
     expect(html).toContain('search for results within this:')
-    expect(html).toContain('>tab</button>')
-    expect(html).toContain('>parent</button>')
-    expect(html).toContain('>space</button>')
-    expect(html).toContain('>domain</button>')
+    expect(html).toContain('>note</button>')
+    expect(html).toContain('>folder</button>')
     expect(html).toContain('>notebook</button>')
     expect(html).toContain('>regex</span>')
   })
@@ -104,65 +95,54 @@ describe('FindReplacePanel', () => {
     expect(html).toContain('>replace all</button>')
   })
 
-  it('renders grouped context chips instead of breadcrumb result labels', () => {
+  it('groups normal results by folder and renders note chips', () => {
     const html = renderPanel({
       matches: [
         match('one', {
-          domainId: 'domain-a',
-          domainName: 'Domain A',
-          spaceId: 'space-a',
-          spaceName: 'Space A',
-          parentId: 'parent-a',
-          parentName: 'Parent A',
-          noteId: 'sub-a',
-          noteName: 'Sub A',
-          noteKind: 'subtab',
+          folderId: 'folder-a',
+          folderName: 'Folder A',
+          folderPath: 'Notebook / Folder A',
+          noteId: 'note-a',
+          noteName: 'Note A',
+          noteKind: 'note',
         }),
       ],
     })
 
-    expect(html).toContain('find-replace-context-chip')
-    expect(html).toContain('compact-domain-btn')
-    expect(html).toContain('compact-space-btn')
-    expect(html).toContain('parent-tab-btn')
-    expect(html).toContain('subtab-btn')
-    expect(html).toContain('>Sub A</span>')
-    expect(html).not.toContain('Domain A &gt; Space A &gt; Parent A &gt; Sub A')
+    expect(html).toContain('find-replace-context-chip is-folder')
+    expect(html).toContain('>Notebook / Folder A</span>')
+    expect(html).toContain('find-replace-context-chip is-note')
+    expect(html).toContain('>Note A</span>')
   })
 
-  it('renders scratchpad results without fake hierarchy chips', () => {
+  it('renders scratchpad results without folder headers', () => {
     const html = renderPanel({
       matches: [match('scratch', SCRATCHPAD_CONTEXT)],
     })
 
+    expect(html).toContain('find-replace-context-chip is-scratchpad')
     expect(html).toContain('>scratchpad</span>')
-    expect(html).toContain('subtab-btn is-subtab')
-    expect(html).not.toContain('compact-domain-btn')
-    expect(html).not.toContain('compact-space-btn')
-    expect(html).not.toContain('parent-tab-btn')
+    expect(html).not.toContain('is-folder')
     expect(html).not.toContain('find-replace-result-separator')
   })
 
-  it('separates scratchpad results from normal hierarchy results', () => {
+  it('separates scratchpad results from normal notebook results', () => {
     const html = renderPanel({
       matches: [
         match('normal', {
-          domainId: 'domain-a',
-          domainName: 'Domain A',
-          spaceId: 'space-a',
-          spaceName: 'Space A',
-          parentId: 'parent-a',
-          parentName: 'Parent A',
-          noteId: 'sub-a',
-          noteName: 'Sub A',
-          noteKind: 'subtab',
+          folderId: 'folder-a',
+          folderName: 'Folder A',
+          folderPath: 'Notebook / Folder A',
+          noteId: 'note-a',
+          noteName: 'Note A',
+          noteKind: 'note',
         }),
         match('scratch', SCRATCHPAD_CONTEXT),
       ],
     })
 
     expect(html).toContain('find-replace-result-separator')
-    expect(html).toContain('compact-domain-btn')
+    expect(html).toContain('>Notebook / Folder A</span>')
     expect(html).toContain('>scratchpad</span>')
   })
 
@@ -173,15 +153,12 @@ describe('FindReplacePanel', () => {
         match(
           'normal',
           {
-            domainId: 'domain-a',
-            domainName: 'Domain A',
-            spaceId: 'space-a',
-            spaceName: 'Space A',
-            parentId: 'parent-a',
-            parentName: 'Parent A',
-            noteId: 'sub-a',
-            noteName: 'Sub A',
-            noteKind: 'subtab',
+            folderId: 'folder-a',
+            folderName: 'Folder A',
+            folderPath: 'Notebook / Folder A',
+            noteId: 'note-a',
+            noteName: 'Note A',
+            noteKind: 'note',
           },
           'normal match',
         ),

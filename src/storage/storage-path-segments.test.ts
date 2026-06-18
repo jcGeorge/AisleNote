@@ -22,8 +22,8 @@ describe('storage path segments', () => {
   it('sanitizes invalid filesystem characters before truncating', () => {
     const segment = buildStoragePathSegment(
       '<Invalid>: Name / With * Bad ? Characters '.repeat(4),
-      'domain-1',
-      'domain',
+      'notebook-1',
+      'notebook',
     )
 
     expect(segment).toHaveLength(STORAGE_PATH_SEGMENT_MAX_LENGTH)
@@ -31,7 +31,7 @@ describe('storage path segments', () => {
     expect(segment).not.toMatch(/[<>:"/\\|?*]/)
     expect(segment.endsWith(' ')).toBe(false)
     expect(segment.endsWith('.')).toBe(false)
-    expect(sanitizeStoragePathName('...', 'domain')).toBe('domain')
+    expect(sanitizeStoragePathName('...', 'notebook')).toBe('notebook')
   })
 
   it('keeps the short id suffix and collision suffix inside the 48 character budget', () => {

@@ -33,7 +33,12 @@ function serializedAppState(theme = 'dawn') {
       dataSettingsSection: 'settings',
       toolbarLayouts: [],
     },
-    domains: [],
+    notebook: {
+      activeNoteId: 'note-1',
+      items: [{ type: 'note', id: 'note-1', title: 'Note', noteBodyId: 'body-1' }],
+      deletedItems: [],
+      settings: { autoRemoveDeletedDays: 30 },
+    },
     noteBodies: [],
   })
 }

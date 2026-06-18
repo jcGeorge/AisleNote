@@ -22,6 +22,7 @@ export type NoteLocationListEntry = NoteLocation & {
 
 export type NoteSearchEntry = NoteLocation & {
   noteBodyId: string
+  parentFolderId: string | null
   folderName: string
   folderPath: string
   noteName: string
@@ -73,6 +74,7 @@ export function listSearchableNoteLocations(sourceState: AppState): NoteSearchEn
     return {
       noteId: note.id,
       noteBodyId: note.noteBodyId,
+      parentFolderId: path.at(-2)?.id ?? null,
       folderName,
       folderPath,
       noteName: note.title,

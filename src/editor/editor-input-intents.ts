@@ -7,6 +7,32 @@ import type {
 } from './multiline-edit'
 import type { TableBoundaryDirection, TableCellNavigationDirection } from './table-editing'
 
+export type EditorArrowDirection = 'left' | 'right' | 'up' | 'down'
+
+export type EditorNavigationIntent =
+  | { type: 'none' }
+  | { type: 'native'; reason: 'paragraph-boundary' }
+  | { type: 'plain-arrow'; direction: EditorArrowDirection }
+  | {
+      type: 'line-boundary'
+      direction: 'start' | 'end'
+      extendSelection: boolean
+      blockIndentMode: 'line-start' | 'word-boundary'
+    }
+  | { type: 'document-boundary'; direction: 'start' | 'end'; extendSelection: boolean }
+  | { type: 'page-movement'; movement: EditorPageMovement; extendSelection: boolean }
+
+export type EditorNavigationIntentInput = {
+  key: string
+  code?: string
+  altKey?: boolean
+  ctrlKey?: boolean
+  metaKey?: boolean
+  shiftKey?: boolean
+  isMacPlatform: boolean
+  hasFnModifier?: boolean
+}
+
 export type EditorInputIntent =
   | { type: 'none' }
   | { type: 'toolbar-format'; format: ToolbarFormatKey }
@@ -14,7 +40,7 @@ export type EditorInputIntent =
   | { type: 'newline-operation'; operation: NewlineOperationId }
   | { type: 'open-operations-menu' }
   | { type: 'delete-active-image' }
-  | { type: 'document-boundary-selection'; direction: 'start' | 'end' }
+  | { type: 'document-boundary-selection'; direction: 'start' | 'end'; extendSelection: boolean }
   | { type: 'table-boundary-caret'; direction: TableBoundaryDirection }
   | { type: 'table-cell-navigation'; direction: TableCellNavigationDirection }
   | { type: 'multiline-selection'; direction: 'up' | 'down' }
@@ -41,10 +67,9 @@ export type EditorKeyDownIntentInput = {
   toolbarFormatShortcut: ToolbarFormatKey | null
   editorHistoryDirection: 'undo' | 'redo' | null
   newlineOperation: NewlineOperationId | null
-  documentBoundarySelectionDirection: 'start' | 'end' | null
+  navigationIntent: EditorNavigationIntent
   tableBoundaryDirection: TableBoundaryDirection | null
   multiLineSelectionDirection: 'up' | 'down' | null
-  pageMovement: EditorPageMovement | null
 }
 
 export type EditorBeforeInputIntentInput = {
@@ -56,6 +81,117 @@ export type EditorBeforeInputIntentInput = {
 
 function hasCommandModifier(input: { altKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) {
   return Boolean(input.altKey || input.ctrlKey || input.metaKey)
+}
+
+function hasKey(input: { key?: string; code?: string }, key: string, legacyKey?: string): boolean {
+  return input.key === key || input.code === key || (legacyKey ? input.key === legacyKey : false)
+}
+
+function getPlainArrowDirection(input: { key?: string; code?: string }): EditorArrowDirection | null {
+  if (hasKey(input, 'ArrowLeft', 'Left')) return 'left'
+  if (hasKey(input, 'ArrowRight', 'Right')) return 'right'
+  if (hasKey(input, 'ArrowUp', 'Up')) return 'up'
+  if (hasKey(input, 'ArrowDown', 'Down')) return 'down'
+  return null
+}
+
+export function getEditorNavigationIntentInputForEvent(
+  event: KeyboardEvent,
+  isMacPlatform: boolean,
+): EditorNavigationIntentInput {
+  return {
+    key: event.key,
+    code: event.code,
+    altKey: event.altKey,
+    ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey,
+    shiftKey: event.shiftKey,
+    isMacPlatform,
+    hasFnModifier: typeof event.getModifierState === 'function' && event.getModifierState('Fn'),
+  }
+}
+
+export function resolveEditorNavigationIntent(input: EditorNavigationIntentInput): EditorNavigationIntent {
+  const arrowDirection = getPlainArrowDirection(input)
+  const extendSelection = Boolean(input.shiftKey)
+  const hasNonShiftModifier = Boolean(input.altKey || input.ctrlKey || input.metaKey)
+
+  if (
+    input.isMacPlatform &&
+    input.metaKey &&
+    !input.altKey &&
+    !input.ctrlKey &&
+    (arrowDirection === 'up' || arrowDirection === 'down')
+  ) {
+    return {
+      type: 'document-boundary',
+      direction: arrowDirection === 'up' ? 'start' : 'end',
+      extendSelection,
+    }
+  }
+
+  if (!hasNonShiftModifier) {
+    if (hasKey(input, 'PageUp')) {
+      return { type: 'page-movement', movement: 'page-up', extendSelection }
+    }
+    if (hasKey(input, 'PageDown')) {
+      return { type: 'page-movement', movement: 'page-down', extendSelection }
+    }
+    if (input.hasFnModifier && arrowDirection === 'up') {
+      return { type: 'page-movement', movement: 'page-up', extendSelection }
+    }
+    if (input.hasFnModifier && arrowDirection === 'down') {
+      return { type: 'page-movement', movement: 'page-down', extendSelection }
+    }
+  }
+
+  if (!input.altKey && !input.ctrlKey && !input.metaKey && !input.shiftKey) {
+    if (hasKey(input, 'Home')) {
+      return {
+        type: 'line-boundary',
+        direction: 'start',
+        extendSelection: false,
+        blockIndentMode: 'line-start',
+      }
+    }
+    if (hasKey(input, 'End')) {
+      return {
+        type: 'line-boundary',
+        direction: 'end',
+        extendSelection: false,
+        blockIndentMode: 'line-start',
+      }
+    }
+  }
+
+  if (!input.altKey && !input.shiftKey && (input.metaKey || input.ctrlKey)) {
+    if (arrowDirection === 'left') {
+      return {
+        type: 'line-boundary',
+        direction: 'start',
+        extendSelection: false,
+        blockIndentMode: 'word-boundary',
+      }
+    }
+    if (arrowDirection === 'right') {
+      return {
+        type: 'line-boundary',
+        direction: 'end',
+        extendSelection: false,
+        blockIndentMode: 'word-boundary',
+      }
+    }
+  }
+
+  if (input.altKey && !input.metaKey && !input.ctrlKey && !input.shiftKey && (arrowDirection === 'up' || arrowDirection === 'down')) {
+    return { type: 'native', reason: 'paragraph-boundary' }
+  }
+
+  if (!input.altKey && !input.ctrlKey && !input.metaKey && !input.shiftKey && arrowDirection) {
+    return { type: 'plain-arrow', direction: arrowDirection }
+  }
+
+  return { type: 'none' }
 }
 
 function getMultiLineDeleteInput(input: EditorKeyDownIntentInput): MultiLineEditInput | null {
@@ -89,8 +225,16 @@ export function resolveEditorKeyDownIntent(input: EditorKeyDownIntentInput): Edi
   if (!input.isTextInputTarget && (input.key === 'Backspace' || input.key === 'Delete') && input.hasActiveImage) {
     return { type: 'delete-active-image' }
   }
-  if (!input.isTextInputTarget && !input.hasMultiLineEdit && input.documentBoundarySelectionDirection) {
-    return { type: 'document-boundary-selection', direction: input.documentBoundarySelectionDirection }
+  if (
+    !input.isTextInputTarget &&
+    !input.hasMultiLineEdit &&
+    input.navigationIntent.type === 'document-boundary'
+  ) {
+    return {
+      type: 'document-boundary-selection',
+      direction: input.navigationIntent.direction,
+      extendSelection: input.navigationIntent.extendSelection,
+    }
   }
   if (!input.isTextInputTarget && input.tableBoundaryDirection) {
     return { type: 'table-boundary-caret', direction: input.tableBoundaryDirection }
@@ -127,7 +271,13 @@ export function resolveEditorKeyDownIntent(input: EditorKeyDownIntentInput): Edi
         extendSelection: input.shiftKey,
       }
     }
-    if (input.pageMovement) return { type: 'multiline-move', movement: input.pageMovement, extendSelection: input.shiftKey }
+    if (input.navigationIntent.type === 'page-movement') {
+      return {
+        type: 'multiline-move',
+        movement: input.navigationIntent.movement,
+        extendSelection: input.navigationIntent.extendSelection,
+      }
+    }
     if (input.key === 'ArrowUp') return { type: 'multiline-move', movement: 'up' }
     if (input.key === 'ArrowDown') return { type: 'multiline-move', movement: 'down' }
     if (input.key === 'Home') return { type: 'multiline-move', movement: 'line-start', extendSelection: input.shiftKey }
@@ -141,8 +291,12 @@ export function resolveEditorKeyDownIntent(input: EditorKeyDownIntentInput): Edi
   ) {
     return { type: 'paragraph-space-shortcut' }
   }
-  if (!input.isTextInputTarget && input.pageMovement) {
-    return { type: 'page-movement', movement: input.pageMovement, extendSelection: input.shiftKey }
+  if (!input.isTextInputTarget && input.navigationIntent.type === 'page-movement') {
+    return {
+      type: 'page-movement',
+      movement: input.navigationIntent.movement,
+      extendSelection: input.navigationIntent.extendSelection,
+    }
   }
   if (!input.isTextInputTarget && input.key === 'Tab' && !input.altKey && !input.ctrlKey && !input.metaKey) {
     return { type: 'tab-indent', outdent: Boolean(input.shiftKey) }

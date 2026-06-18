@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   EMPTY_AISLE_PREVIEW_TEXT,
   MAX_AISLE_WARNING_MESSAGE,
+  MAX_NOTE_AISLES,
   addAisleToDraft,
   addAisleToDraftOrWarn,
   canAddAisleToDraft,
@@ -19,7 +20,6 @@ import {
   reorderAisleDraftByInsertion,
 } from './aisle-edit-draft'
 import { EDITOR_BLANK_LINE_PLACEHOLDER } from '../markdown/markdown-utils'
-import { MAX_NOTE_AISLES } from '../state/workspace'
 import type { ResolvedNoteAisle } from '../types/app'
 
 const aisle = (id: string, markdown = id): ResolvedNoteAisle => ({ id, aisleBodyId: id, markdown })

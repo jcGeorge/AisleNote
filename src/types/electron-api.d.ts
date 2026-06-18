@@ -100,6 +100,10 @@ type ImportAssetPayload = ImportImageAssetPayload
 export type ElectronNoteRevealPayload =
   | { type: 'live-note'; location: NoteLocation }
   | { type: 'scratchpad' }
+export type ElectronNotebookItemRevealPayload = {
+  itemId: string
+  itemType: 'note' | 'folder'
+}
 export type EditorSpellcheckContext = {
   suggestions: string[]
   misspelledWord: string
@@ -304,6 +308,7 @@ declare global {
       openAsset?: (payload: { url?: string; assetPath?: string }) => Promise<{ ok: boolean; error?: string }>
       revealAsset?: (payload: { url?: string; assetPath?: string }) => Promise<{ ok: boolean; error?: string }>
       revealNoteLocation?: (payload: ElectronNoteRevealPayload) => Promise<{ ok: boolean; error?: string }>
+      revealNotebookItemLocation?: (payload: ElectronNotebookItemRevealPayload) => Promise<{ ok: boolean; error?: string }>
       readAsset?: (payload: { url?: string; assetPath?: string }) => Promise<ReadAssetResult>
       getEditorSpellcheckContext?: (payload: { x: number; y: number }) => Promise<EditorSpellcheckContext | null>
       replaceMisspelling?: (payload: { word: string }) => Promise<{ ok: boolean; error?: string }>

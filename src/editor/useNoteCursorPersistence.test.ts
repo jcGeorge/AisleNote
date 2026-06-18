@@ -41,7 +41,7 @@ describe('pending note cursor restore focus', () => {
     expect(
       shouldFocusSavedCursorRestoreOnActivation({
         previousNoteLocationKey: '',
-        activeNoteLocationKey: 'domain::space::tab::__home__',
+        activeNoteLocationKey: 'note-main',
         previousViewMode: null,
         viewMode: 'main',
         hasSavedSelection: true,
@@ -50,7 +50,7 @@ describe('pending note cursor restore focus', () => {
     expect(
       getSavedCursorRestoreIntentOnActivation({
         previousNoteLocationKey: '',
-        activeNoteLocationKey: 'domain::space::tab::__home__',
+        activeNoteLocationKey: 'note-main',
         previousViewMode: null,
         viewMode: 'main',
         hasSavedSelection: true,
@@ -58,8 +58,8 @@ describe('pending note cursor restore focus', () => {
     ).toBe('none')
     expect(
       shouldFocusSavedCursorRestoreOnActivation({
-        previousNoteLocationKey: 'domain::space::one::__home__',
-        activeNoteLocationKey: 'domain::space::two::__home__',
+        previousNoteLocationKey: 'note-one',
+        activeNoteLocationKey: 'note-two',
         previousViewMode: 'main',
         viewMode: 'main',
         hasSavedSelection: true,
@@ -67,8 +67,8 @@ describe('pending note cursor restore focus', () => {
     ).toBe(true)
     expect(
       getSavedCursorRestoreIntentOnActivation({
-        previousNoteLocationKey: 'domain::space::one::__home__',
-        activeNoteLocationKey: 'domain::space::two::__home__',
+        previousNoteLocationKey: 'note-one',
+        activeNoteLocationKey: 'note-two',
         previousViewMode: 'main',
         viewMode: 'main',
         hasSavedSelection: true,
@@ -79,8 +79,8 @@ describe('pending note cursor restore focus', () => {
   it('focuses saved cursor restores when returning to the same note from another view', () => {
     expect(
       shouldFocusSavedCursorRestoreOnActivation({
-        previousNoteLocationKey: 'domain::space::tab::__home__',
-        activeNoteLocationKey: 'domain::space::tab::__home__',
+        previousNoteLocationKey: 'note-main',
+        activeNoteLocationKey: 'note-main',
         previousViewMode: 'settings',
         viewMode: 'main',
         hasSavedSelection: true,
@@ -88,8 +88,8 @@ describe('pending note cursor restore focus', () => {
     ).toBe(true)
     expect(
       shouldFocusSavedCursorRestoreOnActivation({
-        previousNoteLocationKey: 'domain::space::tab::__home__',
-        activeNoteLocationKey: 'domain::space::tab::__home__',
+        previousNoteLocationKey: 'note-main',
+        activeNoteLocationKey: 'note-main',
         previousViewMode: 'settings',
         viewMode: 'main',
         hasSavedSelection: false,
@@ -105,7 +105,7 @@ describe('pending note cursor restore focus', () => {
 
   it('suppresses saved cursor restore targets while tag navigation is pending', () => {
     const pendingCursorRestore = {
-      noteLocationKey: 'domain::space::tab::__home__',
+      noteLocationKey: 'note-main',
       aisleId: 'saved-aisle',
     }
 
@@ -113,7 +113,7 @@ describe('pending note cursor restore focus', () => {
       getPendingCursorRestoreTargetAisleId({
         pendingFocusAisleId: null,
         pendingCursorRestore,
-        activeNoteLocationKey: 'domain::space::tab::__home__',
+        activeNoteLocationKey: 'note-main',
         suppressSavedCursorRestore: true,
       }),
     ).toBe('')
@@ -121,7 +121,7 @@ describe('pending note cursor restore focus', () => {
       shouldClearSuppressedSavedCursorRestore({
         pendingFocusAisleId: null,
         pendingCursorRestore,
-        activeNoteLocationKey: 'domain::space::tab::__home__',
+        activeNoteLocationKey: 'note-main',
         suppressSavedCursorRestore: true,
       }),
     ).toBe(true)
@@ -129,7 +129,7 @@ describe('pending note cursor restore focus', () => {
       getPendingCursorRestoreTargetAisleId({
         pendingFocusAisleId: 'explicit-aisle',
         pendingCursorRestore,
-        activeNoteLocationKey: 'domain::space::tab::__home__',
+        activeNoteLocationKey: 'note-main',
         suppressSavedCursorRestore: true,
       }),
     ).toBe('explicit-aisle')
@@ -137,7 +137,7 @@ describe('pending note cursor restore focus', () => {
       shouldClearSuppressedSavedCursorRestore({
         pendingFocusAisleId: 'explicit-aisle',
         pendingCursorRestore,
-        activeNoteLocationKey: 'domain::space::tab::__home__',
+        activeNoteLocationKey: 'note-main',
         suppressSavedCursorRestore: true,
       }),
     ).toBe(false)
@@ -148,7 +148,7 @@ describe('active editor cursor persistence', () => {
   it('prefers the synchronous cursor cache over persisted cursor state', () => {
     const storedSelection = { anchor: 1, head: 1, updatedAt: 1 }
     const cachedSelection = { anchor: 8, head: 8, updatedAt: 2 }
-    const noteLocationKey = 'domain::space::tab::__home__'
+    const noteLocationKey = 'note-main'
     const cache = new Map<string, NoteCursorSelection | null>([
       [`${noteLocationKey}::aisle-1`, cachedSelection],
     ])

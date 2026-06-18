@@ -38,7 +38,7 @@ describe('synced UI settings registry', () => {
       toggleTabsTarget: 'messages',
       findRegex: true,
       findReplaceMode: 'replace',
-      findReplaceScope: 'domain',
+      findReplaceScope: 'folder',
       lastLinkInsertMode: 'url',
       lastNoteCopyMode: 'linked',
       tableAddTargetMode: 'active-cell',
@@ -54,7 +54,7 @@ describe('synced UI settings registry', () => {
     expect(normalized).toMatchObject({
       findRegex: true,
       findReplaceMode: 'replace',
-      findReplaceScope: 'domain',
+      findReplaceScope: 'folder',
       lastLinkInsertMode: 'url',
       lastNoteCopyMode: 'linked',
       tableAddTargetMode: 'active-cell',
@@ -78,7 +78,7 @@ describe('synced UI settings registry', () => {
   it('picks registered settings and boolean drafts from a source object', () => {
     const picked = pickRegisteredSyncedUiSettings({
       findCaseSensitive: true,
-      alwaysShowSpaces: true,
+      unknownBoolean: true,
       toggleTabsTarget: 'messages',
     })
     expect(picked).toMatchObject({

@@ -523,7 +523,7 @@ describe('internal note link hit detection', () => {
   }
 
   const resolvedReference = {
-    target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+    target: { noteId: 'note-linked' },
     heading: undefined,
     label: 'Linked',
   }

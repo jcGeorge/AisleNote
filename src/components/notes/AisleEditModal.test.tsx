@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { BLOCK_INDENT_TOKEN } from '../../markdown/markdown-utils'
-import { MAX_NOTE_AISLES } from '../../state/workspace'
+import { MAX_NOTE_AISLES } from '../../editor/aisle-edit-draft'
 import type { ResolvedNoteAisle } from '../../types/app'
 import { AisleEditModal } from './AisleEditModal'
 
@@ -28,7 +28,7 @@ function renderModal(
       frontmatterAisleIds={options.frontmatterAisleIds}
       initialStagedDecoupleAisleIds={options.initialStagedDecoupleAisleIds}
       initialStagedRemoveFrontmatterAisleIds={options.initialStagedRemoveFrontmatterAisleIds}
-      getNotePreviewLabel={() => 'Domain / Space / Parent / Child'}
+      getNotePreviewLabel={() => 'Notebook / Folder / Note'}
       onCancel={() => undefined}
       onApply={() => undefined}
       onWarn={() => undefined}
@@ -109,7 +109,8 @@ describe('AisleEditModal', () => {
     expect(html).toContain('<img')
     expect(html).toContain('alt="Diagram"')
     expect(html).toContain('draggable="false"')
-    expect(html).toContain('class="aisle-edit-delete-icon"')
+    expect(html).toContain('data-app-icon="trash"')
+    expect(html).toContain('app-icon-trash')
     expect(html).not.toContain('>up</button>')
     expect(html).not.toContain('>down</button>')
   })

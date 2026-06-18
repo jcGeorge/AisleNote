@@ -1,10 +1,12 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -98,8 +100,10 @@ import { AboutView } from '../components/about/AboutView'
 import { MessagesView } from '../components/messages/MessagesView'
 import { ToolbarSettingsPanel } from '../components/settings/ToolbarSettingsPanel'
 import { ShortcutMenuSettingsPanel } from '../components/settings/ShortcutMenuSettingsPanel'
+import { clampContextMenuPosition, type MenuPosition, type MenuSize, type MenuViewport } from '../components/overlays/context-menu-position'
 import { useEditorToolbarState } from '../editor/useEditorToolbarState'
 import { useNotebookAisleEditors } from '../editor/useNotebookAisleEditors'
+import { useNoteCursorPersistence, usePendingNoteCursorRestore } from '../editor/useNoteCursorPersistence'
 import { useTableControls } from '../editor/useTableControls'
 import {
   DEFAULT_SHORTCUTS,
@@ -140,12 +144,15 @@ import {
   decoupleNotebookAisleBodyInState,
   decoupleNotebookNoteBodyInState,
   deleteNotebookItemInState,
+  findNotebookFolder,
+  findNotebookItem,
   findNotebookNote,
   getContainingFolderId,
   getFirstNotebookNote,
   getNotebookNoteFolderPath,
   insertNotebookItem,
   isNoteBodyLinked,
+  moveNotebookItem,
   renameNotebookItem,
   restoreDeletedNotebookItemInState,
 } from '../state/notebook'
@@ -311,6 +318,18 @@ function getActiveNoteModel(state: AppState): ActiveNoteModel | null {
     linked: isNoteBodyLinked(state.notebook.items, fallbackNote.noteBodyId),
     folderPath,
   }
+}
+
+function getPreferredNotebookAisleId(
+  state: AppState,
+  noteId: string,
+  aisles: readonly Pick<NoteAisle, 'id'>[],
+): string {
+  if (!noteId || aisles.length === 0) return ''
+  const savedLocation = state.ui.noteCursorLocations[noteId] ?? null
+  return savedLocation && aisles.some((aisle) => aisle.id === savedLocation.activeAisleId)
+    ? savedLocation.activeAisleId
+    : aisles[0]?.id ?? ''
 }
 
 function collectDeletedNoteBodyIds(item: NotebookTreeItem, ids = new Set<string>()): Set<string> {
@@ -515,89 +534,427 @@ function cloneAisleBodyForDraft(
   }
 }
 
-function TreeItemRow({
-  item,
-  depth,
-  activeNoteId,
-  collapsedFolderIds,
-  query,
-  onSelectNote,
-  onToggleFolder,
+const NOTEBOOK_TREE_RENAME_LONG_PRESS_MS = 500
+const NOTEBOOK_TREE_LONG_PRESS_MOVE_TOLERANCE_PX = 6
+
+type NotebookTreeDropPosition = 'before' | 'after' | 'inside' | 'root'
+
+type NotebookTreeDropTarget = {
+  parentFolderId: string | null
+  index: number
+  targetItemId: string | null
+  position: NotebookTreeDropPosition
+}
+
+type NotebookTreeContextMenuState = {
+  x: number
+  y: number
+  itemId: string
+  itemType: NotebookTreeItem['type']
+  itemTitle: string
+}
+
+function getNotebookMenuViewportSize(): MenuViewport {
+  if (typeof window === 'undefined') return { width: 0, height: 0 }
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  }
+}
+
+function getNotebookMenuElementSize(element: HTMLElement): MenuSize {
+  const rect = element.getBoundingClientRect()
+  return {
+    width: rect.width,
+    height: rect.height,
+  }
+}
+
+export function getNotebookSidebarRevealLabel(platform: string | undefined): string {
+  const normalizedPlatform = String(platform ?? '').toLowerCase()
+  if (normalizedPlatform === 'darwin' || normalizedPlatform.includes('mac')) return 'Reveal in Finder'
+  if (normalizedPlatform === 'win32' || normalizedPlatform.includes('win')) return 'Show in File Explorer'
+  return 'Show in Files'
+}
+
+function getNotebookTreeDropTargetFromEvent(
+  event: ReactDragEvent<HTMLElement>,
+  item: NotebookTreeItem,
+  parentFolderId: string | null,
+  index: number,
+): NotebookTreeDropTarget {
+  const rect = event.currentTarget.getBoundingClientRect()
+  const relativeY = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0.5
+  if (item.type === 'folder' && relativeY >= 0.25 && relativeY <= 0.75) {
+    return {
+      parentFolderId: item.id,
+      index: item.children.length,
+      targetItemId: item.id,
+      position: 'inside',
+    }
+  }
+  const before = item.type === 'folder' ? relativeY < 0.25 : relativeY < 0.5
+  return {
+    parentFolderId,
+    index: before ? index : index + 1,
+    targetItemId: item.id,
+    position: before ? 'before' : 'after',
+  }
+}
+
+function areNotebookTreeDropTargetsEqual(left: NotebookTreeDropTarget | null, right: NotebookTreeDropTarget | null): boolean {
+  return (
+    left?.parentFolderId === right?.parentFolderId &&
+    left?.index === right?.index &&
+    left?.targetItemId === right?.targetItemId &&
+    left?.position === right?.position
+  )
+}
+
+function NotebookTreeContextMenu({
+  menu,
+  revealLabel,
+  canReveal,
+  onClose,
+  onReveal,
   onRename,
   onDelete,
 }: {
+  menu: NotebookTreeContextMenuState | null
+  revealLabel: string
+  canReveal: boolean
+  onClose: () => void
+  onReveal: () => void
+  onRename: () => void
+  onDelete: () => void
+}) {
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const [rootPosition, setRootPosition] = useState<MenuPosition>({ left: 0, top: 0 })
+
+  useLayoutEffect(() => {
+    if (!menu) return
+
+    const updateRootPosition = () => {
+      const element = rootRef.current
+      setRootPosition(
+        clampContextMenuPosition(
+          { x: menu.x, y: menu.y },
+          element ? getNotebookMenuElementSize(element) : { width: 0, height: 0 },
+          getNotebookMenuViewportSize(),
+        ),
+      )
+    }
+
+    updateRootPosition()
+    window.addEventListener('resize', updateRootPosition)
+    return () => window.removeEventListener('resize', updateRootPosition)
+  }, [menu])
+
+  if (!menu) return null
+
+  const runAction = (action: () => void) => {
+    action()
+    onClose()
+  }
+  const deleteLabel = menu.itemType === 'folder' ? 'Delete folder' : 'Delete note'
+
+  return (
+    <div
+      ref={rootRef}
+      className="tab-context-menu"
+      role="menu"
+      style={{ top: `${rootPosition.top}px`, left: `${rootPosition.left}px` }}
+      onClick={(event) => event.stopPropagation()}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      <button
+        type="button"
+        className={`tab-context-delete ${canReveal ? '' : 'is-disabled'}`.trim()}
+        aria-disabled={canReveal ? undefined : 'true'}
+        disabled={!canReveal}
+        onClick={() => runAction(onReveal)}
+      >
+        {revealLabel}
+      </button>
+      <button type="button" className="tab-context-delete" onClick={() => runAction(onRename)}>
+        Rename
+      </button>
+      <div className="tab-context-separator" role="separator" />
+      <button type="button" className="tab-context-delete" onClick={() => runAction(onDelete)}>
+        {deleteLabel}
+      </button>
+    </div>
+  )
+}
+
+function TreeItemRow({
+  item,
+  depth,
+  parentFolderId,
+  index,
+  activeNoteId,
+  renamingItemId,
+  renameDraft,
+  draggingItemId,
+  dropTarget,
+  collapsedFolderIds,
+  query,
+  onSelectNote,
+  onSelectFolder,
+  onToggleFolder,
+  onStartRename,
+  onRenameDraftChange,
+  onCommitRename,
+  onCancelRename,
+  onOpenContextMenu,
+  onDragItemStart,
+  onDragItemEnd,
+  onUpdateDropTarget,
+  onDropItem,
+}: {
   item: NotebookTreeItem
   depth: number
+  parentFolderId: string | null
+  index: number
   activeNoteId: string
+  renamingItemId: string
+  renameDraft: string
+  draggingItemId: string
+  dropTarget: NotebookTreeDropTarget | null
   collapsedFolderIds: Set<string>
   query: string
   onSelectNote: (noteId: string) => void
+  onSelectFolder: (folderId: string) => void
   onToggleFolder: (folderId: string) => void
-  onRename: (itemId: string, title: string) => void
-  onDelete: (itemId: string) => void
+  onStartRename: (itemId: string, title: string) => void
+  onRenameDraftChange: (title: string) => void
+  onCommitRename: () => void
+  onCancelRename: () => void
+  onOpenContextMenu: (menu: NotebookTreeContextMenuState) => void
+  onDragItemStart: (itemId: string) => void
+  onDragItemEnd: () => void
+  onUpdateDropTarget: (target: NotebookTreeDropTarget | null) => void
+  onDropItem: (target: NotebookTreeDropTarget) => void
 }) {
   const isFolder = item.type === 'folder'
   const collapsed = isFolder && collapsedFolderIds.has(item.id)
-  const titleMatches = !query || item.title.toLowerCase().includes(query.toLowerCase())
   const children = isFolder ? item.children : []
+  const folderIconId = isFolder && !collapsed && children.length > 0 ? 'folderOpen' : 'folder'
+  const selected = item.type === 'note' && item.id === activeNoteId
+  const renaming = item.id === renamingItemId
+  const dropPosition = dropTarget?.targetItemId === item.id ? dropTarget.position : null
+  const titleMatches = !query || item.title.toLowerCase().includes(query.toLowerCase())
+  const longPressRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    timerId: number
+  } | null>(null)
+  const suppressNextClickRef = useRef(false)
+
+  const clearLongPress = useCallback(() => {
+    if (!longPressRef.current) return
+    window.clearTimeout(longPressRef.current.timerId)
+    longPressRef.current = null
+  }, [])
+
+  useEffect(() => clearLongPress, [clearLongPress])
+
+  const beginLongPressRename = (event: ReactPointerEvent<HTMLElement>) => {
+    if (renaming || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
+    clearLongPress()
+    const pointerId = event.pointerId
+    const startX = event.clientX
+    const startY = event.clientY
+    const timerId = window.setTimeout(() => {
+      longPressRef.current = null
+      suppressNextClickRef.current = true
+      onStartRename(item.id, item.title)
+    }, NOTEBOOK_TREE_RENAME_LONG_PRESS_MS)
+    longPressRef.current = {
+      pointerId,
+      startX,
+      startY,
+      timerId,
+    }
+  }
+
+  const updateLongPressRename = (event: ReactPointerEvent<HTMLElement>) => {
+    const pending = longPressRef.current
+    if (!pending || pending.pointerId !== event.pointerId) return
+    const moved =
+      Math.abs(event.clientX - pending.startX) > NOTEBOOK_TREE_LONG_PRESS_MOVE_TOLERANCE_PX ||
+      Math.abs(event.clientY - pending.startY) > NOTEBOOK_TREE_LONG_PRESS_MOVE_TOLERANCE_PX
+    if (moved) clearLongPress()
+  }
+
+  const finishLongPressRename = (event: ReactPointerEvent<HTMLElement>) => {
+    if (longPressRef.current?.pointerId === event.pointerId) clearLongPress()
+  }
+
+  const handleDragStart = (event: ReactDragEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element ? event.target : null
+    if (renaming || target?.closest('.notebook-tree-rename-input')) {
+      event.preventDefault()
+      return
+    }
+    clearLongPress()
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('application/x-tabs-notebook-item', item.id)
+    event.dataTransfer.setData('text/plain', item.id)
+    onDragItemStart(item.id)
+  }
+
+  const handleDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!draggingItemId || draggingItemId === item.id) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    onUpdateDropTarget(getNotebookTreeDropTargetFromEvent(event, item, parentFolderId, index))
+  }
+
+  const handleDragLeave = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+    if (dropTarget?.targetItemId === item.id) onUpdateDropTarget(null)
+  }
+
+  const handleDrop = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!draggingItemId || draggingItemId === item.id) return
+    event.preventDefault()
+    event.stopPropagation()
+    onDropItem(getNotebookTreeDropTargetFromEvent(event, item, parentFolderId, index))
+  }
 
   if (!titleMatches && !isFolder) return null
 
   return (
     <>
       <div
-        className={`notebook-tree-row ${item.type === 'note' && item.id === activeNoteId ? 'is-active' : ''}`}
-        style={{ paddingLeft: `${depth * 14 + 8}px` }}
+        className={[
+          'notebook-tree-row',
+          `is-${item.type}`,
+          selected ? 'is-active' : '',
+          renaming ? 'is-renaming' : '',
+          draggingItemId === item.id ? 'is-dragging' : '',
+          dropPosition === 'before' ? 'is-drop-before' : '',
+          dropPosition === 'after' ? 'is-drop-after' : '',
+          dropPosition === 'inside' ? 'is-drop-inside' : '',
+        ].filter(Boolean).join(' ')}
+        role="treeitem"
+        aria-selected={selected}
+        aria-expanded={isFolder ? !collapsed : undefined}
+        style={{ '--tree-depth': depth } as CSSProperties}
+        draggable={!renaming}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onDragEnd={onDragItemEnd}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          clearLongPress()
+          onOpenContextMenu({
+            x: event.clientX,
+            y: event.clientY,
+            itemId: item.id,
+            itemType: item.type,
+            itemTitle: item.title,
+          })
+        }}
       >
-        <button
-          className="notebook-tree-main"
-          type="button"
-          onClick={() => (item.type === 'folder' ? onToggleFolder(item.id) : onSelectNote(item.id))}
-          onDoubleClick={() => {
-            const nextTitle = window.prompt('Rename', item.title)
-            if (nextTitle !== null) onRename(item.id, nextTitle)
-          }}
-          title={item.type === 'folder' ? 'Toggle folder' : 'Open note'}
-        >
-          <span className="notebook-tree-disclosure">{isFolder ? (collapsed ? '+' : '-') : ''}</span>
-          <span className="notebook-tree-title">{item.title}</span>
-        </button>
-        <button
-          className="notebook-tree-action"
-          type="button"
-          onClick={() => {
-            const nextTitle = window.prompt('Rename', item.title)
-            if (nextTitle !== null) onRename(item.id, nextTitle)
-          }}
-          title="Rename"
-        >
-          Rename
-        </button>
-        <button
-          className="notebook-tree-action"
-          type="button"
-          onClick={() => onDelete(item.id)}
-          title="Move to trash"
-        >
-          Trash
-        </button>
+        {renaming ? (
+          <div className="notebook-tree-main is-renaming">
+            {isFolder ? (
+              <span className="notebook-tree-folder-icon" aria-hidden="true">
+                <AppIcon iconId={folderIconId} className="notebook-tree-folder-icon-svg" />
+              </span>
+            ) : null}
+            <input
+              className="notebook-tree-rename-input"
+              value={renameDraft}
+              autoFocus
+              onFocus={(event) => event.currentTarget.select()}
+              onChange={(event) => onRenameDraftChange(event.target.value)}
+              onBlur={onCommitRename}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  onCommitRename()
+                }
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  onCancelRename()
+                }
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              aria-label={`Rename ${item.title}`}
+            />
+          </div>
+        ) : (
+          <button
+            className="notebook-tree-main"
+            type="button"
+            onPointerDown={beginLongPressRename}
+            onPointerMove={updateLongPressRename}
+            onPointerUp={finishLongPressRename}
+            onPointerCancel={finishLongPressRename}
+            onPointerLeave={finishLongPressRename}
+            onClick={(event) => {
+              if (suppressNextClickRef.current) {
+                suppressNextClickRef.current = false
+                event.preventDefault()
+                return
+              }
+              if (item.type === 'folder') {
+                onSelectFolder(item.id)
+                onToggleFolder(item.id)
+              } else {
+                onSelectNote(item.id)
+              }
+            }}
+            title={item.type === 'folder' ? 'Toggle folder' : 'Open note'}
+          >
+            {isFolder ? (
+              <span className="notebook-tree-folder-icon" aria-hidden="true">
+                <AppIcon iconId={folderIconId} className="notebook-tree-folder-icon-svg" />
+              </span>
+            ) : null}
+            <span className="notebook-tree-title">{item.title}</span>
+          </button>
+        )}
       </div>
-      {isFolder && !collapsed
-        ? children.map((child) => (
+      {isFolder && !collapsed ? (
+        <div className="notebook-tree-children" role="group" style={{ '--tree-depth': depth } as CSSProperties}>
+          {children.map((child, childIndex) => (
             <TreeItemRow
               key={child.id}
               item={child}
               depth={depth + 1}
+              parentFolderId={item.id}
+              index={childIndex}
               activeNoteId={activeNoteId}
+              renamingItemId={renamingItemId}
+              renameDraft={renameDraft}
+              draggingItemId={draggingItemId}
+              dropTarget={dropTarget}
               collapsedFolderIds={collapsedFolderIds}
               query={query}
               onSelectNote={onSelectNote}
+              onSelectFolder={onSelectFolder}
               onToggleFolder={onToggleFolder}
-              onRename={onRename}
-              onDelete={onDelete}
+              onStartRename={onStartRename}
+              onRenameDraftChange={onRenameDraftChange}
+              onCommitRename={onCommitRename}
+              onCancelRename={onCancelRename}
+              onOpenContextMenu={onOpenContextMenu}
+              onDragItemStart={onDragItemStart}
+              onDragItemEnd={onDragItemEnd}
+              onUpdateDropTarget={onUpdateDropTarget}
+              onDropItem={onDropItem}
             />
-          ))
-        : null}
+          ))}
+        </div>
+      ) : null}
     </>
   )
 }
@@ -931,8 +1288,14 @@ export function NotebookApp() {
   const [toolbarEditorLayoutId, setToolbarEditorLayoutId] = useState(activeToolbarLayoutId)
   const [query, setQuery] = useState('')
   const [activeAisleId, setActiveAisleId] = useState('')
+  const [selectedFolderId, setSelectedFolderId] = useState('')
+  const [renamingTreeItemId, setRenamingTreeItemId] = useState('')
+  const [treeRenameDraft, setTreeRenameDraft] = useState('')
+  const [draggingTreeItemId, setDraggingTreeItemId] = useState('')
+  const [treeDropTarget, setTreeDropTarget] = useState<NotebookTreeDropTarget | null>(null)
   const [aisleContextMenu, setAisleContextMenu] = useState<NotebookAisleContextMenuState | null>(null)
   const [editorContextMenu, setEditorContextMenu] = useState<NotebookEditorContextMenuState | null>(null)
+  const [treeContextMenu, setTreeContextMenu] = useState<NotebookTreeContextMenuState | null>(null)
   const [aisleEditModalOpen, setAisleEditModalOpen] = useState(false)
   const [frontmatterModal, setFrontmatterModal] = useState<NotebookFrontmatterModalState | null>(null)
   const [frontmatterDraft, setFrontmatterDraft] = useState<AppState['frontmatter']>(() => state.frontmatter)
@@ -943,13 +1306,29 @@ export function NotebookApp() {
   const workspaceRootRef = useRef<HTMLElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const editorRef = useRef<Editor | null>(null)
+  const activeAisleIdRef = useRef('')
+  const activeNoteLocationKeyRef = useRef('')
+  const isMainViewRef = useRef(true)
+  const pendingScrollToAisleIdRef = useRef<string | null>(null)
+  const pendingFocusToAisleIdRef = useRef<string | null>(null)
+  const pendingNavigationTopAisleIdRef = useRef<string | null>(null)
+  const pendingCreatedEditRef = useRef<unknown>(null)
   const frontmatterStateSnapshotRef = useRef(state.frontmatter)
+  const skipNextTreeRenameCommitRef = useRef(false)
   const sidebarResizeRef = useRef<{
     pointerId: number
     startClientX: number
     startWidth: number
   } | null>(null)
   const isMacPlatform = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
+  const sidebarRevealLabel = useMemo(
+    () => getNotebookSidebarRevealLabel(
+      typeof window !== 'undefined'
+        ? window.electronAPI?.platform ?? (isMacPlatform ? 'darwin' : navigator.platform)
+        : undefined,
+    ),
+    [isMacPlatform],
+  )
 
   const toolbarState = useEditorToolbarState({
     viewMode,
@@ -965,11 +1344,19 @@ export function NotebookApp() {
     [query, state],
   )
   const activeAisleIdsSignature = activeModel?.resolved.aisles.map((aisle) => aisle.id).join('|') ?? ''
+  const activeNoteLocationKey = activeModel?.noteId ?? ''
+  const activeNoteAisles = activeModel?.noteBody.aisles ?? []
+  const savedActiveAisleId = activeModel
+    ? getPreferredNotebookAisleId(state, activeModel.noteId, activeModel.noteBody.aisles)
+    : ''
   const renderedActiveAisleId = useMemo(() => {
     if (!activeModel) return ''
     if (activeModel.resolved.aisles.some((aisle) => aisle.id === activeAisleId)) return activeAisleId
+    if (savedActiveAisleId && activeModel.resolved.aisles.some((aisle) => aisle.id === savedActiveAisleId)) {
+      return savedActiveAisleId
+    }
     return activeModel.resolved.aisles[0]?.id ?? ''
-  }, [activeAisleId, activeModel])
+  }, [activeAisleId, activeModel, savedActiveAisleId])
   const aisleBodyReferenceCounts = useMemo(() => getAisleBodyReferenceCounts(state.noteBodies), [state.noteBodies])
   const linkedAisleIds = useMemo(() => {
     if (!activeModel) return new Set<string>()
@@ -1015,12 +1402,37 @@ export function NotebookApp() {
     [activeModel, aisleBodyReferenceCounts],
   )
 
+  activeAisleIdRef.current = renderedActiveAisleId
+  activeNoteLocationKeyRef.current = activeNoteLocationKey
+  isMainViewRef.current = viewMode === 'main'
+
   useEffect(() => {
     if (!activeModel) return
     if (!activeModel.resolved.aisles.some((aisle) => aisle.id === activeAisleId)) {
-      setActiveAisleId(activeModel.resolved.aisles[0]?.id ?? '')
+      setActiveAisleId(savedActiveAisleId || (activeModel.resolved.aisles[0]?.id ?? ''))
     }
-  }, [activeAisleId, activeAisleIdsSignature, activeModel])
+  }, [activeAisleId, activeAisleIdsSignature, activeModel, savedActiveAisleId])
+
+  useEffect(() => {
+    if (!selectedFolderId) return
+    if (!findNotebookFolder(state.notebook.items, selectedFolderId)) {
+      setSelectedFolderId('')
+    }
+  }, [selectedFolderId, state.notebook.items])
+
+  useEffect(() => {
+    if (renamingTreeItemId && !findNotebookItem(state.notebook.items, renamingTreeItemId)) {
+      setRenamingTreeItemId('')
+      setTreeRenameDraft('')
+    }
+    if (draggingTreeItemId && !findNotebookItem(state.notebook.items, draggingTreeItemId)) {
+      setDraggingTreeItemId('')
+      setTreeDropTarget(null)
+    }
+    if (treeContextMenu && !findNotebookItem(state.notebook.items, treeContextMenu.itemId)) {
+      setTreeContextMenu(null)
+    }
+  }, [draggingTreeItemId, renamingTreeItemId, state.notebook.items, treeContextMenu])
 
   const mutateState = useCallback((updater: (previous: AppState) => AppState) => {
     setState((previous) => updater(previous))
@@ -1307,6 +1719,40 @@ export function NotebookApp() {
     scheduleToolbarFormatStateSync: toolbarState.scheduleToolbarFormatStateSync,
   })
 
+  const cursorPersistence = useNoteCursorPersistence({
+    setState,
+    editorRef,
+    activeEditorAisleIdRef: notebookEditors.activeEditorAisleIdRef,
+    viewMode,
+    activeNoteBodyId: activeModel?.noteBody.id ?? '',
+    activeNoteLocationKey,
+    activeNoteAisles,
+    activeAisleId: renderedActiveAisleId,
+    activeAisleIdRef,
+    activeNoteLocationKeyRef,
+    isMainViewRef,
+    noteCursorLocations: state.ui.noteCursorLocations,
+    pendingScrollToAisleIdRef,
+    setActiveAisleId,
+  })
+  const pendingCursorRestoreRef = cursorPersistence.pendingCursorRestoreRef
+  const applyActiveCursorToState = cursorPersistence.applyActiveCursorToState
+
+  usePendingNoteCursorRestore({
+    viewMode,
+    activeNoteBodyId: activeModel?.noteBody.id ?? '',
+    activeNoteAisles,
+    resolvedActiveAisleId: renderedActiveAisleId,
+    activeNoteLocationKey,
+    editing: renamingTreeItemId,
+    editorRef,
+    pendingCreatedEditRef,
+    pendingFocusToAisleIdRef,
+    pendingCursorRestoreRef,
+    pendingNavigationTopAisleIdRef,
+    activateAisleEditor: notebookEditors.activateAisleEditor,
+  })
+
   const focusBoundaryFlushTimerRef = useRef<number | null>(null)
 
   const clearNotebookFocusBoundaryFlush = useCallback(() => {
@@ -1318,14 +1764,14 @@ export function NotebookApp() {
   const flushNotebookPersistenceNow = useCallback((eventName: 'blur' | 'visibilitychange' | 'beforeunload' | 'pagehide') => {
     clearNotebookFocusBoundaryFlush()
     const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
-    const latestState = applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots)
+    const latestState = applyActiveCursorToState(applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots))
     void commitAppStateNow(latestState, {
       preferSync: eventName === 'beforeunload' || eventName === 'pagehide',
       flushQueue: true,
       trigger: `notebook-editor-focus-boundary:${eventName}`,
       pendingEditorCount: snapshots.length,
     })
-  }, [clearNotebookFocusBoundaryFlush, commitAppStateNow, notebookEditors, stateRef])
+  }, [applyActiveCursorToState, clearNotebookFocusBoundaryFlush, commitAppStateNow, notebookEditors, stateRef])
 
   const scheduleNotebookFocusBoundaryFlush = useCallback((eventName: 'blur' | 'visibilitychange') => {
     if (eventName === 'visibilitychange' && document.visibilityState !== 'hidden') return
@@ -1369,13 +1815,44 @@ export function NotebookApp() {
   })
 
   const createNote = useCallback(() => {
-    mutateState((previous) => createNotebookNoteInState(previous, 'Untitled').state)
+    mutateState((previous) => {
+      const parentFolderId = selectedFolderId && findNotebookFolder(previous.notebook.items, selectedFolderId)
+        ? selectedFolderId
+        : getContainingFolderId(previous.notebook.items, previous.notebook.activeNoteId)
+      const result = createNotebookNoteInState(previous, 'Untitled', parentFolderId)
+      return {
+        ...result.state,
+        ui: {
+          ...result.state.ui,
+          collapsedFolderIds: parentFolderId
+            ? result.state.ui.collapsedFolderIds.filter((folderId) => folderId !== parentFolderId)
+            : result.state.ui.collapsedFolderIds,
+        },
+      }
+    })
+    setSelectedFolderId('')
     setViewMode('main')
-  }, [mutateState])
+  }, [mutateState, selectedFolderId])
 
   const createFolder = useCallback(() => {
-    mutateState((previous) => createNotebookFolderInState(previous, 'Untitled folder').state)
-  }, [mutateState])
+    mutateState((previous) => {
+      const parentFolderId = selectedFolderId && findNotebookFolder(previous.notebook.items, selectedFolderId)
+        ? selectedFolderId
+        : getContainingFolderId(previous.notebook.items, previous.notebook.activeNoteId)
+      const result = createNotebookFolderInState(previous, 'Untitled folder', parentFolderId)
+      window.setTimeout(() => setSelectedFolderId(result.folderId), 0)
+      return {
+        ...result.state,
+        ui: {
+          ...result.state.ui,
+          collapsedFolderIds: [
+            ...result.state.ui.collapsedFolderIds.filter((folderId) => folderId !== parentFolderId && folderId !== result.folderId),
+          ],
+        },
+      }
+    })
+    setViewMode('main')
+  }, [mutateState, selectedFolderId])
 
   const importNotebook = useCallback(() => {
     if (!window.electronAPI?.openNotebookImportSource) {
@@ -1423,12 +1900,150 @@ export function NotebookApp() {
     [mutateState],
   )
 
+  const startTreeRename = useCallback((itemId: string, title: string) => {
+    skipNextTreeRenameCommitRef.current = false
+    setRenamingTreeItemId(itemId)
+    setTreeRenameDraft(title)
+  }, [])
+
+  const commitTreeRename = useCallback(() => {
+    if (skipNextTreeRenameCommitRef.current) {
+      skipNextTreeRenameCommitRef.current = false
+      return
+    }
+    if (!renamingTreeItemId) return
+    renameItem(renamingTreeItemId, treeRenameDraft)
+    setRenamingTreeItemId('')
+    setTreeRenameDraft('')
+  }, [renameItem, renamingTreeItemId, treeRenameDraft])
+
+  const cancelTreeRename = useCallback(() => {
+    skipNextTreeRenameCommitRef.current = true
+    setRenamingTreeItemId('')
+    setTreeRenameDraft('')
+  }, [])
+
+  const updateTreeDropTarget = useCallback((target: NotebookTreeDropTarget | null) => {
+    setTreeDropTarget((current) => (areNotebookTreeDropTargetsEqual(current, target) ? current : target))
+  }, [])
+
+  const startTreeDrag = useCallback((itemId: string) => {
+    setRenamingTreeItemId('')
+    setTreeRenameDraft('')
+    setDraggingTreeItemId(itemId)
+    setTreeDropTarget(null)
+  }, [])
+
+  const finishTreeDrag = useCallback(() => {
+    setDraggingTreeItemId('')
+    setTreeDropTarget(null)
+  }, [])
+
+  const dropTreeItem = useCallback(
+    (target: NotebookTreeDropTarget) => {
+      const draggedItemId = draggingTreeItemId
+      if (!draggedItemId) return
+      mutateState((previous) => {
+        const notebook = moveNotebookItem(previous.notebook, draggedItemId, target.parentFolderId, target.index)
+        if (notebook === previous.notebook) return previous
+        return {
+          ...previous,
+          notebook,
+          ui: target.parentFolderId
+            ? {
+                ...previous.ui,
+                collapsedFolderIds: previous.ui.collapsedFolderIds.filter((folderId) => folderId !== target.parentFolderId),
+              }
+            : previous.ui,
+        }
+      })
+      if (target.parentFolderId) setSelectedFolderId(target.parentFolderId)
+      finishTreeDrag()
+    },
+    [draggingTreeItemId, finishTreeDrag, mutateState],
+  )
+
+  const getRootTreeDropTarget = useCallback(
+    (): NotebookTreeDropTarget => ({
+      parentFolderId: null,
+      index: stateRef.current.notebook.items.length,
+      targetItemId: null,
+      position: 'root',
+    }),
+    [stateRef],
+  )
+
+  const handleRootTreeDragOver = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!draggingTreeItemId) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+      updateTreeDropTarget(getRootTreeDropTarget())
+    },
+    [draggingTreeItemId, getRootTreeDropTarget, updateTreeDropTarget],
+  )
+
+  const handleRootTreeDrop = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!draggingTreeItemId) return
+      event.preventDefault()
+      event.stopPropagation()
+      dropTreeItem(getRootTreeDropTarget())
+    },
+    [draggingTreeItemId, dropTreeItem, getRootTreeDropTarget],
+  )
+
+  const openTreeContextMenu = useCallback(
+    (menu: NotebookTreeContextMenuState) => {
+      toolbarState.closeToolbarPopovers()
+      setAisleContextMenu(null)
+      setEditorContextMenu(null)
+      setTreeContextMenu(menu)
+    },
+    [toolbarState],
+  )
+
   const deleteItem = useCallback(
     (itemId: string) => {
       mutateState((previous) => deleteNotebookItemInState(previous, itemId))
     },
     [mutateState],
   )
+
+  const renameTreeContextItem = useCallback(() => {
+    if (!treeContextMenu) return
+    const entry = findNotebookItem(stateRef.current.notebook.items, treeContextMenu.itemId)
+    startTreeRename(treeContextMenu.itemId, entry?.item.title ?? treeContextMenu.itemTitle)
+  }, [startTreeRename, stateRef, treeContextMenu])
+
+  const deleteTreeContextItem = useCallback(() => {
+    if (!treeContextMenu) return
+    deleteItem(treeContextMenu.itemId)
+  }, [deleteItem, treeContextMenu])
+
+  const revealTreeContextItem = useCallback(() => {
+    if (!treeContextMenu) return
+    const revealNotebookItemLocation = window.electronAPI?.revealNotebookItemLocation
+    if (typeof revealNotebookItemLocation !== 'function') {
+      window.alert('Could not reveal notebook item.')
+      return
+    }
+    const payload = {
+      itemId: treeContextMenu.itemId,
+      itemType: treeContextMenu.itemType,
+    }
+    void Promise.resolve(commitAppStateNow(stateRef.current, {
+      preferSync: true,
+      flushQueue: true,
+      trigger: 'notebook-sidebar-reveal-item',
+    }))
+      .then(() => revealNotebookItemLocation(payload))
+      .then((result) => {
+        if (result.ok) return
+        window.alert(result.error || 'Could not reveal notebook item.')
+      })
+      .catch(() => window.alert('Could not reveal notebook item.'))
+  }, [commitAppStateNow, stateRef, treeContextMenu])
 
   const restoreDeletedItem = useCallback(
     (deletedItemId: string) => {
@@ -1458,16 +2073,36 @@ export function NotebookApp() {
 
   const setActiveNote = useCallback(
     (noteId: string) => {
-      mutateState((previous) => ({
-        ...previous,
-        notebook: {
-          ...previous.notebook,
-          activeNoteId: noteId,
-        },
-      }))
+      const notePath = findNotebookNote(stateRef.current.notebook.items, noteId)
+      const noteBody = notePath
+        ? stateRef.current.noteBodies.find((candidate) => candidate.id === notePath.note.noteBodyId) ?? null
+        : null
+      const preferredAisleId = noteBody
+        ? getPreferredNotebookAisleId(stateRef.current, noteId, noteBody.aisles)
+        : ''
+      pendingFocusToAisleIdRef.current = preferredAisleId || null
+      pendingScrollToAisleIdRef.current = preferredAisleId || null
+      setSelectedFolderId('')
+      mutateState((previous) => {
+        const previousWithCursor = applyActiveCursorToState(previous)
+        return {
+          ...previousWithCursor,
+          notebook: {
+            ...previousWithCursor.notebook,
+            activeNoteId: noteId,
+          },
+        }
+      })
       setViewMode('main')
+      window.requestAnimationFrame(() => {
+        const active = getActiveNoteModel(stateRef.current)
+        if (!active || active.noteId !== noteId) return
+        const aisleId = preferredAisleId || (active.noteBody.aisles[0]?.id ?? '')
+        if (!aisleId) return
+        notebookEditors.activateAisleEditor(buildAisleEditorKey(active.noteBody.id, aisleId), { focus: true })
+      })
     },
-    [mutateState],
+    [applyActiveCursorToState, mutateState, notebookEditors, stateRef],
   )
 
   const toggleNotesTrashFromShortcut = useCallback(() => {
@@ -1773,16 +2408,22 @@ export function NotebookApp() {
     <TableControlsOverlay
       visible={viewMode === 'main' && !aisleEditModalOpen}
       tableControls={tableControlsController.tableControls}
+      tableSelectionOverlay={tableControlsController.tableSelectionOverlay}
       onAddRow={() => tableControlsController.runTableControlOperation('add-row', state.ui.tableAddTargetMode)}
       onRemoveRow={() => tableControlsController.runTableControlOperation('remove-row', state.ui.tableDeleteTargetMode)}
       onAddColumn={() => tableControlsController.runTableControlOperation('add-column', state.ui.tableAddTargetMode)}
       onRemoveColumn={() => tableControlsController.runTableControlOperation('remove-column', state.ui.tableDeleteTargetMode)}
+      onSelectRow={(rowIndex, event) => tableControlsController.beginTableAxisSelection('row', rowIndex, event)}
+      onSelectColumn={(columnIndex, event) => tableControlsController.beginTableAxisSelection('column', columnIndex, event)}
+      onMoveRows={(event) => tableControlsController.beginTableRangeReorder('row', event)}
+      onMoveColumns={(event) => tableControlsController.beginTableRangeReorder('column', event)}
     />
   )
 
   const openCopyMenu = useCallback(() => {
     setAisleContextMenu(null)
     setEditorContextMenu(null)
+    setTreeContextMenu(null)
     toolbarState.setHeadingMenuOpen(false)
     toolbarState.setCopyMenuOpen((open) => !open)
     toolbarState.refreshToolbarPopoverPosition('copy')
@@ -1791,6 +2432,7 @@ export function NotebookApp() {
   const openHeadingMenu = useCallback(() => {
     setAisleContextMenu(null)
     setEditorContextMenu(null)
+    setTreeContextMenu(null)
     toolbarState.setCopyMenuOpen(false)
     toolbarState.setHeadingMenuOpen((open) => !open)
     toolbarState.refreshToolbarPopoverPosition('heading')
@@ -1801,12 +2443,14 @@ export function NotebookApp() {
       if (!activeModel?.linked && !canDecoupleAisleById(aisleId)) {
         setAisleContextMenu(null)
         setEditorContextMenu(null)
+        setTreeContextMenu(null)
         toolbarState.closeToolbarPopovers()
         return
       }
       setActiveAisleId(aisleId)
       toolbarState.closeToolbarPopovers()
       setEditorContextMenu(null)
+      setTreeContextMenu(null)
       setAisleContextMenu({ aisleId, x, y })
     },
     [activeModel?.linked, canDecoupleAisleById, toolbarState],
@@ -1819,6 +2463,7 @@ export function NotebookApp() {
       notebookEditors.activateAisleEditor(buildAisleEditorKey(activeModel.noteBody.id, aisleId))
       toolbarState.closeToolbarPopovers()
       setAisleContextMenu(null)
+      setTreeContextMenu(null)
       setEditorContextMenu({ aisleId, x, y })
     },
     [activeModel, notebookEditors, toolbarState],
@@ -1858,12 +2503,14 @@ export function NotebookApp() {
       }
       setAisleContextMenu(null)
       setEditorContextMenu(null)
+      setTreeContextMenu(null)
       toolbarState.closeToolbarPopovers()
     }
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       setAisleContextMenu(null)
       setEditorContextMenu(null)
+      setTreeContextMenu(null)
       toolbarState.closeToolbarPopovers()
     }
     document.addEventListener('pointerdown', closeFloatingUi)
@@ -1877,6 +2524,7 @@ export function NotebookApp() {
   useEffect(() => {
     setAisleContextMenu(null)
     setEditorContextMenu(null)
+    setTreeContextMenu(null)
   }, [activeModel?.noteId, viewMode])
 
   const runEditorContextClipboardAction = useCallback(
@@ -2817,8 +3465,6 @@ export function NotebookApp() {
             <div className="notebook-sidebar-actions">
               <button type="button" onClick={createNote}>New note</button>
               <button type="button" onClick={createFolder}>New folder</button>
-              <button type="button" onClick={importNotebook}>Import</button>
-              <button type="button" onClick={exportNotebook}>Export</button>
             </div>
             <input
               ref={searchInputRef}
@@ -2848,20 +3494,47 @@ export function NotebookApp() {
                       {entry.folderPath ? <small>{entry.folderPath}</small> : null}
                     </button>
                   ))
-                : state.notebook.items.map((item) => (
-                    <TreeItemRow
-                      key={item.id}
-                      item={item}
-                      depth={0}
-                      activeNoteId={state.notebook.activeNoteId}
-                      collapsedFolderIds={collapsedFolderIds}
-                      query={query}
-                      onSelectNote={setActiveNote}
-                      onToggleFolder={toggleFolder}
-                      onRename={renameItem}
-                      onDelete={deleteItem}
-                    />
-                  ))}
+                : (
+                    <>
+                      {state.notebook.items.map((item, itemIndex) => (
+                        <TreeItemRow
+                          key={item.id}
+                          item={item}
+                          depth={0}
+                          parentFolderId={null}
+                          index={itemIndex}
+                          activeNoteId={state.notebook.activeNoteId}
+                          renamingItemId={renamingTreeItemId}
+                          renameDraft={treeRenameDraft}
+                          draggingItemId={draggingTreeItemId}
+                          dropTarget={treeDropTarget}
+                          collapsedFolderIds={collapsedFolderIds}
+                          query={query}
+                          onSelectNote={setActiveNote}
+                          onSelectFolder={setSelectedFolderId}
+                          onToggleFolder={toggleFolder}
+                          onStartRename={startTreeRename}
+                          onRenameDraftChange={setTreeRenameDraft}
+                          onCommitRename={commitTreeRename}
+                          onCancelRename={cancelTreeRename}
+                          onOpenContextMenu={openTreeContextMenu}
+                          onDragItemStart={startTreeDrag}
+                          onDragItemEnd={finishTreeDrag}
+                          onUpdateDropTarget={updateTreeDropTarget}
+                          onDropItem={dropTreeItem}
+                        />
+                      ))}
+                      <div
+                        className={`notebook-tree-root-drop-zone ${treeDropTarget?.position === 'root' ? 'is-drop-root' : ''}`}
+                        onDragOver={handleRootTreeDragOver}
+                        onDrop={handleRootTreeDrop}
+                        onDragLeave={() => {
+                          if (treeDropTarget?.position === 'root') updateTreeDropTarget(null)
+                        }}
+                        aria-hidden="true"
+                      />
+                    </>
+                  )}
             </div>
           </>
         ) : null}
@@ -3033,6 +3706,15 @@ export function NotebookApp() {
         ) : null}
         {renderUtilityShell()}
       </main>
+      <NotebookTreeContextMenu
+        menu={treeContextMenu}
+        revealLabel={sidebarRevealLabel}
+        canReveal={typeof window !== 'undefined' && typeof window.electronAPI?.revealNotebookItemLocation === 'function'}
+        onClose={() => setTreeContextMenu(null)}
+        onReveal={revealTreeContextItem}
+        onRename={renameTreeContextItem}
+        onDelete={deleteTreeContextItem}
+      />
       <NotebookFrontmatterModal
         modal={frontmatterModal}
         onCancel={() => setFrontmatterModal(null)}

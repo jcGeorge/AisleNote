@@ -1203,11 +1203,39 @@ export function resolveNoteLocationRevealPath(profileRootPath, payload = {}) {
   }
 }
 
+export function resolveNotebookItemLocationRevealPath(profileRootPath, payload = {}) {
+  const rootPath = getHybridStorageRoot(profileRootPath)
+  try {
+    const manifest = readJson(rootPath, MANIFEST_FILE)
+    if (manifest.schemaVersion !== SCHEMA_VERSION) return { ok: false, error: 'Unsupported notebook schema.' }
+    const notebookIndex = readJson(rootPath, NOTEBOOK_INDEX_FILE)
+    const itemId = normalizeId(payload?.itemId)
+    const itemType = payload?.itemType === 'folder' ? 'folder' : payload?.itemType === 'note' ? 'note' : ''
+    if (!itemId || !itemType) return { ok: false, error: 'Notebook item could not be resolved.' }
+    const item = findNotebookIndexItem(notebookIndex.items, itemId)
+    if (!item || item.type !== itemType) return { ok: false, error: 'Notebook item could not be resolved.' }
+    const relativePath = normalizePosixPath(item.path || item.file)
+    if (!relativePath) return { ok: false, error: 'Notebook item could not be resolved.' }
+    const absolutePath = path.join(rootPath, ...relativePath.split('/'))
+    return { ok: true, absolutePath, rootRelativePath: relativePath }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Notebook item could not be resolved.',
+    }
+  }
+}
+
 function findNotebookIndexNote(items, noteId) {
+  const item = findNotebookIndexItem(items, noteId)
+  return item?.type === 'note' ? item : null
+}
+
+function findNotebookIndexItem(items, itemId) {
   for (const item of ensureArray(items)) {
-    if (item?.type === 'note' && item.id === noteId) return item
+    if ((item?.type === 'note' || item?.type === 'folder') && item.id === itemId) return item
     if (item?.type === 'folder') {
-      const child = findNotebookIndexNote(item.children, noteId)
+      const child = findNotebookIndexItem(item.children, itemId)
       if (child) return child
     }
   }

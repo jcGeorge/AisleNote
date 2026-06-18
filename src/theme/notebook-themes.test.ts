@@ -7,24 +7,40 @@ import {
 } from './notebook-themes'
 
 describe('notebook theme palettes', () => {
-  it('excludes removed tab rail palette slots', () => {
-    expect(CUSTOM_THEME_PALETTE_SLOTS).not.toContain('domainRail')
-    expect(CUSTOM_THEME_PALETTE_SLOTS).not.toContain('spaceRail')
-    expect(CUSTOM_THEME_PALETTE_SLOTS).not.toContain('parentRail')
-    expect(CUSTOM_THEME_PALETTE_SLOTS).not.toContain('subtabRail')
+  it('exposes only notebook-era custom palette slots', () => {
+    expect(CUSTOM_THEME_PALETTE_SLOTS).toEqual([
+      'canvas',
+      'page',
+      'surface',
+      'surfaceRaised',
+      'text',
+      'mutedText',
+      'border',
+      'primary',
+      'secondary',
+      'danger',
+      'warning',
+      'success',
+      'tagText',
+      'tagBg',
+      'tooltipPrimary',
+      'tooltipSecondary',
+      'sidebar',
+      'sidebarAccent',
+    ])
   })
 
-  it('normalizes supported custom palette settings without carrying removed slots', () => {
+  it('normalizes supported custom palette settings without carrying unknown slots', () => {
     const palette = normalizeCustomThemePalette({
       ...DEFAULT_CUSTOM_THEME_PALETTE,
       primary: 'ABCDEF',
       sidebarAccent: '#123456',
-      domainRail: '#ff0000',
+      unsupportedSlot: '#ff0000',
     })
 
     expect(palette.primary).toBe('#abcdef')
     expect(palette.sidebarAccent).toBe('#123456')
-    expect('domainRail' in palette).toBe(false)
+    expect('unsupportedSlot' in palette).toBe(false)
   })
 
   it('preserves custom palette overrides by custom theme id only', () => {

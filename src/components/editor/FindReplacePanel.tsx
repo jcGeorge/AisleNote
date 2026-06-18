@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import type { FindReplaceMatch, FindReplaceScope } from '../../notes/find-replace'
 
 type FindReplacePanelProps = {
@@ -29,10 +29,8 @@ type FindReplacePanelProps = {
 }
 
 const FIND_SCOPES: Array<{ id: FindReplaceScope; label: string }> = [
-  { id: 'note', label: 'tab' },
-  { id: 'parent', label: 'parent' },
-  { id: 'space', label: 'space' },
-  { id: 'domain', label: 'domain' },
+  { id: 'note', label: 'note' },
+  { id: 'folder', label: 'folder' },
   { id: 'notebook', label: 'notebook' },
 ]
 
@@ -47,7 +45,7 @@ type FindReplaceResultRow =
   | { type: 'match'; key: string; level: number; item: FindReplaceResultItem }
 
 type FindReplaceChip = {
-  kind: 'domain' | 'space' | 'parent' | 'subtab' | 'aisle'
+  kind: 'folder' | 'note' | 'scratchpad' | 'aisle'
   label: string
 }
 
@@ -81,78 +79,17 @@ function pushMatchRows(rows: FindReplaceResultRow[], items: FindReplaceResultIte
 
 function buildGroupedNormalResultRows(items: FindReplaceResultItem[]): FindReplaceResultRow[] {
   const rows: FindReplaceResultRow[] = []
-  const domainGroups = groupResultItems(items, (item) => item.match.context.domainId)
-  domainGroups.forEach((domainGroup) => {
-    const firstDomainMatch = domainGroup.items[0]?.match
-    if (!firstDomainMatch) return
-    const spaceGroups = groupResultItems(domainGroup.items, (item) => item.match.context.spaceId)
-    const domainChips: FindReplaceChip[] = [
-      { kind: 'domain', label: firstDomainMatch.context.domainName },
-    ]
-    if (spaceGroups.length === 1) {
-      const firstSpaceMatch = spaceGroups[0]?.items[0]?.match
-      if (firstSpaceMatch) domainChips.push({ kind: 'space', label: firstSpaceMatch.context.spaceName })
-      const parentGroups = groupResultItems(spaceGroups[0]?.items ?? [], (item) => item.match.context.parentId)
-      if (parentGroups.length === 1) {
-        const firstParentMatch = parentGroups[0]?.items[0]?.match
-        if (firstParentMatch) domainChips.push({ kind: 'parent', label: firstParentMatch.context.parentName })
-        rows.push({ type: 'header', key: `domain:${domainGroup.key}`, level: 0, chips: domainChips })
-        pushMatchRows(rows, domainGroup.items, 1)
-        return
-      }
-
-      rows.push({ type: 'header', key: `domain:${domainGroup.key}`, level: 0, chips: domainChips })
-      parentGroups.forEach((parentGroup) => {
-        const firstParentMatch = parentGroup.items[0]?.match
-        if (!firstParentMatch) return
-        rows.push({
-          type: 'header',
-          key: `parent:${domainGroup.key}:${parentGroup.key}`,
-          level: 1,
-          chips: [{ kind: 'parent', label: firstParentMatch.context.parentName }],
-        })
-        pushMatchRows(rows, parentGroup.items, 2)
-      })
-      return
-    }
-
-    rows.push({ type: 'header', key: `domain:${domainGroup.key}`, level: 0, chips: domainChips })
-    spaceGroups.forEach((spaceGroup) => {
-      const firstSpaceMatch = spaceGroup.items[0]?.match
-      if (!firstSpaceMatch) return
-      const parentGroups = groupResultItems(spaceGroup.items, (item) => item.match.context.parentId)
-      const spaceChips: FindReplaceChip[] = [{ kind: 'space', label: firstSpaceMatch.context.spaceName }]
-      if (parentGroups.length === 1) {
-        const firstParentMatch = parentGroups[0]?.items[0]?.match
-        if (firstParentMatch) spaceChips.push({ kind: 'parent', label: firstParentMatch.context.parentName })
-        rows.push({
-          type: 'header',
-          key: `space:${domainGroup.key}:${spaceGroup.key}`,
-          level: 1,
-          chips: spaceChips,
-        })
-        pushMatchRows(rows, spaceGroup.items, 2)
-        return
-      }
-
-      rows.push({
-        type: 'header',
-        key: `space:${domainGroup.key}:${spaceGroup.key}`,
-        level: 1,
-        chips: spaceChips,
-      })
-      parentGroups.forEach((parentGroup) => {
-        const firstParentMatch = parentGroup.items[0]?.match
-        if (!firstParentMatch) return
-        rows.push({
-          type: 'header',
-          key: `parent:${domainGroup.key}:${spaceGroup.key}:${parentGroup.key}`,
-          level: 2,
-          chips: [{ kind: 'parent', label: firstParentMatch.context.parentName }],
-        })
-        pushMatchRows(rows, parentGroup.items, 3)
-      })
+  const folderGroups = groupResultItems(items, (item) => item.match.context.folderId ?? '__root__')
+  folderGroups.forEach((folderGroup) => {
+    const firstFolderMatch = folderGroup.items[0]?.match
+    if (!firstFolderMatch) return
+    rows.push({
+      type: 'header',
+      key: `folder:${folderGroup.key}`,
+      level: 0,
+      chips: [{ kind: 'folder', label: firstFolderMatch.context.folderPath || 'Notebook root' }],
     })
+    pushMatchRows(rows, folderGroup.items, 1)
   })
   return rows
 }
@@ -181,19 +118,11 @@ function buildFindReplaceResultRows(matches: FindReplaceMatch[], limit: number):
 }
 
 function getContextChipClassName(kind: FindReplaceChip['kind']) {
-  if (kind === 'domain') {
-    return 'find-replace-context-chip rail-control context-preview-title-btn compact-scope-btn compact-domain-btn is-domain'
-  }
-  if (kind === 'space') {
-    return 'find-replace-context-chip rail-control context-preview-title-btn compact-scope-btn compact-space-btn is-space'
-  }
-  if (kind === 'parent') {
-    return 'find-replace-context-chip rail-control context-preview-title-btn btn btn-sm tab-btn parent-tab-btn is-parent'
-  }
-  if (kind === 'aisle') {
-    return 'find-replace-context-chip find-replace-aisle-chip rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab'
-  }
-  return 'find-replace-context-chip rail-control context-preview-title-btn btn btn-sm tab-btn subtab-btn is-subtab'
+  return [
+    'find-replace-context-chip',
+    kind === 'aisle' ? 'find-replace-aisle-chip' : '',
+    `is-${kind}`,
+  ].filter(Boolean).join(' ')
 }
 
 function renderContextChips(chips: FindReplaceChip[]) {
@@ -205,10 +134,9 @@ function renderContextChips(chips: FindReplaceChip[]) {
 }
 
 function getMatchContextChips(match: FindReplaceMatch): FindReplaceChip[] {
-  const noteKind = match.context.noteKind === 'scratchpad' ? 'subtab' : match.context.noteKind
   const chips: FindReplaceChip[] = [
     {
-      kind: noteKind,
+      kind: match.context.noteKind === 'scratchpad' ? 'scratchpad' : 'note',
       label: match.context.noteName,
     },
   ]

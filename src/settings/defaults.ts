@@ -24,7 +24,6 @@ import {
 } from './synced-ui-settings-registry.js'
 
 export const DEFAULT_AUTO_REMOVE_DAYS = 7
-export const ALWAYS_SHOW_DOMAINS_WITHOUT_SPACES_MESSAGE = 'You cannot show domains without showing spaces.'
 export type BuiltInAppTheme = Exclude<AppTheme, CustomThemeId>
 export const BUILT_IN_THEME_IDS: BuiltInAppTheme[] = ['dark', 'light', 'dawn']
 export const CUSTOM_THEME_IDS: CustomThemeId[] = ['custom1', 'custom2', 'custom3']
@@ -50,8 +49,6 @@ export const MAX_AUTO_REMOVE_DAYS = 365
 
 export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   ...DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
-  alwaysShowSpaces: false,
-  alwaysShowDomains: false,
   showRegularNoteAisleAddButtons: false,
   showRegularNoteAisleDeleteButton: false,
   noteFilter: {
@@ -71,7 +68,6 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
       selectedKeys: [],
     },
   },
-  tabButtonScale: 1,
   noteFontScale: 1,
   toolbarButtonScale: 1,
   scratchpadAisleLimit: DEFAULT_SCRATCHPAD_AISLE_LIMIT,
@@ -105,10 +101,8 @@ export const CUSTOM_THEME_PALETTE_SLOTS: CustomThemePaletteSlot[] = [
   'tagBg',
   'tooltipPrimary',
   'tooltipSecondary',
-  'domainRail',
-  'spaceRail',
-  'parentRail',
-  'subtabRail',
+  'sidebar',
+  'sidebarAccent',
 ]
 
 export const DEFAULT_CUSTOM_THEME_PALETTE: CustomThemePalette = {
@@ -128,10 +122,8 @@ export const DEFAULT_CUSTOM_THEME_PALETTE: CustomThemePalette = {
   tagBg: '#22d3ee',
   tooltipPrimary: '#c8d0e1',
   tooltipSecondary: '#6f7f98',
-  domainRail: '#a95429',
-  spaceRail: '#997b28',
-  parentRail: '#2f5da8',
-  subtabRail: '#2f8a5f',
+  sidebar: '#0f1b32',
+  sidebarAccent: '#2f67de',
 }
 
 export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePalette> = {
@@ -153,10 +145,8 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     tagBg: '#0f766e',
     tooltipPrimary: '#555555',
     tooltipSecondary: '#9aa3b2',
-    domainRail: '#a95429',
-    spaceRail: '#997b28',
-    parentRail: '#2f5da8',
-    subtabRail: '#2f8a5f',
+    sidebar: '#eef4fb',
+    sidebarAccent: '#3f7df0',
   },
   dawn: {
     canvas: '#d8c9a3',
@@ -175,16 +165,11 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     tagBg: '#0f766e',
     tooltipPrimary: '#555555',
     tooltipSecondary: '#8a744a',
-    domainRail: '#a95429',
-    spaceRail: '#997b28',
-    parentRail: '#2f5da8',
-    subtabRail: '#2f8a5f',
+    sidebar: '#b99a45',
+    sidebarAccent: '#3f6f4f',
   },
 }
 
-export const MIN_TAB_BUTTON_SCALE = 1
-export const MAX_TAB_BUTTON_SCALE = 1.6
-export const TAB_BUTTON_SCALE_STEP = 0.05
 export const MIN_NOTE_FONT_SCALE = 0.9
 export const MAX_NOTE_FONT_SCALE = 1.8
 export const NOTE_FONT_SCALE_STEP = 0.05
@@ -195,12 +180,6 @@ export const TOOLBAR_BUTTON_SCALE_STEP = 0.05
 export function clampAutoRemoveDays(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_AUTO_REMOVE_DAYS
   return Math.min(MAX_AUTO_REMOVE_DAYS, Math.max(MIN_AUTO_REMOVE_DAYS, Math.floor(value)))
-}
-
-export function clampTabButtonScale(value: number): number {
-  if (!Number.isFinite(value)) return DEFAULT_UI_SETTINGS.tabButtonScale
-  const rounded = Math.round(value / TAB_BUTTON_SCALE_STEP) * TAB_BUTTON_SCALE_STEP
-  return Math.min(MAX_TAB_BUTTON_SCALE, Math.max(MIN_TAB_BUTTON_SCALE, Number(rounded.toFixed(2))))
 }
 
 export function clampNoteFontScale(value: number): number {
@@ -424,12 +403,6 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
   const obj = raw as Record<string, unknown>
   const registeredSettings = normalizeRegisteredSyncedUiSettings(obj)
   const themePalettes = normalizeThemePalettes(obj.themePalettes)
-  const alwaysShowSpaces =
-    typeof obj.alwaysShowSpaces === 'boolean' ? obj.alwaysShowSpaces : DEFAULT_UI_SETTINGS.alwaysShowSpaces
-  const alwaysShowDomains =
-    alwaysShowSpaces && typeof obj.alwaysShowDomains === 'boolean'
-      ? obj.alwaysShowDomains
-      : DEFAULT_UI_SETTINGS.alwaysShowDomains
   const showRegularNoteAisleAddButtons =
     typeof obj.showRegularNoteAisleAddButtons === 'boolean'
       ? obj.showRegularNoteAisleAddButtons
@@ -440,14 +413,8 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
       : DEFAULT_UI_SETTINGS.showRegularNoteAisleDeleteButton
   return {
     ...registeredSettings,
-    alwaysShowSpaces,
-    alwaysShowDomains,
     showRegularNoteAisleAddButtons,
     showRegularNoteAisleDeleteButton,
-    tabButtonScale:
-      typeof obj.tabButtonScale === 'number'
-        ? clampTabButtonScale(obj.tabButtonScale)
-        : DEFAULT_UI_SETTINGS.tabButtonScale,
     noteFontScale:
       typeof obj.noteFontScale === 'number'
         ? clampNoteFontScale(obj.noteFontScale)

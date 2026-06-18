@@ -19,7 +19,7 @@ const message: AppMessage = {
     {
       label: 'de-coupled',
       path: 'notes/other.md',
-      location: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+      location: { noteId: 'note-1' },
     },
   ],
 }

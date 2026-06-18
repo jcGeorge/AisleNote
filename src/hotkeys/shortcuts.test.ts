@@ -106,7 +106,6 @@ describe('newline shortcut settings', () => {
     expect(normalized.shortcuts.toggleNotesScratchpad).toBe(DEFAULT_SHORTCUTS.toggleNotesScratchpad)
     expect(normalized.shortcuts.toggleNotesFilter).toBe(DEFAULT_SHORTCUTS.toggleNotesFilter)
     expect(normalized.shortcuts.openSettings).toBe(DEFAULT_SHORTCUTS.openSettings)
-    expect(normalized.shortcuts.openSpaces).toBe(DEFAULT_SHORTCUTS.openSpaces)
     expect(normalized.newlineShortcuts.shortcuts.controlEnter).toBe('dashList')
     expect(normalized.newlineShortcuts.shortcuts.shiftEnter).toBe('dashList')
     expect(normalized.newlineShortcuts.menuOperations).toEqual(['dashList', 'bulletList', 'strikethrough'])
@@ -206,18 +205,6 @@ describe('newline shortcut settings', () => {
     expect(normalized.newlineShortcuts.menuOperations).toEqual(['blockQuote', 'blockIndent', 'strikethrough'])
   })
 
-  it('keeps parent-tab cycle shortcuts assignable but unbound by default', () => {
-    expect(DEFAULT_SHORTCUTS.cycleParentTabNext).toBe('')
-    expect(DEFAULT_SHORTCUTS.cycleParentTabPrev).toBe('')
-    expect(
-      eventMatchesShortcut(
-        { key: 'Tab', code: 'Tab', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
-        DEFAULT_SHORTCUTS.cycleParentTabNext,
-        false,
-      ),
-    ).toBe(false)
-  })
-
   it('defaults aisle cycle shortcuts to alt brackets and recognizes physical bracket keys', () => {
     expect(DEFAULT_SHORTCUTS.cycleAislePrev).toBe('Alt+[')
     expect(DEFAULT_SHORTCUTS.cycleAisleNext).toBe('Alt+]')
@@ -241,15 +228,14 @@ describe('newline shortcut settings', () => {
     ).toBe(true)
   })
 
-  it('normalizes missing parent-tab cycle shortcuts to empty strings', () => {
+  it('normalizes aisle cycle shortcuts and removed shortcut payloads', () => {
     const normalized = normalizeHotkeySettings({
       shortcuts: {
-        cycleSubTabNext: 'Ctrl+Tab',
+        removedShortcut: 'Ctrl+Tab',
       },
     })
 
-    expect(normalized.shortcuts.cycleParentTabNext).toBe('')
-    expect(normalized.shortcuts.cycleParentTabPrev).toBe('')
+    expect(normalized.shortcuts).not.toHaveProperty('removedShortcut')
     expect(normalized.shortcuts.cycleAislePrev).toBe('Alt+[')
     expect(normalized.shortcuts.cycleAisleNext).toBe('Alt+]')
     expect(normalized.shortcuts.formatStrikethrough).toBe('')

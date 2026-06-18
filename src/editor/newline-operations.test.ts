@@ -424,7 +424,7 @@ describe('editor newline operations', () => {
 
   it('converts selected numbered row text to a task without deleting sibling rows', () => {
     const doc = newlineOperationSchema.nodes.doc.create(null, [
-      orderedListNode(['Add parent tab', 'Add sub-tab', 'Each note keeps separate content']),
+      orderedListNode(['Add note', 'Add folder', 'Each note keeps separate content']),
     ])
     const ranges = getEditorTextLineRanges({ state: { doc } })
     const { editor, view } = createEditorForDoc(doc, ranges[1].start, ranges[1].end)
@@ -432,8 +432,8 @@ describe('editor newline operations', () => {
     expect(applyEditorNewlineOperation(editor as any, 'task')).toEqual({ handled: true })
 
     expect(docChildTypes(view.state.doc)).toEqual(['orderedList', 'bulletList', 'orderedList'])
-    expect(listTexts(view.state.doc.child(0))).toEqual(['Add parent tab'])
-    expect(listTexts(view.state.doc.child(1))).toEqual(['Add sub-tab'])
+    expect(listTexts(view.state.doc.child(0))).toEqual(['Add note'])
+    expect(listTexts(view.state.doc.child(1))).toEqual(['Add folder'])
     expect(view.state.doc.child(1).child(0).attrs).toMatchObject({ task: true, checked: false })
     expect(listTexts(view.state.doc.child(2))).toEqual(['Each note keeps separate content'])
     expect(view.dispatch.mock.calls[0]?.[0]?.getMeta('addToHistory')).not.toBe(false)
@@ -461,7 +461,7 @@ describe('editor newline operations', () => {
 
   it('expands partial selected numbered row text to the whole row before converting to a task', () => {
     const doc = newlineOperationSchema.nodes.doc.create(null, [
-      orderedListNode(['Add parent tab', 'Add sub-tab', 'Each note keeps separate content']),
+      orderedListNode(['Add note', 'Add folder', 'Each note keeps separate content']),
     ])
     const ranges = getEditorTextLineRanges({ state: { doc } })
     const { editor, view } = createEditorForDoc(doc, ranges[1].start + 4, ranges[1].start + 7)
@@ -469,8 +469,8 @@ describe('editor newline operations', () => {
     expect(applyEditorNewlineOperation(editor as any, 'task')).toEqual({ handled: true })
 
     expect(docChildTypes(view.state.doc)).toEqual(['orderedList', 'bulletList', 'orderedList'])
-    expect(listTexts(view.state.doc.child(0))).toEqual(['Add parent tab'])
-    expect(listTexts(view.state.doc.child(1))).toEqual(['Add sub-tab'])
+    expect(listTexts(view.state.doc.child(0))).toEqual(['Add note'])
+    expect(listTexts(view.state.doc.child(1))).toEqual(['Add folder'])
     expect(listTexts(view.state.doc.child(2))).toEqual(['Each note keeps separate content'])
   })
 

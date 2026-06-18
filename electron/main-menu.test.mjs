@@ -13,6 +13,12 @@ describe('electron application menu', () => {
     expect(mainSource).toContain("before-input-event")
     expect(mainSource).toContain('getMultilineShortcutDirection(input)')
     expect(mainSource).toContain('sendMultilineShortcutToWindow(window, direction)')
+    expect(mainSource).toContain("'Command+Alt+Up'")
+    expect(mainSource).toContain("'Command+Alt+Down'")
+    expect(mainSource).toContain("'Control+Alt+Up'")
+    expect(mainSource).toContain("'Control+Alt+Down'")
+    expect(mainSource).not.toContain("'Alt+Shift+Up'")
+    expect(mainSource).not.toContain("'Alt+Shift+Down'")
   })
 
   it('enables the native Electron spellchecker for editor context menu suggestions', () => {

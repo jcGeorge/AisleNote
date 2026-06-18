@@ -367,6 +367,43 @@ export function insertNotebookItem(
   })
 }
 
+export function moveNotebookItem(
+  notebook: NotebookState,
+  itemId: string,
+  targetParentFolderId: string | null,
+  targetIndex: number,
+): NotebookState {
+  const source = findNotebookItem(notebook.items, itemId)
+  if (!source) return notebook
+  if (source.item.type === 'folder' && targetParentFolderId) {
+    if (targetParentFolderId === source.item.id || findNotebookItem(source.item.children, targetParentFolderId)) {
+      return notebook
+    }
+  }
+
+  const removal = removeNotebookItem(notebook.items, itemId)
+  if (!removal.removed) return notebook
+
+  const targetParentExists =
+    targetParentFolderId === null || Boolean(findNotebookFolder(removal.items, targetParentFolderId))
+  if (!targetParentExists) return notebook
+
+  const adjustedTargetIndex =
+    removal.parentFolderId === targetParentFolderId && removal.index < targetIndex
+      ? Math.max(0, targetIndex - 1)
+      : targetIndex
+  const result = updateFolderChildren(removal.items, targetParentFolderId, (children) => {
+    const boundedIndex = Math.max(0, Math.min(adjustedTargetIndex, children.length))
+    return [...children.slice(0, boundedIndex), removal.removed as NotebookTreeItem, ...children.slice(boundedIndex)]
+  })
+  if (!result.changed) return notebook
+
+  return ensureValidActiveNote({
+    ...notebook,
+    items: result.items,
+  })
+}
+
 export function renameNotebookItem(notebook: NotebookState, itemId: string, title: string): NotebookState {
   const nextTitle = ensureTitle(title, 'Untitled')
   let changed = false

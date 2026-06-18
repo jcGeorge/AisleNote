@@ -56,8 +56,7 @@ import { BLOCK_INDENT_TOKEN, INDENT_TOKEN } from '../markdown/markdown-utils'
 import { TAG_TOKEN_CLASS_NAME } from '../tags/tags.js'
 
 const editorSetupSource = readFileSync(fileURLToPath(new URL('./editor-setup.ts', import.meta.url)), 'utf8')
-const legacyEditorSource = readFileSync(fileURLToPath(new URL('./useLegacyEditor.ts', import.meta.url)), 'utf8')
-const aisleEditorsSource = readFileSync(fileURLToPath(new URL('./useAisleEditors.ts', import.meta.url)), 'utf8')
+const notebookAisleEditorsSource = readFileSync(fileURLToPath(new URL('./useNotebookAisleEditors.ts', import.meta.url)), 'utf8')
 
 function node(typeName: string, textContent = '', contentSize = 0) {
   return {
@@ -83,8 +82,7 @@ describe('imperative editor toolbar tooltips', () => {
       "createToolbarTextButton('aisles-toolbar-btn', 'aisles', 'A', options.onAisles, 'Aisles')",
     )
     expect(editorSetupSource).toContain("button.removeAttribute('title')")
-    expect(legacyEditorSource).toContain('const cleanupToolbarAppTooltips = installToolbarAppTooltips(editorMountRef.current)')
-    expect(aisleEditorsSource).toContain('installToolbarAppTooltips(root)')
+    expect(notebookAisleEditorsSource).toContain('installToolbarAppTooltips(root)')
   })
 
   it('does not bind app-created toolbar buttons to the Toast UI internal tooltip', () => {
@@ -109,14 +107,11 @@ describe('imperative editor toolbar tooltips', () => {
     cleanup()
   })
 
-  it('installs editor spellcheck for legacy and aisle editors only', () => {
+  it('installs editor spellcheck for notebook aisle editors', () => {
     expect(editorSetupSource).toContain(
       "export const EDITOR_SPELLCHECK_ROOT_SELECTOR = '.toastui-editor .ProseMirror[contenteditable=\"true\"]'",
     )
-    expect(legacyEditorSource).toContain('const cleanupEditorSpellcheck = installEditorSpellcheck(editorMountRef.current)')
-    expect(legacyEditorSource).toContain('cleanupEditorSpellcheck()')
-    expect(aisleEditorsSource).toContain('installEditorSpellcheck(root)')
-    expect(aisleEditorsSource).toContain('cleanupEditorSpellcheck()')
+    expect(notebookAisleEditorsSource).toContain('installEditorSpellcheck(root)')
   })
 })
 
@@ -1165,6 +1160,69 @@ function getBlockIndentTestPlugin() {
   return pluginBundle.wysiwygPlugins[0]() as Plugin
 }
 
+function blockIndentKeyboardEvent(
+  key: string,
+  modifiers: Partial<Pick<KeyboardEvent, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>> = {},
+): KeyboardEvent {
+  return {
+    key,
+    code: key,
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    preventDefault: vi.fn(),
+    getModifierState: () => false,
+    ...modifiers,
+  } as unknown as KeyboardEvent
+}
+
+function createBlockIndentBoundaryKeydownView() {
+  const previousParagraph = paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('before'))
+  const indentedParagraph = paragraphShortcutSchema.nodes.paragraph.create(
+    null,
+    paragraphShortcutSchema.text(`${BLOCK_INDENT_TOKEN}visible`),
+  )
+  const nextParagraph = paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('next'))
+  const doc = paragraphShortcutSchema.nodes.doc.create(null, [previousParagraph, indentedParagraph, nextParagraph])
+  const tokenTo = previousParagraph.nodeSize + 1 + BLOCK_INDENT_TOKEN.length
+  let state = EditorState.create({
+    doc,
+    selection: TextSelection.create(doc, tokenTo),
+  })
+  const element = {
+    ownerDocument: {
+      defaultView: {
+        getComputedStyle: () => ({
+          fontSize: '16px',
+          lineHeight: '20px',
+          paddingLeft: '28px',
+        }),
+      },
+    },
+    getBoundingClientRect: () => ({
+      left: 100,
+      top: 50,
+      bottom: 74,
+      height: 24,
+    }),
+  }
+  const dispatch = vi.fn((transaction: any) => {
+    state = state.apply(transaction)
+  })
+  const posAtCoords = vi.fn(() => ({ pos: previousParagraph.nodeSize + indentedParagraph.nodeSize + 1 }))
+  const view = {
+    get state() {
+      return state
+    },
+    dispatch,
+    nodeDOM: vi.fn(() => element),
+    posAtCoords,
+  }
+
+  return { view, dispatch, posAtCoords }
+}
+
 function tagDoc(children: Array<{
   text: string
   position: number
@@ -1379,6 +1437,40 @@ describe('block indent WYSIWYG decorations', () => {
     expect(getBlockIndentBoundaryArrowDownPosition(view)).toBe(indentedParagraph.nodeSize + 1)
     expect(view.nodeDOM).toHaveBeenCalledWith(0)
     expect(posAtCoords).toHaveBeenCalledWith({ left: 129, top: 81 })
+  })
+
+  it('handles plain ArrowDown from the block indent boundary through the plugin', () => {
+    const plugin = getBlockIndentTestPlugin()
+    const { view, dispatch, posAtCoords } = createBlockIndentBoundaryKeydownView()
+    const event = blockIndentKeyboardEvent('ArrowDown')
+
+    expect((plugin.props.handleKeyDown as any)?.(view, event)).toBe(true)
+
+    expect(event.preventDefault).toHaveBeenCalled()
+    expect(posAtCoords).toHaveBeenCalled()
+    expect(dispatch).toHaveBeenCalled()
+  })
+
+  it.each([
+    ['Command Down', 'ArrowDown', { metaKey: true }],
+    ['Option Down', 'ArrowDown', { altKey: true }],
+    ['Shift Down', 'ArrowDown', { shiftKey: true }],
+    ['Control Down', 'ArrowDown', { ctrlKey: true }],
+    ['Command Up', 'ArrowUp', { metaKey: true }],
+    ['Option Up', 'ArrowUp', { altKey: true }],
+  ])('lets %s fall through at the block indent boundary', (_label, key, modifiers) => {
+    const plugin = getBlockIndentTestPlugin()
+    const { view, dispatch, posAtCoords } = createBlockIndentBoundaryKeydownView()
+    const event = blockIndentKeyboardEvent(
+      key,
+      modifiers as Partial<Pick<KeyboardEvent, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>>,
+    )
+
+    expect((plugin.props.handleKeyDown as any)?.(view, event)).toBe(false)
+
+    expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(posAtCoords).not.toHaveBeenCalled()
+    expect(dispatch).not.toHaveBeenCalled()
   })
 
   it('moves home-style navigation to the visible start of a block-indented paragraph', () => {

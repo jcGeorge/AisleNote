@@ -1,4 +1,10 @@
-import type { ImportNotebookSummary } from '../import/notebook-import'
+type ImportNotebookSummary = {
+  folders?: number
+  notes?: number
+  noteBodies?: number
+  unresolvedReferences?: number
+  warnings?: string[]
+}
 
 function warningSuffix(count: number): string {
   return count > 0 ? ` ${count} warning(s).` : ''
@@ -32,9 +38,8 @@ export const dataTransferMessages = {
       summary.unresolvedReferences && summary.unresolvedReferences > 0
         ? ` ${summary.unresolvedReferences} reference(s) stayed unresolved.`
         : ''
-    const appliedText = summary.scratchpad ? ' Scratchpad imported as a tab.' : ''
     const warningCount = (summary.warnings?.length ?? 0) + materializedWarningCount
-    return `Imported notebook: ${summary.domains} domain(s), ${summary.spaces} space(s), ${summary.tabs} tab(s), ${summary.notes} note(s).${appliedText}${unresolvedText}${warningSuffix(warningCount)}`
+    return `Imported notebook: ${summary.folders ?? 0} folder(s), ${summary.notes ?? 0} note(s), ${summary.noteBodies ?? 0} note body record(s).${unresolvedText}${warningSuffix(warningCount)}`
   },
   userSettingsExportBuilding: 'Building user settings export...',
   userSettingsExportCanceled: 'User settings export canceled.',

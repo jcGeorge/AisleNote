@@ -1,9 +1,9 @@
 import { buildVisibleMarkdownIndex } from '../notes/find-replace'
 import { getAisleBodyId, getAisleMarkdown } from '../notes/note-markdown'
-import { buildNoteLocationKey } from '../notes/note-locations'
+import { buildNoteLocationKey, listSearchableNoteLocations } from '../notes/note-locations'
 import { SCRATCHPAD_FIND_LOCATION } from '../notes/find-replace'
 import { getScratchpadNoteBody } from '../state/scratchpad'
-import type { AppState, Domain, NoteBody, NoteLocation } from '../types/app'
+import type { AppState, NoteBody, NoteLocation } from '../types/app'
 import { extractMarkdownTagRanges, normalizeTagLabel } from './tags.js'
 
 export type TagFilterSortMode = 'az' | 'occurrences'
@@ -35,15 +35,10 @@ export type TagFilterIndex = {
   primaryTagKey: string
   allOccurrences: TagFilterOccurrence[]
   selectedOccurrences: TagFilterOccurrence[]
-  domainCounts: Map<string, number>
-  spaceCounts: Map<string, number>
-  parentCounts: Map<string, number>
   noteCounts: Map<string, number>
   scratchpadCount: number
   primaryOccurrencesByLocation: Map<string, TagFilterOccurrence[]>
-  firstMatchByDomain: Map<string, NoteLocation>
-  firstMatchBySpace: Map<string, NoteLocation>
-  firstMatchByParent: Map<string, NoteLocation>
+  firstMatchByNote: Map<string, NoteLocation>
 }
 
 type OrderedLocation = {
@@ -53,14 +48,6 @@ type OrderedLocation = {
 
 export function normalizeTagKey(tag: string): string {
   return normalizeTagLabel(tag).toLocaleLowerCase()
-}
-
-export function getTagFilterSpaceKey(domainId: string, spaceId: string): string {
-  return `${domainId}::${spaceId}`
-}
-
-export function getTagFilterParentKey(domainId: string, spaceId: string, tabId: string): string {
-  return `${domainId}::${spaceId}::${tabId}`
 }
 
 export function getTagFilterCountLabel(count: number): string {
@@ -81,14 +68,6 @@ export function sortTagFilterTags(tags: TagFilterTagSummary[], sortMode: TagFilt
 
 function incrementCount(map: Map<string, number>, key: string, amount = 1) {
   map.set(key, (map.get(key) ?? 0) + amount)
-}
-
-function getDomainsWithActiveProjection(sourceState: AppState): Domain[] {
-  return sourceState.domains.map((domain) =>
-    domain.id === sourceState.activeDomainId
-      ? { ...domain, activeSpaceId: sourceState.activeSpaceId, spaces: sourceState.spaces }
-      : domain,
-  )
 }
 
 function getVisibleRangeForMarkdownRange(
@@ -149,34 +128,10 @@ function pushLocationOccurrences(
 }
 
 function collectOrderedLocations(state: AppState): OrderedLocation[] {
-  const locations: OrderedLocation[] = []
-  getDomainsWithActiveProjection(state).forEach((domain) => {
-    domain.spaces.forEach((space) => {
-      space.data.tabs.forEach((tab) => {
-        locations.push({
-          location: {
-            domainId: domain.id,
-            spaceId: space.id,
-            tabId: tab.id,
-            subTabId: null,
-          },
-          noteBodyId: tab.noteBodyId,
-        })
-        tab.subTabs.forEach((subTab) => {
-          locations.push({
-            location: {
-              domainId: domain.id,
-              spaceId: space.id,
-              tabId: tab.id,
-              subTabId: subTab.id,
-            },
-            noteBodyId: subTab.noteBodyId,
-          })
-        })
-      })
-    })
-  })
-  return locations
+  return listSearchableNoteLocations(state).map((entry) => ({
+    location: { noteId: entry.noteId },
+    noteBodyId: entry.noteBodyId,
+  }))
 }
 
 function addFirstMatch(map: Map<string, NoteLocation>, key: string, location: NoteLocation) {
@@ -191,26 +146,16 @@ function addSelectedOccurrenceToCounts(index: TagFilterIndex, occurrence: TagFil
     index.primaryOccurrencesByLocation.set(locationKey, [...current, occurrence])
   }
 
-  if (occurrence.location.domainId === SCRATCHPAD_FIND_LOCATION.domainId) {
+  if (occurrence.location.noteId === SCRATCHPAD_FIND_LOCATION.noteId) {
     index.scratchpadCount += 1
-    return
   }
-
-  incrementCount(index.domainCounts, occurrence.location.domainId)
-  incrementCount(index.spaceCounts, getTagFilterSpaceKey(occurrence.location.domainId, occurrence.location.spaceId))
-  incrementCount(
-    index.parentCounts,
-    getTagFilterParentKey(occurrence.location.domainId, occurrence.location.spaceId, occurrence.location.tabId),
-  )
 }
 
 function populateFirstMatches(index: TagFilterIndex, orderedLocations: OrderedLocation[]) {
   orderedLocations.forEach(({ location }) => {
     const locationKey = buildNoteLocationKey(location)
     if ((index.noteCounts.get(locationKey) ?? 0) <= 0) return
-    addFirstMatch(index.firstMatchByDomain, location.domainId, location)
-    addFirstMatch(index.firstMatchBySpace, getTagFilterSpaceKey(location.domainId, location.spaceId), location)
-    addFirstMatch(index.firstMatchByParent, getTagFilterParentKey(location.domainId, location.spaceId, location.tabId), location)
+    addFirstMatch(index.firstMatchByNote, locationKey, location)
   })
 }
 
@@ -241,15 +186,10 @@ export function buildTagFilterIndex(state: AppState, selectedTagKeys: string[] =
     selectedOccurrences: selectedTagSet.size > 0
       ? occurrences.filter((occurrence) => selectedTagSet.has(occurrence.key))
       : [],
-    domainCounts: new Map(),
-    spaceCounts: new Map(),
-    parentCounts: new Map(),
     noteCounts: new Map(),
     scratchpadCount: 0,
     primaryOccurrencesByLocation: new Map(),
-    firstMatchByDomain: new Map(),
-    firstMatchBySpace: new Map(),
-    firstMatchByParent: new Map(),
+    firstMatchByNote: new Map(),
   }
 
   index.selectedOccurrences.forEach((occurrence) => addSelectedOccurrenceToCounts(index, occurrence))
@@ -257,25 +197,11 @@ export function buildTagFilterIndex(state: AppState, selectedTagKeys: string[] =
   return index
 }
 
-export function getFirstMatchingLocationForDomain(index: TagFilterIndex, domainId: string): NoteLocation | null {
-  return index.firstMatchByDomain.get(domainId) ?? null
-}
-
-export function getFirstMatchingLocationForSpace(
+export function getFirstMatchingLocationForNote(
   index: TagFilterIndex,
-  domainId: string,
-  spaceId: string,
+  location: NoteLocation,
 ): NoteLocation | null {
-  return index.firstMatchBySpace.get(getTagFilterSpaceKey(domainId, spaceId)) ?? null
-}
-
-export function getFirstMatchingLocationForParent(
-  index: TagFilterIndex,
-  domainId: string,
-  spaceId: string,
-  tabId: string,
-): NoteLocation | null {
-  return index.firstMatchByParent.get(getTagFilterParentKey(domainId, spaceId, tabId)) ?? null
+  return index.firstMatchByNote.get(buildNoteLocationKey(location)) ?? null
 }
 
 export function getPrimaryTagOccurrencesForLocation(

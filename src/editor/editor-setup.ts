@@ -25,6 +25,11 @@ import {
   getBulletListMarkerFromMarkdownChar,
 } from './list-markers'
 import {
+  getEditorNavigationIntentInputForEvent,
+  resolveEditorNavigationIntent,
+  type EditorNavigationIntent,
+} from './editor-input-intents'
+import {
   countBlockIndentLevels,
   getBlockIndentPrefixLength,
   isHorizontalRuleMarkerLine,
@@ -128,6 +133,15 @@ export type BlockIndentDecorationRange = {
 export type BlockIndentSelectionBoundaries = {
   anchor: number
   head: number
+}
+
+type BlockIndentBoundaryNavigationAction =
+  | { type: 'visible-line-start'; mode: 'line-start' | 'word-boundary' }
+  | { type: 'visible-arrow-down' }
+  | { type: 'boundary-exit'; key: 'ArrowLeft' | 'ArrowUp' }
+
+function getCurrentEditorPlatformIsMac(): boolean {
+  return typeof navigator !== 'undefined' ? /mac/i.test(navigator.platform) : false
 }
 
 export function getBlockIndentDecorationRanges(doc: any): BlockIndentDecorationRange[] {
@@ -252,10 +266,20 @@ function getBlockIndentFirstVisibleBoundaryAtPosition(
   }
 }
 
-function isHorizontalLineStartEvent(event: KeyboardEvent): boolean {
-  if (event.key === 'Home') return true
-  if (event.key !== 'ArrowLeft') return false
-  return Boolean(event.metaKey || event.ctrlKey)
+export function getBlockIndentBoundaryNavigationAction(
+  navigationIntent: EditorNavigationIntent,
+): BlockIndentBoundaryNavigationAction | null {
+  if (navigationIntent.type === 'line-boundary' && navigationIntent.direction === 'start') {
+    return {
+      type: 'visible-line-start',
+      mode: navigationIntent.blockIndentMode,
+    }
+  }
+  if (navigationIntent.type !== 'plain-arrow') return null
+  if (navigationIntent.direction === 'down') return { type: 'visible-arrow-down' }
+  if (navigationIntent.direction === 'left') return { type: 'boundary-exit', key: 'ArrowLeft' }
+  if (navigationIntent.direction === 'up') return { type: 'boundary-exit', key: 'ArrowUp' }
+  return null
 }
 
 export function getBlockIndentVisibleLineStartPosition(
@@ -435,11 +459,17 @@ export function blockIndentPlugin(context: {
               return true
             },
             handleKeyDown: (view: any, event: KeyboardEvent) => {
-              if (isHorizontalLineStartEvent(event)) {
+              const navigationIntent = resolveEditorNavigationIntent(
+                getEditorNavigationIntentInputForEvent(event, getCurrentEditorPlatformIsMac()),
+              )
+              const action = getBlockIndentBoundaryNavigationAction(navigationIntent)
+              if (!action) return false
+
+              if (action.type === 'visible-line-start') {
                 const nextPosition = getBlockIndentVisibleLineStartPosition(
                   view?.state?.doc,
                   view?.state?.selection,
-                  event.key === 'Home' ? 'line-start' : 'word-boundary',
+                  action.mode,
                 )
                 if (nextPosition !== null) {
                   event.preventDefault()
@@ -451,7 +481,7 @@ export function blockIndentPlugin(context: {
                 }
               }
 
-              if (event.key === 'ArrowDown') {
+              if (action.type === 'visible-arrow-down') {
                 const nextPosition = getBlockIndentBoundaryArrowDownPosition(view)
                 if (nextPosition === null) return false
 
@@ -463,10 +493,11 @@ export function blockIndentPlugin(context: {
                 return true
               }
 
+              if (action.type !== 'boundary-exit') return false
               const nextPosition = getBlockIndentBoundaryNavigationPosition(
                 view?.state?.doc,
                 view?.state?.selection,
-                event.key,
+                action.key,
               )
               if (nextPosition === null) return false
 

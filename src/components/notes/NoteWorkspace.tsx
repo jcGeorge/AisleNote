@@ -665,7 +665,7 @@ export function NoteWorkspace({
                         aisleControls.onDeleteActiveAisle()
                       }}
                     >
-                      <span className="aisle-edit-delete-icon note-scratchpad-aisle-delete-icon" aria-hidden="true" />
+                      <AppIcon iconId="trash" className="aisle-edit-delete-icon note-scratchpad-aisle-delete-icon" />
                     </button>
                   )}
                   {showAisleAddButtons && (

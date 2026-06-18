@@ -20,12 +20,9 @@ const context = {
   noteTitle: 'Roadmap',
   isLinked: true,
   tags: ['Planning', 'Client/Acme'],
-  tabId: 'tab-1',
-  subTabId: null,
-  spaceId: 'space-1',
-  spaceName: 'Product',
-  domainId: 'domain-1',
-  domainName: 'Tabs',
+  noteId: 'note-1',
+  folderName: 'Product',
+  folderPath: 'Notebook / Product',
 }
 
 const template: FrontmatterTemplate = {

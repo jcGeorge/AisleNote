@@ -5,11 +5,10 @@ import {
   materializeComputedFrontmatterTags,
   migrateAisleTags,
 } from '../tags/tags.js'
-import { setActiveDomain, setActiveSpaceInActiveDomain, updateSpaceInActiveDomain } from '../state/domains'
-import { createId, createTimestamp } from '../state/workspace'
 import type { AppState, NoteAisle, NoteAisleBody, NoteCursorLocation, NoteCursorSelection, NoteLocation, ResolvedNoteAisle } from '../types/app'
 import { getAisleBodyId } from './note-markdown'
 import { noteCursorSelectionsEqual, pruneNoteCursorLocations } from './note-cursors'
+import { createId, createTimestamp } from './note-content'
 
 type NoteAisleInput = NoteAisle & { markdown?: string }
 
@@ -288,18 +287,14 @@ export const syncNoteAisleBodyMarkdownInState = (
 }
 
 export const applyNoteLocationToState = (previous: AppState, location: NoteLocation): AppState => {
-  const domainState = setActiveDomain(previous, location.domainId)
-  const spaceState = setActiveSpaceInActiveDomain(domainState, location.spaceId)
-  return updateSpaceInActiveDomain(spaceState, location.spaceId, (space) => ({
-    ...space,
-    data: {
-      ...space.data,
-      activeTabId: location.tabId,
-      tabs: space.data.tabs.map((tab) =>
-        tab.id === location.tabId ? { ...tab, activeSubTabId: location.subTabId ?? null } : tab,
-      ),
+  if (!location.noteId || previous.notebook.activeNoteId === location.noteId) return previous
+  return {
+    ...previous,
+    notebook: {
+      ...previous.notebook,
+      activeNoteId: location.noteId,
     },
-  }))
+  }
 }
 
 export const updateCursorLocationInState = (

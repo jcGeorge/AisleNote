@@ -14,15 +14,12 @@ export type FindReplaceOptions = {
 }
 
 export type FindReplaceLocationContext = {
-  domainId: string
-  domainName: string
-  spaceId: string
-  spaceName: string
-  parentId: string
-  parentName: string
+  folderId: string | null
+  folderName: string
+  folderPath: string
   noteId: string
   noteName: string
-  noteKind: 'parent' | 'subtab' | 'scratchpad'
+  noteKind: 'note' | 'scratchpad'
 }
 
 export type FindReplaceMatch = {
@@ -66,18 +63,11 @@ type FindReplaceLocation = NoteLocation & {
 }
 
 export const SCRATCHPAD_FIND_LOCATION: NoteLocation = {
-  domainId: SCRATCHPAD_CONTENT_TARGET_ID,
-  spaceId: SCRATCHPAD_CONTENT_TARGET_ID,
-  tabId: SCRATCHPAD_CONTENT_TARGET_ID,
-  subTabId: null,
+  noteId: SCRATCHPAD_CONTENT_TARGET_ID,
 }
 
 export function isScratchpadFindLocation(location: NoteLocation): boolean {
-  return (
-    location.domainId === SCRATCHPAD_CONTENT_TARGET_ID &&
-    location.spaceId === SCRATCHPAD_CONTENT_TARGET_ID &&
-    location.tabId === SCRATCHPAD_CONTENT_TARGET_ID
-  )
+  return location.noteId === SCRATCHPAD_CONTENT_TARGET_ID
 }
 
 type VisibleFindRange = {
@@ -276,20 +266,17 @@ function findVisibleRanges(markdown: string, query: string, options: FindReplace
 function getFindReplaceLocationContext(
   state: AppState,
   location: NoteLocation,
-  names?: Partial<Pick<FindReplaceLocationContext, 'domainName' | 'spaceName' | 'parentName' | 'noteName'>>,
+  names?: Partial<Pick<FindReplaceLocationContext, 'folderName' | 'folderPath' | 'noteName'>>,
 ): FindReplaceLocationContext {
   const info = getLocationInfo(state, location)
-  const noteKind = location.subTabId ? 'subtab' : 'parent'
+  const entry = listSearchableNoteLocations(state).find((candidate) => candidate.noteId === location.noteId) ?? null
   return {
-    domainId: location.domainId,
-    domainName: names?.domainName ?? info.domain?.name ?? 'domain',
-    spaceId: location.spaceId,
-    spaceName: names?.spaceName ?? info.space?.name ?? 'space',
-    parentId: location.tabId,
-    parentName: names?.parentName ?? info.tab?.title ?? 'parent',
-    noteId: location.subTabId ?? location.tabId,
-    noteName: names?.noteName ?? (location.subTabId ? info.subTab?.title ?? 'note' : 'home'),
-    noteKind,
+    folderId: entry?.parentFolderId ?? null,
+    folderName: names?.folderName ?? entry?.folderName ?? '',
+    folderPath: names?.folderPath ?? entry?.folderPath ?? '',
+    noteId: location.noteId,
+    noteName: names?.noteName ?? info.title,
+    noteKind: 'note',
   }
 }
 
@@ -302,12 +289,9 @@ function getScratchpadFindReplaceLocation(state: AppState): FindReplaceLocation 
     label: 'scratchpad',
     noteBodyId: scratchpad.noteBodyId,
     context: {
-      domainId: SCRATCHPAD_CONTENT_TARGET_ID,
-      domainName: 'scratchpad',
-      spaceId: SCRATCHPAD_CONTENT_TARGET_ID,
-      spaceName: 'scratchpad',
-      parentId: SCRATCHPAD_CONTENT_TARGET_ID,
-      parentName: 'scratchpad',
+      folderId: null,
+      folderName: '',
+      folderPath: '',
       noteId: SCRATCHPAD_CONTENT_TARGET_ID,
       noteName: 'scratchpad',
       noteKind: 'scratchpad',
@@ -330,14 +314,15 @@ function collectNormalFindReplaceLocations(
     return listSearchableNoteLocations(state).map((entry) => ({
       ...entry,
       context: getFindReplaceLocationContext(state, entry, {
-        domainName: entry.domainName,
-        spaceName: entry.spaceName,
-        parentName: entry.parentName,
+        folderName: entry.folderName,
+        folderPath: entry.folderPath,
         noteName: entry.noteName,
       }),
     }))
   }
   const currentInfo = getLocationInfo(state, currentLocation)
+  const currentEntry = listSearchableNoteLocations(state).find((entry) => entry.noteId === currentLocation.noteId) ?? null
+  const currentFolderId = currentEntry?.parentFolderId ?? null
   if (scope === 'note') {
     return currentInfo.noteBodyId
       ? [
@@ -354,23 +339,14 @@ function collectNormalFindReplaceLocations(
   const locations: FindReplaceLocation[] = entries
     .filter((entry) => {
       if (scope === 'notebook') return true
-      if (scope === 'domain') return entry.domainId === currentLocation.domainId
-      if (scope === 'space') return entry.domainId === currentLocation.domainId && entry.spaceId === currentLocation.spaceId
-      if (scope === 'parent') {
-        return (
-          entry.domainId === currentLocation.domainId &&
-          entry.spaceId === currentLocation.spaceId &&
-          entry.tabId === currentLocation.tabId
-        )
-      }
+      if (scope === 'folder') return Boolean(currentEntry) && entry.parentFolderId === currentFolderId
       return entry.noteBodyId === currentInfo.noteBodyId
     })
     .map((entry) => ({
       ...entry,
       context: getFindReplaceLocationContext(state, entry, {
-        domainName: entry.domainName,
-        spaceName: entry.spaceName,
-        parentName: entry.parentName,
+        folderName: entry.folderName,
+        folderPath: entry.folderPath,
         noteName: entry.noteName,
       }),
     }))
@@ -405,7 +381,7 @@ export function findVisibleMatches(
       const markdown = getAisleMarkdown(aisle, state.noteAisleBodies)
       findVisibleRanges(markdown, query, options).forEach((range, rangeIndex) => {
         matches.push({
-          id: `${location.domainId}:${location.spaceId}:${location.tabId}:${location.subTabId ?? 'home'}:${aisleBodyId}:${range.markdownFrom}:${rangeIndex}`,
+          id: `${location.noteId}:${aisleBodyId}:${range.markdownFrom}:${rangeIndex}`,
           location,
           label: location.label,
           context: location.context,

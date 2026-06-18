@@ -19,9 +19,9 @@ function markdownReference(token: string, embed = false): ResolvedMarkdownNoteRe
     },
     payload: {
       id: `${embed ? 'markdown-preview' : 'markdown-link'}:Linked--abc123`,
-      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+      target: { noteId: 'note-linked' },
     },
-    target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+    target: { noteId: 'note-linked' },
     label: 'Linked',
     canonicalTarget: 'Linked--abc123',
     canonicalToken: `${embed ? '!' : ''}[Linked](Linked--abc123)`,
@@ -54,10 +54,10 @@ describe('table of contents link collection', () => {
       resolve,
     )
 
-    expect(links.map((link) => [link.kind, link.label, link.href ?? link.target?.tabId])).toEqual([
-      ['note-link', 'Linked', 'tab'],
+    expect(links.map((link) => [link.kind, link.label, link.href ?? link.target?.noteId])).toEqual([
+      ['note-link', 'Linked', 'note-linked'],
       ['url-link', 'site', 'https://example.com/path'],
-      ['note-preview', 'Linked', 'tab'],
+      ['note-preview', 'Linked', 'note-linked'],
     ])
     expect(links.map((link) => link.key)).toEqual([
       'aisle-a|link|0',

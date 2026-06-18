@@ -4,6 +4,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   loadAppStateResult,
+  resolveNotebookItemLocationRevealPath,
   resolveNoteLocationRevealPath,
   saveAppState,
   writeAssetToProfile,
@@ -193,5 +194,22 @@ describe('schema 2 app-state storage', () => {
     expect(asset.url).toContain('tabs-asset:///assets/asset-')
     expect(existsSync(path.join(root, asset.assetPath))).toBe(true)
     expect(reveal).toMatchObject({ ok: true, rootRelativePath: 'Inbox--note-root.md' })
+  })
+
+  it('resolves notebook note and folder items for sidebar reveal actions', () => {
+    const root = tempRoot()
+    saveAppState(root, JSON.stringify(appState()))
+
+    expect(resolveNotebookItemLocationRevealPath(root, { itemId: 'note-root', itemType: 'note' })).toMatchObject({
+      ok: true,
+      rootRelativePath: 'Inbox--note-root.md',
+    })
+    expect(resolveNotebookItemLocationRevealPath(root, { itemId: 'folder-projects', itemType: 'folder' })).toMatchObject({
+      ok: true,
+      rootRelativePath: 'Projects--folder-projects',
+    })
+    expect(resolveNotebookItemLocationRevealPath(root, { itemId: 'folder-projects', itemType: 'note' })).toMatchObject({
+      ok: false,
+    })
   })
 })

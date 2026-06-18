@@ -81,7 +81,7 @@ function TransferDataSection({
         </button>
       </div>
       <p className="settings-help">
-        Import appends Tabs notebooks and Markdown folders or ZIPs into isolated domains; user settings stay separate.
+        Import appends Tabs notebooks and Markdown folders or ZIPs into isolated notebook folders; user settings stay separate.
       </p>
       <p>app settings transfer:</p>
       <div className="settings-page-actions">

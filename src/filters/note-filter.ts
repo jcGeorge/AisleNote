@@ -10,8 +10,6 @@ import type { AppState, NoteBody, NoteLocation, NoteFilterKind } from '../types/
 import {
   buildTagFilterIndex,
   getTagFilterCountLabel,
-  getTagFilterParentKey,
-  getTagFilterSpaceKey,
   normalizeTagKey,
   sortTagFilterTags,
   type TagFilterOccurrence,
@@ -62,16 +60,11 @@ export type NoteFilterIndex = {
   primaryKey: string
   allOccurrences: NoteFilterOccurrence[]
   selectedOccurrences: NoteFilterOccurrence[]
-  domainCounts: Map<string, number>
-  spaceCounts: Map<string, number>
-  parentCounts: Map<string, number>
   noteCounts: Map<string, number>
   scratchpadCount: number
   occurrencesByLocation: Map<string, NoteFilterOccurrence[]>
   primaryOccurrencesByLocation: Map<string, NoteFilterOccurrence[]>
-  firstMatchByDomain: Map<string, NoteLocation>
-  firstMatchBySpace: Map<string, NoteLocation>
-  firstMatchByParent: Map<string, NoteLocation>
+  firstMatchByNote: Map<string, NoteLocation>
 }
 
 type NormalLocation = ReturnType<typeof listSearchableNoteLocations>[number]
@@ -147,16 +140,11 @@ function createEmptyIndex(kind: NoteFilterKind, selectedKeys: string[], options:
     primaryKey: selectedKeys[0] ?? '',
     allOccurrences: occurrences,
     selectedOccurrences: [],
-    domainCounts: new Map(),
-    spaceCounts: new Map(),
-    parentCounts: new Map(),
     noteCounts: new Map(),
     scratchpadCount: 0,
     occurrencesByLocation: new Map(),
     primaryOccurrencesByLocation: new Map(),
-    firstMatchByDomain: new Map(),
-    firstMatchBySpace: new Map(),
-    firstMatchByParent: new Map(),
+    firstMatchByNote: new Map(),
   }
 }
 
@@ -178,26 +166,16 @@ function addSelectedOccurrenceToCounts(index: NoteFilterIndex, occurrence: NoteF
     index.primaryOccurrencesByLocation.set(locationKey, [...currentPrimary, occurrence])
   }
 
-  if (occurrence.location.domainId === SCRATCHPAD_FIND_LOCATION.domainId) {
+  if (occurrence.location.noteId === SCRATCHPAD_FIND_LOCATION.noteId) {
     index.scratchpadCount += 1
-    return
   }
-
-  incrementCount(index.domainCounts, occurrence.location.domainId)
-  incrementCount(index.spaceCounts, getTagFilterSpaceKey(occurrence.location.domainId, occurrence.location.spaceId))
-  incrementCount(
-    index.parentCounts,
-    getTagFilterParentKey(occurrence.location.domainId, occurrence.location.spaceId, occurrence.location.tabId),
-  )
 }
 
 function populateFirstMatches(index: NoteFilterIndex, orderedLocations: NoteLocation[]) {
   orderedLocations.forEach((location) => {
     const locationKey = buildNoteLocationKey(location)
     if ((index.noteCounts.get(locationKey) ?? 0) <= 0) return
-    addFirstMatch(index.firstMatchByDomain, location.domainId, location)
-    addFirstMatch(index.firstMatchBySpace, getTagFilterSpaceKey(location.domainId, location.spaceId), location)
-    addFirstMatch(index.firstMatchByParent, getTagFilterParentKey(location.domainId, location.spaceId, location.tabId), location)
+    addFirstMatch(index.firstMatchByNote, locationKey, location)
   })
 }
 
@@ -226,10 +204,7 @@ function buildTagNoteFilterIndex(state: AppState, selectedKeys: string[]): NoteF
     : availableOnlyIndex.availableTags.map((tag) => tag.key)
   const tagIndex = buildTagFilterIndex(state, effectiveKeys)
   const orderedLocations = listSearchableNoteLocations(state).map((entry) => ({
-    domainId: entry.domainId,
-    spaceId: entry.spaceId,
-    tabId: entry.tabId,
-    subTabId: entry.subTabId,
+    noteId: entry.noteId,
   }))
   const options: NoteFilterOption[] = tagIndex.availableTags.map((tag) => ({
     ...tag,
@@ -252,9 +227,7 @@ function buildTagNoteFilterIndex(state: AppState, selectedKeys: string[]): NoteF
 function buildOptionLabel(locations: NormalLocation[], fallback: string): string {
   const first = locations[0]
   if (!first) return fallback
-  return first.noteName === 'home'
-    ? `${first.parentName} / home`
-    : `${first.parentName} / ${first.noteName}`
+  return first.folderPath ? `${first.folderPath} / ${first.noteName}` : first.noteName
 }
 
 function getBodyAisles(state: AppState, noteBodyId: string) {
@@ -263,10 +236,7 @@ function getBodyAisles(state: AppState, noteBodyId: string) {
 
 function getNoteLocationFromEntry(entry: NormalLocation): NoteLocation {
   return {
-    domainId: entry.domainId,
-    spaceId: entry.spaceId,
-    tabId: entry.tabId,
-    subTabId: entry.subTabId,
+    noteId: entry.noteId,
   }
 }
 
@@ -356,10 +326,7 @@ function buildSyncedNoteFilterIndex(state: AppState, selectedKeys: string[]): No
     options,
     occurrences,
     locations.map((entry) => ({
-      domainId: entry.domainId,
-      spaceId: entry.spaceId,
-      tabId: entry.tabId,
-      subTabId: entry.subTabId,
+      noteId: entry.noteId,
     })),
   )
 }
@@ -432,12 +399,7 @@ function buildFrontmatterNoteFilterIndex(state: AppState, selectedKeys: string[]
     selectedKeys,
     Array.from(optionsByKey.values()),
     occurrences,
-    locations.map((entry) => ({
-      domainId: entry.domainId,
-      spaceId: entry.spaceId,
-      tabId: entry.tabId,
-      subTabId: entry.subTabId,
-    })),
+    locations.map((entry) => ({ noteId: entry.noteId })),
   )
 }
 
@@ -592,25 +554,11 @@ export function buildNoteFilterIndex(
   return buildMediaNoteFilterIndex(state, selectedKeys)
 }
 
-export function getFirstMatchingNoteFilterLocationForDomain(index: NoteFilterIndex, domainId: string): NoteLocation | null {
-  return index.firstMatchByDomain.get(domainId) ?? null
-}
-
-export function getFirstMatchingNoteFilterLocationForSpace(
+export function getFirstMatchingNoteFilterLocation(
   index: NoteFilterIndex,
-  domainId: string,
-  spaceId: string,
+  location: NoteLocation,
 ): NoteLocation | null {
-  return index.firstMatchBySpace.get(getTagFilterSpaceKey(domainId, spaceId)) ?? null
-}
-
-export function getFirstMatchingNoteFilterLocationForParent(
-  index: NoteFilterIndex,
-  domainId: string,
-  spaceId: string,
-  tabId: string,
-): NoteLocation | null {
-  return index.firstMatchByParent.get(getTagFilterParentKey(domainId, spaceId, tabId)) ?? null
+  return index.firstMatchByNote.get(buildNoteLocationKey(location)) ?? null
 }
 
 export function getNoteFilterOccurrencesForLocation(
@@ -627,4 +575,4 @@ export function getPrimaryNoteFilterOccurrencesForLocation(
   return index.primaryOccurrencesByLocation.get(buildNoteLocationKey(location)) ?? []
 }
 
-export { getTagFilterParentKey as getNoteFilterParentKey, getTagFilterSpaceKey as getNoteFilterSpaceKey, sortTagFilterTags }
+export { sortTagFilterTags }

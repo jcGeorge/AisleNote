@@ -3,6 +3,7 @@ import type { TableControlTargetMode } from '../types/app'
 
 export type TableControlOperation = 'add-row' | 'remove-row' | 'add-column' | 'remove-column'
 export type TableReorderAxis = 'row' | 'column'
+export type TableSelectionMode = 'cells' | 'rows' | 'columns'
 export type TableBoundaryDirection = 'before' | 'after'
 export type TableCellNavigationDirection = 'forward' | 'backward'
 export type TableRange = { tableStart: number; tableEnd: number }
@@ -38,12 +39,64 @@ export type TableReorderMarkerStyle = {
   transform: string
 }
 
+export type TableSelectionRange = {
+  tableStart: number
+  mode: TableSelectionMode
+  anchorRow: number
+  anchorColumn: number
+  headRow: number
+  headColumn: number
+}
+
+export type NormalizedTableSelectionRange = {
+  tableStart: number
+  mode: TableSelectionMode
+  rowStart: number
+  rowEnd: number
+  columnStart: number
+  columnEnd: number
+}
+
+export type TableSegmentRect = {
+  index: number
+  top: number
+  left: number
+  width: number
+  height: number
+}
+
+export type TableSelectionOverlaySegment = TableSegmentRect & {
+  selected: boolean
+}
+
+export type TableSelectionOverlayState = {
+  visible: boolean
+  tableStart: number | null
+  mode: TableSelectionMode | null
+  rows: TableSelectionOverlaySegment[]
+  columns: TableSelectionOverlaySegment[]
+  selectionRect: TableSegmentRect | null
+  rowHandle: TableSegmentRect | null
+  columnHandle: TableSegmentRect | null
+}
+
 export const CLOSED_TABLE_CONTROLS_STATE: TableControlsOverlayState = {
   visible: false,
   columnTop: 0,
   columnLeft: 0,
   rowTop: 0,
   rowLeft: 0,
+}
+
+export const CLOSED_TABLE_SELECTION_OVERLAY_STATE: TableSelectionOverlayState = {
+  visible: false,
+  tableStart: null,
+  mode: null,
+  rows: [],
+  columns: [],
+  selectionRect: null,
+  rowHandle: null,
+  columnHandle: null,
 }
 
 export function isEditorRootFocused(
@@ -143,8 +196,13 @@ export function isPointInTableAfterSelectionZone(tableRect: TableRectLike, point
   )
 }
 
-function getAdjustedMoveIndex(sourceIndex: number, insertIndex: number) {
-  return sourceIndex < insertIndex ? insertIndex - 1 : insertIndex
+export function getAdjustedRangeMoveIndex(sourceStart: number, sourceEnd: number, insertIndex: number) {
+  const sourceLength = sourceEnd - sourceStart + 1
+  return sourceStart < insertIndex ? insertIndex - sourceLength : insertIndex
+}
+
+export function isTableRangeMoveNoop(sourceStart: number, sourceEnd: number, insertIndex: number) {
+  return insertIndex >= sourceStart && insertIndex <= sourceEnd + 1
 }
 
 export function getTableReorderDragDecision(deltaX: number, deltaY: number): {
@@ -167,6 +225,114 @@ export function getTableReorderDragDecision(deltaX: number, deltaY: number): {
     return { shouldSuppressSelection: true, axis: 'column' }
   }
   return { shouldSuppressSelection: false, axis: null }
+}
+
+export function normalizeTableSelectionRange(
+  selection: TableSelectionRange | null | undefined,
+  rowCount: number,
+  columnCount: number,
+): NormalizedTableSelectionRange | null {
+  if (
+    !selection ||
+    rowCount <= 0 ||
+    columnCount <= 0 ||
+    !Number.isFinite(selection.anchorRow) ||
+    !Number.isFinite(selection.headRow) ||
+    !Number.isFinite(selection.anchorColumn) ||
+    !Number.isFinite(selection.headColumn)
+  ) {
+    return null
+  }
+
+  const anchorRow = clamp(Math.floor(selection.anchorRow), 0, rowCount - 1)
+  const headRow = clamp(Math.floor(selection.headRow), 0, rowCount - 1)
+  const anchorColumn = clamp(Math.floor(selection.anchorColumn), 0, columnCount - 1)
+  const headColumn = clamp(Math.floor(selection.headColumn), 0, columnCount - 1)
+
+  if (selection.mode === 'rows') {
+    return {
+      tableStart: selection.tableStart,
+      mode: selection.mode,
+      rowStart: Math.min(anchorRow, headRow),
+      rowEnd: Math.max(anchorRow, headRow),
+      columnStart: 0,
+      columnEnd: columnCount - 1,
+    }
+  }
+
+  if (selection.mode === 'columns') {
+    return {
+      tableStart: selection.tableStart,
+      mode: selection.mode,
+      rowStart: 0,
+      rowEnd: rowCount - 1,
+      columnStart: Math.min(anchorColumn, headColumn),
+      columnEnd: Math.max(anchorColumn, headColumn),
+    }
+  }
+
+  return {
+    tableStart: selection.tableStart,
+    mode: selection.mode,
+    rowStart: Math.min(anchorRow, headRow),
+    rowEnd: Math.max(anchorRow, headRow),
+    columnStart: Math.min(anchorColumn, headColumn),
+    columnEnd: Math.max(anchorColumn, headColumn),
+  }
+}
+
+export function getTableSelectionCellClassNames(
+  selection: TableSelectionRange | null | undefined,
+  rowIndex: number,
+  columnIndex: number,
+  rowCount: number,
+  columnCount: number,
+): string[] {
+  const normalized = normalizeTableSelectionRange(selection, rowCount, columnCount)
+  if (!normalized) return []
+  const inside =
+    rowIndex >= normalized.rowStart &&
+    rowIndex <= normalized.rowEnd &&
+    columnIndex >= normalized.columnStart &&
+    columnIndex <= normalized.columnEnd
+  if (!inside) return []
+
+  const classNames = ['table-selected-cell', `table-selected-${normalized.mode}-cell`]
+  if (rowIndex === normalized.rowStart) classNames.push('table-selected-cell-top')
+  if (rowIndex === normalized.rowEnd) classNames.push('table-selected-cell-bottom')
+  if (columnIndex === normalized.columnStart) classNames.push('table-selected-cell-left')
+  if (columnIndex === normalized.columnEnd) classNames.push('table-selected-cell-right')
+  return classNames
+}
+
+export function getTableRowSegmentRects(table: HTMLTableElement): TableSegmentRect[] {
+  return Array.from(table.querySelectorAll<HTMLTableRowElement>('tr')).map((row, index) => {
+    const rect = row.getBoundingClientRect()
+    return {
+      index,
+      top: rect.top,
+      left: rect.left,
+      width: rect.width,
+      height: rect.height,
+    }
+  })
+}
+
+export function getTableColumnSegmentRects(table: HTMLTableElement): TableSegmentRect[] {
+  const firstRow = table.querySelector<HTMLTableRowElement>('tr')
+  if (!firstRow) return []
+  return Array.from(firstRow.children)
+    .filter((cell): cell is HTMLTableCellElement => cell instanceof HTMLTableCellElement)
+    .map((cell, index) => {
+      const rect = cell.getBoundingClientRect()
+      return {
+        index,
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+      }
+    })
 }
 
 function getNodeName(node: any): string | null {
@@ -380,6 +546,8 @@ export function isBlankTableSideSelectionTarget(view: any, eventTarget?: Element
       '.image-tools',
       '.media-tools',
       '.table-tools',
+      '.table-selector-segment',
+      '.table-selection-handle',
       '.link-prompt',
       '.tabs-media-player',
     ].join(', '),
@@ -726,20 +894,21 @@ function createEmptyHeadRow(schema: any, columnCount: number) {
   return createEmptyRow(schema, 'tableHeadCell', columnCount)
 }
 
-function cloneColumnMovedRow(
+function cloneColumnRangeMovedRow(
   schema: any,
   row: any,
   cellTypeName: 'tableHeadCell' | 'tableBodyCell',
-  sourceIndex: number,
+  sourceStart: number,
+  sourceEnd: number,
   insertIndex: number,
 ) {
-  const adjustedIndex = getAdjustedMoveIndex(sourceIndex, insertIndex)
+  const adjustedIndex = getAdjustedRangeMoveIndex(sourceStart, sourceEnd, insertIndex)
   const cells: any[] = []
   for (let index = 0; index < row.childCount; index += 1) {
     cells.push(cloneCellAsType(schema, row.child(index), cellTypeName))
   }
-  const [movedCell] = cells.splice(sourceIndex, 1)
-  cells.splice(adjustedIndex, 0, movedCell)
+  const movedCells = cells.splice(sourceStart, sourceEnd - sourceStart + 1)
+  cells.splice(adjustedIndex, 0, ...movedCells)
   return schema.nodes.tableRow.create(row.attrs ?? null, cells)
 }
 
@@ -1200,9 +1369,20 @@ export function applyTableReorderOperationToView(
   insertIndex: number,
   sourceContext?: ActiveTableContext | null,
 ): boolean {
+  return applyTableRangeReorderOperationToView(view, axis, sourceIndex, sourceIndex, insertIndex, sourceContext)
+}
+
+export function applyTableRangeReorderOperationToView(
+  view: any,
+  axis: TableReorderAxis,
+  sourceStart: number,
+  sourceEnd: number,
+  insertIndex: number,
+  sourceContext?: ActiveTableContext | null,
+): boolean {
   const baseContext = sourceContext ?? getActiveTableContext(view)
   const schema = view?.state?.schema
-  if (!baseContext || !schema || sourceIndex < 0 || insertIndex < 0) return false
+  if (!baseContext || !schema || sourceStart < 0 || sourceEnd < sourceStart || insertIndex < 0) return false
 
   const tableNode = view.state.doc.nodeAt(baseContext.tableStart)
   if (!tableNode || tableNode.type?.name !== 'table') return false
@@ -1217,12 +1397,12 @@ export function applyTableReorderOperationToView(
 
   if (axis === 'row') {
     const visualRows = [headRow, ...bodyRows]
-    if (sourceIndex >= visualRows.length || insertIndex > visualRows.length) return false
-    const movedIndex = getAdjustedMoveIndex(sourceIndex, insertIndex)
-    if (movedIndex === sourceIndex) return false
+    if (sourceEnd >= visualRows.length || insertIndex > visualRows.length) return false
+    if (isTableRangeMoveNoop(sourceStart, sourceEnd, insertIndex)) return false
+    const movedIndex = getAdjustedRangeMoveIndex(sourceStart, sourceEnd, insertIndex)
     const nextVisualRows = [...visualRows]
-    const [movedRow] = nextVisualRows.splice(sourceIndex, 1)
-    nextVisualRows.splice(movedIndex, 0, movedRow)
+    const movedRows = nextVisualRows.splice(sourceStart, sourceEnd - sourceStart + 1)
+    nextVisualRows.splice(movedIndex, 0, ...movedRows)
     const nextHeadRow = cloneRowAsType(schema, nextVisualRows[0], 'tableHeadCell')
     const nextBodyRows = nextVisualRows.slice(1).map((row) => cloneRowAsType(schema, row, 'tableBodyCell'))
     const nextTable = buildTable(schema, tableNode, nextHeadRow, nextBodyRows)
@@ -1230,11 +1410,13 @@ export function applyTableReorderOperationToView(
   }
 
   if (axis === 'column') {
-    if (sourceIndex >= context.columnCount || insertIndex > context.columnCount) return false
-    const movedIndex = getAdjustedMoveIndex(sourceIndex, insertIndex)
-    if (movedIndex === sourceIndex) return false
-    const nextHeadRow = cloneColumnMovedRow(schema, headRow, 'tableHeadCell', sourceIndex, insertIndex)
-    const nextBodyRows = bodyRows.map((row) => cloneColumnMovedRow(schema, row, 'tableBodyCell', sourceIndex, insertIndex))
+    if (sourceEnd >= context.columnCount || insertIndex > context.columnCount) return false
+    if (isTableRangeMoveNoop(sourceStart, sourceEnd, insertIndex)) return false
+    const movedIndex = getAdjustedRangeMoveIndex(sourceStart, sourceEnd, insertIndex)
+    const nextHeadRow = cloneColumnRangeMovedRow(schema, headRow, 'tableHeadCell', sourceStart, sourceEnd, insertIndex)
+    const nextBodyRows = bodyRows.map((row) =>
+      cloneColumnRangeMovedRow(schema, row, 'tableBodyCell', sourceStart, sourceEnd, insertIndex),
+    )
     const nextTable = buildTable(schema, tableNode, nextHeadRow, nextBodyRows)
     return dispatchTableReplacement(view, context, nextTable, context.rowIndex, movedIndex)
   }

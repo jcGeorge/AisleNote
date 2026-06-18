@@ -10,6 +10,7 @@ import { createRandomId } from '../../state/navigation-ids'
 import type { ResolvedNoteAisle } from '../../types/app'
 import { DecoupleCautionStripe } from '../decouple/DecoupleCautionStripe'
 import { ToolbarToolIcon } from '../editor/ToolbarToolIcon'
+import { AppIcon } from '../icons/AppIcon'
 import { AisleMarkdownPreview } from './AisleMarkdownPreview'
 import { AisleHorizontalScrollbar } from './AisleHorizontalScrollbar'
 import { getHorizontalDragAutoScrollDelta } from './aisle-horizontal-scroll'
@@ -395,7 +396,7 @@ export function AisleEditModal({
                             deleteAisle(aisle.id)
                           }}
                         >
-                          <span className="aisle-edit-delete-icon" aria-hidden="true" />
+                          <AppIcon iconId="trash" className="aisle-edit-delete-icon" />
                         </button>
                       </div>
                     </div>

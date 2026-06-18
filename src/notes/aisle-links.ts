@@ -1,6 +1,6 @@
 import { getAisleBodyId, getAisleMarkdown } from './aisle-body-state'
 import { buildNoteLocationKey, listSearchableNoteLocations } from './note-locations'
-import { createId, createTimestamp } from '../state/workspace'
+import { createId, createTimestamp } from './note-content'
 import type { AppState, FrontmatterMeta, NoteAisleBody, ResolvedNoteAisle } from '../types/app'
 export { getLinkedAisleIdsForNoteBody } from './link-status'
 

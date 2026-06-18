@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  resolveEditorNavigationIntent,
   resolveEditorBeforeInputIntent,
   resolveEditorKeyDownIntent,
+  type EditorNavigationIntent,
   type EditorKeyDownIntentInput,
 } from './editor-input-intents'
+
+const noNavigationIntent: EditorNavigationIntent = { type: 'none' }
 
 function keyInput(overrides: Partial<EditorKeyDownIntentInput>): EditorKeyDownIntentInput {
   return {
@@ -15,10 +19,9 @@ function keyInput(overrides: Partial<EditorKeyDownIntentInput>): EditorKeyDownIn
     toolbarFormatShortcut: null,
     editorHistoryDirection: null,
     newlineOperation: null,
-    documentBoundarySelectionDirection: null,
+    navigationIntent: noNavigationIntent,
     tableBoundaryDirection: null,
     multiLineSelectionDirection: null,
-    pageMovement: null,
     ...overrides,
   }
 }
@@ -69,25 +72,79 @@ describe('editor input intent resolution', () => {
       resolveEditorKeyDownIntent(keyInput({
         key: 'ArrowRight',
         tableBoundaryDirection: 'after',
-        pageMovement: 'page-down',
+        navigationIntent: { type: 'page-movement', movement: 'page-down', extendSelection: false },
       })),
     ).toEqual({ type: 'table-boundary-caret', direction: 'after' })
   })
 
-  it('routes normal document-boundary selection only outside multiline mode', () => {
+  it('routes normal document-boundary navigation only outside multiline mode', () => {
     expect(
       resolveEditorKeyDownIntent(keyInput({
         key: 'ArrowUp',
-        documentBoundarySelectionDirection: 'start',
+        navigationIntent: {
+          type: 'document-boundary',
+          direction: 'start',
+          extendSelection: false,
+        },
       })),
-    ).toEqual({ type: 'document-boundary-selection', direction: 'start' })
+    ).toEqual({ type: 'document-boundary-selection', direction: 'start', extendSelection: false })
+    expect(
+      resolveEditorKeyDownIntent(keyInput({
+        key: 'ArrowDown',
+        navigationIntent: {
+          type: 'document-boundary',
+          direction: 'end',
+          extendSelection: true,
+        },
+      })),
+    ).toEqual({ type: 'document-boundary-selection', direction: 'end', extendSelection: true })
     expect(
       resolveEditorKeyDownIntent(keyInput({
         key: 'ArrowDown',
         hasMultiLineEdit: true,
-        documentBoundarySelectionDirection: 'end',
+        navigationIntent: {
+          type: 'document-boundary',
+          direction: 'end',
+          extendSelection: false,
+        },
       })),
     ).toEqual({ type: 'multiline-move', movement: 'down' })
+  })
+
+  it('resolves mac document and page navigation from event fields only', () => {
+    expect(
+      resolveEditorNavigationIntent({
+        key: 'ArrowUp',
+        code: 'ArrowUp',
+        metaKey: true,
+        isMacPlatform: true,
+      }),
+    ).toEqual({ type: 'document-boundary', direction: 'start', extendSelection: false })
+    expect(
+      resolveEditorNavigationIntent({
+        key: 'ArrowDown',
+        code: 'ArrowDown',
+        metaKey: true,
+        shiftKey: true,
+        isMacPlatform: true,
+      }),
+    ).toEqual({ type: 'document-boundary', direction: 'end', extendSelection: true })
+    expect(
+      resolveEditorNavigationIntent({
+        key: 'ArrowDown',
+        code: 'ArrowDown',
+        altKey: true,
+        isMacPlatform: true,
+      }),
+    ).toEqual({ type: 'native', reason: 'paragraph-boundary' })
+    expect(
+      resolveEditorNavigationIntent({
+        key: 'ArrowDown',
+        code: 'ArrowDown',
+        hasFnModifier: true,
+        isMacPlatform: true,
+      }),
+    ).toEqual({ type: 'page-movement', movement: 'page-down', extendSelection: false })
   })
 
   it('routes table tab navigation before multiline and generic tab indentation', () => {

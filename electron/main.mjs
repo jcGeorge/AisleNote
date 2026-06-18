@@ -150,7 +150,7 @@ function installApplicationMenu({ onNewWindow, onResetUserSettings, onResetLocal
       submenu: [
         {
           label: 'Add Cursor Above',
-          accelerator: isMac ? 'Command+Alt+Up' : 'Alt+Shift+Up',
+          accelerator: isMac ? 'Command+Alt+Up' : 'Control+Alt+Up',
           visible: false,
           acceleratorWorksWhenHidden: true,
           registerAccelerator: true,
@@ -158,7 +158,7 @@ function installApplicationMenu({ onNewWindow, onResetUserSettings, onResetLocal
         },
         {
           label: 'Add Cursor Below',
-          accelerator: isMac ? 'Command+Alt+Down' : 'Alt+Shift+Down',
+          accelerator: isMac ? 'Command+Alt+Down' : 'Control+Alt+Down',
           visible: false,
           acceleratorWorksWhenHidden: true,
           registerAccelerator: true,
@@ -216,7 +216,7 @@ function getMultilineShortcutDirection(input) {
     return isUp ? 'up' : 'down'
   }
 
-  if (!input.alt || !input.shift || input.meta || input.control) return null
+  if (!input.control || !input.alt || input.meta || input.shift) return null
   return isUp ? 'up' : 'down'
 }
 

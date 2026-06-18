@@ -7,7 +7,7 @@ import {
   syncNoteBodyAisleStructureInState,
 } from '../notes/aisle-body-state'
 import type { AppState, NoteAisle, NoteAisleBody, NoteBody, ResolvedNoteAisle, ScratchpadState } from '../types/app'
-import { createId, createNoteBodyContent, createTimestamp } from './workspace'
+import { createId, createNoteBodyContent, createTimestamp } from '../notes/note-content'
 export {
   DEFAULT_SCRATCHPAD_AISLE_LIMIT,
   MAX_SCRATCHPAD_AISLE_LIMIT,

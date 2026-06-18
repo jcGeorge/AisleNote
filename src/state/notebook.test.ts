@@ -11,6 +11,7 @@ import {
   getFolderNotesRecursive,
   getNotebookNotePathLabel,
   listNotebookNotes,
+  moveNotebookItem,
   renameNotebookItem,
   replaceNotebookNoteBodyId,
   restoreDeletedNotebookItemInState,
@@ -93,6 +94,55 @@ describe('notebook tree helpers', () => {
 
     expect(note?.note.title).toBe('Daily')
     expect(note?.note.noteBodyId).toBe('body-1')
+  })
+
+  it('moves notes between root and folder positions without changing note links', () => {
+    let state = createState()
+    const folderResult = createNotebookFolderInState(state, 'Projects', null, idSequence(['folder-1']))
+    state = folderResult.state
+    const second = createNotebookNoteInState(
+      state,
+      'Second',
+      null,
+      '',
+      idSequence(['body-2', 'aisle-body-2', 'aisle-2', 'note-2']),
+    )
+    state = second.state
+    const third = createNotebookNoteInState(
+      state,
+      'Third',
+      null,
+      '',
+      idSequence(['body-3', 'aisle-body-3', 'aisle-3', 'note-3']),
+    )
+    state = third.state
+
+    const reordered = moveNotebookItem(state.notebook, 'note-3', null, 1)
+    expect(reordered.items.map((item) => item.id)).toEqual(['note-1', 'note-3', 'folder-1', 'note-2'])
+
+    const nested = moveNotebookItem(reordered, 'note-3', 'folder-1', 0)
+    expect(getNotebookNotePathLabel(nested.items, 'note-3')).toBe('Projects/Third')
+    expect(findNotebookNote(nested.items, 'note-3')?.note.noteBodyId).toBe('body-3')
+
+    const rooted = moveNotebookItem(nested, 'note-3', null, nested.items.length)
+    expect(getNotebookNotePathLabel(rooted.items, 'note-3')).toBe('Third')
+    expect(rooted.items.map((item) => item.id)).toEqual(['note-1', 'folder-1', 'note-2', 'note-3'])
+  })
+
+  it('does not move a folder into itself or its descendant', () => {
+    const folderResult = createNotebookFolderInState(createState(), 'Projects', null, idSequence(['folder-1']))
+    const nestedFolderResult = createNotebookFolderInState(
+      folderResult.state,
+      'Nested',
+      'folder-1',
+      idSequence(['folder-2']),
+    )
+
+    const blockedSelf = moveNotebookItem(nestedFolderResult.state.notebook, 'folder-1', 'folder-1', 0)
+    expect(blockedSelf.items).toEqual(nestedFolderResult.state.notebook.items)
+
+    const blockedDescendant = moveNotebookItem(nestedFolderResult.state.notebook, 'folder-1', 'folder-2', 0)
+    expect(blockedDescendant.items).toEqual(nestedFolderResult.state.notebook.items)
   })
 
   it('moves deleted items to trash, falls back active note, and restores to original index', () => {

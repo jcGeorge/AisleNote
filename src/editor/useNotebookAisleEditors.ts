@@ -165,6 +165,7 @@ export function useNotebookAisleEditors({
   const aislePaneRootsRef = useRef<Map<string, HTMLElement>>(new Map())
   const editorMetaRef = useRef<Map<string, NotebookAisleEditorMeta>>(new Map())
   const lastMarkdownByAisleBodyRef = useRef<Map<string, string>>(new Map())
+  const activeEditorAisleIdRef = useRef('')
   const [nearVisibleAisleIds, setNearVisibleAisleIds] = useState<Set<string>>(() => new Set())
   const [backgroundMountedAisleIds, setBackgroundMountedAisleIds] = useState<Set<string>>(() => new Set())
   const [recentRetainedAisleIds, setRecentRetainedAisleIds] = useState<string[]>([])
@@ -208,6 +209,7 @@ export function useNotebookAisleEditors({
       const meta = getEditorMetaForAisle(aisleId)
       if (!meta) return false
       editorRef.current = meta.editor
+      activeEditorAisleIdRef.current = aisleId
       setActiveAisleId(aisleId)
       scheduleToolbarFormatStateSync()
       return true
@@ -318,7 +320,10 @@ export function useNotebookAisleEditors({
     } catch {
       // Toast UI can throw while tearing down toolbar DOM during hot reloads.
     }
-    if (editorRef.current === meta.editor) editorRef.current = null
+    if (editorRef.current === meta.editor) {
+      editorRef.current = null
+      activeEditorAisleIdRef.current = ''
+    }
     editorMetaRef.current.delete(editorKey)
   }, [commitEditorMarkdown, editorRef])
 
@@ -503,6 +508,7 @@ export function useNotebookAisleEditors({
         restoreEditorDisplay(mountedEditor, aisle.markdown)
         if (aisle.id === resolvedActiveAisleId) {
           editorRef.current = mountedEditor
+          activeEditorAisleIdRef.current = aisle.id
           scheduleToolbarFormatStateSync()
         }
       } catch (error) {
@@ -882,6 +888,7 @@ export function useNotebookAisleEditors({
   }, [getAisleById, getEditorMetaForAisle, getHeadingOutlineForAisle])
 
   return {
+    activeEditorAisleIdRef,
     mountedAisleIds,
     registerAislePaneRoot,
     registerAisleEditorRoot,

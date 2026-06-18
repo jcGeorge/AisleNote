@@ -7,57 +7,6 @@
     --editor-toolbar-min-height: calc(var(--editor-toolbar-button-size) + 6px);
   }
 
-  .tabbar,
-  .subtabbar {
-    padding: 0.26rem 0.4rem;
-  }
-
-  .tabbar-row {
-    gap: 0.35rem;
-  }
-
-  .tabbar-scroll {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    align-items: center;
-    align-content: center;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-  }
-
-  .compact-scope-scroll {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    align-items: center;
-    align-content: center;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-  }
-
-  .tabbar-primary {
-    min-width: 0;
-  }
-
-  .tab-btn,
-  .compact-scope-btn,
-  .add-tab-btn,
-  .topbar-action-btn,
-  .menu-btn {
-    min-height: var(--tab-control-height);
-  }
-
-  .tab-btn,
-  .compact-scope-btn {
-    max-width: min(calc(220px * var(--tab-button-scale)), 68vw);
-  }
-
-  .tabbar-controls,
-  .topbar-actions {
-    gap: 0.25rem;
-  }
-
   .toastui-editor-toolbar {
     min-height: var(--editor-toolbar-min-height) !important;
     padding: 0.2rem 0.28rem !important;
@@ -143,22 +92,6 @@
 }
 
 @media (max-width: 520px) {
-  .tabbar-row {
-    align-items: flex-start;
-  }
-
-  .tabbar-controls {
-    align-self: flex-start;
-  }
-
-  .topbar-action-visible-label {
-    padding-inline: 0.35rem;
-  }
-
-  .menu-dropdown {
-    right: -0.1rem;
-  }
-
   .note-shared-toolbar {
     --editor-toolbar-spacer-width: 0.8rem;
     overflow-x: auto;

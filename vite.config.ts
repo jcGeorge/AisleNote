@@ -55,7 +55,7 @@ export default defineConfig({
               maxSize: 450 * 1024,
             },
             {
-              name: 'app-domain',
+              name: 'app-notebook',
               test: /[\\/]src[\\/](notes|arrange|navigation|overlays|trash|frontmatter|hotkeys|app|markdown|media)[\\/]/,
               priority: 5,
               maxSize: 450 * 1024,

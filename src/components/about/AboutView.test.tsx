@@ -12,7 +12,6 @@ describe('AboutView', () => {
     expect(html).toContain('Tabs')
     expect(html).toContain('local-first notebook')
     expect(html).toContain('folders')
-    expect(html).not.toContain('domains, spaces')
     expect(html).toContain('Lucide.dev')
     expect(html).toContain('1.2.3')
     expect(html).toContain('darwin')

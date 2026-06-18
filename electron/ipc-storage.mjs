@@ -6,6 +6,7 @@ import {
   loadAppStateResult,
   measureSlowMainOperation,
   resolveNoteLocationRevealPath,
+  resolveNotebookItemLocationRevealPath,
   saveAppState,
   writeAssetToProfile,
   writeImageAssetToProfile,
@@ -1973,6 +1974,21 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       return { ok: true }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : 'Note file could not be revealed.' }
+    }
+  })
+
+  ipcMain.handle?.('reveal-notebook-item-location', async (_event, payload = {}) => {
+    if (!shell || typeof shell.showItemInFolder !== 'function') {
+      return { ok: false, error: 'Notebook item reveal is unavailable.' }
+    }
+    try {
+      const resolved = resolveNotebookItemLocationRevealPath(profile.profileRootPath, payload)
+      if (!resolved.ok) return { ok: false, error: resolved.error }
+      if (!existsSync(resolved.absolutePath)) return { ok: false, error: 'Notebook item does not exist.' }
+      shell.showItemInFolder(resolved.absolutePath)
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Notebook item could not be revealed.' }
     }
   })
 

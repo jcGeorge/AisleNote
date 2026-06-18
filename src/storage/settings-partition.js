@@ -1,5 +1,4 @@
 import {
-  DEFAULT_DOMAIN_ID,
   collectReferencedNoteBodyIdsFromAppState,
   ensureArray,
   getNoteBodiesFromAppState,
@@ -17,20 +16,20 @@ export const USER_SETTINGS_DIR = 'settings'
 export const USER_SETTINGS_FILE = 'app-settings.json'
 export const USER_SETTINGS_FILE_PATH = `${USER_SETTINGS_DIR}/${USER_SETTINGS_FILE}`
 export const ROOT_SPLIT_FILES = Object.freeze({
-  workspaceIndex: 'workspace-index.json',
+  notebookIndex: 'notebook-index.json',
   navigationState: 'navigation-state.json',
   frontmatterSettings: 'frontmatter-settings.json',
   editorState: 'editor-state.json',
   messages: 'messages.json',
-  deletedWorkspace: 'deleted-workspace.json',
+  trashIndex: 'trash-index.json',
   noteRegistry: 'note-registry.json',
 })
 
 export const REQUIRED_ROOT_SPLIT_FILE_KEYS = Object.freeze([
-  'workspaceIndex',
+  'notebookIndex',
   'navigationState',
   'frontmatterSettings',
-  'deletedWorkspace',
+  'trashIndex',
   'noteRegistry',
 ])
 
@@ -39,17 +38,9 @@ const DEFAULT_COMMAND_SHORTCUTS = {
   toggleNotesTrash: 'Mod+T',
   toggleNotesScratchpad: 'Mod+/',
   toggleNotesFilter: '',
-  openDomains: 'Mod+D',
-  openSpaces: 'Mod+S',
   newNote: 'Mod+N',
   newFolder: 'Mod+Shift+N',
-  newTab: 'Mod+Shift+N',
-  newSubTab: 'Mod+N',
   formatStrikethrough: '',
-  cycleParentTabNext: '',
-  cycleParentTabPrev: '',
-  cycleSubTabNext: 'Ctrl+Tab',
-  cycleSubTabPrev: 'Ctrl+Shift+Tab',
   cycleAislePrev: 'Alt+[',
   cycleAisleNext: 'Alt+]',
 }
@@ -106,8 +97,6 @@ const SHORTCUT_MENU_ELIGIBLE_OPERATION_IDS = new Set([
 
 const DEFAULT_SYNCED_UI_SETTINGS = {
   ...DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
-  alwaysShowSpaces: false,
-  alwaysShowDomains: false,
   showRegularNoteAisleAddButtons: false,
   showRegularNoteAisleDeleteButton: false,
   noteFilter: {
@@ -133,7 +122,6 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   settingsSection: 'hotkeys',
   dataSettingsSection: 'transfer',
   visualsSettingsSection: 'theming',
-  tabButtonScale: 1,
   noteFontScale: 1,
   toolbarButtonScale: 1,
   scratchpadAisleLimit: 16,
@@ -308,60 +296,19 @@ function normalizeAisleWidths(raw) {
   return normalized
 }
 
-function buildNoteCursorLocationKey(domainId, spaceId, tabId, subTabId = null) {
-  return [domainId, spaceId, tabId, subTabId ?? '__home__'].join('::')
-}
-
-function getProjectedDomainsForStorage(appState) {
-  const domains = ensureArray(appState?.domains).filter(isRecord)
-  const spaces = ensureArray(appState?.spaces).filter(isRecord)
-
-  if (domains.length === 0) {
-    return spaces.length > 0
-      ? [
-          {
-            id: DEFAULT_DOMAIN_ID,
-            spaces,
-          },
-        ]
-      : []
-  }
-
-  if (spaces.length === 0) return domains
-
-  const activeDomainId = typeof appState?.activeDomainId === 'string' ? appState.activeDomainId : ''
-  const activeDomain = domains.find((domain) => domain.id === activeDomainId) ?? domains[0]
-  const projectedDomain = {
-    ...activeDomain,
-    spaces,
-  }
-  return domains.map((domain) => (domain === activeDomain ? projectedDomain : domain))
+function walkNotebookItems(items, visitor) {
+  ensureArray(items)
+    .filter(isRecord)
+    .forEach((item) => {
+      visitor(item)
+      if (item.type === 'folder') walkNotebookItems(item.children, visitor)
+    })
 }
 
 export function buildLiveNoteCursorLocationKeys(appState) {
   const keys = new Set()
-  getProjectedDomainsForStorage(appState).forEach((domain) => {
-    const domainId = typeof domain.id === 'string' && domain.id ? domain.id : DEFAULT_DOMAIN_ID
-    ensureArray(domain.spaces)
-      .filter(isRecord)
-      .forEach((space) => {
-        const spaceId = typeof space.id === 'string' ? space.id : ''
-        if (!spaceId) return
-        const data = isRecord(space.data) ? space.data : {}
-        ensureArray(data.tabs)
-          .filter(isRecord)
-          .forEach((tab) => {
-            const tabId = typeof tab.id === 'string' ? tab.id : ''
-            if (!tabId) return
-            keys.add(buildNoteCursorLocationKey(domainId, spaceId, tabId))
-            ensureArray(tab.subTabs)
-      .filter(isRecord)
-      .forEach((subTab) => {
-        const subTabId = typeof subTab.id === 'string' ? subTab.id : ''
-        if (subTabId) keys.add(buildNoteCursorLocationKey(domainId, spaceId, tabId, subTabId))
-      })
-          })
-      })
+  walkNotebookItems(isRecord(appState?.notebook) ? appState.notebook.items : [], (item) => {
+    if (item.type === 'note' && typeof item.id === 'string' && item.id) keys.add(item.id)
   })
   if (isRecord(appState?.scratchpad) && typeof appState.scratchpad.noteBodyId === 'string') {
     keys.add('scratchpad')
@@ -406,35 +353,10 @@ function addAisleWidthLocation(result, locationKey, body) {
 function buildLiveAisleWidthLocationMap(appState) {
   const result = new Map()
   const bodiesById = getNoteBodyMap(appState)
-  getProjectedDomainsForStorage(appState).forEach((domain) => {
-    const domainId = typeof domain.id === 'string' && domain.id ? domain.id : DEFAULT_DOMAIN_ID
-    ensureArray(domain.spaces)
-      .filter(isRecord)
-      .forEach((space) => {
-        const spaceId = typeof space.id === 'string' ? space.id : ''
-        if (!spaceId) return
-        const data = isRecord(space.data) ? space.data : {}
-        ensureArray(data.tabs)
-          .filter(isRecord)
-          .forEach((tab) => {
-            const tabId = typeof tab.id === 'string' ? tab.id : ''
-            if (!tabId) return
-            const tabBodyId = typeof tab.noteBodyId === 'string' ? tab.noteBodyId : ''
-            addAisleWidthLocation(result, buildNoteCursorLocationKey(domainId, spaceId, tabId), bodiesById.get(tabBodyId))
-            ensureArray(tab.subTabs)
-              .filter(isRecord)
-              .forEach((subTab) => {
-                const subTabId = typeof subTab.id === 'string' ? subTab.id : ''
-                if (!subTabId) return
-                const subTabBodyId = typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : ''
-                addAisleWidthLocation(
-                  result,
-                  buildNoteCursorLocationKey(domainId, spaceId, tabId, subTabId),
-                  bodiesById.get(subTabBodyId),
-                )
-              })
-          })
-      })
+  walkNotebookItems(isRecord(appState?.notebook) ? appState.notebook.items : [], (item) => {
+    if (item.type !== 'note' || typeof item.id !== 'string' || !item.id) return
+    const noteBodyId = typeof item.noteBodyId === 'string' ? item.noteBodyId : ''
+    addAisleWidthLocation(result, item.id, bodiesById.get(noteBodyId))
   })
   if (isRecord(appState?.scratchpad) && typeof appState.scratchpad.noteBodyId === 'string') {
     addAisleWidthLocation(result, 'scratchpad', bodiesById.get(appState.scratchpad.noteBodyId))
@@ -541,11 +463,6 @@ function normalizeThemePalettes(value) {
 export function extractSyncedUiSettings(rawUi) {
   const ui = isRecord(rawUi) ? rawUi : {}
   const registeredUi = normalizeRegisteredSyncedUiSettings(ui)
-  const alwaysShowSpaces = optionalBoolean(ui.alwaysShowSpaces, DEFAULT_SYNCED_UI_SETTINGS.alwaysShowSpaces)
-  const alwaysShowDomains =
-    alwaysShowSpaces && typeof ui.alwaysShowDomains === 'boolean'
-      ? ui.alwaysShowDomains
-      : DEFAULT_SYNCED_UI_SETTINGS.alwaysShowDomains
   const showRegularNoteAisleAddButtons = optionalBoolean(
     ui.showRegularNoteAisleAddButtons,
     DEFAULT_SYNCED_UI_SETTINGS.showRegularNoteAisleAddButtons,
@@ -558,8 +475,6 @@ export function extractSyncedUiSettings(rawUi) {
 
   return {
     ...registeredUi,
-    alwaysShowSpaces,
-    alwaysShowDomains,
     showRegularNoteAisleAddButtons,
     showRegularNoteAisleDeleteButton,
     noteFilter: normalizeNoteFilterSettings(ui.noteFilter),
@@ -591,10 +506,6 @@ export function extractAppearanceSettings(appState) {
     theme: normalizeStorageTheme(appState?.theme),
     selectedCustomTheme: syncedUi.selectedCustomTheme,
     themePalettes: syncedUi.themePalettes,
-    tabButtonScale:
-      typeof ui.tabButtonScale === 'number'
-        ? ui.tabButtonScale
-        : DEFAULT_SYNCED_UI_SETTINGS.tabButtonScale,
     noteFontScale:
       typeof ui.noteFontScale === 'number'
         ? ui.noteFontScale
@@ -623,8 +534,6 @@ export function extractUiPreferences(appState) {
   const syncedUi = extractSyncedUiSettings(ui)
   return {
     ...pickRegisteredSyncedUiSettings(syncedUi),
-    alwaysShowSpaces: syncedUi.alwaysShowSpaces,
-    alwaysShowDomains: syncedUi.alwaysShowDomains,
     showRegularNoteAisleAddButtons: syncedUi.showRegularNoteAisleAddButtons,
     showRegularNoteAisleDeleteButton: syncedUi.showRegularNoteAisleDeleteButton,
     noteFilter: syncedUi.noteFilter,
@@ -762,10 +671,6 @@ export function buildSyncedSettingsFromSplitFiles(parts) {
       ...appSettings,
       ...uiPreferences,
     }),
-    tabButtonScale:
-      typeof appSettings.tabButtonScale === 'number'
-        ? appSettings.tabButtonScale
-        : DEFAULT_SYNCED_UI_SETTINGS.tabButtonScale,
     noteFontScale:
       typeof appSettings.noteFontScale === 'number'
         ? appSettings.noteFontScale
