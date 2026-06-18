@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 const notebookAppSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), './NotebookApp.tsx'), 'utf8')
 const appCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../App.css'), 'utf8')
+const baseCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../styles/base.css'), 'utf8')
 const settingsCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../styles/settings.css'), 'utf8')
 
 describe('notebook settings access', () => {
@@ -63,5 +64,20 @@ describe('notebook settings access', () => {
     expect(settingsCssSource).toContain('width: 2.35rem;')
     expect(settingsCssSource).toContain('height: 1.22rem;')
     expect(settingsCssSource).toContain('border-radius: 999px;')
+  })
+
+  it('shows percent readouts for visual scale sliders and uses accent range text', () => {
+    expect(notebookAppSource).toContain('formatScalePercent(noteFontScale)')
+    expect(notebookAppSource).toContain('formatScalePercent(toolbarButtonScale)')
+    expect(notebookAppSource).toContain('id="note-font-scale-value"')
+    expect(notebookAppSource).toContain('id="toolbar-button-scale-value"')
+    expect(notebookAppSource).toContain('MIN_NOTE_FONT_SCALE')
+    expect(notebookAppSource).toContain('MAX_NOTE_FONT_SCALE')
+    expect(notebookAppSource).toContain('MIN_TOOLBAR_BUTTON_SCALE')
+    expect(notebookAppSource).toContain('MAX_TOOLBAR_BUTTON_SCALE')
+    expect(settingsCssSource).toContain('min-width: 3.4rem;')
+    expect(settingsCssSource).toContain('font-variant-numeric: tabular-nums;')
+    expect(baseCssSource).toContain('--settings-range-value-text: var(--custom-palette-primary);')
+    expect(baseCssSource).not.toContain('--settings-range-value-text: var(--app-text-muted);')
   })
 })

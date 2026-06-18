@@ -126,16 +126,27 @@ import { parseSavedState } from '../state/app-state'
 import { createRandomId, createReservedIdAllocator } from '../state/navigation-ids'
 import { usePersistentAppState } from '../storage/usePersistentAppState'
 import {
-  BUILT_IN_THEME_PALETTE_SEEDS,
+  APP_THEME_IDS,
   CUSTOM_THEME_IDS,
   CUSTOM_THEME_PALETTE_LABELS,
   CUSTOM_THEME_PALETTE_SLOTS,
-  getCustomThemeVariables,
-  getStoredCustomThemePalette,
+  getCustomThemePaletteSeed,
+  getThemePaletteForTheme,
+  getThemePaletteVariables,
   getThemeClassName,
   isCustomTheme,
   normalizeCustomThemePalette,
 } from '../theme/notebook-themes'
+import {
+  MAX_NOTE_FONT_SCALE,
+  MAX_TOOLBAR_BUTTON_SCALE,
+  MIN_NOTE_FONT_SCALE,
+  MIN_TOOLBAR_BUTTON_SCALE,
+  NOTE_FONT_SCALE_STEP,
+  TOOLBAR_BUTTON_SCALE_STEP,
+  clampNoteFontScale,
+  clampToolbarButtonScale,
+} from '../settings/defaults'
 import {
   collectNotebookIds,
   createNoteBodyWithAisle,
@@ -1106,6 +1117,10 @@ function NotebookSettingsSwitch({
   )
 }
 
+function formatScalePercent(value: number): string {
+  return `${Math.round(value * 100)}%`
+}
+
 function NotebookThemeSettings({
   state,
   onMutateState,
@@ -1114,7 +1129,9 @@ function NotebookThemeSettings({
   onMutateState: (updater: (previous: AppState) => AppState) => void
 }) {
   const selectedCustomTheme = state.ui.selectedCustomTheme ?? 'custom1'
-  const selectedPalette = getStoredCustomThemePalette(state.ui.themePalettes, selectedCustomTheme)
+  const selectedPalette = getThemePaletteForTheme(state.theme, state.ui.themePalettes)
+  const noteFontScale = clampNoteFontScale(state.ui.noteFontScale)
+  const toolbarButtonScale = clampToolbarButtonScale(state.ui.toolbarButtonScale ?? 1)
 
   const updateTheme = (theme: AppTheme) => {
     onMutateState((previous) => ({
@@ -1130,6 +1147,7 @@ function NotebookThemeSettings({
   const updateSelectedCustomTheme = (themeId: CustomThemeId) => {
     onMutateState((previous) => ({
       ...previous,
+      theme: isCustomTheme(previous.theme) ? themeId : previous.theme,
       ui: {
         ...previous.ui,
         selectedCustomTheme: themeId,
@@ -1139,8 +1157,8 @@ function NotebookThemeSettings({
 
   const updatePaletteSlot = (slot: CustomThemePaletteSlot, value: string) => {
     onMutateState((previous) => {
-      const themeId = previous.ui.selectedCustomTheme ?? selectedCustomTheme
-      const currentPalette = getStoredCustomThemePalette(previous.ui.themePalettes, themeId)
+      const themeId = previous.theme
+      const currentPalette = getThemePaletteForTheme(themeId, previous.ui.themePalettes)
       return {
         ...previous,
         ui: {
@@ -1152,7 +1170,7 @@ function NotebookThemeSettings({
                 ...currentPalette,
                 [slot]: value,
               },
-              BUILT_IN_THEME_PALETTE_SEEDS[themeId],
+              getCustomThemePaletteSeed(themeId),
             ),
           },
         },
@@ -1162,14 +1180,14 @@ function NotebookThemeSettings({
 
   const resetSelectedPalette = () => {
     onMutateState((previous) => {
-      const themeId = previous.ui.selectedCustomTheme ?? selectedCustomTheme
+      const themeId = previous.theme
       return {
         ...previous,
         ui: {
           ...previous.ui,
           themePalettes: {
             ...(previous.ui.themePalettes ?? {}),
-            [themeId]: BUILT_IN_THEME_PALETTE_SEEDS[themeId],
+            [themeId]: getCustomThemePaletteSeed(themeId),
           },
         },
       }
@@ -1177,11 +1195,12 @@ function NotebookThemeSettings({
   }
 
   const updateUiScale = (key: 'noteFontScale' | 'toolbarButtonScale', value: number) => {
+    const nextValue = key === 'noteFontScale' ? clampNoteFontScale(value) : clampToolbarButtonScale(value)
     onMutateState((previous) => ({
       ...previous,
       ui: {
         ...previous.ui,
-        [key]: value,
+        [key]: nextValue,
       },
     }))
   }
@@ -1192,7 +1211,7 @@ function NotebookThemeSettings({
         <label>
           Active theme
           <select value={state.theme} onChange={(event) => updateTheme(event.target.value as AppTheme)}>
-            {(['dark', 'light', 'dawn', ...CUSTOM_THEME_IDS] as AppTheme[]).map((themeId) => (
+            {APP_THEME_IDS.map((themeId) => (
               <option key={themeId} value={themeId}>
                 {THEME_LABELS[themeId]}
               </option>
@@ -1214,25 +1233,41 @@ function NotebookThemeSettings({
         </label>
         <label>
           Note font scale
-          <input
-            type="range"
-            min={0.75}
-            max={1.6}
-            step={0.05}
-            value={state.ui.noteFontScale}
-            onChange={(event) => updateUiScale('noteFontScale', Number(event.target.value))}
-          />
+          <div className="settings-slider-wrap">
+            <input
+              id="note-font-scale"
+              className="settings-range-input"
+              type="range"
+              min={MIN_NOTE_FONT_SCALE}
+              max={MAX_NOTE_FONT_SCALE}
+              step={NOTE_FONT_SCALE_STEP}
+              value={noteFontScale}
+              aria-describedby="note-font-scale-value"
+              onChange={(event) => updateUiScale('noteFontScale', Number(event.target.value))}
+            />
+            <span id="note-font-scale-value" className="settings-range-value">
+              {formatScalePercent(noteFontScale)}
+            </span>
+          </div>
         </label>
         <label>
           Toolbar button scale
-          <input
-            type="range"
-            min={0.75}
-            max={1.6}
-            step={0.05}
-            value={state.ui.toolbarButtonScale ?? 1}
-            onChange={(event) => updateUiScale('toolbarButtonScale', Number(event.target.value))}
-          />
+          <div className="settings-slider-wrap">
+            <input
+              id="toolbar-button-scale"
+              className="settings-range-input"
+              type="range"
+              min={MIN_TOOLBAR_BUTTON_SCALE}
+              max={MAX_TOOLBAR_BUTTON_SCALE}
+              step={TOOLBAR_BUTTON_SCALE_STEP}
+              value={toolbarButtonScale}
+              aria-describedby="toolbar-button-scale-value"
+              onChange={(event) => updateUiScale('toolbarButtonScale', Number(event.target.value))}
+            />
+            <span id="toolbar-button-scale-value" className="settings-range-value">
+              {formatScalePercent(toolbarButtonScale)}
+            </span>
+          </div>
         </label>
       </div>
       <div className="notebook-theme-preview" aria-label="Theme preview">
@@ -1254,7 +1289,7 @@ function NotebookThemeSettings({
           </div>
         </div>
       </div>
-      <div className="notebook-palette-editor" aria-label="Custom palette editor">
+      <div className="notebook-palette-editor" aria-label="Active theme palette editor">
         {CUSTOM_THEME_PALETTE_SLOTS.map((slot) => (
           <label key={slot}>
             {CUSTOM_THEME_PALETTE_LABELS[slot]}
@@ -1380,7 +1415,7 @@ export function NotebookApp() {
   const rootStyle = useMemo(
     () =>
       ({
-        ...getCustomThemeVariables(state),
+        ...getThemePaletteVariables(state),
         '--note-font-scale': String(state.ui.noteFontScale),
         '--toolbar-button-scale': String(state.ui.toolbarButtonScale ?? 1),
       }) as CSSProperties,

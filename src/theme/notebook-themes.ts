@@ -7,7 +7,12 @@ import type {
   ThemePaletteOverrides,
 } from '../types/app'
 
+export type BuiltInAppTheme = Exclude<AppTheme, CustomThemeId>
+
+export const BUILT_IN_THEME_IDS: BuiltInAppTheme[] = ['dark', 'light', 'dawn']
 export const CUSTOM_THEME_IDS: CustomThemeId[] = ['custom1', 'custom2', 'custom3']
+export const DEFAULT_CUSTOM_THEME_ID: CustomThemeId = 'custom1'
+export const APP_THEME_IDS: AppTheme[] = [...BUILT_IN_THEME_IDS, ...CUSTOM_THEME_IDS]
 
 export const CUSTOM_THEME_PALETTE_SLOTS: CustomThemePaletteSlot[] = [
   'canvas',
@@ -31,8 +36,8 @@ export const CUSTOM_THEME_PALETTE_SLOTS: CustomThemePaletteSlot[] = [
 ]
 
 export const CUSTOM_THEME_PALETTE_LABELS: Record<CustomThemePaletteSlot, string> = {
-  canvas: 'Canvas',
-  page: 'Page',
+  canvas: 'App background',
+  page: 'Page background',
   surface: 'Surface',
   surfaceRaised: 'Raised surface',
   text: 'Text',
@@ -72,7 +77,7 @@ export const DEFAULT_CUSTOM_THEME_PALETTE: CustomThemePalette = {
   sidebarAccent: '#2f67de',
 }
 
-export const BUILT_IN_THEME_PALETTE_SEEDS: Record<AppTheme, CustomThemePalette> = {
+export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePalette> = {
   dark: DEFAULT_CUSTOM_THEME_PALETTE,
   light: {
     canvas: '#ffffff',
@@ -114,6 +119,9 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<AppTheme, CustomThemePalette> 
     sidebar: '#b99a45',
     sidebarAccent: '#3f6f4f',
   },
+}
+
+export const CUSTOM_THEME_PALETTE_SEEDS: Record<CustomThemeId, CustomThemePalette> = {
   custom1: DEFAULT_CUSTOM_THEME_PALETTE,
   custom2: {
     ...DEFAULT_CUSTOM_THEME_PALETTE,
@@ -135,6 +143,11 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<AppTheme, CustomThemePalette> 
     secondary: '#22c55e',
     sidebarAccent: '#d946ef',
   },
+}
+
+export const THEME_PALETTE_SEEDS: Record<AppTheme, CustomThemePalette> = {
+  ...BUILT_IN_THEME_PALETTE_SEEDS,
+  ...CUSTOM_THEME_PALETTE_SEEDS,
 }
 
 const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/i
@@ -161,32 +174,86 @@ export function normalizeCustomThemePalette(raw: unknown, seed = DEFAULT_CUSTOM_
 
 export function normalizeThemePaletteOverrides(raw: unknown): ThemePaletteOverrides {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
-  return CUSTOM_THEME_IDS.reduce((overrides, themeId) => {
-    const rawPalette = (raw as Partial<Record<CustomThemeId, unknown>>)[themeId]
+  return APP_THEME_IDS.reduce((overrides, themeId) => {
+    const rawPalette = (raw as Partial<Record<AppTheme, unknown>>)[themeId]
     if (rawPalette) {
-      overrides[themeId] = normalizeCustomThemePalette(rawPalette, BUILT_IN_THEME_PALETTE_SEEDS[themeId])
+      overrides[themeId] = normalizeCustomThemePalette(rawPalette, THEME_PALETTE_SEEDS[themeId])
     }
     return overrides
   }, {} as ThemePaletteOverrides)
+}
+
+export function getCustomThemePaletteSeed(theme: AppTheme): CustomThemePalette {
+  return { ...THEME_PALETTE_SEEDS[theme] }
+}
+
+export function getThemePaletteForTheme(
+  theme: AppTheme,
+  palettes: ThemePaletteOverrides | null | undefined,
+): CustomThemePalette {
+  return normalizeCustomThemePalette(palettes?.[theme], THEME_PALETTE_SEEDS[theme])
 }
 
 export function getStoredCustomThemePalette(
   palettes: ThemePaletteOverrides | undefined,
   themeId: CustomThemeId,
 ): CustomThemePalette {
-  return normalizeCustomThemePalette(palettes?.[themeId], BUILT_IN_THEME_PALETTE_SEEDS[themeId])
+  return getThemePaletteForTheme(themeId, palettes)
+}
+
+function isExactThemePaletteSeed(seed: CustomThemePalette, palette: CustomThemePalette | null | undefined): boolean {
+  if (!palette) return false
+  return CUSTOM_THEME_PALETTE_SLOTS.every((slot) => normalizeHexColor(palette[slot], '') === seed[slot])
+}
+
+export function isThemePaletteSeed(theme: AppTheme, palette: CustomThemePalette | null | undefined): boolean {
+  return isExactThemePaletteSeed(THEME_PALETTE_SEEDS[theme], palette)
+}
+
+export function setThemePaletteOverride(
+  themePalettes: ThemePaletteOverrides | null | undefined,
+  theme: AppTheme,
+  palette: CustomThemePalette,
+): ThemePaletteOverrides {
+  return {
+    ...(themePalettes ?? {}),
+    [theme]: { ...palette },
+  }
+}
+
+export function removeThemePaletteOverride(
+  themePalettes: ThemePaletteOverrides | null | undefined,
+  theme: AppTheme,
+): ThemePaletteOverrides {
+  const next = { ...(themePalettes ?? {}) }
+  delete next[theme]
+  return next
+}
+
+export function getCustomThemePaletteSeedMatch(
+  palette: CustomThemePalette | null | undefined,
+): BuiltInAppTheme | null {
+  if (!palette) return null
+  return (
+    BUILT_IN_THEME_IDS.find((theme) =>
+      CUSTOM_THEME_PALETTE_SLOTS.every(
+        (slot) => normalizeHexColor(palette[slot], '') === BUILT_IN_THEME_PALETTE_SEEDS[theme][slot],
+      ),
+    ) ?? null
+  )
 }
 
 export function getThemeClassName(theme: AppTheme): string {
-  if (theme === 'light') return 'theme-light'
-  if (theme === 'dawn') return 'theme-dawn'
-  if (isCustomTheme(theme)) return 'theme-custom-derived'
-  return 'theme-dark'
+  if (theme === 'light') return 'theme-light theme-palette-derived'
+  if (theme === 'dawn') return 'theme-dawn theme-palette-derived'
+  if (isCustomTheme(theme)) return 'theme-custom-derived theme-palette-derived'
+  return 'theme-dark theme-palette-derived'
 }
 
-export function getCustomThemeVariables(state: Pick<AppState, 'theme' | 'ui'>): Record<string, string> {
-  if (!isCustomTheme(state.theme)) return {}
-  const palette = getStoredCustomThemePalette(state.ui.themePalettes, state.theme)
+export function getThemePaletteVariables(
+  state: Pick<AppState, 'theme'> & { ui: Pick<AppState['ui'], 'themePalettes'> },
+): Record<string, string> {
+  const palette = getThemePaletteForTheme(state.theme, state.ui.themePalettes)
   return {
     '--custom-theme-canvas': palette.canvas,
     '--custom-theme-page': palette.page,
@@ -208,3 +275,5 @@ export function getCustomThemeVariables(state: Pick<AppState, 'theme' | 'ui'>): 
     '--custom-theme-sidebar-accent': palette.sidebarAccent,
   }
 }
+
+export const getCustomThemeVariables = getThemePaletteVariables

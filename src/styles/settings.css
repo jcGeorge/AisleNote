@@ -352,9 +352,10 @@
 }
 
 .settings-range-value {
-  min-width: 3rem;
+  min-width: 3.4rem;
   text-align: right;
   font-size: 1em;
+  font-variant-numeric: tabular-nums;
   color: var(--settings-range-value-text);
 }
 

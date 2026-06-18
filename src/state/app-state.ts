@@ -25,6 +25,12 @@ import {
 } from './default-app-state.js'
 import { createNoteBodyWithAisle, ensureValidActiveNote, purgeOldDeletedNotebookItems } from './notebook'
 import { CUSTOM_THEME_IDS, normalizeThemePaletteOverrides } from '../theme/notebook-themes'
+import {
+  MAX_NOTE_FONT_SCALE,
+  MAX_TOOLBAR_BUTTON_SCALE,
+  MIN_NOTE_FONT_SCALE,
+  MIN_TOOLBAR_BUTTON_SCALE,
+} from '../settings/defaults'
 
 const APP_THEMES: AppTheme[] = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
 const MAX_NORMALIZED_TOAST_HISTORY_ENTRIES = 70
@@ -395,8 +401,13 @@ export function normalizeAppState(raw: unknown): AppState {
       sidebarCollapsed: typeof ui.sidebarCollapsed === 'boolean' ? ui.sidebarCollapsed : fallback.ui.sidebarCollapsed,
       sidebarWidth,
       collapsedFolderIds: normalizeStringList(ui.collapsedFolderIds),
-      noteFontScale: normalizeNumber(ui.noteFontScale, fallback.ui.noteFontScale, 0.75, 1.6),
-      toolbarButtonScale: normalizeNumber(ui.toolbarButtonScale, fallback.ui.toolbarButtonScale ?? 1, 0.75, 1.6),
+      noteFontScale: normalizeNumber(ui.noteFontScale, fallback.ui.noteFontScale, MIN_NOTE_FONT_SCALE, MAX_NOTE_FONT_SCALE),
+      toolbarButtonScale: normalizeNumber(
+        ui.toolbarButtonScale,
+        fallback.ui.toolbarButtonScale ?? 1,
+        MIN_TOOLBAR_BUTTON_SCALE,
+        MAX_TOOLBAR_BUTTON_SCALE,
+      ),
       selectedCustomTheme,
       themePalettes: normalizeThemePaletteOverrides(ui.themePalettes),
       noteCursorLocations: isRecord(ui.noteCursorLocations) ? ui.noteCursorLocations as AppState['ui']['noteCursorLocations'] : {},

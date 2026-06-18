@@ -1,14 +1,10 @@
 import type {
   AppState,
-  AppTheme,
   CustomThemeId,
-  CustomThemePalette,
-  CustomThemePaletteSlot,
   DataSettingsSection,
   SettingsSection,
   TableControlTargetMode,
   TableOfContentsScope,
-  ThemePaletteOverrides,
   VisualsSettingsSection,
 } from '../types/app'
 import { normalizeNoteCursorLocations } from '../notes/note-cursors'
@@ -22,13 +18,44 @@ import {
   normalizeRegisteredSyncedUiSetting,
   normalizeRegisteredSyncedUiSettings,
 } from './synced-ui-settings-registry.js'
+import {
+  APP_THEME_IDS,
+  BUILT_IN_THEME_IDS,
+  BUILT_IN_THEME_PALETTE_SEEDS,
+  CUSTOM_THEME_IDS,
+  CUSTOM_THEME_PALETTE_SLOTS,
+  DEFAULT_CUSTOM_THEME_ID,
+  DEFAULT_CUSTOM_THEME_PALETTE,
+  getCustomThemePaletteSeed,
+  getCustomThemePaletteSeedMatch,
+  getThemePaletteForTheme,
+  isCustomTheme,
+  isThemePaletteSeed,
+  normalizeThemePaletteOverrides,
+  removeThemePaletteOverride,
+  setThemePaletteOverride,
+  type BuiltInAppTheme,
+} from '../theme/notebook-themes'
+
+export {
+  APP_THEME_IDS,
+  BUILT_IN_THEME_IDS,
+  BUILT_IN_THEME_PALETTE_SEEDS,
+  CUSTOM_THEME_IDS,
+  CUSTOM_THEME_PALETTE_SLOTS,
+  DEFAULT_CUSTOM_THEME_ID,
+  DEFAULT_CUSTOM_THEME_PALETTE,
+  getCustomThemePaletteSeed,
+  getCustomThemePaletteSeedMatch,
+  getThemePaletteForTheme,
+  isCustomTheme,
+  isThemePaletteSeed,
+  removeThemePaletteOverride,
+  setThemePaletteOverride,
+}
+export type { BuiltInAppTheme }
 
 export const DEFAULT_AUTO_REMOVE_DAYS = 7
-export type BuiltInAppTheme = Exclude<AppTheme, CustomThemeId>
-export const BUILT_IN_THEME_IDS: BuiltInAppTheme[] = ['dark', 'light', 'dawn']
-export const CUSTOM_THEME_IDS: CustomThemeId[] = ['custom1', 'custom2', 'custom3']
-export const DEFAULT_CUSTOM_THEME_ID: CustomThemeId = 'custom1'
-export const APP_THEME_IDS: AppTheme[] = [...BUILT_IN_THEME_IDS, ...CUSTOM_THEME_IDS]
 export const DEFAULT_SETTINGS_SECTION: SettingsSection = 'hotkeys'
 export const SETTINGS_SECTIONS: SettingsSection[] = [
   'data',
@@ -49,6 +76,9 @@ export const MAX_AUTO_REMOVE_DAYS = 365
 
 export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   ...DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
+  sidebarCollapsed: false,
+  sidebarWidth: 280,
+  collapsedFolderIds: [],
   showRegularNoteAisleAddButtons: false,
   showRegularNoteAisleDeleteButton: false,
   noteFilter: {
@@ -82,92 +112,6 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   toolbarLayouts: [],
   seenTipIds: [],
   disabledTipIds: [],
-}
-
-export const CUSTOM_THEME_PALETTE_SLOTS: CustomThemePaletteSlot[] = [
-  'canvas',
-  'page',
-  'surface',
-  'surfaceRaised',
-  'text',
-  'mutedText',
-  'border',
-  'primary',
-  'secondary',
-  'danger',
-  'warning',
-  'success',
-  'tagText',
-  'tagBg',
-  'tooltipPrimary',
-  'tooltipSecondary',
-  'sidebar',
-  'sidebarAccent',
-]
-
-export const DEFAULT_CUSTOM_THEME_PALETTE: CustomThemePalette = {
-  canvas: '#0b1528',
-  page: '#142642',
-  surface: '#0f1b32',
-  surfaceRaised: '#101d34',
-  text: '#e9ecef',
-  mutedText: '#9fb3d7',
-  border: '#2f4672',
-  primary: '#2f67de',
-  secondary: '#1f9b67',
-  danger: '#963442',
-  warning: '#d9a441',
-  success: '#2fb36d',
-  tagText: '#06141a',
-  tagBg: '#22d3ee',
-  tooltipPrimary: '#c8d0e1',
-  tooltipSecondary: '#6f7f98',
-  sidebar: '#0f1b32',
-  sidebarAccent: '#2f67de',
-}
-
-export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePalette> = {
-  dark: DEFAULT_CUSTOM_THEME_PALETTE,
-  light: {
-    canvas: '#ffffff',
-    page: '#e8eef8',
-    surface: '#ffffff',
-    surfaceRaised: '#ffffff',
-    text: '#1a2538',
-    mutedText: '#536d95',
-    border: '#c8d4e8',
-    primary: '#2f67de',
-    secondary: '#27a96f',
-    danger: '#c64053',
-    warning: '#c7792f',
-    success: '#2fb36d',
-    tagText: '#f8fafc',
-    tagBg: '#0f766e',
-    tooltipPrimary: '#555555',
-    tooltipSecondary: '#9aa3b2',
-    sidebar: '#eef4fb',
-    sidebarAccent: '#3f7df0',
-  },
-  dawn: {
-    canvas: '#d8c9a3',
-    page: '#8a744a',
-    surface: '#d4c39a',
-    surfaceRaised: '#decea8',
-    text: '#253047',
-    mutedText: '#705d39',
-    border: '#8a744a',
-    primary: '#3f6f4f',
-    secondary: '#86612f',
-    danger: '#8a4d44',
-    warning: '#9b6726',
-    success: '#3f6f4f',
-    tagText: '#fff7ed',
-    tagBg: '#0f766e',
-    tooltipPrimary: '#555555',
-    tooltipSecondary: '#8a744a',
-    sidebar: '#b99a45',
-    sidebarAccent: '#3f6f4f',
-  },
 }
 
 export const MIN_NOTE_FONT_SCALE = 0.9
@@ -205,19 +149,6 @@ export function normalizeHexColor(value: unknown): string | null {
   return `#${normalized}`
 }
 
-export function normalizeCustomThemePalette(raw: unknown): CustomThemePalette | null {
-  if (!raw || typeof raw !== 'object') return null
-  const obj = raw as Record<string, unknown>
-  return CUSTOM_THEME_PALETTE_SLOTS.reduce<CustomThemePalette>((palette, slot) => {
-    palette[slot] = normalizeHexColor(obj[slot]) ?? DEFAULT_CUSTOM_THEME_PALETTE[slot]
-    return palette
-  }, { ...DEFAULT_CUSTOM_THEME_PALETTE })
-}
-
-export function isCustomTheme(theme: AppTheme): theme is CustomThemeId {
-  return CUSTOM_THEME_IDS.includes(theme as CustomThemeId)
-}
-
 export function normalizeCustomThemeId(
   value: unknown,
   fallback: CustomThemeId = DEFAULT_CUSTOM_THEME_ID,
@@ -227,70 +158,8 @@ export function normalizeCustomThemeId(
     : fallback
 }
 
-function isExactThemePaletteSeed(seed: CustomThemePalette, palette: CustomThemePalette | null | undefined): boolean {
-  if (!palette) return false
-  return CUSTOM_THEME_PALETTE_SLOTS.every((slot) => normalizeHexColor(palette[slot]) === seed[slot])
-}
-
-export function normalizeThemePalettes(raw: unknown): ThemePaletteOverrides {
-  const palettes: ThemePaletteOverrides = {}
-  if (raw && typeof raw === 'object') {
-    const obj = raw as Record<string, unknown>
-    APP_THEME_IDS.forEach((theme) => {
-      const palette = normalizeCustomThemePalette(obj[theme])
-      if (palette) palettes[theme] = palette
-    })
-  }
-  return palettes
-}
-
-export function getCustomThemePaletteSeed(theme: AppTheme): CustomThemePalette {
-  if (isCustomTheme(theme)) return { ...DEFAULT_CUSTOM_THEME_PALETTE }
-  return { ...BUILT_IN_THEME_PALETTE_SEEDS[theme] }
-}
-
-export function getThemePaletteForTheme(
-  theme: AppTheme,
-  themePalettes: ThemePaletteOverrides | null | undefined,
-): CustomThemePalette {
-  const override = themePalettes?.[theme] ?? null
-  return { ...(override ?? getCustomThemePaletteSeed(theme)) }
-}
-
-export function isThemePaletteSeed(theme: AppTheme, palette: CustomThemePalette | null | undefined): boolean {
-  const seed = getCustomThemePaletteSeed(theme)
-  return isExactThemePaletteSeed(seed, palette)
-}
-
-export function setThemePaletteOverride(
-  themePalettes: ThemePaletteOverrides | null | undefined,
-  theme: AppTheme,
-  palette: CustomThemePalette,
-): ThemePaletteOverrides {
-  return {
-    ...(themePalettes ?? {}),
-    [theme]: { ...palette },
-  }
-}
-
-export function removeThemePaletteOverride(
-  themePalettes: ThemePaletteOverrides | null | undefined,
-  theme: AppTheme,
-): ThemePaletteOverrides {
-  const next = { ...(themePalettes ?? {}) }
-  delete next[theme]
-  return next
-}
-
-export function getCustomThemePaletteSeedMatch(palette: CustomThemePalette | null | undefined): BuiltInAppTheme | null {
-  if (!palette) return null
-  return (
-    BUILT_IN_THEME_IDS.find((theme) =>
-      CUSTOM_THEME_PALETTE_SLOTS.every(
-        (slot) => normalizeHexColor(palette[slot]) === BUILT_IN_THEME_PALETTE_SEEDS[theme][slot],
-      ),
-    ) ?? null
-  )
+export function normalizeThemePalettes(raw: unknown) {
+  return normalizeThemePaletteOverrides(raw)
 }
 
 export function normalizeSettingsSection(value: unknown): SettingsSection {
@@ -413,6 +282,17 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
       : DEFAULT_UI_SETTINGS.showRegularNoteAisleDeleteButton
   return {
     ...registeredSettings,
+    sidebarCollapsed:
+      typeof obj.sidebarCollapsed === 'boolean'
+        ? obj.sidebarCollapsed
+        : DEFAULT_UI_SETTINGS.sidebarCollapsed,
+    sidebarWidth:
+      typeof obj.sidebarWidth === 'number'
+        ? obj.sidebarWidth
+        : DEFAULT_UI_SETTINGS.sidebarWidth,
+    collapsedFolderIds: Array.isArray(obj.collapsedFolderIds)
+      ? obj.collapsedFolderIds.filter((item): item is string => typeof item === 'string')
+      : DEFAULT_UI_SETTINGS.collapsedFolderIds,
     showRegularNoteAisleAddButtons,
     showRegularNoteAisleDeleteButton,
     noteFontScale:
