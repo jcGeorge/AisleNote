@@ -1,8 +1,10 @@
+import * as React from 'react'
 import {
   Fragment,
   memo,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -18,10 +20,11 @@ import { clampAisleWidth } from '../../notes/aisle-widths'
 import { RENDERED_MARKDOWN_SURFACE_CLASS } from '../../editor/rendered-markdown-surface'
 import { recordDiagnosticEvent } from '../../diagnostics/diagnostic-logger'
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
-import type { ResolvedNoteAisle } from '../../types/app'
+import type { AppState, NoteLocation, ResolvedNoteAisle } from '../../types/app'
 import { ToolbarToolIcon } from '../editor/ToolbarToolIcon'
 import { AppIcon } from '../icons/AppIcon'
 import { getAislePreviewSegments } from './aisle-markdown-preview-segments'
+import { NotePreviewContent } from './NotePreviewContent'
 import { AisleHorizontalScrollbar } from './AisleHorizontalScrollbar'
 import {
   MarkdownPreviewHeading1,
@@ -46,6 +49,8 @@ import {
   getMarkdownWorkloadProfile,
 } from './note-workspace-preview'
 
+void React
+
 type HeadingOutlineItem = {
   key: string
   level: number
@@ -67,7 +72,6 @@ const transformAislePreviewUrl = (url: string, key: string) => {
 }
 
 const noteWorkspacePreviewMarkdownComponents = {
-  a: MarkdownPreviewLink,
   h1: MarkdownPreviewHeading1,
   h2: MarkdownPreviewHeading2,
   h3: MarkdownPreviewHeading3,
@@ -78,22 +82,47 @@ const noteWorkspacePreviewMarkdownComponents = {
   p: MarkdownPreviewParagraph,
 }
 
-const NoteWorkspaceMarkdownPreview = memo(function NoteWorkspaceMarkdownPreview({ markdown }: { markdown: string }) {
-  return getAislePreviewSegments(markdown).map((segment, segmentIndex) => (
+const NoteWorkspaceMarkdownPreview = memo(function NoteWorkspaceMarkdownPreview({
+  markdown,
+  appState,
+  currentNoteBodyId,
+  onOpenNoteReference,
+}: {
+  markdown: string
+  appState?: AppState | null
+  currentNoteBodyId: string
+  onOpenNoteReference?: (target: NoteLocation) => void
+}) {
+  const markdownComponents = useMemo(
+    () => ({
+      ...noteWorkspacePreviewMarkdownComponents,
+      a: (props: React.ComponentProps<typeof MarkdownPreviewLink>) => (
+        <MarkdownPreviewLink {...props} appState={appState} onOpenNote={onOpenNoteReference} />
+      ),
+    }),
+    [appState, onOpenNoteReference],
+  )
+
+  return getAislePreviewSegments(markdown, appState).map((segment, segmentIndex) => (
     <Fragment key={`${segment.type}-${segmentIndex}`}>
       {segment.type === 'markdown' ? (
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           urlTransform={transformAislePreviewUrl}
-          components={noteWorkspacePreviewMarkdownComponents}
+          components={markdownComponents}
         >
           {segment.markdown}
         </ReactMarkdown>
+      ) : appState ? (
+        <NotePreviewContent
+          appState={appState}
+          target={segment.payload.target}
+          currentNoteBodyId={currentNoteBodyId}
+          depth={1}
+          onOpenNote={onOpenNoteReference}
+        />
       ) : (
-        <div className="aisle-edit-context-preview">
-          <span className="aisle-edit-context-preview-label">note preview</span>
-          <span className="aisle-edit-context-preview-title">{segment.label}</span>
-        </div>
+        null
       )}
     </Fragment>
   ))
@@ -137,6 +166,7 @@ type NoteWorkspaceProps = {
   headingPopover: ReactNode
   imageToolsOverlay: ReactNode
   tableControlsOverlay: ReactNode
+  listReorderControlsOverlay?: ReactNode
   arrangeDestinationPrompt?: ReactNode
   tableOfContentsHeadingsByAisle?: Record<string, HeadingOutlineItem[]>
   tableOfContentsLinksByAisle?: Record<string, TableOfContentsLinkItem[]>
@@ -159,7 +189,10 @@ type NoteWorkspaceProps = {
   onOpenTableOfContentsLink?: (aisleId: string, link: TableOfContentsLinkItem) => void
   onOpenAisleFrontmatter?: (aisleId: string) => void
   onOpenAisleLink?: (aisleId: string) => void
+  appState?: AppState | null
+  onOpenNoteReference?: (target: NoteLocation) => void
   onOpenTagFilter?: (tag: string) => void
+  onSelectEditableAsset?: (target: Element) => void
   scratchpadAisleControls?: NoteAisleControls
   regularNoteAisleControls?: NoteAisleControls
   onRegisterAislePaneRoot: (aisleId: string, node: HTMLElement | null) => void
@@ -285,6 +318,7 @@ export function NoteWorkspace({
   headingPopover,
   imageToolsOverlay,
   tableControlsOverlay,
+  listReorderControlsOverlay = null,
   arrangeDestinationPrompt = null,
   tableOfContentsHeadingsByAisle = {},
   tableOfContentsLinksByAisle = {},
@@ -307,7 +341,10 @@ export function NoteWorkspace({
   onOpenTableOfContentsLink = () => undefined,
   onOpenAisleFrontmatter = () => undefined,
   onOpenAisleLink = () => undefined,
+  appState = null,
+  onOpenNoteReference,
   onOpenTagFilter = () => undefined,
+  onSelectEditableAsset = () => undefined,
   scratchpadAisleControls,
   regularNoteAisleControls,
   onRegisterAislePaneRoot,
@@ -447,6 +484,7 @@ export function NoteWorkspace({
       {headingPopover}
       {imageToolsOverlay}
       {tableControlsOverlay}
+      {listReorderControlsOverlay}
       {arrangeDestinationPrompt}
       <div
         ref={setAisleScrollRef}
@@ -454,6 +492,9 @@ export function NoteWorkspace({
         onPointerDownCapture={(event) => {
           if (shouldExitArrangeModeFromNoteWorkspacePointer(arrangeModeActive, event.button)) {
             scheduleNoteWorkspaceArrangeExit(onExitArrangeMode)
+          }
+          if (!editorReadOnly && event.target instanceof Element) {
+            onSelectEditableAsset(event.target)
           }
           const editorKey = getAisleEditorKeyFromNoteWorkspacePointerTarget(event.target)
           if (editorKey) {
@@ -620,7 +661,12 @@ export function NoteWorkspace({
                     {lightweightPreviewText.trim().length > 0 ? (
                       <pre className="aisle-editor-lightweight-preview">{lightweightPreviewText}</pre>
                     ) : renderedPreviewMarkdown.trim().length > 0 ? (
-                      <NoteWorkspaceMarkdownPreview markdown={renderedPreviewMarkdown} />
+                      <NoteWorkspaceMarkdownPreview
+                        markdown={renderedPreviewMarkdown}
+                        appState={appState}
+                        currentNoteBodyId={noteBodyId}
+                        onOpenNoteReference={onOpenNoteReference}
+                      />
                     ) : null}
                   </div>
                 )}

@@ -1,28 +1,23 @@
-import { readFileSync } from 'fs'
-import { dirname, join } from 'path'
-import { fileURLToPath } from 'url'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-const appControllerSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), './useAppController.tsx'), 'utf8')
-
-function extractMentionCopyHandler() {
-  const start = appControllerSource.indexOf('const replaceCurrentNoteFromMention =')
-  const end = appControllerSource.indexOf('const noteMention = useNoteMentionController', start)
-  if (start < 0 || end < 0) throw new Error('replaceCurrentNoteFromMention block not found')
-  return appControllerSource.slice(start, end)
-}
+const appSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), './NotebookApp.tsx'), 'utf8')
 
 describe('@ menu copy routing', () => {
-  it('routes mention copy actions through aisle-scoped focused replacement', () => {
-    const handler = extractMentionCopyHandler()
-
-    expect(handler).toContain('getNoteMentionAisleCopyTarget(latestState, target)')
-    expect(handler).toContain("scope: 'aisle'")
-    expect(handler).toContain("const action = mode === 'linked' ? 'duplicate' : 'copy'")
-    expect(handler).toContain('buildFocusedAisleStructuralPasteReplacement')
-    expect(handler).toContain("mode: 'always'")
-    expect(handler).toContain("getCopyAsPasteSuccessMessage('aisle', payload.action)")
-    expect(handler).not.toContain('applyNoteCopyToState')
-    expect(handler).not.toContain('applyIndependentCopyToScratchpad')
+  it('routes mention copy actions through focused-aisle notebook replacement helpers', () => {
+    expect(appSource).toContain("source: 'mention'")
+    expect(appSource).toContain("actions: ['note-link', 'note-preview', 'independent-copy', 'synced-copy']")
+    expect(appSource).toContain('anchor: null')
+    expect(appSource).toContain('replaceFocusedAisleFromTargetNote(previous')
+    expect(appSource).toContain('focusedAisleId: renderedActiveAisleId')
+    expect(appSource).toContain("source === 'whole-note-copy'")
+    expect(appSource).toContain('replaceActiveNoteBodyFromTargetNote(previous')
+    expect(appSource).toContain('dismissedMentionStartRef')
+    expect(appSource).toContain('dismissedMentionStartRef.current === mention.from')
+    expect(appSource).toContain('dismissedMentionStartRef.current = current.mentionRange.from')
+    expect(appSource).not.toContain('domainId')
+    expect(appSource).not.toContain('spaceId')
   })
 })

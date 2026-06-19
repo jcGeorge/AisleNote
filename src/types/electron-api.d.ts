@@ -98,7 +98,7 @@ type ImportImageAssetPayload = {
 
 type ImportAssetPayload = ImportImageAssetPayload
 export type ElectronNoteRevealPayload =
-  | { type: 'live-note'; location: NoteLocation }
+  | { type: 'live-note'; location: NoteLocation; aisleId?: string }
   | { type: 'scratchpad' }
 export type ElectronNotebookItemRevealPayload = {
   itemId: string

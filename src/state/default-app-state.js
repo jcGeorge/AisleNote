@@ -47,21 +47,18 @@ export const DEFAULT_SHORTCUTS = {
 
 export const DEFAULT_NEWLINE_SHORTCUT_SETTINGS = {
   shortcuts: {
-    controlEnter: 'normalNewLine',
-    shiftEnter: 'normalNewLine',
-    commandEnter: 'operationsMenu',
+    controlEnter: 'operationsMenu',
+    shiftEnter: 'task',
+    commandEnter: 'aisleRight',
   },
   menuOperations: [
     'task',
-    'dashList',
-    'bulletList',
-    'numberedList',
     'aisleLeft',
     'aisleRight',
     'horizontalLine',
     'codeBlock',
+    'inlineCode',
     'blockQuote',
-    'blockIndent',
     'strikethrough',
   ],
 }

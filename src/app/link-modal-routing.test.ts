@@ -3,20 +3,38 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-const appControllerSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), './useAppController.tsx'), 'utf8')
+const appSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), './NotebookApp.tsx'), 'utf8')
+const contextMenuSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../components/overlays/NotebookEditorContextMenu.tsx'),
+  'utf8',
+)
+const notebookEditorsSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../editor/useNotebookAisleEditors.ts'),
+  'utf8',
+)
 
-describe('App add-link modal routing', () => {
-  it('routes context-menu add link through URL selection behavior while preserving explicit note links', () => {
-    expect(appControllerSource).toContain('const openEditorContextLinkModal = (mode: LinkInsertMode | null) => {')
-    expect(appControllerSource).toContain("if (mode === 'note') {")
-    expect(appControllerSource).toContain("openSharedLinkModal(selectedText, 'note')")
-    expect(appControllerSource).toContain("openUrlLinkModalFromSelection(selectedText, 'context-menu')")
+describe('Notebook link insertion routing', () => {
+  it('routes toolbar URL links through the lightweight link prompt', () => {
+    expect(appSource).toContain('const openToolbarLinkPicker = useCallback')
+    expect(appSource).toContain('notebookEditors.openUrlLinkPrompt()')
+    expect(appSource).toContain('<LinkPrompt')
+    expect(appSource).toContain('onOpenUrlLinkPrompt: openUrlLinkPrompt')
+    expect(appSource).toContain('onOpenNoteLink={openNoteLinkFromLinkPrompt}')
+    expect(appSource).toContain("openContextNoteReferencePicker('note-link')")
+    expect(appSource).toContain('onInsertWebLink={openToolbarLinkPicker}')
+    expect(appSource).not.toContain("source: 'toolbar-link'")
+    expect(notebookEditorsSource).toContain('isUrlLinkShortcutEvent(event, isMacPlatformRef.current)')
+    expect(notebookEditorsSource).toContain("if (event.key !== 'Enter') return")
+    expect(notebookEditorsSource).toContain("root.addEventListener('click', handleLinkClick, true)")
+    expect(notebookEditorsSource).toContain('openExternalWebUrl(href)')
   })
 
-  it('suspends App-level shortcuts while the insert-link modal is open', () => {
-    expect(appControllerSource).toContain("const insertNoteReferenceModalOpen = modal?.type === 'insert-note-reference'")
-    expect(appControllerSource).toContain('if (insertNoteReferenceModalOpen) return')
-    expect(appControllerSource).toContain("if (!shortcutMode || viewMode !== 'main' || insertNoteReferenceModalOpen) return")
-    expect(appControllerSource).toContain('shortcutsSuspended: insertNoteReferenceModalOpen')
+  it('exposes note link and note preview insert actions in the editor context menu', () => {
+    expect(contextMenuSource).toContain('onInsertNoteLink')
+    expect(contextMenuSource).toContain('onInsertNotePreview')
+    expect(contextMenuSource).toContain('note link')
+    expect(contextMenuSource).toContain('note preview')
+    expect(appSource).toContain("onInsertNoteLink={() => openContextNoteReferencePicker('note-link')}")
+    expect(appSource).toContain("onInsertNotePreview={() => openContextNoteReferencePicker('note-preview')}")
   })
 })

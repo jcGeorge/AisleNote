@@ -1191,7 +1191,11 @@ export function resolveNoteLocationRevealPath(profileRootPath, payload = {}) {
     const noteId = normalizeId(payload?.location?.noteId)
     const note = findNotebookIndexNote(notebookIndex.items, noteId)
     if (!note) return { ok: false, error: 'Note file could not be resolved.' }
-    const relativePath = normalizePosixPath(note.path || note.file)
+    const aisleId = normalizeId(payload?.aisleId)
+    const aisleFile = aisleId && Array.isArray(note.aisleFiles)
+      ? note.aisleFiles.find((candidate) => normalizeId(candidate?.aisleId) === aisleId)
+      : null
+    const relativePath = normalizePosixPath(aisleFile?.file || note.path || note.file)
     if (!relativePath) return { ok: false, error: 'Note file could not be resolved.' }
     const absolutePath = path.join(rootPath, ...relativePath.split('/'))
     return { ok: true, absolutePath, rootRelativePath: relativePath }

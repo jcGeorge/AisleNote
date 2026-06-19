@@ -22,13 +22,18 @@ import {
   type TableControlOperation,
   type TableControlsOverlayState,
   type TableReorderAxis,
-  type TableSegmentRect,
   type TableSelectionOverlayState,
   type TableSelectionRange,
 } from './table-editing'
 import type { TableControlTargetMode } from '../types/app'
 import { getWysiwygView } from './prosemirror-utils'
 import { createTaskReorderSelectionSuppressionController } from './task-behavior'
+import {
+  insertTableSelectionClipboardPayloadIntoView,
+  readTableSelectionClipboardPayloadFromDataTransfer,
+  serializeTableSelectionForClipboard,
+  writeTableSelectionClipboardData,
+} from './table-selection-clipboard'
 
 type UseTableControlsOptions = {
   visible: boolean
@@ -56,21 +61,12 @@ type CellSelectionInteraction = {
   editor: Editor
   context: TableDomContext['context']
   table: HTMLTableElement
+  sourceCell: HTMLTableCellElement
   anchorRow: number
   anchorColumn: number
   startX: number
   startY: number
   selecting: boolean
-  suppressingSelection: boolean
-}
-
-type AxisSelectionInteraction = {
-  kind: 'axis-selection'
-  editor: Editor
-  context: TableDomContext['context']
-  table: HTMLTableElement
-  axis: TableReorderAxis
-  anchorIndex: number
   suppressingSelection: boolean
 }
 
@@ -90,7 +86,24 @@ type RangeReorderInteraction = {
   suppressingSelection: boolean
 }
 
-type TableInteractionState = CellSelectionInteraction | AxisSelectionInteraction | RangeReorderInteraction
+type SelectorGestureInteraction = {
+  kind: 'selector-gesture'
+  editor: Editor
+  context: TableDomContext['context']
+  table: HTMLTableElement
+  axis: TableReorderAxis
+  index: number
+  sourceStart: number
+  sourceEnd: number
+  startX: number
+  startY: number
+  insertIndex: number | null
+  marker: HTMLElement | null
+  dragging: boolean
+  suppressingSelection: boolean
+}
+
+type TableInteractionState = CellSelectionInteraction | RangeReorderInteraction | SelectorGestureInteraction
 
 function tableControlsStateEqual(left: TableControlsOverlayState, right: TableControlsOverlayState) {
   return (
@@ -109,11 +122,9 @@ const TABLE_REORDER_PENDING_CLASS = 'table-reorder-pending'
 const TABLE_REORDER_ACTIVE_CLASS = 'table-reorder-active'
 const TABLE_REORDER_MARKER_GAP_OFFSET_PX = 4
 const TABLE_REORDER_SLOT_HYSTERESIS_PX = 6
-const TABLE_SELECTION_DRAG_SLOP_PX = 4
 const TABLE_RANGE_REORDER_DRAG_SLOP_PX = 3
 const TABLE_SELECTOR_SIZE_PX = 14
 const TABLE_SELECTOR_GAP_PX = 4
-const TABLE_SELECTION_HANDLE_SIZE_PX = 18
 
 const TABLE_SELECTION_CELL_CLASSES = [
   'table-selected-cell',
@@ -127,7 +138,7 @@ const TABLE_SELECTION_CELL_CLASSES = [
 ]
 
 function isInteractiveTableCellTarget(target: Element | null) {
-  return Boolean(target?.closest('a, button, input, textarea, select, img, .table-tools, .table-selector-segment, .table-selection-handle'))
+  return Boolean(target?.closest('a, button, input, textarea, select, img, .table-tools, .table-selector-segment'))
 }
 
 function clearTableReorderClasses(root: HTMLElement) {
@@ -199,31 +210,6 @@ function getColumnInsertIndex(table: HTMLTableElement, clientX: number, previous
     return rect.left + rect.width / 2
   })
   return getInsertionIndexFromCenters(clientX, centers, previousInsertIndex)
-}
-
-function getSegmentIndexAtPosition(segments: TableSegmentRect[], position: number, axis: TableReorderAxis) {
-  if (segments.length === 0 || !Number.isFinite(position)) return null
-  const startKey = axis === 'row' ? 'top' : 'left'
-  const sizeKey = axis === 'row' ? 'height' : 'width'
-  const first = segments[0]
-  const last = segments[segments.length - 1]
-  if (position <= first[startKey]) return first.index
-  if (position >= last[startKey] + last[sizeKey]) return last.index
-
-  let nearestIndex = first.index
-  let nearestDistance = Number.POSITIVE_INFINITY
-  for (const segment of segments) {
-    const start = segment[startKey]
-    const end = start + segment[sizeKey]
-    if (position >= start && position <= end) return segment.index
-    const center = start + segment[sizeKey] / 2
-    const distance = Math.abs(position - center)
-    if (distance < nearestDistance) {
-      nearestDistance = distance
-      nearestIndex = segment.index
-    }
-  }
-  return nearestIndex
 }
 
 function positionRowMarker(marker: HTMLElement, table: HTMLTableElement, insertIndex: number) {
@@ -325,6 +311,23 @@ function createCellSelection(context: TableDomContext['context'], headContext: T
   }
 }
 
+function getSelectedAxisRangeForGesture(
+  selection: TableSelectionRange | null,
+  axis: TableReorderAxis,
+  index: number,
+  rowCount: number,
+  columnCount: number,
+): { start: number; end: number } {
+  const normalized = normalizeTableSelectionRange(selection, rowCount, columnCount)
+  const expectedMode = axis === 'row' ? 'rows' : 'columns'
+  if (normalized?.mode === expectedMode) {
+    const start = axis === 'row' ? normalized.rowStart : normalized.columnStart
+    const end = axis === 'row' ? normalized.rowEnd : normalized.columnEnd
+    if (index >= start && index <= end) return { start, end }
+  }
+  return { start: index, end: index }
+}
+
 function createSelectionOverlayState(
   table: HTMLTableElement,
   tableStart: number,
@@ -350,26 +353,6 @@ function createSelectionOverlayState(
     selected: Boolean(normalized && column.index >= normalized.columnStart && column.index <= normalized.columnEnd),
   }))
 
-  const rowHandle =
-    normalized?.mode === 'rows' && rows[normalized.rowStart] && rows[normalized.rowEnd]
-      ? {
-          index: normalized.rowStart,
-          top: rows[normalized.rowStart].top,
-          left: tableRect.left - TABLE_SELECTOR_SIZE_PX - TABLE_SELECTOR_GAP_PX - TABLE_SELECTION_HANDLE_SIZE_PX - TABLE_SELECTOR_GAP_PX,
-          width: TABLE_SELECTION_HANDLE_SIZE_PX,
-          height: rows[normalized.rowEnd].top + rows[normalized.rowEnd].height - rows[normalized.rowStart].top,
-        }
-      : null
-  const columnHandle =
-    normalized?.mode === 'columns' && columns[normalized.columnStart] && columns[normalized.columnEnd]
-      ? {
-          index: normalized.columnStart,
-          top: tableRect.top - TABLE_SELECTOR_SIZE_PX - TABLE_SELECTOR_GAP_PX - TABLE_SELECTION_HANDLE_SIZE_PX - TABLE_SELECTOR_GAP_PX,
-          left: columns[normalized.columnStart].left,
-          width: columns[normalized.columnEnd].left + columns[normalized.columnEnd].width - columns[normalized.columnStart].left,
-          height: TABLE_SELECTION_HANDLE_SIZE_PX,
-      }
-      : null
   const selectionRect =
     normalized &&
     rows[normalized.rowStart] &&
@@ -395,8 +378,6 @@ function createSelectionOverlayState(
     rows,
     columns,
     selectionRect,
-    rowHandle,
-    columnHandle,
   }
 }
 
@@ -490,7 +471,11 @@ export function useTableControls({
       close()
       return
     }
-    if (interactionStateRef.current?.kind === 'range-reorder') {
+    if (
+      interactionStateRef.current?.kind === 'range-reorder' ||
+      interactionStateRef.current?.kind === 'selector-gesture' ||
+      (interactionStateRef.current?.kind === 'cell-selection' && interactionStateRef.current.selecting)
+    ) {
       return
     }
     const view = getWysiwygView(editorRef.current)
@@ -596,11 +581,11 @@ export function useTableControls({
       const interactionState = interactionStateRef.current
       const root = editorEventRootRef.current
       const shouldClearSelection = Boolean(
-        interactionState?.suppressingSelection ||
-          (interactionState?.kind === 'cell-selection' && interactionState.selecting) ||
-          (interactionState?.kind === 'range-reorder' && interactionState.dragging),
+        (interactionState?.kind === 'cell-selection' && interactionState.selecting) ||
+          (interactionState?.kind === 'range-reorder' && interactionState.dragging) ||
+          (interactionState?.kind === 'selector-gesture' && interactionState.dragging),
       )
-      if (interactionState?.kind === 'range-reorder') {
+      if (interactionState?.kind === 'range-reorder' || interactionState?.kind === 'selector-gesture') {
         interactionState.marker?.remove()
       }
       if (root) {
@@ -628,7 +613,13 @@ export function useTableControls({
   function updateReorderDropTarget(event: globalThis.MouseEvent) {
     const interactionState = interactionStateRef.current
     const root = editorEventRootRef.current
-    if (interactionState?.kind !== 'range-reorder' || !interactionState.dragging || !root) return
+    if (
+      (interactionState?.kind !== 'range-reorder' && interactionState?.kind !== 'selector-gesture') ||
+      !interactionState.dragging ||
+      !root
+    ) {
+      return
+    }
 
     clearTableReorderClasses(root)
     const rows = getTableRows(interactionState.table)
@@ -684,9 +675,16 @@ export function useTableControls({
     const root = editorEventRootRef.current
     if (!root) return
 
-    const deltaX = event.clientX - interactionState.startX
-    const deltaY = event.clientY - interactionState.startY
-    if (!interactionState.selecting && Math.max(Math.abs(deltaX), Math.abs(deltaY)) < TABLE_SELECTION_DRAG_SLOP_PX) {
+    const view = getWysiwygView(interactionState.editor)
+    const targetCell = getTableCellAtViewportPoint(view, { left: event.clientX, top: event.clientY })
+    if (!targetCell || targetCell.closest('table') !== interactionState.table) return
+    const targetContext = getTableContextForCellElement(view, targetCell)
+    if (!targetContext || targetContext.tableStart !== interactionState.context.tableStart) return
+    const isDifferentCell =
+      targetCell !== interactionState.sourceCell ||
+      targetContext.rowIndex !== interactionState.context.rowIndex ||
+      targetContext.columnIndex !== interactionState.context.columnIndex
+    if (!interactionState.selecting && !isDifferentCell) {
       return
     }
 
@@ -703,12 +701,6 @@ export function useTableControls({
     event.stopImmediatePropagation()
     selectionSuppressionRef.current.clearAfterBrowserPass()
 
-    const view = getWysiwygView(interactionState.editor)
-    const targetCell = getTableCellAtViewportPoint(view, { left: event.clientX, top: event.clientY })
-    if (!targetCell || targetCell.closest('table') !== interactionState.table) return
-    const targetContext = getTableContextForCellElement(view, targetCell)
-    if (!targetContext || targetContext.tableStart !== interactionState.context.tableStart) return
-
     const nextSelection = createCellSelection(interactionState.context, targetContext)
     tableSelectionRef.current = nextSelection
     setTableSelectionState(nextSelection)
@@ -716,36 +708,29 @@ export function useTableControls({
     updateTableSelectionOverlay(createSelectionOverlayState(interactionState.table, interactionState.context.tableStart, nextSelection))
   }
 
-  function handleAxisSelectionMove(interactionState: AxisSelectionInteraction, event: globalThis.MouseEvent) {
+  function handleSelectorGestureMove(interactionState: SelectorGestureInteraction, event: globalThis.MouseEvent) {
     const root = editorEventRootRef.current
     if (!root) return
+
+    const deltaX = event.clientX - interactionState.startX
+    const deltaY = event.clientY - interactionState.startY
+    if (!interactionState.dragging && Math.max(Math.abs(deltaX), Math.abs(deltaY)) < TABLE_RANGE_REORDER_DRAG_SLOP_PX) {
+      return
+    }
 
     event.preventDefault()
     event.stopPropagation()
     event.stopImmediatePropagation()
     selectionSuppressionRef.current.clearAfterBrowserPass()
 
-    const segments =
-      interactionState.axis === 'row'
-        ? getTableRowSegmentRects(interactionState.table)
-        : getTableColumnSegmentRects(interactionState.table)
-    const headIndex = getSegmentIndexAtPosition(
-      segments,
-      interactionState.axis === 'row' ? event.clientY : event.clientX,
-      interactionState.axis,
-    )
-    if (headIndex === null) return
+    if (!interactionState.dragging) {
+      interactionState.dragging = true
+      suppressNextClickRef.current = true
+      root.classList.add(TABLE_REORDER_ACTIVE_CLASS)
+      interactionState.marker = createTableReorderMarker(root, interactionState.axis)
+    }
 
-    const nextSelection = createAxisSelection(
-      interactionState.context.tableStart,
-      interactionState.axis,
-      interactionState.anchorIndex,
-      headIndex,
-    )
-    tableSelectionRef.current = nextSelection
-    setTableSelectionState(nextSelection)
-    applyTableSelectionClasses(root, interactionState.table, nextSelection)
-    updateTableSelectionOverlay(createSelectionOverlayState(interactionState.table, interactionState.context.tableStart, nextSelection))
+    updateReorderDropTarget(event)
   }
 
   function handleRangeReorderMove(interactionState: RangeReorderInteraction, event: globalThis.MouseEvent) {
@@ -780,8 +765,8 @@ export function useTableControls({
       handleCellSelectionMove(interactionState, event)
       return
     }
-    if (interactionState.kind === 'axis-selection') {
-      handleAxisSelectionMove(interactionState, event)
+    if (interactionState.kind === 'selector-gesture') {
+      handleSelectorGestureMove(interactionState, event)
       return
     }
     handleRangeReorderMove(interactionState, event)
@@ -791,8 +776,45 @@ export function useTableControls({
     const interactionState = interactionStateRef.current
     if (!interactionState) return
 
+    if (interactionState.kind === 'selector-gesture') {
+      if (!interactionState.dragging || interactionState.insertIndex === null) {
+        event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation()
+        const nextSelection = createAxisSelection(interactionState.context.tableStart, interactionState.axis, interactionState.index, interactionState.index)
+        endInteraction({ releaseSelectionAfterBrowserPass: true })
+        setCurrentTableSelection(nextSelection)
+        interactionState.editor.focus()
+        scheduleRefresh()
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation()
+      suppressNextClickRef.current = true
+      updateReorderDropTarget(event)
+
+      const { editor, context, axis, sourceStart, sourceEnd, insertIndex } = interactionState
+      const view = getWysiwygView(editor)
+      const movedStart = getAdjustedRangeMoveIndex(sourceStart, sourceEnd, insertIndex)
+      const movedEnd = movedStart + (sourceEnd - sourceStart)
+      if (view && applyTableRangeReorderOperationToView(view, axis, sourceStart, sourceEnd, insertIndex, context)) {
+        const nextSelection = createAxisSelection(context.tableStart, axis, movedStart, movedEnd)
+        endInteraction({ releaseSelectionAfterBrowserPass: true })
+        setCurrentTableSelection(nextSelection)
+        editor.focus()
+        commitActiveEditorMarkdownNow(editor)
+        syncToolbarFormatState()
+        scheduleRefresh()
+      } else {
+        endInteraction({ releaseSelectionAfterBrowserPass: true })
+      }
+      return
+    }
+
     if (interactionState.kind !== 'range-reorder') {
-      if (interactionState.suppressingSelection || (interactionState.kind === 'cell-selection' && interactionState.selecting)) {
+      if (interactionState.kind === 'cell-selection' && interactionState.selecting) {
         event.preventDefault()
         event.stopPropagation()
         event.stopImmediatePropagation()
@@ -880,12 +902,14 @@ export function useTableControls({
     const context = getTableContextForCellElement(view, sourceCell)
     if (!context) return
 
+    setCurrentTableSelection(null)
     lockedTableControlsRef.current = null
     interactionStateRef.current = {
       kind: 'cell-selection',
       editor,
       context,
       table,
+      sourceCell,
       anchorRow: context.rowIndex,
       anchorColumn: context.columnIndex,
       startX: event.clientX,
@@ -903,13 +927,40 @@ export function useTableControls({
     event.stopPropagation()
   }
 
-  function handleKeyDown() {
+  function handleKeyDown(event: KeyboardEvent) {
+    if (event.key === 'Meta' || event.key === 'Control' || event.key === 'Alt' || event.key === 'Shift') return
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'c') return
     releaseLockedTableControls()
     setCurrentTableSelection(null)
     scheduleRefresh()
   }
 
-  const beginTableAxisSelection = useCallback(
+  function handleCopy(event: ClipboardEvent) {
+    const editor = editorRef.current
+    const view = getWysiwygView(editor)
+    const serialization = serializeTableSelectionForClipboard(view, tableSelectionRef.current)
+    if (!serialization || !writeTableSelectionClipboardData(event.clipboardData, serialization)) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.stopImmediatePropagation()
+  }
+
+  function handlePaste(event: ClipboardEvent) {
+    const payload = readTableSelectionClipboardPayloadFromDataTransfer(event.clipboardData)
+    if (!payload) return
+    const editor = editorRef.current
+    const view = getWysiwygView(editor)
+    if (!editor || !insertTableSelectionClipboardPayloadIntoView(view, payload)) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.stopImmediatePropagation()
+    setCurrentTableSelection(null)
+    commitActiveEditorMarkdownNow(editor)
+    syncToolbarFormatState()
+    scheduleRefresh()
+  }
+
+  const beginTableSelectorGesture = useCallback(
     (axis: TableReorderAxis, index: number, event: OverlayMouseEventLike) => {
       event.preventDefault()
       event.stopPropagation()
@@ -919,53 +970,30 @@ export function useTableControls({
       const tableStart = tableSelectionOverlayRef.current.tableStart
       const tableDomContext = getTableDomContextForTableStart(view, tableStart)
       if (!editor || !view || !tableDomContext) return
-
-      lockedTableControlsRef.current = null
-      const nextSelection = createAxisSelection(tableDomContext.context.tableStart, axis, index, index)
-      setCurrentTableSelection(nextSelection)
-      interactionStateRef.current = {
-        kind: 'axis-selection',
-        editor,
-        context: tableDomContext.context,
-        table: tableDomContext.table,
-        axis,
-        anchorIndex: index,
-        suppressingSelection: true,
-      }
-      suppressNextClickRef.current = true
-      selectionSuppressionRef.current.begin()
-      installWindowInteractionListeners()
-      editor.focus()
-      scheduleRefresh()
-    },
-    [editorRef, scheduleRefresh, setCurrentTableSelection, visible],
-  )
-
-  const beginTableRangeReorder = useCallback(
-    (axis: TableReorderAxis, event: OverlayMouseEventLike) => {
-      event.preventDefault()
-      event.stopPropagation()
-      if (!visible || (event.button ?? 0) !== 0) return
-      const editor = editorRef.current
-      const view = getWysiwygView(editor)
-      const selection = tableSelectionRef.current
-      const tableDomContext = getTableDomContextForTableStart(view, selection?.tableStart)
-      if (!editor || !view || !selection || !tableDomContext) return
       const rows = getTableRows(tableDomContext.table)
       const columns = getTableColumns(tableDomContext.table)
-      const normalized = normalizeTableSelectionRange(selection, rows.length, columns.length)
-      if (!normalized) return
-      if ((axis === 'row' && normalized.mode !== 'rows') || (axis === 'column' && normalized.mode !== 'columns')) return
+      const sourceRange = getSelectedAxisRangeForGesture(
+        tableSelectionRef.current?.tableStart === tableDomContext.context.tableStart ? tableSelectionRef.current : null,
+        axis,
+        index,
+        rows.length,
+        columns.length,
+      )
 
       lockedTableControlsRef.current = null
+      const sourceSelection = createAxisSelection(tableDomContext.context.tableStart, axis, sourceRange.start, sourceRange.end)
+      setCurrentTableSelection(sourceSelection)
+      const root = editorEventRootRef.current
+      root?.classList.add(TABLE_REORDER_PENDING_CLASS)
       interactionStateRef.current = {
-        kind: 'range-reorder',
+        kind: 'selector-gesture',
         editor,
         context: tableDomContext.context,
         table: tableDomContext.table,
         axis,
-        sourceStart: axis === 'row' ? normalized.rowStart : normalized.columnStart,
-        sourceEnd: axis === 'row' ? normalized.rowEnd : normalized.columnEnd,
+        index,
+        sourceStart: sourceRange.start,
+        sourceEnd: sourceRange.end,
         startX: event.clientX,
         startY: event.clientY,
         insertIndex: null,
@@ -978,7 +1006,7 @@ export function useTableControls({
       editor.focus()
       installWindowInteractionListeners()
     },
-    [editorRef, visible],
+    [editorEventRootRef, editorRef, visible],
   )
 
   useEffect(() => {
@@ -1002,6 +1030,8 @@ export function useTableControls({
     root?.addEventListener('mousedown', handleMouseDown, true)
     root?.addEventListener('click', handleClick, true)
     root?.addEventListener('keydown', handleKeyDown, true)
+    root?.addEventListener('copy', handleCopy, true)
+    root?.addEventListener('paste', handlePaste, true)
     document.addEventListener('selectionchange', handleEditorActivity, true)
     window.addEventListener('resize', handleGeometryChange)
     window.addEventListener('scroll', handleGeometryChange, true)
@@ -1015,6 +1045,8 @@ export function useTableControls({
       root?.removeEventListener('mousedown', handleMouseDown, true)
       root?.removeEventListener('click', handleClick, true)
       root?.removeEventListener('keydown', handleKeyDown, true)
+      root?.removeEventListener('copy', handleCopy, true)
+      root?.removeEventListener('paste', handlePaste, true)
       document.removeEventListener('selectionchange', handleEditorActivity, true)
       window.removeEventListener('resize', handleGeometryChange)
       window.removeEventListener('scroll', handleGeometryChange, true)
@@ -1035,7 +1067,6 @@ export function useTableControls({
     close,
     refresh,
     runTableControlOperation,
-    beginTableAxisSelection,
-    beginTableRangeReorder,
+    beginTableSelectorGesture,
   }
 }

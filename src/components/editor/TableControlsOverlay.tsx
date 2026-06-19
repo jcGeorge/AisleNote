@@ -1,6 +1,6 @@
 import React from 'react'
 import type { MouseEvent, PointerEvent } from 'react'
-import type { TableControlsOverlayState, TableSelectionOverlayState } from '../../editor/table-editing'
+import type { TableControlsOverlayState, TableReorderAxis, TableSelectionOverlayState } from '../../editor/table-editing'
 
 type TableControlsOverlayProps = {
   visible: boolean
@@ -10,10 +10,7 @@ type TableControlsOverlayProps = {
   onRemoveRow: () => void
   onAddColumn: () => void
   onRemoveColumn: () => void
-  onSelectRow: (rowIndex: number, event: MouseEvent<HTMLButtonElement>) => void
-  onSelectColumn: (columnIndex: number, event: MouseEvent<HTMLButtonElement>) => void
-  onMoveRows: (event: MouseEvent<HTMLButtonElement>) => void
-  onMoveColumns: (event: MouseEvent<HTMLButtonElement>) => void
+  onBeginSelectorGesture: (axis: TableReorderAxis, index: number, event: MouseEvent<HTMLButtonElement>) => void
 }
 
 function TableControlButton({
@@ -50,10 +47,7 @@ export function TableControlsOverlay({
   onRemoveRow,
   onAddColumn,
   onRemoveColumn,
-  onSelectRow,
-  onSelectColumn,
-  onMoveRows,
-  onMoveColumns,
+  onBeginSelectorGesture,
 }: TableControlsOverlayProps) {
   if (!visible || !tableControls.visible) return null
 
@@ -76,7 +70,7 @@ export function TableControlsOverlay({
   }
 
   return (
-    <React.Fragment>
+    <div className="table-controls-overlay-layer">
       {tableSelectionOverlay.visible && (
         <React.Fragment>
           {tableSelectionOverlay.columns.map((column) => (
@@ -93,7 +87,7 @@ export function TableControlsOverlay({
                 height: `${column.height}px`,
               }}
               onPointerDown={stopPointerEvent}
-              onMouseDown={(event) => handleSelectorMouseDown(event, (nextEvent) => onSelectColumn(column.index, nextEvent))}
+              onMouseDown={(event) => handleSelectorMouseDown(event, (nextEvent) => onBeginSelectorGesture('column', column.index, nextEvent))}
               onClick={stopMouseEvent}
             />
           ))}
@@ -111,7 +105,7 @@ export function TableControlsOverlay({
                 height: `${row.height}px`,
               }}
               onPointerDown={stopPointerEvent}
-              onMouseDown={(event) => handleSelectorMouseDown(event, (nextEvent) => onSelectRow(row.index, nextEvent))}
+              onMouseDown={(event) => handleSelectorMouseDown(event, (nextEvent) => onBeginSelectorGesture('row', row.index, nextEvent))}
               onClick={stopMouseEvent}
             />
           ))}
@@ -125,40 +119,6 @@ export function TableControlsOverlay({
                 width: `${tableSelectionOverlay.selectionRect.width}px`,
                 height: `${tableSelectionOverlay.selectionRect.height}px`,
               }}
-            />
-          )}
-          {tableSelectionOverlay.columnHandle && (
-            <button
-              type="button"
-              className="table-selection-handle table-selection-column-handle"
-              aria-label="Move selected columns"
-              data-app-tooltip="Move selected columns"
-              style={{
-                top: `${tableSelectionOverlay.columnHandle.top}px`,
-                left: `${tableSelectionOverlay.columnHandle.left}px`,
-                width: `${tableSelectionOverlay.columnHandle.width}px`,
-                height: `${tableSelectionOverlay.columnHandle.height}px`,
-              }}
-              onPointerDown={stopPointerEvent}
-              onMouseDown={(event) => handleSelectorMouseDown(event, onMoveColumns)}
-              onClick={stopMouseEvent}
-            />
-          )}
-          {tableSelectionOverlay.rowHandle && (
-            <button
-              type="button"
-              className="table-selection-handle table-selection-row-handle"
-              aria-label="Move selected rows"
-              data-app-tooltip="Move selected rows"
-              style={{
-                top: `${tableSelectionOverlay.rowHandle.top}px`,
-                left: `${tableSelectionOverlay.rowHandle.left}px`,
-                width: `${tableSelectionOverlay.rowHandle.width}px`,
-                height: `${tableSelectionOverlay.rowHandle.height}px`,
-              }}
-              onPointerDown={stopPointerEvent}
-              onMouseDown={(event) => handleSelectorMouseDown(event, onMoveRows)}
-              onClick={stopMouseEvent}
             />
           )}
         </React.Fragment>
@@ -197,6 +157,6 @@ export function TableControlsOverlay({
           +
         </TableControlButton>
       </div>
-    </React.Fragment>
+    </div>
   )
 }

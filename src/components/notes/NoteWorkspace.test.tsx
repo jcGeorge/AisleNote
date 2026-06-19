@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { BLOCK_INDENT_TOKEN } from '../../markdown/markdown-utils'
@@ -15,15 +16,55 @@ import {
   getAisleEditorKeyFromNoteWorkspacePointerTarget,
   shouldExitArrangeModeFromNoteWorkspacePointer,
 } from './note-workspace-events'
-import type { ResolvedNoteAisle } from '../../types/app'
+import type { AppState, NoteLocation, ResolvedNoteAisle } from '../../types/app'
+import { buildInternalNoteLinkToken, buildPreviewToken } from '../../notes/note-references'
 
 const noteWorkspaceSource = readFileSync(fileURLToPath(new URL('./NoteWorkspace.tsx', import.meta.url)), 'utf8')
+const notebookAppSource = readFileSync(fileURLToPath(new URL('../../app/NotebookApp.tsx', import.meta.url)), 'utf8')
 
 const aisles: ResolvedNoteAisle[] = [
   { id: 'a', aisleBodyId: 'a', markdown: 'active' },
   { id: 'b', aisleBodyId: 'b', markdown: 'fallback **preview**' },
   { id: 'c', aisleBodyId: 'c', markdown: 'far' },
 ]
+
+function createPreviewState(): AppState {
+  return {
+    theme: 'dark',
+    notebook: {
+      activeNoteId: 'note-parent',
+      items: [
+        { type: 'note', id: 'note-parent', title: 'Parent', noteBodyId: 'body-1' },
+        { type: 'note', id: 'note-child', title: 'Child note', noteBodyId: 'body-child' },
+      ],
+      deletedItems: [],
+      settings: { autoRemoveDeletedDays: 30 },
+    },
+    noteBodies: [
+      { id: 'body-1', aisles: [{ id: 'preview', aisleBodyId: 'preview' }] },
+      { id: 'body-child', aisles: [{ id: 'child-aisle', aisleBodyId: 'child-aisle-body' }] },
+    ],
+    noteAisleBodies: [
+      { id: 'preview', markdown: '' },
+      { id: 'child-aisle-body', markdown: '**child** preview content' },
+    ],
+    hotkeys: { shortcuts: {} as AppState['hotkeys']['shortcuts'], newlineShortcuts: { shortcuts: {} as never, menuOperations: [] } },
+    frontmatter: { templates: [], settingsTemplateId: '', lastAppliedTemplateId: '' },
+    ui: {
+      sidebarCollapsed: false,
+      sidebarWidth: 280,
+      collapsedFolderIds: [],
+      tableAddTargetMode: 'active-cell',
+      tableDeleteTargetMode: 'active-cell',
+      noteFontScale: 1,
+      settingsSection: 'data',
+      noteCursorLocations: {},
+      headingCollapseState: {},
+      seenTipIds: [],
+      disabledTipIds: [],
+    },
+  }
+}
 
 function renderWorkspace(
   mountedAisleIds: Set<string>,
@@ -37,6 +78,8 @@ function renderWorkspace(
     arrangeModeActive?: boolean
     suppressActiveAislePreviewFallback?: boolean
     deferInactivePreviewFallbacks?: boolean
+    appState?: AppState | null
+    onOpenNoteReference?: (target: NoteLocation) => void
     scratchpadAisleControls?: {
       showAddButtons?: boolean
       showDeleteButton?: boolean
@@ -80,6 +123,8 @@ function renderWorkspace(
       onActivateAisle={() => undefined}
       onRegisterAislePaneRoot={() => undefined}
       onRegisterAisleEditorRoot={() => undefined}
+      appState={options.appState}
+      onOpenNoteReference={options.onOpenNoteReference}
     />,
   )
 }
@@ -92,6 +137,19 @@ const scratchpadAisleControls = (showDeleteButton: boolean) => ({
 })
 
 describe('NoteWorkspace aisle mounting', () => {
+  it('wires editable image and video selection through the notebook workspace', () => {
+    expect(noteWorkspaceSource).toContain('onSelectEditableAsset')
+    expect(noteWorkspaceSource).toContain('onPointerDownCapture')
+    expect(noteWorkspaceSource).toContain('onSelectEditableAsset(event.target)')
+    expect(notebookAppSource).toContain('const imageToolsController = useImageTools')
+    expect(notebookAppSource).toContain('const mediaToolsController = useMediaTools')
+    expect(notebookAppSource).toContain('<ImageToolsOverlay')
+    expect(notebookAppSource).toContain('<MediaToolsOverlay')
+    expect(notebookAppSource).toContain('imageToolsOverlay={imageToolsOverlay}')
+    expect(notebookAppSource).toContain('onSelectEditableAsset={selectEditableAssetFromWorkspace}')
+    expect(notebookAppSource).not.toContain('imageToolsOverlay={null}')
+  })
+
   it('keeps inactive preview hydration stable across active aisle changes', () => {
     expect(noteWorkspaceSource).toContain('activeAisleIdForHydrationDiagnosticsRef')
     expect(noteWorkspaceSource).toContain('[aisles.length, deferInactivePreviewFallbacks, inactivePreviewHydrationKey, noteBodyId]')
@@ -124,7 +182,7 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('<p class="tabs-rendered-markdown-paragraph">far</p>')
   })
 
-  it('uses lightweight inactive previews for heavy table-link markdown', () => {
+  it('renders deferred inactive link-heavy previews as markdown outside arrange mode', () => {
     const heavyMarkdown = [
       '| [copy](https://lucide.dev/icons/files) | |',
       '| --- | --- |',
@@ -146,11 +204,10 @@ describe('NoteWorkspace aisle mounting', () => {
       ],
     })
 
-    expect(html).toContain('is-lightweight-preview')
-    expect(html).toContain('data-aisle-preview-mode="lightweight-preview"')
-    expect(html).toContain('tableOfContents')
-    expect(html).not.toContain('href="https://lucide.dev/icons/table-of-contents"')
-    expect(html).not.toContain('<table>')
+    expect(html).not.toContain('is-lightweight-preview')
+    expect(html).toContain('data-aisle-preview-mode="markdown-preview"')
+    expect(html).toContain('<table>')
+    expect(html).toContain('href="https://lucide.dev/icons/table-of-contents"')
     expect(html).toContain('src="data:image/png;base64,abc"')
     expect(html).toContain('data-aisle-host-mode="editor"')
   })
@@ -199,7 +256,7 @@ describe('NoteWorkspace aisle mounting', () => {
 
     expect(html).toContain('data-aisle-preview-mode="markdown-preview"')
     expect(html).toContain('<table>')
-    expect(html).toContain('<th><a href="https://lucide.dev/icons/files" class="tabs-rendered-markdown-link">copy</a></th>')
+    expect(html).toContain('<th><a href="https://lucide.dev/icons/files" class="tabs-rendered-markdown-link" target="_blank" rel="noopener noreferrer">copy</a></th>')
     expect(html).toContain('href="https://lucide.dev/icons/table-of-contents"')
     expect(html).not.toContain('is-lightweight-preview')
   })
@@ -252,7 +309,7 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).not.toContain('<table>')
   })
 
-  it('uses lightweight previews only until deferred inactive link-heavy previews hydrate', () => {
+  it('renders deferred inactive link-heavy previews as markdown regardless of hydration state', () => {
     const profile = getMarkdownWorkloadProfile([
       '[one](https://example.com/one)',
       '[two](https://example.com/two)',
@@ -269,7 +326,7 @@ describe('NoteWorkspace aisle mounting', () => {
       editorMountPending: false,
       inactivePreviewsHydrated: false,
       profile,
-    })).toBe('lightweight-preview')
+    })).toBe('markdown-preview')
     expect(getAislePreviewRenderMode({
       active: false,
       arrangeModeActive: false,
@@ -279,6 +336,48 @@ describe('NoteWorkspace aisle mounting', () => {
       inactivePreviewsHydrated: true,
       profile,
     })).toBe('markdown-preview')
+  })
+
+  it('marks rendered internal note links so preview clicks can open notebook notes', () => {
+    const appState = createPreviewState()
+    const noteLink = buildInternalNoteLinkToken(appState, { noteId: 'note-child' })
+    const html = renderWorkspace(new Set(['active']), {
+      activeAisleId: 'active',
+      appState,
+      onOpenNoteReference: () => undefined,
+      aisles: [
+        { id: 'links', aisleBodyId: 'links', markdown: `${noteLink}\n\n[Site](https://example.com)` },
+        { id: 'active', aisleBodyId: 'active', markdown: 'active' },
+      ],
+    })
+
+    expect(html.match(/data-note-reference="true"/g) ?? []).toHaveLength(1)
+    expect(html).toContain('class="tabs-rendered-markdown-link"')
+    expect(html).toContain('Child note')
+    expect(html).toContain('href="https://example.com"')
+  })
+
+  it('renders escaped persisted markdown links as links in aisle previews', () => {
+    const html = renderWorkspace(new Set(['active']), {
+      activeAisleId: 'active',
+      aisles: [
+        {
+          id: 'links',
+          aisleBodyId: 'links',
+          markdown: [
+            'Alright',
+            '',
+            String.raw`\[strike\]\(https://lucide\.dev/icons/strikethrough\)`,
+            String.raw`\[taskList\]\(https://lucide\.dev/icons/square\-check\-big\)`,
+          ].join('\n'),
+        },
+        { id: 'active', aisleBodyId: 'active', markdown: 'active' },
+      ],
+    })
+
+    expect(html).toContain('href="https://lucide.dev/icons/strikethrough"')
+    expect(html).toContain('href="https://lucide.dev/icons/square-check-big"')
+    expect(html).not.toContain('\\[strike\\]')
   })
 
   it('classifies link-heavy markdown previews as expensive without flagging image-only previews', () => {
@@ -423,7 +522,7 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html.match(/data-media-kind="audio"/g) ?? []).toHaveLength(2)
     expect(html.match(/data-media-kind="video"/g) ?? []).toHaveLength(2)
     expect(html).toContain('aria-label="Song player"')
-    expect(html).toContain('<a href="https://example.com" class="tabs-rendered-markdown-link">Site</a>')
+    expect(html).toContain('<a href="https://example.com" class="tabs-rendered-markdown-link" target="_blank" rel="noopener noreferrer">Site</a>')
   })
 
   it('renders fallback aisles that start with a heading', () => {
@@ -483,9 +582,11 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).not.toContain(BLOCK_INDENT_TOKEN)
   })
 
-  it('renders explicit note preview tokens as compact placeholders in workspace previews', () => {
+  it('renders explicit note preview tokens as rich readonly previews in workspace previews', () => {
+    const appState = createPreviewState()
+    const token = buildPreviewToken(appState, { id: 'preview:child', target: { noteId: 'note-child' } })
     const notePreviewAisles: ResolvedNoteAisle[] = [
-      { id: 'preview', aisleBodyId: 'preview', markdown: '![Child note](<Child note--123abc>)\n\nregular text' },
+      { id: 'preview', aisleBodyId: 'preview', markdown: `${token}\n\nregular text` },
     ]
     const html = renderToStaticMarkup(
       <NoteWorkspace
@@ -500,6 +601,7 @@ describe('NoteWorkspace aisle mounting', () => {
         tableControlsOverlay={null}
         mountedAisleIds={new Set()}
         getPreviewMarkdownForAisle={(aisle) => aisle.markdown}
+        appState={appState}
         onRootChange={() => undefined}
         onAisleScroll={() => undefined}
         onActivateAisle={() => undefined}
@@ -508,11 +610,11 @@ describe('NoteWorkspace aisle mounting', () => {
       />,
     )
 
-    expect(html).toContain('aisle-edit-context-preview')
-    expect(html).toContain('note preview')
     expect(html).toContain('Child note')
+    expect(html).toContain('child')
+    expect(html).toContain('preview content')
     expect(html).toContain('regular text')
-    expect(html).not.toContain('![Child note](&lt;Child note--123abc&gt;)')
+    expect(html).not.toContain(token)
   })
 
   it('does not render the retired floating link prompt overlay', () => {

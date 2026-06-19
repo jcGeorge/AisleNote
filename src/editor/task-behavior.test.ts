@@ -1,5 +1,6 @@
 import { Schema } from 'prosemirror-model'
 import { EditorState } from 'prosemirror-state'
+import { history, undo } from 'prosemirror-history'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   EMPTY_LIST_ITEM_PLACEHOLDER,
@@ -11,6 +12,7 @@ import {
   TASK_REORDER_SELECTION_SUPPRESSION_CLASS,
   captureListItemBranchInEditor,
   createTaskReorderSelectionSuppressionController,
+  deleteTaskListItem,
   getListReorderPointerDecision,
   getTaskReorderMarkerPlacement,
   mergeInlineRectsIntoLineRects,
@@ -23,6 +25,7 @@ import {
   shouldScheduleUncheckedTaskCheckboxCommit,
   shouldSuppressListReorderSelectStart,
   shouldUseManualListCaretPlacement,
+  uncheckCompletedTaskListItem,
 } from './task-behavior'
 
 const listTestSchema = new Schema({
@@ -45,6 +48,10 @@ const listTestSchema = new Schema({
       toDOM: () => ['ol', 0],
     },
     listItem: {
+      attrs: {
+        task: { default: null },
+        checked: { default: null },
+      },
       content: 'paragraph block*',
       toDOM: () => ['li', 0],
     },
@@ -59,6 +66,14 @@ function paragraph(text: string) {
 
 function listItem(text: string, children: any[] = []) {
   return listTestSchema.nodes.listItem.create(null, [paragraph(text), ...children])
+}
+
+function taskListItem(text: string, checked = true) {
+  return listTestSchema.nodes.listItem.create({ task: true, checked }, paragraph(text))
+}
+
+function taskList(items: any[]) {
+  return listTestSchema.nodes.bulletList.create(null, items)
 }
 
 function getTopLevelListTexts(doc: any): string[] {
@@ -84,6 +99,19 @@ function createListMoveView(doc: any, positions: Map<HTMLElement, number>) {
       const position = positions.get(element)
       if (position === undefined) throw new Error('missing DOM position')
       return position
+    },
+    dispatch: vi.fn((transaction) => {
+      state = state.apply(transaction)
+    }),
+  }
+  return view
+}
+
+function createHistoryView(doc: any) {
+  let state = EditorState.create({ doc, plugins: [history()] })
+  const view: any = {
+    get state() {
+      return state
     },
     dispatch: vi.fn((transaction) => {
       state = state.apply(transaction)
@@ -338,6 +366,30 @@ describe('list reorder pointer handling', () => {
     expect(shouldScheduleUncheckedTaskCheckboxCommit({ node: { attrs: { task: true, checked: true } } })).toBe(false)
     expect(shouldScheduleUncheckedTaskCheckboxCommit({ node: { attrs: { task: false, checked: false } } })).toBe(false)
     expect(shouldScheduleUncheckedTaskCheckboxCommit(null)).toBe(false)
+  })
+
+  it('deletes a completed task with a history-tracked transaction that undo restores as checked', () => {
+    const completed = taskListItem('done', true)
+    const doc = listTestSchema.nodes.doc.create(null, [taskList([completed, taskListItem('keep', false)])])
+    const view = createHistoryView(doc)
+
+    deleteTaskListItem(view, { node: completed, offset: 1 })
+
+    expect(getListTexts(view.state.doc.child(0))).toEqual(['keep'])
+    expect(undo(view.state, view.dispatch, view)).toBe(true)
+    expect(getListTexts(view.state.doc.child(0))).toEqual(['done', 'keep'])
+    expect(view.state.doc.child(0).child(0).attrs).toMatchObject({ task: true, checked: true })
+  })
+
+  it('unchecks a held completed task without deleting the list row', () => {
+    const completed = taskListItem('done', true)
+    const doc = listTestSchema.nodes.doc.create(null, [taskList([completed])])
+    const view = createHistoryView(doc)
+
+    uncheckCompletedTaskListItem(view, { node: completed, offset: 1 })
+
+    expect(getListTexts(view.state.doc.child(0))).toEqual(['done'])
+    expect(view.state.doc.child(0).child(0).attrs).toMatchObject({ task: true, checked: false })
   })
 
   it('merges inline mark fragments into one visual line before trailing-space checks', () => {

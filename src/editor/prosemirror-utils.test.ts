@@ -234,7 +234,10 @@ describe('ProseMirror meaningful content detection', () => {
 })
 
 describe('note mention query detection', () => {
-  function viewForText(text: string) {
+  function viewForText(text: string, options: { codeBlock?: boolean; codeMark?: boolean } = {}) {
+    const codeMark = options.codeMark
+      ? [{ type: { name: 'code', spec: { code: true } } }]
+      : []
     return {
       state: {
         selection: {
@@ -244,8 +247,11 @@ describe('note mention query detection', () => {
             parentOffset: text.length,
             parent: {
               isTextblock: true,
+              type: options.codeBlock ? { name: 'codeBlock', spec: { code: true } } : { name: 'paragraph', spec: {} },
               textBetween: () => text,
+              childBefore: () => ({ node: { marks: codeMark } }),
             },
+            marks: () => codeMark,
           },
         },
       },
@@ -271,6 +277,11 @@ describe('note mention query detection', () => {
   it('does not detect a mention query when the first character after @ is a space', () => {
     expect(getNoteMentionQueryAtSelection(viewForText('see @ '))).toBeNull()
     expect(getNoteMentionQueryAtSelection(viewForText('see @ parent'))).toBeNull()
+  })
+
+  it('does not detect mention queries in code contexts', () => {
+    expect(getNoteMentionQueryAtSelection(viewForText('see @parent', { codeBlock: true }))).toBeNull()
+    expect(getNoteMentionQueryAtSelection(viewForText('see @parent', { codeMark: true }))).toBeNull()
   })
 })
 

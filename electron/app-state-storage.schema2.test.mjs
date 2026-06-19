@@ -190,10 +190,19 @@ describe('schema 2 app-state storage', () => {
     saveAppState(root, JSON.stringify(appState()))
     const asset = writeAssetToProfile(root, Buffer.from('asset'), 'png')
     const reveal = resolveNoteLocationRevealPath(root, { type: 'live-note', location: { noteId: 'note-root' } })
+    const aisleReveal = resolveNoteLocationRevealPath(root, {
+      type: 'live-note',
+      location: { noteId: 'note-multi' },
+      aisleId: 'aisle-multi-b',
+    })
 
     expect(asset.url).toContain('tabs-asset:///assets/asset-')
     expect(existsSync(path.join(root, asset.assetPath))).toBe(true)
     expect(reveal).toMatchObject({ ok: true, rootRelativePath: 'Inbox--note-root.md' })
+    expect(aisleReveal).toMatchObject({
+      ok: true,
+      rootRelativePath: 'Projects--folder-projects/Aisle note--note-multi/aisle 2--aisle-multi-b.md',
+    })
   })
 
   it('resolves notebook note and folder items for sidebar reveal actions', () => {

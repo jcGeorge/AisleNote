@@ -11,7 +11,7 @@ import {
 describe('synced UI settings registry', () => {
   it('exposes defaults for simple synced UI settings', () => {
     expect(DEFAULT_SIMPLE_SYNCED_UI_SETTINGS).toMatchObject({
-      lastLinkInsertMode: 'note',
+      lastLinkInsertMode: 'note-link',
       lastNoteCopyMode: 'independent',
       findCaseSensitive: false,
       findWholeWord: false,
@@ -39,8 +39,8 @@ describe('synced UI settings registry', () => {
       findRegex: true,
       findReplaceMode: 'replace',
       findReplaceScope: 'folder',
-      lastLinkInsertMode: 'url',
-      lastNoteCopyMode: 'linked',
+      lastLinkInsertMode: 'note-preview',
+      lastNoteCopyMode: 'synced',
       tableAddTargetMode: 'active-cell',
       tableDeleteTargetMode: 'not-real',
       tableOfContentsScope: 'focused-aisle',
@@ -55,8 +55,8 @@ describe('synced UI settings registry', () => {
       findRegex: true,
       findReplaceMode: 'replace',
       findReplaceScope: 'folder',
-      lastLinkInsertMode: 'url',
-      lastNoteCopyMode: 'linked',
+      lastLinkInsertMode: 'note-preview',
+      lastNoteCopyMode: 'synced',
       tableAddTargetMode: 'active-cell',
       tableDeleteTargetMode: 'bottom-right',
       tableOfContentsScope: 'focused-aisle',
@@ -71,6 +71,8 @@ describe('synced UI settings registry', () => {
     expect(normalizeRegisteredSyncedUiSetting('findReplaceMode', 'bad')).toBe('find')
     expect(normalizeRegisteredSyncedUiSetting('findReplaceScope', 'bad')).toBe('note')
     expect(normalizeRegisteredSyncedUiSetting('findReplaceScope', 'notebook')).toBe('notebook')
+    expect(normalizeRegisteredSyncedUiSetting('lastLinkInsertMode', 'note')).toBe('note-link')
+    expect(normalizeRegisteredSyncedUiSetting('lastNoteCopyMode', 'linked')).toBe('synced')
     expect(normalizeRegisteredSyncedUiSetting('tabRenameEnterBehavior', 'bad')).toBe('goes-to-note')
     expect(normalizeRegisteredSyncedUiSetting('trashDeleteForRealRequiresConfirmation', 'bad')).toBe(true)
   })

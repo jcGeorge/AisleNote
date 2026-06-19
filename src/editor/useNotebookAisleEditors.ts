@@ -20,6 +20,7 @@ import {
 } from './editor-setup'
 import { terminalBlockLandingPlugin } from './terminal-block-landing'
 import { createMediaLinkPlugin } from './media-link-plugin'
+import { createNotePreviewPlugin } from './note-preview-plugin'
 import { sanitizeEditorHtml } from './editor-sanitizer'
 import {
   getEditorMarkdownForPersistence,
@@ -30,7 +31,13 @@ import {
 import { importBlobAsAssetUrl, importImageBlobAsAssetUrl } from '../markdown/image-asset-registry'
 import { withDefaultInsertedImageDisplayWidth } from './image-insertion'
 import { buildAisleEditorKey, getAisleIdFromAisleEditorKey } from './aisle-editor'
-import { getWysiwygView } from './prosemirror-utils'
+import {
+  getElementFromEventTarget,
+  getNoteMentionQueryAtSelection,
+  getWysiwygView,
+  createLinkMark,
+  type NoteMentionQuery,
+} from './prosemirror-utils'
 import {
   finishEditorOperation,
   insertEditorTextOperation,
@@ -44,8 +51,18 @@ import {
 } from './clipboard-paste-markdown'
 import { buildMediaMarkdownLink, insertAssetLinksIntoWysiwygView } from './media-file-insertion'
 import { insertVisualClipboardMarkdownIntoView, insertVisualClipboardTextIntoView } from './visual-clipboard'
+import {
+  insertTableSelectionClipboardPayloadIntoView,
+  readTableSelectionClipboardPayloadFromClipboard,
+} from './table-selection-clipboard'
+import {
+  readNotebookStructureClipboardPayloadFromDataTransfer,
+  type NotebookStructureClipboardPayload,
+} from '../notes/notebook-structure-clipboard'
 import { applyEditorNewlineOperation } from './newline-operations'
 import { applyListToolbarCommand, type ToolbarListCommand } from './list-marker-commands'
+import { getNewlineShortcutIdForEvent, normalizeHotkeySettings } from '../hotkeys/shortcuts'
+import { openExternalWebUrl } from '../notes/external-links'
 import {
   buildSelectionBlockIndentOperationPlan,
   buildSelectionRemoveBlockIndentOperationPlan,
@@ -55,9 +72,11 @@ import {
   getHeadingOutlineFromMarkdown,
   type HeadingOutlineItem,
 } from './heading-outline'
+import { getUrlLinkPromptDraftFromSelection } from './url-link-prompt'
 import { recordDiagnosticEvent } from '../diagnostics/diagnostic-logger'
+import { installCompletedTaskCheckboxBehavior } from './task-behavior'
 import type { NotebookEditorMarkdownSnapshot } from '../app/notebook-editor-persistence'
-import type { ResolvedNoteAisle, ToastTone, ViewMode } from '../types/app'
+import type { AppState, LinkPromptState, NewlineOperationId, NoteLocation, ResolvedNoteAisle, ToastTone, ViewMode } from '../types/app'
 
 export type NotebookEditorClipboardAction = 'cut' | 'copy' | 'paste' | 'pastePlainText'
 export type NotebookEditorClipboardPasteAction = Extract<NotebookEditorClipboardAction, 'paste' | 'pastePlainText'>
@@ -84,6 +103,15 @@ type UseNotebookAisleEditorsOptions = {
   editorRef: MutableRefObject<Editor | null>
   commitAisleMarkdown: (aisleBodyId: string, markdown: string) => void
   scheduleToolbarFormatStateSync: () => void
+  onNoteMentionQueryChange?: (query: NoteMentionQuery | null, anchor: { top: number; left: number } | null) => void
+  getAppState?: () => AppState
+  onOpenNoteReference?: (target: NoteLocation) => void
+  onNotebookStructurePaste?: (payload: NotebookStructureClipboardPayload, aisleId: string) => boolean
+  hotkeys: AppState['hotkeys']
+  isMacPlatform: boolean
+  onOpenShortcutMenu?: (request: { aisleId: string; anchor: { top: number; left: number } }) => void
+  onOpenUrlLinkPrompt?: (prompt: LinkPromptState) => void
+  onInsertAisleFromNewline?: (side: 'left' | 'right', aisleId: string, markdown: string) => void
   pushToast?: (message: string, tone?: ToastTone, durationMs?: number) => void
 }
 
@@ -148,6 +176,56 @@ function scrollToHeading(editor: Editor, heading: HeadingOutlineItem): boolean {
   }
 }
 
+function getShortcutMenuAnchor(editor: Editor, root: HTMLElement): { top: number; left: number } {
+  const view = getWysiwygView(editor)
+  const position = view?.state?.selection?.to
+  if (typeof position === 'number' && typeof view?.coordsAtPos === 'function') {
+    try {
+      const rect = view.coordsAtPos(position)
+      return {
+        top: rect.bottom + 6,
+        left: rect.left,
+      }
+    } catch {
+      // Fall through to the editor root anchor.
+    }
+  }
+
+  const rootRect = root.getBoundingClientRect()
+  return {
+    top: rootRect.top + 48,
+    left: rootRect.left + 24,
+  }
+}
+
+function getEditorSelectionAnchor(editor: Editor, root: HTMLElement): { top: number; left: number } {
+  const view = getWysiwygView(editor)
+  const position = view?.state?.selection?.to
+  if (typeof position === 'number' && typeof view?.coordsAtPos === 'function') {
+    try {
+      const rect = view.coordsAtPos(position)
+      return {
+        top: rect.bottom + 6,
+        left: rect.left,
+      }
+    } catch {
+      // Fall through to the editor root anchor.
+    }
+  }
+
+  const rootRect = root.getBoundingClientRect()
+  return {
+    top: rootRect.top + 48,
+    left: rootRect.left + 24,
+  }
+}
+
+function isUrlLinkShortcutEvent(event: KeyboardEvent, isMac: boolean): boolean {
+  if (event.key.toLowerCase() !== 'k') return false
+  if (event.shiftKey || event.altKey) return false
+  return isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+}
+
 export function useNotebookAisleEditors({
   viewMode,
   noteId,
@@ -159,6 +237,15 @@ export function useNotebookAisleEditors({
   editorRef,
   commitAisleMarkdown,
   scheduleToolbarFormatStateSync,
+  onNoteMentionQueryChange,
+  getAppState,
+  onOpenNoteReference,
+  onNotebookStructurePaste,
+  hotkeys,
+  isMacPlatform,
+  onOpenShortcutMenu,
+  onOpenUrlLinkPrompt,
+  onInsertAisleFromNewline,
   pushToast = () => undefined,
 }: UseNotebookAisleEditorsOptions) {
   const editorRootsRef = useRef<Map<string, HTMLElement>>(new Map())
@@ -172,9 +259,22 @@ export function useNotebookAisleEditors({
   const activeAisleIdRef = useRef(activeAisleId)
   const noteBodyIdRef = useRef(noteBodyId)
   const aislesRef = useRef(aisles)
+  const hotkeysRef = useRef(hotkeys)
+  const isMacPlatformRef = useRef(isMacPlatform)
+  const onOpenShortcutMenuRef = useRef(onOpenShortcutMenu)
+  const onOpenUrlLinkPromptRef = useRef(onOpenUrlLinkPrompt)
+  const onInsertAisleFromNewlineRef = useRef(onInsertAisleFromNewline)
+  const runNewlineOperationForEditorRef = useRef<
+    ((editor: Editor, aisleId: string, operation: NewlineOperationId) => boolean) | null
+  >(null)
   activeAisleIdRef.current = activeAisleId
   noteBodyIdRef.current = noteBodyId
   aislesRef.current = aisles
+  hotkeysRef.current = hotkeys
+  isMacPlatformRef.current = isMacPlatform
+  onOpenShortcutMenuRef.current = onOpenShortcutMenu
+  onOpenUrlLinkPromptRef.current = onOpenUrlLinkPrompt
+  onInsertAisleFromNewlineRef.current = onInsertAisleFromNewline
 
   const aisleIds = useMemo(() => aisles.map((aisle) => aisle.id), [aisles])
   const aisleIdsKey = aisleIds.join('\n')
@@ -251,6 +351,28 @@ export function useNotebookAisleEditors({
       return meta ? commitEditorMarkdown(meta, editor) : getEditorMarkdownForPersistence(editor)
     },
     [commitEditorMarkdown],
+  )
+
+  const notifyNoteMentionQueryChange = useCallback(
+    (editor: Editor | null) => {
+      if (!onNoteMentionQueryChange || !editor) return
+      const view = getWysiwygView(editor)
+      const query = getNoteMentionQueryAtSelection(view)
+      let anchor: { top: number; left: number } | null = null
+      if (query && typeof view?.coordsAtPos === 'function') {
+        try {
+          const rect = view.coordsAtPos(query.to)
+          anchor = {
+            top: rect.bottom,
+            left: rect.left,
+          }
+        } catch {
+          anchor = null
+        }
+      }
+      onNoteMentionQueryChange(query, anchor)
+    },
+    [onNoteMentionQueryChange],
   )
 
   const getMountedEditorMarkdownSnapshots = useCallback((): NotebookEditorMarkdownSnapshot[] => {
@@ -426,6 +548,11 @@ export function useNotebookAisleEditors({
         codeBlockBacktickShortcutPlugin,
         terminalBlockLandingPlugin,
         createMediaLinkPlugin,
+        createNotePreviewPlugin({
+          getAppState,
+          getCurrentNoteBodyId: () => noteBodyIdRef.current,
+          onOpenNote: onOpenNoteReference,
+        }),
         createCodeBlockControlsPlugin({ pushToast }),
         uncheckedTaskEnterPlugin,
         headingSpaceShortcutPlugin,
@@ -433,6 +560,9 @@ export function useNotebookAisleEditors({
       ]
 
       const handleFocus = () => setActiveEditor(aisle.id)
+      const handleMentionProbe = () => {
+        if (editor) notifyNoteMentionQueryChange(editor)
+      }
       const handlePointerDown = () => {
         setRecentRetainedAisleIds((current) => [
           activeAisleIdRef.current,
@@ -440,12 +570,78 @@ export function useNotebookAisleEditors({
         ].filter(Boolean).slice(0, TOAST_AISLE_EDITOR_RECENT_RETAIN_LIMIT))
         setActiveEditor(aisle.id)
       }
+      const handlePaste = (event: ClipboardEvent) => {
+        const payload = readNotebookStructureClipboardPayloadFromDataTransfer(event.clipboardData)
+        if (!payload || !onNotebookStructurePaste?.(payload, aisle.id)) return
+        event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation()
+      }
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return
+        if (!getElementFromEventTarget(event.target)?.closest('.ProseMirror[contenteditable="true"]')) return
+
+        if (isUrlLinkShortcutEvent(event, isMacPlatformRef.current)) {
+          event.preventDefault()
+          event.stopPropagation()
+          event.stopImmediatePropagation()
+          setActiveEditor(aisle.id)
+          if (editor) {
+            const prompt = getUrlLinkPromptState()
+            if (prompt) onOpenUrlLinkPromptRef.current?.(prompt)
+          }
+          return
+        }
+
+        if (event.key !== 'Enter') return
+        const shortcutId = getNewlineShortcutIdForEvent(event, isMacPlatformRef.current)
+        if (!shortcutId) return
+
+        const operation = normalizeHotkeySettings(hotkeysRef.current).newlineShortcuts.shortcuts[shortcutId]
+        event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation()
+        setActiveEditor(aisle.id)
+
+        if (operation === 'operationsMenu') {
+          if (editor) {
+            onOpenShortcutMenuRef.current?.({
+              aisleId: aisle.id,
+              anchor: getShortcutMenuAnchor(editor, root),
+            })
+          }
+          return
+        }
+
+        if (editor) runNewlineOperationForEditorRef.current?.(editor, aisle.id, operation)
+      }
+      const handleLinkClick = (event: MouseEvent) => {
+        if (event.defaultPrevented || event.button !== 0) return
+        const target = getElementFromEventTarget(event.target)
+        const anchor = target?.closest<HTMLAnchorElement>('a[href]')
+        if (!anchor || !root.contains(anchor) || !anchor.closest('.ProseMirror[contenteditable="true"]')) return
+        const href = anchor.getAttribute('href')?.trim() ?? ''
+        if (!href || !openExternalWebUrl(href)) return
+        event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation()
+      }
       root.addEventListener('focusin', handleFocus)
       root.addEventListener('pointerdown', handlePointerDown, true)
+      root.addEventListener('paste', handlePaste, true)
+      root.addEventListener('keydown', handleKeyDown, true)
+      root.addEventListener('click', handleLinkClick, true)
+      root.addEventListener('keyup', handleMentionProbe)
+      root.addEventListener('mouseup', handleMentionProbe)
 
       const cleanupFns: Array<() => void> = [
         () => root.removeEventListener('focusin', handleFocus),
         () => root.removeEventListener('pointerdown', handlePointerDown, true),
+        () => root.removeEventListener('paste', handlePaste, true),
+        () => root.removeEventListener('keydown', handleKeyDown, true),
+        () => root.removeEventListener('click', handleLinkClick, true),
+        () => root.removeEventListener('keyup', handleMentionProbe),
+        () => root.removeEventListener('mouseup', handleMentionProbe),
       ]
 
       try {
@@ -484,6 +680,7 @@ export function useNotebookAisleEditors({
               if (!meta || !editor) return
               commitEditorMarkdown(meta, editor)
               scheduleToolbarFormatStateSync()
+              notifyNoteMentionQueryChange(editor)
             },
             focus: handleFocus,
           },
@@ -493,6 +690,7 @@ export function useNotebookAisleEditors({
         cleanupFns.push(installEditorSpellcheck(root))
         cleanupFns.push(installToolbarAppTooltips(root))
         cleanupFns.push(installHeadingPopupActiveState(root, () => mountedEditor))
+        cleanupFns.push(installCompletedTaskCheckboxBehavior(root, () => mountedEditor, undefined, commitActiveEditorMarkdownNow))
 
         const meta: NotebookAisleEditorMeta = {
           editor: mountedEditor,
@@ -532,7 +730,17 @@ export function useNotebookAisleEditors({
         pushToast('Editor failed to mount for this aisle.', 'error')
       }
     })
-  }, [aisles, commitEditorMarkdown, destroyEditor, mountedAisleIds, noteBodyId, setActiveEditor, viewMode])
+  }, [
+    aisles,
+    commitActiveEditorMarkdownNow,
+    commitEditorMarkdown,
+    destroyEditor,
+    mountedAisleIds,
+    noteBodyId,
+    onNotebookStructurePaste,
+    setActiveEditor,
+    viewMode,
+  ])
 
   const registerAislePaneRoot = useCallback((aisleId: string, node: HTMLElement | null) => {
     if (!node) {
@@ -655,6 +863,45 @@ export function useNotebookAisleEditors({
     [editorOperationRuntime, editorRef, pushToast, replaceActiveEditorMarkdown, scheduleToolbarFormatStateSync],
   )
 
+  const runNewlineOperationForEditor = useCallback(
+    (editor: Editor, aisleId: string, operation: NewlineOperationId) => {
+      if (operation === 'operationsMenu') return false
+
+      if (operation === 'blockIndent') {
+        if (runSelectionBlockIndent(editor, false, editorOperationRuntime)) return true
+        pushToast('Nothing to indent.', 'warning')
+        return true
+      }
+
+      const result = applyEditorNewlineOperation(editor, operation)
+      if (!result.handled) return false
+
+      finishEditorOperation(editorOperationRuntime, editor, { syncToolbar: true })
+
+      if (operation === 'aisleLeft' || operation === 'aisleRight') {
+        onInsertAisleFromNewlineRef.current?.(
+          operation === 'aisleLeft' ? 'left' : 'right',
+          aisleId,
+          result.aisleMarkdown ?? '',
+        )
+      }
+
+      return true
+    },
+    [editorOperationRuntime, pushToast],
+  )
+  runNewlineOperationForEditorRef.current = runNewlineOperationForEditor
+
+  const runNewlineOperation = useCallback(
+    (operation: NewlineOperationId, aisleId = activeEditorAisleIdRef.current) => {
+      const meta = getEditorMetaForAisle(aisleId)
+      if (!meta) return false
+      setActiveEditor(aisleId)
+      return runNewlineOperationForEditor(meta.editor, aisleId, operation)
+    },
+    [getEditorMetaForAisle, runNewlineOperationForEditor, setActiveEditor],
+  )
+
   const readClipboardMarkdownForPaste = useCallback(
     async (action: NotebookEditorClipboardPasteAction): Promise<NotebookEditorClipboardReadResult | null> => {
       const result = await readClipboardMarkdown({
@@ -696,6 +943,31 @@ export function useNotebookAisleEditors({
     [commitActiveEditorMarkdownNow, editorOperationRuntime, editorRef, pushToast, scheduleToolbarFormatStateSync],
   )
 
+  const replaceActiveEditorRangeWithText = useCallback(
+    (from: number, to: number, text: string) => {
+      const editor = editorRef.current
+      if (!editor) {
+        pushToast('Open a note before inserting note content.', 'warning')
+        return false
+      }
+      const view = getWysiwygView(editor)
+      if (!view?.state?.tr || typeof view.dispatch !== 'function') return insertTextFromContextMenu(text)
+      try {
+        const docSize = view.state.doc?.content?.size ?? to
+        const safeFrom = Math.max(0, Math.min(docSize, Math.floor(from)))
+        const safeTo = Math.max(safeFrom, Math.min(docSize, Math.floor(to)))
+        view.dispatch(view.state.tr.insertText(text, safeFrom, safeTo).scrollIntoView())
+        editor.focus()
+        finishEditorOperation(editorOperationRuntime, editor, { commitMode: 'deferred', syncToolbar: true })
+        notifyNoteMentionQueryChange(editor)
+        return true
+      } catch {
+        return insertTextFromContextMenu(text)
+      }
+    },
+    [editorOperationRuntime, editorRef, insertTextFromContextMenu, notifyNoteMentionQueryChange, pushToast],
+  )
+
   const insertClipboardMarkdownResult = useCallback(
     (result: NotebookEditorClipboardReadResult) => {
       const editor = editorRef.current
@@ -735,14 +1007,33 @@ export function useNotebookAisleEditors({
         document.execCommand(action)
         return true
       }
-      void readClipboardMarkdownForPaste(action)
-        .then((result) => {
-          if (result) insertClipboardMarkdownResult(result)
+      void (async () => {
+        if (action === 'paste') {
+          const payload = await readTableSelectionClipboardPayloadFromClipboard()
+          const view = getWysiwygView(editor)
+          if (payload && insertTableSelectionClipboardPayloadIntoView(view, payload)) {
+            commitActiveEditorMarkdownNow(editor)
+            scheduleToolbarFormatStateSync()
+            return
+          }
+        }
+
+        const result = await readClipboardMarkdownForPaste(action)
+        if (result) insertClipboardMarkdownResult(result)
+      })()
+        .catch(() => {
+          pushToast('Clipboard paste is unavailable here.', 'warning')
         })
-        .catch(() => pushToast('Clipboard paste is unavailable here.', 'warning'))
       return true
     },
-    [editorRef, insertClipboardMarkdownResult, pushToast, readClipboardMarkdownForPaste],
+    [
+      commitActiveEditorMarkdownNow,
+      editorRef,
+      insertClipboardMarkdownResult,
+      pushToast,
+      readClipboardMarkdownForPaste,
+      scheduleToolbarFormatStateSync,
+    ],
   )
 
   const insertImageFile = useCallback(() => {
@@ -853,18 +1144,96 @@ export function useNotebookAisleEditors({
     scheduleToolbarFormatStateSync,
   ])
 
-  const insertPromptedLink = useCallback(() => {
+  const getUrlLinkPromptState = useCallback((): LinkPromptState | null => {
     const editor = editorRef.current
     if (!editor) {
       pushToast('Open a note before inserting a link.', 'warning')
-      return
+      return null
     }
-    const url = window.prompt('Link URL')
-    if (!url?.trim()) return
-    runEditorCommandOperation(editorOperationRuntime, 'addLink', { linkUrl: url.trim() }, {
+    const meta = Array.from(editorMetaRef.current.values()).find((candidate) => candidate.editor === editor)
+    const view = getWysiwygView(editor)
+    const selection = view?.state?.selection
+    const doc = view?.state?.doc
+    const from = typeof selection?.from === 'number' ? selection.from : 0
+    const to = typeof selection?.to === 'number' ? selection.to : from
+    const selectedText = doc && to > from ? String(doc.textBetween(from, to, '', '') ?? '') : ''
+    const promptDraft = getUrlLinkPromptDraftFromSelection(selectedText)
+    const anchor = meta ? getEditorSelectionAnchor(editor, meta.root) : { top: 96, left: 96 }
+    return {
+      open: true,
+      top: anchor.top,
+      left: anchor.left,
+      url: promptDraft.url,
+      text: promptDraft.text,
+      urlEditable: true,
+      editRange: { from, to, href: '' },
+    }
+  }, [editorRef, pushToast])
+
+  const openUrlLinkPrompt = useCallback(() => {
+    const prompt = getUrlLinkPromptState()
+    if (prompt) onOpenUrlLinkPromptRef.current?.(prompt)
+  }, [getUrlLinkPromptState])
+
+  const insertNamedUrlLink = useCallback((url: string, text: string, range?: LinkPromptState['editRange']) => {
+    const editor = editorRef.current
+    if (!editor) {
+      pushToast('Open a note before inserting a link.', 'warning')
+      return false
+    }
+    const linkUrl = url.trim()
+    if (!linkUrl) return false
+    const view = getWysiwygView(editor)
+    const linkType = view?.state?.schema?.marks?.link
+    if (!view?.state?.doc || !view?.state?.tr || typeof view.dispatch !== 'function' || !linkType) {
+      return runEditorCommandOperation(editorOperationRuntime, 'addLink', { linkUrl }, {
+        commitMode: 'deferred',
+        syncToolbar: true,
+      }).handled
+    }
+
+    try {
+      const docSize = view.state.doc.content?.size ?? 0
+      const selection = view.state.selection
+      const rawFrom = typeof range?.from === 'number' ? range.from : selection.from
+      const rawTo = typeof range?.to === 'number' ? range.to : selection.to
+      const from = Math.max(0, Math.min(docSize, Math.floor(Math.min(rawFrom, rawTo))))
+      const to = Math.max(from, Math.min(docSize, Math.floor(Math.max(rawFrom, rawTo))))
+      const currentText = to > from ? String(view.state.doc.textBetween(from, to, '', '') ?? '') : ''
+      const label = text.trim() || currentText || linkUrl
+      const linkMark = createLinkMark(linkType, linkUrl)
+      let transaction = view.state.tr
+      if (to > from && label === currentText) {
+        transaction = transaction.addMark(from, to, linkMark)
+      } else {
+        transaction = transaction.replaceWith(from, to, view.state.schema.text(label, [linkMark]))
+      }
+      const nextCursor = Math.max(0, Math.min(transaction.doc.content.size, from + label.length))
+      transaction = transaction.setSelection(TextSelection.create(transaction.doc, nextCursor, nextCursor)).scrollIntoView()
+      view.dispatch(transaction)
+      editor.focus()
+      finishEditorOperation(editorOperationRuntime, editor, { commitMode: 'deferred', syncToolbar: true })
+      return true
+    } catch {
+      return runEditorCommandOperation(editorOperationRuntime, 'addLink', { linkUrl }, {
+        commitMode: 'deferred',
+        syncToolbar: true,
+      }).handled
+    }
+  }, [editorOperationRuntime, editorRef, pushToast])
+
+  const insertUrlLink = useCallback((url: string) => {
+    const editor = editorRef.current
+    if (!editor) {
+      pushToast('Open a note before inserting a link.', 'warning')
+      return false
+    }
+    const linkUrl = url.trim()
+    if (!linkUrl) return false
+    return runEditorCommandOperation(editorOperationRuntime, 'addLink', { linkUrl }, {
       commitMode: 'deferred',
       syncToolbar: true,
-    })
+    }).handled
   }, [editorOperationRuntime, editorRef, pushToast])
 
   const getPreviewMarkdownForAisle = useCallback((aisle: ResolvedNoteAisle) => {
@@ -894,11 +1263,16 @@ export function useNotebookAisleEditors({
     registerAisleEditorRoot,
     activateAisleEditor,
     runCommand,
+    runNewlineOperation,
     runClipboardAction,
     readClipboardMarkdownForPaste,
     insertImageFile,
     insertAttachmentFile,
-    insertPromptedLink,
+    openUrlLinkPrompt,
+    insertNamedUrlLink,
+    insertUrlLink,
+    insertTextAtSelection: insertTextFromContextMenu,
+    replaceActiveEditorRangeWithText,
     commitActiveEditorMarkdownNow,
     commitMountedEditorMarkdownNow,
     getMountedEditorMarkdownSnapshots,

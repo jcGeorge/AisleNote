@@ -1,3 +1,4 @@
+import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -13,6 +14,8 @@ import {
   MarkdownPreviewListItem,
   MarkdownPreviewParagraph,
 } from './markdown-preview-components'
+import type { AppState } from '../../types/app'
+import { buildInternalNoteLinkToken } from '../../notes/note-references'
 
 const previewComponents = {
   a: MarkdownPreviewLink,
@@ -39,6 +42,59 @@ function renderPreview(markdown: string) {
 }
 
 describe('markdown preview tag appearance', () => {
+  it('marks encoded bracket-wrapped internal note hrefs as notebook links', () => {
+    const state: AppState = {
+      theme: 'dark',
+      notebook: {
+        activeNoteId: 'note-source',
+        items: [
+          { type: 'note', id: 'note-source', title: 'Source', noteBodyId: 'body-source' },
+          { type: 'note', id: 'note-target-c761e6', title: '2 aisle', noteBodyId: 'body-target' },
+        ],
+        deletedItems: [],
+        settings: { autoRemoveDeletedDays: 30 },
+      },
+      noteBodies: [
+        { id: 'body-source', aisles: [{ id: 'aisle-source', aisleBodyId: 'aisle-body-source' }] },
+        { id: 'body-target', aisles: [{ id: 'aisle-target', aisleBodyId: 'aisle-body-target' }] },
+      ],
+      noteAisleBodies: [
+        { id: 'aisle-body-source', markdown: '' },
+        { id: 'aisle-body-target', markdown: '' },
+      ],
+      hotkeys: { shortcuts: {} as AppState['hotkeys']['shortcuts'], newlineShortcuts: { shortcuts: {} as never, menuOperations: [] } },
+      frontmatter: { templates: [], settingsTemplateId: '', lastAppliedTemplateId: '' },
+      ui: {
+        sidebarCollapsed: false,
+        sidebarWidth: 280,
+        collapsedFolderIds: [],
+        tableAddTargetMode: 'active-cell',
+        tableDeleteTargetMode: 'active-cell',
+        noteFontScale: 1,
+        settingsSection: 'data',
+        noteCursorLocations: {},
+        headingCollapseState: {},
+        seenTipIds: [],
+        disabledTipIds: [],
+      },
+    }
+    const token = buildInternalNoteLinkToken(state, { noteId: 'note-target-c761e6' })
+    const destination = token.match(/\]\((.*)\)$/)?.[1] ?? ''
+    expect(destination).toMatch(/^<2 aisle--[0-9a-f]{6}>$/)
+    const html = renderToStaticMarkup(
+      <MarkdownPreviewLink
+        href={encodeURIComponent(destination)}
+        appState={state}
+        onOpenNote={() => undefined}
+      >
+        2 aisle
+      </MarkdownPreviewLink>,
+    )
+
+    expect(html).toContain('data-note-reference="true"')
+    expect(html).toContain(`href="${encodeURIComponent(destination)}"`)
+  })
+
   it('styles visible tags in paragraphs, headings, and list text', () => {
     const html = renderPreview([
       '# Heading #Tag-3',
@@ -77,6 +133,8 @@ describe('markdown preview tag appearance', () => {
     expect(html).toContain('class="tabs-rendered-markdown-heading tabs-rendered-markdown-heading-1"')
     expect(html).toContain('class="tabs-rendered-markdown-link"')
     expect(html).toContain('href="https://lucide.dev/icons/files"')
+    expect(html).toContain('target="_blank"')
+    expect(html).toContain('rel="noopener noreferrer"')
   })
 
   it('renders app highlight syntax without exposing the == markers', () => {

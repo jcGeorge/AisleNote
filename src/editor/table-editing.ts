@@ -76,8 +76,6 @@ export type TableSelectionOverlayState = {
   rows: TableSelectionOverlaySegment[]
   columns: TableSelectionOverlaySegment[]
   selectionRect: TableSegmentRect | null
-  rowHandle: TableSegmentRect | null
-  columnHandle: TableSegmentRect | null
 }
 
 export const CLOSED_TABLE_CONTROLS_STATE: TableControlsOverlayState = {
@@ -95,8 +93,6 @@ export const CLOSED_TABLE_SELECTION_OVERLAY_STATE: TableSelectionOverlayState = 
   rows: [],
   columns: [],
   selectionRect: null,
-  rowHandle: null,
-  columnHandle: null,
 }
 
 export function isEditorRootFocused(
@@ -547,7 +543,6 @@ export function isBlankTableSideSelectionTarget(view: any, eventTarget?: Element
       '.media-tools',
       '.table-tools',
       '.table-selector-segment',
-      '.table-selection-handle',
       '.link-prompt',
       '.tabs-media-player',
     ].join(', '),

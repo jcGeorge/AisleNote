@@ -237,7 +237,8 @@ function stripBlockIndentTokensFromQuotedLines(markdown: string): string {
 }
 
 export function normalizeMarkdownForPersistence(markdown: string): string {
-  const blankNormalized = normalizeBlankLineRuns(markdown)
+  const escapedLinksNormalized = normalizeEscapedMarkdownLinks(markdown)
+  const blankNormalized = normalizeBlankLineRuns(escapedLinksNormalized)
   const repaired = repairBrokenMarkdownTables(repairBrokenDataImageMarkdown(blankNormalized))
   const highlighted = normalizeHighlightMarkdownForPersistence(repaired)
   return normalizeBlankLineRuns(
@@ -273,7 +274,7 @@ function trimSyntacticHighlightPadding(value: string): string {
   return value.slice(1, -1)
 }
 
-function transformOutsideInlineCode(line: string, transformText: (text: string) => string): string {
+export function transformOutsideInlineCode(line: string, transformText: (text: string) => string): string {
   let result = ''
   let plain = ''
   let index = 0
@@ -324,7 +325,7 @@ function transformOutsideInlineCode(line: string, transformText: (text: string) 
   return result
 }
 
-function transformOutsideFencedCode(markdown: string, transformLine: (line: string) => string): string {
+export function transformOutsideFencedCode(markdown: string, transformLine: (line: string) => string): string {
   let activeFence: string | null = null
   return String(markdown ?? '')
     .replace(/\r\n/g, '\n')
@@ -338,6 +339,24 @@ function transformOutsideFencedCode(markdown: string, transformLine: (line: stri
       return transformLine(line)
     })
     .join('\n')
+}
+
+const ESCAPED_MARKDOWN_LINK_RE = /(\\?!)?\\\[((?:\\.|[^\\\]\n])*)\\\]\\\(((?:\\.|[^\\)\n])*)\\\)/g
+
+function unescapeMarkdownLinkPart(value: string): string {
+  return String(value ?? '').replace(/\\([^\w\s])/g, '$1')
+}
+
+export function normalizeEscapedMarkdownLinks(markdown: string): string {
+  return transformOutsideFencedCode(String(markdown ?? ''), (line) =>
+    transformOutsideInlineCode(line, (segment) =>
+      segment.replace(
+        ESCAPED_MARKDOWN_LINK_RE,
+        (_source, embedMarker: string, label: string, destination: string) =>
+          `${embedMarker ? '!' : ''}[${unescapeMarkdownLinkPart(label)}](${unescapeMarkdownLinkPart(destination)})`,
+      ),
+    ),
+  )
 }
 
 function convertHighlightMarkersToHtml(segment: string): string {

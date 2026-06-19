@@ -1,3 +1,4 @@
+import * as React from 'react'
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import {
   addAisleToDraftOrWarn,
@@ -20,6 +21,8 @@ const EMPTY_STAGED_DECOUPLE_IDS: string[] = []
 const EMPTY_STAGED_FRONTMATTER_IDS: string[] = []
 const AISLE_EDIT_DRAG_AUTO_SCROLL_EDGE_ZONE = 72
 const AISLE_EDIT_DRAG_AUTO_SCROLL_MAX_STEP = 8
+
+void React
 
 function createDraftAisle() {
   const aisleBodyId = createRandomId()

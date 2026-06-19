@@ -1,3 +1,4 @@
+import * as React from 'react'
 import {
   useCallback,
   useEffect,
@@ -30,6 +31,7 @@ import {
   resolveMediaDisplayUrl,
   type MediaKind,
 } from './media-utils'
+
 import {
   MEDIA_DEFAULT_PLAYBACK_SPEED,
   MEDIA_DEFAULT_VOLUME_PERCENT,
@@ -52,6 +54,8 @@ import {
   getMediaRevealContextMenuDetailFromTarget,
 } from './media-context-menu'
 import { AppIcon } from '../components/icons/AppIcon'
+
+void React
 
 type MediaPlayerProps = {
   src: string

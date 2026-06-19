@@ -140,7 +140,8 @@ export function getAislePreviewRenderMode({
   if (editorMountPending) return 'empty-pending'
   if (!profile) return 'markdown-preview'
   if (!active && arrangeModeActive && profile.markdownLength > 0 && profile.externalLinkCount > 0) return 'lightweight-preview'
-  if (!active && deferInactivePreviewFallbacks && !inactivePreviewsHydrated && profile.isLinkHeavy) return 'lightweight-preview'
+  void deferInactivePreviewFallbacks
+  void inactivePreviewsHydrated
   return 'markdown-preview'
 }
 

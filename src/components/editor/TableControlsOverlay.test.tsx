@@ -1,7 +1,11 @@
+import { readFileSync } from 'node:fs'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { TableControlsOverlay } from './TableControlsOverlay'
+
+const overlaySource = readFileSync(new URL('./TableControlsOverlay.tsx', import.meta.url), 'utf8')
+const editorShellCss = readFileSync(new URL('../../styles/editor-shell.css', import.meta.url), 'utf8')
 
 const visibleControls = {
   visible: true,
@@ -18,8 +22,6 @@ const hiddenSelectionOverlay = {
   rows: [],
   columns: [],
   selectionRect: null,
-  rowHandle: null,
-  columnHandle: null,
 }
 
 const visibleSelectionOverlay = {
@@ -35,8 +37,6 @@ const visibleSelectionOverlay = {
     { index: 1, top: 30, left: 200, width: 80, height: 14, selected: false },
   ],
   selectionRect: { index: 0, top: 74, left: 120, width: 160, height: 24 },
-  rowHandle: { index: 1, top: 74, left: 78, width: 18, height: 24 },
-  columnHandle: null,
 }
 
 function renderOverlay(options: { controlsVisible?: boolean; globalVisible?: boolean; selectionVisible?: boolean } = {}) {
@@ -49,10 +49,7 @@ function renderOverlay(options: { controlsVisible?: boolean; globalVisible?: boo
       onRemoveRow={vi.fn()}
       onAddColumn={vi.fn()}
       onRemoveColumn={vi.fn()}
-      onSelectRow={vi.fn()}
-      onSelectColumn={vi.fn()}
-      onMoveRows={vi.fn()}
-      onMoveColumns={vi.fn()}
+      onBeginSelectorGesture={vi.fn()}
     />,
   )
 }
@@ -76,17 +73,30 @@ describe('TableControlsOverlay', () => {
     )
   })
 
-  it('renders table selector rails and selected range move handles', () => {
+  it('renders table selector rails without selected range move handles', () => {
     const html = renderOverlay({ selectionVisible: true })
 
+    expect(html).toContain('table-controls-overlay-layer')
     expect(html).toContain('table-selector-column-segment is-selected')
     expect(html).toContain('table-selector-row-segment is-selected')
     expect(html).toContain('aria-label="Select column 1"')
     expect(html).toContain('aria-label="Select row 2"')
     expect(html).toContain('table-selection-rect table-selection-rect-rows')
-    expect(html).toContain('table-selection-handle table-selection-row-handle')
-    expect(html).toContain('aria-label="Move selected rows"')
-    expect(html).not.toContain('aria-label="Move selected columns"')
+    expect(html).not.toContain('table-selection-handle')
+    expect(html).not.toContain('Move selected rows')
+    expect(html).not.toContain('Move selected columns')
+  })
+
+  it('routes selector rails through one click-or-drag gesture callback and hides rails until hover or selection', () => {
+    expect(overlaySource).toContain("onBeginSelectorGesture('row', row.index, nextEvent)")
+    expect(overlaySource).toContain("onBeginSelectorGesture('column', column.index, nextEvent)")
+    expect(overlaySource).not.toContain('onMoveRows')
+    expect(overlaySource).not.toContain('onMoveColumns')
+
+    expect(editorShellCss).toContain('.table-selector-segment.is-selected')
+    expect(editorShellCss).toContain('opacity: 0;')
+    expect(editorShellCss).toContain(':has(.table-selector-column-segment:hover) .table-tools-columns')
+    expect(editorShellCss).not.toContain('.table-selection-handle {')
   })
 
   it('renders nothing when inactive', () => {

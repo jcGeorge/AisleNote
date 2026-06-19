@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { BLOCK_INDENT_TOKEN } from '../../markdown/markdown-utils'
@@ -144,15 +145,13 @@ describe('AisleEditModal', () => {
     expect(html).not.toContain(BLOCK_INDENT_TOKEN)
   })
 
-  it('renders note preview tokens as compact placeholders instead of raw storage tokens', () => {
+  it('renders note preview markdown without custom notebook preview state in the edit modal', () => {
     const token = '![Child note](<Child note--123abc>)'
     const html = renderModal([aisle('a', `${token}\n\nregular text`)])
 
-    expect(html).toContain('aisle-edit-context-preview')
-    expect(html).toContain('note preview')
     expect(html).toContain('Child note')
     expect(html).toContain('regular text')
-    expect(html).not.toContain('![Child note](&lt;Child note--123abc&gt;)')
+    expect(html).not.toContain('aisle-edit-context-preview')
   })
 
   it('renders linked aisles with top-right staging buttons instead of bottom status controls', () => {

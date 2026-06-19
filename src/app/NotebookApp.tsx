@@ -24,9 +24,11 @@ import type {
   FrontmatterTemplate,
   FrontmatterTemplateField,
   MessagesSection,
+  LinkPromptState,
   NoteAisle,
   NoteAisleBody,
   NoteBody,
+  NoteLocation,
   NotebookTreeItem,
   NewlineOperationId,
   NewlineShortcutId,
@@ -36,6 +38,7 @@ import type {
   TableControlTargetMode,
   TableOfContentsScope,
   TipId,
+  ToastTone,
   ViewMode,
 } from '../types/app'
 import {
@@ -84,8 +87,13 @@ import {
 import { resetAisleWidthForLocation, setAisleWidthForLocation } from '../notes/aisle-widths'
 import { NoteWorkspace } from '../components/notes/NoteWorkspace'
 import { SharedEditorToolbar } from '../components/editor/SharedEditorToolbar'
+import { LinkPrompt } from '../components/editor/LinkPrompt'
+import { ShortcutMenu } from '../components/editor/ShortcutMenu'
 import { EditorToolbarPopovers } from '../components/editor/EditorToolbarPopovers'
 import { TableControlsOverlay } from '../components/editor/TableControlsOverlay'
+import { ListReorderControlsOverlay } from '../components/editor/ListReorderControlsOverlay'
+import { ImageToolsOverlay } from '../components/editor/ImageToolsOverlay'
+import { MediaToolsOverlay } from '../components/editor/MediaToolsOverlay'
 import { AisleEditModal } from '../components/notes/AisleEditModal'
 import {
   NotebookEditorContextMenu,
@@ -93,6 +101,8 @@ import {
   type NotebookEditorAisleInsertSide,
   type NotebookEditorClipboardAction,
   type NotebookEditorContextMenuState,
+  type NotebookEditorCopyAsKind,
+  type NotebookEditorCopyAsMode,
   type NotebookEditorPasteDestination,
 } from '../components/overlays/NotebookEditorContextMenu'
 import { AppIcon } from '../components/icons/AppIcon'
@@ -103,8 +113,12 @@ import { ShortcutMenuSettingsPanel } from '../components/settings/ShortcutMenuSe
 import { clampContextMenuPosition, type MenuPosition, type MenuSize, type MenuViewport } from '../components/overlays/context-menu-position'
 import { useEditorToolbarState } from '../editor/useEditorToolbarState'
 import { useNotebookAisleEditors } from '../editor/useNotebookAisleEditors'
+import { useImageTools } from '../editor/useImageTools'
+import { useMediaTools } from '../editor/useMediaTools'
+import type { NoteMentionQuery } from '../editor/prosemirror-utils'
 import { useNoteCursorPersistence, usePendingNoteCursorRestore } from '../editor/useNoteCursorPersistence'
 import { useTableControls } from '../editor/useTableControls'
+import { useListReorderControls } from '../editor/useListReorderControls'
 import {
   DEFAULT_SHORTCUTS,
   NEWLINE_OPERATIONS,
@@ -161,12 +175,33 @@ import {
   getContainingFolderId,
   getFirstNotebookNote,
   getNotebookNoteFolderPath,
-  insertNotebookItem,
   isNoteBodyLinked,
   moveNotebookItem,
   renameNotebookItem,
   restoreDeletedNotebookItemInState,
 } from '../state/notebook'
+import {
+  NotebookNoteActionPicker,
+  getCopyModeForNoteAction,
+  getReferenceKindForNoteAction,
+  type NotebookNoteActionPickerAction,
+  type NotebookNoteActionPickerAnchor,
+} from '../components/overlays/NotebookNoteActionPicker'
+import { NotebookDecoupleDialog } from '../components/overlays/NotebookDecoupleDialog'
+import {
+  buildNotebookNoteReferenceInsertionText,
+  getNotebookAisleDecoupleRows,
+  getNotebookNoteDecoupleRows,
+  replaceActiveNoteBodyFromTargetNote,
+  replaceFocusedAisleFromTargetNote,
+} from '../notes/notebook-note-actions'
+import {
+  applyNotebookStructureClipboardPayload,
+  buildNotebookStructureClipboardPayload,
+  readNotebookStructureClipboardPayloadFromNavigator,
+  writeNotebookStructureClipboardPayload,
+  type NotebookStructureClipboardPayload,
+} from '../notes/notebook-structure-clipboard'
 import {
   DEFAULT_SCRATCHPAD_AISLE_LIMIT,
   MAX_SCRATCHPAD_AISLE_LIMIT,
@@ -177,6 +212,9 @@ import {
   applyNotebookEditorMarkdownSnapshotsToState,
   commitNotebookAisleMarkdownInState,
 } from './notebook-editor-persistence'
+import { CLOSED_LINK_PROMPT_STATE, closeLinkPromptState } from './linkPromptState'
+import { MEDIA_PLAYER_SELECTOR } from '../media/media-utils'
+import { openExternalWebUrl } from '../notes/external-links'
 
 const SIDEBAR_MIN_WIDTH = 220
 const SIDEBAR_MAX_WIDTH = 520
@@ -305,11 +343,34 @@ type NotebookAisleContextMenuState = {
   aisleId: string
 }
 
+type NotebookShortcutMenuState = {
+  aisleId: string
+  top: number
+  left: number
+  activeIndex: number
+}
+
 type NotebookFrontmatterModalState = {
   aisleId: string
   aisleBodyId: string
   initialYaml: string
 }
+
+type NoteActionPickerSource = 'mention' | 'toolbar-link' | 'context-note-link' | 'context-note-preview' | 'whole-note-copy'
+
+type NoteActionPickerState = {
+  source: NoteActionPickerSource
+  title: string
+  query: string
+  actions: NotebookNoteActionPickerAction[]
+  mentionRange?: NoteMentionQuery
+  anchor?: NotebookNoteActionPickerAnchor | null
+  urlEnabled?: boolean
+}
+
+type DecoupleDialogState =
+  | { kind: 'note' }
+  | { kind: 'aisle'; aisleId: string }
 
 function getActiveNoteModel(state: AppState): ActiveNoteModel | null {
   const notePath = findNotebookNote(state.notebook.items, state.notebook.activeNoteId)
@@ -547,6 +608,9 @@ function cloneAisleBodyForDraft(
 
 const NOTEBOOK_TREE_RENAME_LONG_PRESS_MS = 500
 const NOTEBOOK_TREE_LONG_PRESS_MOVE_TOLERANCE_PX = 6
+const SHORTCUT_MENU_ESTIMATED_WIDTH = 256
+const SHORTCUT_MENU_ESTIMATED_VERTICAL_PADDING = 16
+const SHORTCUT_MENU_ESTIMATED_ITEM_HEIGHT = 36
 
 type NotebookTreeDropPosition = 'before' | 'after' | 'inside' | 'root'
 
@@ -1331,6 +1395,10 @@ export function NotebookApp() {
   const [aisleContextMenu, setAisleContextMenu] = useState<NotebookAisleContextMenuState | null>(null)
   const [editorContextMenu, setEditorContextMenu] = useState<NotebookEditorContextMenuState | null>(null)
   const [treeContextMenu, setTreeContextMenu] = useState<NotebookTreeContextMenuState | null>(null)
+  const [shortcutMenu, setShortcutMenu] = useState<NotebookShortcutMenuState | null>(null)
+  const [noteActionPicker, setNoteActionPicker] = useState<NoteActionPickerState | null>(null)
+  const [decoupleDialog, setDecoupleDialog] = useState<DecoupleDialogState | null>(null)
+  const [linkPrompt, setLinkPrompt] = useState<LinkPromptState>(CLOSED_LINK_PROMPT_STATE)
   const [aisleEditModalOpen, setAisleEditModalOpen] = useState(false)
   const [frontmatterModal, setFrontmatterModal] = useState<NotebookFrontmatterModalState | null>(null)
   const [frontmatterDraft, setFrontmatterDraft] = useState<AppState['frontmatter']>(() => state.frontmatter)
@@ -1340,7 +1408,9 @@ export function NotebookApp() {
   const aisleScrollRef = useRef<HTMLDivElement | null>(null)
   const workspaceRootRef = useRef<HTMLElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const linkPromptInputRef = useRef<HTMLInputElement | null>(null)
   const editorRef = useRef<Editor | null>(null)
+  const dismissedMentionStartRef = useRef<number | null>(null)
   const activeAisleIdRef = useRef('')
   const activeNoteLocationKeyRef = useRef('')
   const isMainViewRef = useRef(true)
@@ -1348,6 +1418,7 @@ export function NotebookApp() {
   const pendingFocusToAisleIdRef = useRef<string | null>(null)
   const pendingNavigationTopAisleIdRef = useRef<string | null>(null)
   const pendingCreatedEditRef = useRef<unknown>(null)
+  const addAisleFromNewlineRef = useRef<((side: 'left' | 'right', aisleId: string, markdown: string) => void) | null>(null)
   const frontmatterStateSnapshotRef = useRef(state.frontmatter)
   const skipNextTreeRenameCommitRef = useRef(false)
   const sidebarResizeRef = useRef<{
@@ -1378,6 +1449,15 @@ export function NotebookApp() {
     () => filterNoteSearchEntries(listSearchableNoteLocations(state), query, 40),
     [query, state],
   )
+  const noteActionEntries = useMemo(() => {
+    if (!noteActionPicker) return []
+    const activeNoteId = activeModel?.noteId ?? state.notebook.activeNoteId
+    return filterNoteSearchEntries(
+      listSearchableNoteLocations(state).filter((entry) => entry.noteId !== activeNoteId),
+      noteActionPicker.query,
+      12,
+    )
+  }, [activeModel?.noteId, noteActionPicker, state])
   const activeAisleIdsSignature = activeModel?.resolved.aisles.map((aisle) => aisle.id).join('|') ?? ''
   const activeNoteLocationKey = activeModel?.noteId ?? ''
   const activeNoteAisles = activeModel?.noteBody.aisles ?? []
@@ -1741,6 +1821,117 @@ export function NotebookApp() {
     [mutateState],
   )
 
+  const handleNoteMentionQueryChange = useCallback((mention: NoteMentionQuery | null, anchor: NotebookNoteActionPickerAnchor | null) => {
+    void anchor
+    setNoteActionPicker((current) => {
+      if (!mention) {
+        dismissedMentionStartRef.current = null
+        return current?.source === 'mention' ? null : current
+      }
+      if (dismissedMentionStartRef.current === mention.from) {
+        return current?.source === 'mention' ? null : current
+      }
+      dismissedMentionStartRef.current = null
+      return {
+        source: 'mention',
+        title: 'Select note',
+        query: mention.query,
+        mentionRange: mention,
+        anchor: null,
+        actions: ['note-link', 'note-preview', 'independent-copy', 'synced-copy'],
+      }
+    })
+  }, [])
+
+  const openNoteReferenceFromEditor = useCallback(
+    (target: NoteLocation) => {
+      if (!findNotebookNote(stateRef.current.notebook.items, target.noteId)) return
+      setSelectedFolderId('')
+      setViewMode('main')
+      mutateState((previous) => ({
+        ...previous,
+        notebook: {
+          ...previous.notebook,
+          activeNoteId: target.noteId,
+        },
+      }))
+    },
+    [mutateState, stateRef],
+  )
+
+  const applyNotebookStructureClipboardPaste = useCallback(
+    (payload: NotebookStructureClipboardPayload, aisleId: string) => {
+      let nextActiveAisleId = ''
+      let blockedMessage = ''
+      mutateState((previous) => {
+        const result = applyNotebookStructureClipboardPayload(previous, {
+          activeNoteId: previous.notebook.activeNoteId,
+          focusedAisleId: aisleId,
+          payload,
+        })
+        if (result.status === 'blocked') {
+          blockedMessage = result.message
+          return previous
+        }
+        nextActiveAisleId = result.activeAisleId ?? ''
+        return pruneUnreferencedBodies(result.state)
+      })
+      if (blockedMessage) {
+        window.alert(blockedMessage)
+        return true
+      }
+      if (nextActiveAisleId) setActiveAisleId(nextActiveAisleId)
+      return true
+    },
+    [mutateState],
+  )
+
+  const insertAisleFromNewlineShortcut = useCallback((side: 'left' | 'right', aisleId: string, markdown: string) => {
+    addAisleFromNewlineRef.current?.(side, aisleId, markdown)
+  }, [])
+
+  const openShortcutMenuFromEditor = useCallback(
+    ({ aisleId, anchor }: { aisleId: string; anchor: { top: number; left: number } }) => {
+      const estimatedMenuHeight =
+        SHORTCUT_MENU_ESTIMATED_VERTICAL_PADDING +
+        Math.max(1, normalizedHotkeys.newlineShortcuts.menuOperations.length) * SHORTCUT_MENU_ESTIMATED_ITEM_HEIGHT
+      const position = clampContextMenuPosition(
+        { x: anchor.left, y: anchor.top },
+        { width: SHORTCUT_MENU_ESTIMATED_WIDTH, height: estimatedMenuHeight },
+        getNotebookMenuViewportSize(),
+      )
+      toolbarState.closeToolbarPopovers()
+      setAisleContextMenu(null)
+      setEditorContextMenu(null)
+      setTreeContextMenu(null)
+      setShortcutMenu({
+        aisleId,
+        top: position.top,
+        left: position.left,
+        activeIndex: 0,
+      })
+    },
+    [normalizedHotkeys.newlineShortcuts.menuOperations.length, toolbarState],
+  )
+
+  const openUrlLinkPrompt = useCallback((prompt: LinkPromptState) => {
+    toolbarState.closeToolbarPopovers()
+    setEditorContextMenu(null)
+    setAisleContextMenu(null)
+    setTreeContextMenu(null)
+    setShortcutMenu(null)
+    setNoteActionPicker(null)
+    setLinkPrompt(prompt)
+    window.setTimeout(() => {
+      linkPromptInputRef.current?.focus()
+      linkPromptInputRef.current?.select()
+    }, 0)
+  }, [toolbarState])
+
+  const closeLinkPrompt = useCallback(() => {
+    setLinkPrompt((current) => closeLinkPromptState(current))
+  }, [])
+
   const notebookEditors = useNotebookAisleEditors({
     viewMode,
     noteId: activeModel?.noteId ?? '',
@@ -1752,7 +1943,86 @@ export function NotebookApp() {
     editorRef,
     commitAisleMarkdown,
     scheduleToolbarFormatStateSync: toolbarState.scheduleToolbarFormatStateSync,
+    onNoteMentionQueryChange: handleNoteMentionQueryChange,
+    getAppState: () => stateRef.current,
+    onOpenNoteReference: openNoteReferenceFromEditor,
+    onNotebookStructurePaste: applyNotebookStructureClipboardPaste,
+    hotkeys: state.hotkeys,
+    isMacPlatform,
+    onOpenShortcutMenu: openShortcutMenuFromEditor,
+    onOpenUrlLinkPrompt: openUrlLinkPrompt,
+    onInsertAisleFromNewline: insertAisleFromNewlineShortcut,
   })
+
+  const activateEditorFromAssetTarget = useCallback(
+    (target: EventTarget | null) => {
+      const element = target instanceof Element ? target : null
+      const aisleId = element?.closest<HTMLElement>('.note-aisle-pane')?.dataset.aisleId?.trim()
+      const noteBodyId = activeModel?.noteBody.id ?? ''
+      if (!aisleId || !noteBodyId) return
+      notebookEditors.activateAisleEditor(buildAisleEditorKey(noteBodyId, aisleId))
+    },
+    [activeModel?.noteBody.id, notebookEditors],
+  )
+
+  const commitCurrentEditorContent = useCallback(() => {
+    const editor = editorRef.current
+    if (editor) notebookEditors.commitActiveEditorMarkdownNow(editor)
+  }, [notebookEditors])
+
+  const pushEditorToolToast = useCallback((message: string, tone?: ToastTone) => {
+    if (tone === 'warning' || tone === 'error') window.alert(message)
+  }, [])
+
+  const imageToolsController = useImageTools({
+    editorRef,
+    editorEventRootRef: workspaceRootRef,
+    activateEditorFromEventTarget: activateEditorFromAssetTarget,
+    commitCurrentEditorContent,
+    commitActiveEditorMarkdownNow: notebookEditors.commitActiveEditorMarkdownNow,
+    pushToast: pushEditorToolToast,
+  })
+
+  const mediaToolsController = useMediaTools({
+    editorRef,
+    editorEventRootRef: workspaceRootRef,
+    activateEditorFromEventTarget: activateEditorFromAssetTarget,
+    commitCurrentEditorContent,
+    commitActiveEditorMarkdownNow: notebookEditors.commitActiveEditorMarkdownNow,
+  })
+
+  useEffect(() => {
+    if (viewMode === 'main' && !aisleEditModalOpen) return
+    imageToolsController.close()
+    mediaToolsController.close()
+  }, [aisleEditModalOpen, imageToolsController, mediaToolsController, viewMode])
+
+  const selectEditableAssetFromWorkspace = useCallback(
+    (target: Element) => {
+      if (!target.closest('.toastui-editor .ProseMirror')) {
+        imageToolsController.close()
+        mediaToolsController.close()
+        return
+      }
+
+      if (target instanceof HTMLImageElement) {
+        mediaToolsController.close()
+        imageToolsController.select(target)
+        return
+      }
+
+      const mediaPlayer = target.closest<HTMLElement>(MEDIA_PLAYER_SELECTOR)
+      if (mediaPlayer?.dataset.mediaKind === 'video') {
+        imageToolsController.close()
+        mediaToolsController.select(mediaPlayer)
+        return
+      }
+
+      imageToolsController.close()
+      mediaToolsController.close()
+    },
+    [imageToolsController, mediaToolsController],
+  )
 
   const cursorPersistence = useNoteCursorPersistence({
     setState,
@@ -1842,6 +2112,14 @@ export function NotebookApp() {
   }, [clearNotebookFocusBoundaryFlush, scheduleNotebookFocusBoundaryFlush])
 
   const tableControlsController = useTableControls({
+    visible: viewMode === 'main' && !aisleEditModalOpen,
+    editorRef,
+    editorEventRootRef: workspaceRootRef,
+    commitActiveEditorMarkdownNow: notebookEditors.commitActiveEditorMarkdownNow,
+    syncToolbarFormatState: toolbarState.syncToolbarFormatState,
+  })
+
+  const listReorderControlsController = useListReorderControls({
     visible: viewMode === 'main' && !aisleEditModalOpen,
     editorRef,
     editorEventRootRef: workspaceRootRef,
@@ -2033,6 +2311,7 @@ export function NotebookApp() {
       toolbarState.closeToolbarPopovers()
       setAisleContextMenu(null)
       setEditorContextMenu(null)
+      setShortcutMenu(null)
       setTreeContextMenu(menu)
     },
     [toolbarState],
@@ -2208,6 +2487,7 @@ export function NotebookApp() {
     },
     [activeModel, mutateState],
   )
+  addAisleFromNewlineRef.current = addAisle
 
   const deleteAisle = useCallback(
     (aisleId: string) => {
@@ -2260,6 +2540,16 @@ export function NotebookApp() {
     [activeModel, notebookEditors, renderedActiveAisleId],
   )
 
+  const runShortcutMenuOperation = useCallback(
+    (operation: NewlineOperationId) => {
+      const aisleId = shortcutMenu?.aisleId || renderedActiveAisleId
+      setShortcutMenu(null)
+      if (!aisleId) return
+      notebookEditors.runNewlineOperation(operation, aisleId)
+    },
+    [notebookEditors, renderedActiveAisleId, shortcutMenu?.aisleId],
+  )
+
   useNotebookHotkeys({
     hotkeys: state.hotkeys,
     isMacPlatform,
@@ -2278,29 +2568,6 @@ export function NotebookApp() {
     },
   })
 
-  const createSyncedCopy = useCallback(() => {
-    if (!activeModel) return
-    mutateState((previous) => {
-      const parentFolderId = getContainingFolderId(previous.notebook.items, activeModel.noteId)
-      const idGenerator = createReservedIdAllocator(collectNotebookIds(previous))
-      const noteId = idGenerator()
-      const note = {
-        type: 'note' as const,
-        id: noteId,
-        title: `${activeModel.title} copy`,
-        noteBodyId: activeModel.noteBody.id,
-      }
-      return {
-        ...previous,
-        notebook: {
-          ...insertNotebookItem(previous.notebook, note, parentFolderId),
-          activeNoteId: noteId,
-        },
-      }
-    })
-    setViewMode('main')
-  }, [activeModel, mutateState])
-
   const decoupleActiveNote = useCallback(() => {
     if (!activeModel || !activeModel.linked) return
     mutateState((previous) => decoupleNotebookNoteBodyInState(previous, activeModel.noteId))
@@ -2313,6 +2580,203 @@ export function NotebookApp() {
     },
     [activeModel, mutateState],
   )
+
+  const updateNoteActionPickerQuery = useCallback((nextQuery: string) => {
+    setNoteActionPicker((current) => (current ? { ...current, query: nextQuery } : current))
+  }, [])
+
+  const closeNoteActionPicker = useCallback(() => {
+    setNoteActionPicker((current) => {
+      if (current?.source === 'mention' && current.mentionRange) {
+        dismissedMentionStartRef.current = current.mentionRange.from
+      }
+      return null
+    })
+  }, [])
+
+  const updateLinkPromptUrl = useCallback((url: string) => {
+    setLinkPrompt((current) => ({ ...current, url }))
+  }, [])
+
+  const updateLinkPromptText = useCallback((text: string) => {
+    setLinkPrompt((current) => ({ ...current, text }))
+  }, [])
+
+  const insertNamedLink = useCallback(() => {
+    if (notebookEditors.insertNamedUrlLink(linkPrompt.url, linkPrompt.text, linkPrompt.editRange)) closeLinkPrompt()
+  }, [closeLinkPrompt, linkPrompt.editRange, linkPrompt.text, linkPrompt.url, notebookEditors])
+
+  const openPromptLinkUrl = useCallback(() => {
+    const url = linkPrompt.url.trim()
+    if (!url) return
+    openExternalWebUrl(url)
+  }, [linkPrompt.url])
+
+  const openToolbarLinkPicker = useCallback(() => {
+    notebookEditors.openUrlLinkPrompt()
+  }, [notebookEditors])
+
+  const openContextNoteReferencePicker = useCallback(
+    (kind: 'note-link' | 'note-preview') => {
+      toolbarState.closeToolbarPopovers()
+      setEditorContextMenu(null)
+      setAisleContextMenu(null)
+      setShortcutMenu(null)
+      setLinkPrompt(CLOSED_LINK_PROMPT_STATE)
+      setNoteActionPicker({
+        source: kind === 'note-link' ? 'context-note-link' : 'context-note-preview',
+        title: kind === 'note-link' ? 'Insert note link' : 'Insert note preview',
+        query: '',
+        actions: [kind],
+      })
+    },
+    [toolbarState],
+  )
+
+  const openNoteLinkFromLinkPrompt = useCallback(() => {
+    openContextNoteReferencePicker('note-link')
+  }, [openContextNoteReferencePicker])
+
+  const openWholeNoteCopyPicker = useCallback(() => {
+    toolbarState.closeToolbarPopovers()
+    setEditorContextMenu(null)
+    setAisleContextMenu(null)
+    setShortcutMenu(null)
+    setNoteActionPicker({
+      source: 'whole-note-copy',
+      title: 'Make this a copy of',
+      query: '',
+      actions: ['independent-copy', 'synced-copy'],
+    })
+  }, [toolbarState])
+
+  const copyNotebookStructureAs = useCallback(
+    (kind: NotebookEditorCopyAsKind, mode: NotebookEditorCopyAsMode, aisleId: string) => {
+      const currentState = stateRef.current
+      const result = buildNotebookStructureClipboardPayload(currentState, {
+        activeNoteId: currentState.notebook.activeNoteId,
+        kind,
+        mode,
+        aisleId,
+      })
+      if (result.status === 'blocked') {
+        window.alert(result.message)
+        return
+      }
+      void writeNotebookStructureClipboardPayload(result.payload, result.markdown)
+        .then((ok) => {
+          if (!ok) window.alert('Clipboard copy is unavailable here.')
+        })
+        .catch(() => window.alert('Clipboard copy is unavailable here.'))
+    },
+    [stateRef],
+  )
+
+  const pasteNotebookStructureClipboard = useCallback(
+    async (aisleId: string) => {
+      const payload = await readNotebookStructureClipboardPayloadFromNavigator()
+      return payload ? applyNotebookStructureClipboardPaste(payload, aisleId) : false
+    },
+    [applyNotebookStructureClipboardPaste],
+  )
+
+  const insertNotebookNoteReference = useCallback(
+    (target: NoteLocation, kind: 'note-link' | 'note-preview') => {
+      const token = buildNotebookNoteReferenceInsertionText(stateRef.current, target, kind)
+      const currentPicker = noteActionPicker
+      if (currentPicker?.source === 'mention' && currentPicker.mentionRange) {
+        notebookEditors.replaceActiveEditorRangeWithText(currentPicker.mentionRange.from, currentPicker.mentionRange.to, token)
+      } else {
+        notebookEditors.insertTextAtSelection(token)
+      }
+      closeNoteActionPicker()
+    },
+    [closeNoteActionPicker, noteActionPicker, notebookEditors, stateRef],
+  )
+
+  const applyNotebookNoteCopyAction = useCallback(
+    (targetNoteId: string, mode: 'independent' | 'synced') => {
+      const source = noteActionPicker?.source
+      let nextActiveAisleId = ''
+      let blockedMessage = ''
+      mutateState((previous) => {
+        const result = source === 'whole-note-copy'
+          ? replaceActiveNoteBodyFromTargetNote(previous, {
+              activeNoteId: previous.notebook.activeNoteId,
+              targetNoteId,
+              mode,
+            })
+          : replaceFocusedAisleFromTargetNote(previous, {
+              activeNoteId: previous.notebook.activeNoteId,
+              focusedAisleId: renderedActiveAisleId,
+              targetNoteId,
+              mode,
+            })
+        if (result.status === 'blocked') {
+          blockedMessage = result.message
+          return previous
+        }
+        nextActiveAisleId = result.activeAisleId ?? ''
+        return pruneUnreferencedBodies(result.state)
+      })
+      if (blockedMessage) {
+        window.alert(blockedMessage)
+        return
+      }
+      if (nextActiveAisleId) setActiveAisleId(nextActiveAisleId)
+      closeNoteActionPicker()
+    },
+    [closeNoteActionPicker, mutateState, noteActionPicker?.source, renderedActiveAisleId],
+  )
+
+  const handleNoteActionPickerAction = useCallback(
+    (action: NotebookNoteActionPickerAction, noteId: string) => {
+      const referenceKind = getReferenceKindForNoteAction(action)
+      if (referenceKind) {
+        insertNotebookNoteReference({ noteId }, referenceKind)
+        return
+      }
+      const copyMode = getCopyModeForNoteAction(action)
+      if (copyMode) applyNotebookNoteCopyAction(noteId, copyMode)
+    },
+    [applyNotebookNoteCopyAction, insertNotebookNoteReference],
+  )
+
+  const submitUrlLink = useCallback(
+    (url: string) => {
+      if (notebookEditors.insertUrlLink(url)) closeNoteActionPicker()
+    },
+    [closeNoteActionPicker, notebookEditors],
+  )
+
+  const openDecoupleNoteDialog = useCallback(() => {
+    if (!activeModel?.linked) return
+    toolbarState.closeToolbarPopovers()
+    setDecoupleDialog({ kind: 'note' })
+  }, [activeModel?.linked, toolbarState])
+
+  const openDecoupleAisleDialog = useCallback(
+    (aisleId: string) => {
+      if (!canDecoupleAisleById(aisleId)) return
+      toolbarState.closeToolbarPopovers()
+      setDecoupleDialog({ kind: 'aisle', aisleId })
+    },
+    [canDecoupleAisleById, toolbarState],
+  )
+
+  const decoupleDialogRows = useMemo(() => {
+    if (!decoupleDialog || !activeModel) return []
+    if (decoupleDialog.kind === 'note') return getNotebookNoteDecoupleRows(state, activeModel.noteBody.id)
+    const aisle = activeModel.noteBody.aisles.find((candidate) => candidate.id === decoupleDialog.aisleId)
+    return aisle ? getNotebookAisleDecoupleRows(state, aisle.aisleBodyId) : []
+  }, [activeModel, decoupleDialog, state])
+
+  const applyDecoupleDialog = useCallback(() => {
+    if (!decoupleDialog) return
+    if (decoupleDialog.kind === 'note') decoupleActiveNote()
+    else decoupleAisle(decoupleDialog.aisleId)
+    setDecoupleDialog(null)
+  }, [decoupleActiveNote, decoupleAisle, decoupleDialog])
 
   const applyAisleEditDraftToActiveNote = useCallback(
     (
@@ -2439,19 +2903,54 @@ export function NotebookApp() {
     if (link.href) window.open(link.href, '_blank', 'noopener,noreferrer')
   }, [])
 
+  const editorToolOverlaysVisible = viewMode === 'main' && !aisleEditModalOpen
+
+  const imageToolsOverlay = (
+    <>
+      <ImageToolsOverlay
+        visible={editorToolOverlaysVisible}
+        imageTools={imageToolsController.imageTools}
+        inlineCrop={imageToolsController.inlineCrop}
+        onStartCrop={imageToolsController.startCrop}
+        onOpenTransform={imageToolsController.openTransformMenu}
+        onCopyImage={imageToolsController.copySelectedToClipboard}
+        onReturnToStart={imageToolsController.returnToStartMenu}
+        onTransformImage={imageToolsController.transformSelectedImage}
+        onApplyCrop={imageToolsController.applyCrop}
+        onCancelCrop={imageToolsController.cancelCrop}
+        onSetCropRatio={imageToolsController.setCropRatio}
+        onBeginResize={imageToolsController.beginResize}
+        onBeginCropDrag={imageToolsController.beginCropMouseDrag}
+      />
+      <MediaToolsOverlay
+        visible={editorToolOverlaysVisible}
+        mediaTools={mediaToolsController.mediaTools}
+        onOpenTransform={mediaToolsController.openTransformMenu}
+        onReturnToStart={mediaToolsController.returnToStartMenu}
+        onTransformMedia={mediaToolsController.transformSelectedMedia}
+        onBeginResize={mediaToolsController.beginResize}
+      />
+    </>
+  )
+
   const tableControlsOverlay = (
     <TableControlsOverlay
-      visible={viewMode === 'main' && !aisleEditModalOpen}
+      visible={editorToolOverlaysVisible}
       tableControls={tableControlsController.tableControls}
       tableSelectionOverlay={tableControlsController.tableSelectionOverlay}
       onAddRow={() => tableControlsController.runTableControlOperation('add-row', state.ui.tableAddTargetMode)}
       onRemoveRow={() => tableControlsController.runTableControlOperation('remove-row', state.ui.tableDeleteTargetMode)}
       onAddColumn={() => tableControlsController.runTableControlOperation('add-column', state.ui.tableAddTargetMode)}
       onRemoveColumn={() => tableControlsController.runTableControlOperation('remove-column', state.ui.tableDeleteTargetMode)}
-      onSelectRow={(rowIndex, event) => tableControlsController.beginTableAxisSelection('row', rowIndex, event)}
-      onSelectColumn={(columnIndex, event) => tableControlsController.beginTableAxisSelection('column', columnIndex, event)}
-      onMoveRows={(event) => tableControlsController.beginTableRangeReorder('row', event)}
-      onMoveColumns={(event) => tableControlsController.beginTableRangeReorder('column', event)}
+      onBeginSelectorGesture={tableControlsController.beginTableSelectorGesture}
+    />
+  )
+
+  const listReorderControlsOverlay = (
+    <ListReorderControlsOverlay
+      visible={editorToolOverlaysVisible}
+      listReorderControls={listReorderControlsController.listReorderControls}
+      onBeginListHandleGesture={listReorderControlsController.beginListHandleGesture}
     />
   )
 
@@ -2459,6 +2958,7 @@ export function NotebookApp() {
     setAisleContextMenu(null)
     setEditorContextMenu(null)
     setTreeContextMenu(null)
+    setShortcutMenu(null)
     toolbarState.setHeadingMenuOpen(false)
     toolbarState.setCopyMenuOpen((open) => !open)
     toolbarState.refreshToolbarPopoverPosition('copy')
@@ -2468,6 +2968,7 @@ export function NotebookApp() {
     setAisleContextMenu(null)
     setEditorContextMenu(null)
     setTreeContextMenu(null)
+    setShortcutMenu(null)
     toolbarState.setCopyMenuOpen(false)
     toolbarState.setHeadingMenuOpen((open) => !open)
     toolbarState.refreshToolbarPopoverPosition('heading')
@@ -2479,6 +2980,7 @@ export function NotebookApp() {
         setAisleContextMenu(null)
         setEditorContextMenu(null)
         setTreeContextMenu(null)
+        setShortcutMenu(null)
         toolbarState.closeToolbarPopovers()
         return
       }
@@ -2486,6 +2988,7 @@ export function NotebookApp() {
       toolbarState.closeToolbarPopovers()
       setEditorContextMenu(null)
       setTreeContextMenu(null)
+      setShortcutMenu(null)
       setAisleContextMenu({ aisleId, x, y })
     },
     [activeModel?.linked, canDecoupleAisleById, toolbarState],
@@ -2499,6 +3002,7 @@ export function NotebookApp() {
       toolbarState.closeToolbarPopovers()
       setAisleContextMenu(null)
       setTreeContextMenu(null)
+      setShortcutMenu(null)
       setEditorContextMenu({ aisleId, x, y })
     },
     [activeModel, notebookEditors, toolbarState],
@@ -2530,6 +3034,7 @@ export function NotebookApp() {
       const target = event.target instanceof Element ? event.target : null
       if (
         target?.closest('.tab-context-menu') ||
+        target?.closest('.shortcut-menu') ||
         target?.closest('.note-toolbar-copy-popover') ||
         target?.closest('.note-toolbar-heading-popover') ||
         target?.closest('.note-shared-toolbar')
@@ -2539,6 +3044,7 @@ export function NotebookApp() {
       setAisleContextMenu(null)
       setEditorContextMenu(null)
       setTreeContextMenu(null)
+      setShortcutMenu(null)
       toolbarState.closeToolbarPopovers()
     }
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -2546,6 +3052,7 @@ export function NotebookApp() {
       setAisleContextMenu(null)
       setEditorContextMenu(null)
       setTreeContextMenu(null)
+      setShortcutMenu(null)
       toolbarState.closeToolbarPopovers()
     }
     document.addEventListener('pointerdown', closeFloatingUi)
@@ -2560,6 +3067,7 @@ export function NotebookApp() {
     setAisleContextMenu(null)
     setEditorContextMenu(null)
     setTreeContextMenu(null)
+    setShortcutMenu(null)
   }, [activeModel?.noteId, viewMode])
 
   const runEditorContextClipboardAction = useCallback(
@@ -2568,6 +3076,15 @@ export function NotebookApp() {
       destination: NotebookEditorPasteDestination,
       aisleId: string,
     ) => {
+      if (action === 'paste' && destination === 'here') {
+        void pasteNotebookStructureClipboard(aisleId)
+          .then((handled) => {
+            if (!handled) notebookEditors.runClipboardAction(action)
+          })
+          .catch(() => notebookEditors.runClipboardAction(action))
+        return
+      }
+
       if (destination === 'here' || action === 'cut' || action === 'copy') {
         notebookEditors.runClipboardAction(action)
         return
@@ -2580,7 +3097,7 @@ export function NotebookApp() {
         })
         .catch(() => undefined)
     },
-    [addAisle, notebookEditors],
+    [addAisle, notebookEditors, pasteNotebookStructureClipboard],
   )
 
   const insertEditorContextAisle = useCallback(
@@ -2588,6 +3105,38 @@ export function NotebookApp() {
       addAisle(side, aisleId)
     },
     [addAisle],
+  )
+
+  const revealEditorContextLocation = useCallback(
+    (aisleId: string) => {
+      const noteId = stateRef.current.notebook.activeNoteId
+      if (!noteId) {
+        window.alert('Could not reveal note location.')
+        return
+      }
+      const revealNoteLocation = window.electronAPI?.revealNoteLocation
+      if (typeof revealNoteLocation !== 'function') {
+        window.alert('Could not reveal note location.')
+        return
+      }
+      const payload = {
+        type: 'live-note' as const,
+        location: { noteId },
+        aisleId,
+      }
+      void Promise.resolve(commitAppStateNow(stateRef.current, {
+        preferSync: true,
+        flushQueue: true,
+        trigger: 'notebook-editor-reveal-location',
+      }))
+        .then(() => revealNoteLocation(payload))
+        .then((result) => {
+          if (result.ok) return
+          window.alert(result.error || 'Could not reveal note location.')
+        })
+        .catch(() => window.alert('Could not reveal note location.'))
+    },
+    [commitAppStateNow, stateRef],
   )
 
   const startSidebarResize = useCallback(
@@ -2652,7 +3201,7 @@ export function NotebookApp() {
       onCommand={notebookEditors.runCommand}
       onHistory={(direction) => notebookEditors.runCommand(direction)}
       onInsertImage={notebookEditors.insertImageFile}
-      onInsertWebLink={notebookEditors.insertPromptedLink}
+      onInsertWebLink={openToolbarLinkPicker}
       onClear={() => notebookEditors.runCommand('clear')}
     />
   ) : null
@@ -2668,12 +3217,12 @@ export function NotebookApp() {
         toolbarState.setHeadingMenuOpen(false)
       }}
       onOpenCopyModal={() => {
-        createSyncedCopy()
+        openWholeNoteCopyPicker()
         toolbarState.setCopyMenuOpen(false)
       }}
       onOpenDeduplicateModal={() => {
-        if (activeModel.linked) decoupleActiveNote()
-        else if (renderedActiveAisleId) decoupleAisle(renderedActiveAisleId)
+        if (activeModel.linked) openDecoupleNoteDialog()
+        else if (renderedActiveAisleId) openDecoupleAisleDialog(renderedActiveAisleId)
         toolbarState.setCopyMenuOpen(false)
       }}
     />
@@ -3636,8 +4185,9 @@ export function NotebookApp() {
                 aisleScrollRef={aisleScrollRef}
                 toolbar={toolbar}
                 headingPopover={toolbarPopovers}
-                imageToolsOverlay={null}
+                imageToolsOverlay={imageToolsOverlay}
                 tableControlsOverlay={tableControlsOverlay}
+                listReorderControlsOverlay={listReorderControlsOverlay}
                 tableOfContentsHeadingsByAisle={
                   tableOfContentsPanels?.noteBodyId === activeModel.noteBody.id
                     ? tableOfContentsPanels.headingsByAisle
@@ -3698,6 +4248,9 @@ export function NotebookApp() {
                 onOpenTableOfContentsLink={openTableOfContentsLink}
                 onOpenAisleFrontmatter={openFrontmatterModalForAisle}
                 onOpenAisleLink={openAisleActionMenu}
+                appState={state}
+                onOpenNoteReference={openNoteReferenceFromEditor}
+                onSelectEditableAsset={selectEditableAssetFromWorkspace}
                 regularNoteAisleControls={{
                   showAddButtons: state.ui.showRegularNoteAisleAddButtons ?? true,
                   showDeleteButton: (state.ui.showRegularNoteAisleDeleteButton ?? true) && activeModel.resolved.aisles.length > 1,
@@ -3714,23 +4267,45 @@ export function NotebookApp() {
                 canDecoupleNote={activeModel.linked}
                 canDecoupleAisle={canDecoupleAisleById(aisleContextMenu?.aisleId ?? '')}
                 onClose={() => setAisleContextMenu(null)}
-                onDecoupleNote={decoupleActiveNote}
-                onDecoupleAisle={() => decoupleAisle(aisleContextMenu?.aisleId ?? renderedActiveAisleId)}
+                onDecoupleNote={openDecoupleNoteDialog}
+                onDecoupleAisle={() => openDecoupleAisleDialog(aisleContextMenu?.aisleId ?? renderedActiveAisleId)}
               />
               <NotebookEditorContextMenu
                 menu={editorContextMenu}
                 canDecoupleNote={activeModel.linked}
                 canDecoupleAisle={canDecoupleAisleById(editorContextMenu?.aisleId ?? '')}
+                revealLabel={sidebarRevealLabel}
+                canReveal={typeof window !== 'undefined' && typeof window.electronAPI?.revealNoteLocation === 'function'}
                 onClose={() => setEditorContextMenu(null)}
                 onClipboard={runEditorContextClipboardAction}
                 onCommand={notebookEditors.runCommand}
-                onInsertUrlLink={notebookEditors.insertPromptedLink}
+                onInsertUrlLink={openToolbarLinkPicker}
+                onInsertNoteLink={() => openContextNoteReferencePicker('note-link')}
+                onInsertNotePreview={() => openContextNoteReferencePicker('note-preview')}
                 onInsertAisle={insertEditorContextAisle}
                 onInsertAttachment={notebookEditors.insertAttachmentFile}
-                onCreateSyncedCopy={createSyncedCopy}
-                onDecoupleNote={decoupleActiveNote}
-                onDecoupleAisle={decoupleAisle}
+                onCopyAs={copyNotebookStructureAs}
+                onCreateSyncedCopy={openWholeNoteCopyPicker}
+                onDecoupleNote={openDecoupleNoteDialog}
+                onDecoupleAisle={openDecoupleAisleDialog}
+                onRevealLocation={revealEditorContextLocation}
               />
+              {shortcutMenu ? (
+                <ShortcutMenu
+                  top={shortcutMenu.top}
+                  left={shortcutMenu.left}
+                  operations={normalizedHotkeys.newlineShortcuts.menuOperations}
+                  activeIndex={Math.min(
+                    shortcutMenu.activeIndex,
+                    Math.max(0, normalizedHotkeys.newlineShortcuts.menuOperations.length - 1),
+                  )}
+                  onHighlight={(activeIndex) => {
+                    setShortcutMenu((current) => (current ? { ...current, activeIndex } : current))
+                  }}
+                  onRun={runShortcutMenuOperation}
+                  onClose={() => setShortcutMenu(null)}
+                />
+              ) : null}
             </section>
           ) : (
             <section className="notebook-empty-state">
@@ -3741,6 +4316,45 @@ export function NotebookApp() {
         ) : null}
         {renderUtilityShell()}
       </main>
+      {noteActionPicker ? (
+        <NotebookNoteActionPicker
+          title={noteActionPicker.title}
+          entries={noteActionEntries}
+          query={noteActionPicker.query}
+          showSearchInput={noteActionPicker.source !== 'mention'}
+          showHeader={noteActionPicker.source !== 'mention'}
+          actions={noteActionPicker.actions}
+          anchor={noteActionPicker.anchor}
+          urlEnabled={noteActionPicker.urlEnabled}
+          onQueryChange={updateNoteActionPickerQuery}
+          onSubmitUrl={submitUrlLink}
+          onAction={handleNoteActionPickerAction}
+          onClose={closeNoteActionPicker}
+        />
+      ) : null}
+      <LinkPrompt
+        linkPromptInputRef={linkPromptInputRef}
+        linkPrompt={linkPrompt}
+        onLinkPromptUrlChange={updateLinkPromptUrl}
+        onLinkPromptTextChange={updateLinkPromptText}
+        onInsertNamedLink={insertNamedLink}
+        onCloseLinkPrompt={closeLinkPrompt}
+        onOpenLink={openPromptLinkUrl}
+        onOpenNoteLink={openNoteLinkFromLinkPrompt}
+      />
+      {decoupleDialog ? (
+        <NotebookDecoupleDialog
+          title={decoupleDialog.kind === 'note' ? 'De-couple note' : 'De-couple aisle'}
+          description={
+            decoupleDialog.kind === 'note'
+              ? 'This note currently shares a note body with the locations below.'
+              : 'This aisle currently shares content with the locations below.'
+          }
+          rows={decoupleDialogRows}
+          onCancel={() => setDecoupleDialog(null)}
+          onApply={applyDecoupleDialog}
+        />
+      ) : null}
       <NotebookTreeContextMenu
         menu={treeContextMenu}
         revealLabel={sidebarRevealLabel}

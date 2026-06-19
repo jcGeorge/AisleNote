@@ -1612,6 +1612,11 @@ export function applyParagraphSpaceShortcut(state: any, dispatch?: (tr: unknown)
 export function headingSpaceShortcutPlugin(context: {
   pmKeymap: { keymap: (bindings: Record<string, unknown>) => unknown }
   pmState: {
+    Plugin?: new (spec: {
+      props?: {
+        handleTextInput?: (view: any, from: number, to: number, text: string) => boolean
+      }
+    }) => unknown
     Selection: { near: (resolvedPos: unknown, bias?: number) => unknown }
     TextSelection: {
       create: (doc: unknown, anchor: number, head?: number) => unknown
@@ -1619,7 +1624,7 @@ export function headingSpaceShortcutPlugin(context: {
   }
 }) {
   const { keymap } = context.pmKeymap
-  const { Selection } = context.pmState
+  const { Plugin, Selection } = context.pmState
 
   const getBlockContext = getCollapsedTopLevelBlockContext
 
@@ -1733,6 +1738,17 @@ export function headingSpaceShortcutPlugin(context: {
             handleDeleteFromEmptyParagraphBeforeList(state, dispatch),
           Space: applyParagraphSpaceShortcut,
         }),
+      () => {
+        const pluginSpec = {
+          props: {
+            handleTextInput: (view: any, _from: number, _to: number, text: string) => {
+              if (text !== ' ') return false
+              return applyParagraphSpaceShortcut(view.state, view.dispatch)
+            },
+          },
+        }
+        return Plugin ? new Plugin(pluginSpec) : pluginSpec
+      },
     ],
   }
 }

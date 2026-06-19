@@ -914,6 +914,177 @@
   background: color-mix(in srgb, var(--app-danger-bg) 10%, transparent);
 }
 
+.notebook-note-action-layer,
+.notebook-decouple-layer {
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  background: color-mix(in srgb, var(--app-bg) 46%, transparent);
+}
+
+.notebook-note-action-picker,
+.notebook-decouple-dialog {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(520px, calc(100vw - 28px));
+  max-height: min(680px, calc(100vh - 28px));
+  padding: 14px;
+  overflow: hidden;
+  border: 1px solid var(--modal-border);
+  border-radius: 8px;
+  background: var(--modal-bg);
+  color: var(--modal-text);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 34%);
+}
+
+.notebook-note-action-picker.is-modal,
+.notebook-decouple-dialog {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.notebook-note-action-picker.is-anchored {
+  transform: translateY(8px);
+}
+
+.notebook-note-action-header,
+.notebook-decouple-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.notebook-note-action-header h2,
+.notebook-decouple-header h2 {
+  margin: 0;
+  color: var(--modal-text);
+  font-size: var(--ui-font-title);
+}
+
+.notebook-note-action-close,
+.notebook-decouple-header button {
+  min-width: 32px;
+  height: 32px;
+  border: 1px solid var(--modal-cancel-border);
+  border-radius: 6px;
+  background: var(--modal-cancel-bg);
+  color: var(--modal-cancel-text);
+}
+
+.notebook-note-action-url {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.notebook-note-action-url input,
+.notebook-note-action-search {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: var(--app-surface);
+  color: var(--app-text);
+}
+
+.notebook-note-action-query {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--app-border-muted);
+  border-radius: 6px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  font: 13px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notebook-note-action-url button,
+.notebook-note-action-choice,
+.notebook-decouple-actions button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--modal-primary-border);
+  border-radius: 6px;
+  background: var(--modal-primary-bg);
+  color: var(--modal-primary-text);
+  white-space: nowrap;
+}
+
+.notebook-note-action-results,
+.notebook-decouple-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.notebook-note-action-result,
+.notebook-decouple-row {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--app-border-muted);
+  border-radius: 6px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  text-align: left;
+}
+
+.notebook-note-action-result.is-highlighted,
+.notebook-note-action-result.is-selected {
+  border-color: var(--app-primary-border);
+  background: color-mix(in srgb, var(--app-primary-action) 14%, var(--app-surface));
+}
+
+.notebook-note-action-choice.is-highlighted {
+  border-color: var(--app-primary-border);
+  background: color-mix(in srgb, var(--app-primary-action) 22%, var(--modal-primary-bg));
+}
+
+.notebook-note-action-result small,
+.notebook-note-action-choices small,
+.notebook-decouple-row small,
+.notebook-decouple-dialog p,
+.notebook-note-action-empty,
+.notebook-decouple-empty {
+  margin: 0;
+  color: var(--modal-body-text);
+}
+
+.notebook-note-action-choices {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--app-border-muted);
+}
+
+.notebook-note-action-choice-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+.notebook-decouple-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.notebook-decouple-actions button:not(.is-primary) {
+  border-color: var(--modal-cancel-border);
+  background: var(--modal-cancel-bg);
+  color: var(--modal-cancel-text);
+}
+
 @media (max-width: 760px) {
   .notebook-shell {
     flex-direction: column;

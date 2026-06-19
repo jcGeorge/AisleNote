@@ -1,5 +1,9 @@
 import { Fragment, Slice, type Node as ProseMirrorNode } from 'prosemirror-model'
 import { createLinkMark } from './prosemirror-utils'
+import {
+  insertTableSelectionClipboardPayloadIntoView,
+  readTableSelectionClipboardPayloadFromDataTransfer,
+} from './table-selection-clipboard'
 
 export const TABS_MARKDOWN_CLIPBOARD_MIME = 'application/x-tabs-markdown'
 
@@ -562,6 +566,8 @@ export function insertClipboardHtmlIntoView(view: any | null, html: string): boo
 }
 
 export function insertClipboardDataIntoView(view: any | null, dataTransfer: DataTransferReadLike): boolean {
+  const tablePayload = readTableSelectionClipboardPayloadFromDataTransfer(dataTransfer)
+  if (tablePayload && insertTableSelectionClipboardPayloadIntoView(view, tablePayload)) return true
   const tabsMarkdown = readTabsMarkdownFromDataTransfer(dataTransfer)
   if (tabsMarkdown) return insertVisualClipboardMarkdownIntoView(view, tabsMarkdown)
   const html = dataTransfer?.getData('text/html') ?? ''

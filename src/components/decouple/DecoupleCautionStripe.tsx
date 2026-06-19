@@ -1,3 +1,7 @@
+import React from 'react'
+
+void React
+
 type DecoupleCautionStripeProps = {
   label?: string
 }

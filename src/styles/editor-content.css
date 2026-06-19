@@ -318,13 +318,13 @@
 
 .toastui-editor-contents ol,
 .toastui-editor .ProseMirror ol {
-  padding-left: 4ch !important;
+  padding-left: 2.75ch !important;
 }
 
 .toastui-editor-contents ol > li::before,
 .toastui-editor .ProseMirror ol > li::before {
-  width: 3.5ch !important;
-  margin-left: -4ch !important;
+  width: 2.45ch !important;
+  margin-left: -2.75ch !important;
   white-space: nowrap !important;
   box-sizing: border-box !important;
   text-align: right !important;
@@ -382,7 +382,7 @@
 .toastui-editor .ProseMirror p.tabs-annotation-line {
   position: relative !important;
   padding-left: 2.4rem !important;
-  color: var(--editor-annotation-text) !important;
+  color: var(--editor-text) !important;
 }
 
 .toastui-editor-contents p.tabs-annotation-line::before,
@@ -765,7 +765,11 @@
 }
 
 .toastui-editor .ProseMirror .tabs-media-link-source-hidden,
-.toastui-editor-contents .tabs-media-link-source-hidden {
+.toastui-editor-contents .tabs-media-link-source-hidden,
+.toastui-editor .ProseMirror .tabs-note-preview-source-hidden,
+.toastui-editor-contents .tabs-note-preview-source-hidden,
+.toastui-editor .ProseMirror .tabs-note-preview-source-block-hidden,
+.toastui-editor-contents .tabs-note-preview-source-block-hidden {
   display: none !important;
 }
 

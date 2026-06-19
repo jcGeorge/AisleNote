@@ -4,26 +4,89 @@ import {
   type BlankParagraphDisplayOptions,
   isBlankParagraphNode,
   mergeLeadingIndentsFromWysiwyg,
+  normalizeEscapedMarkdownLinks,
   normalizeEmptyHeadingMarkersFromWysiwyg,
   normalizeMarkdownForPersistence,
   prepareBlankParagraphsForEditorDisplay,
   prepareMarkdownHighlightsForDisplay,
   preserveBlankParagraphsFromWysiwyg,
+  transformOutsideFencedCode,
+  transformOutsideInlineCode,
 } from '../markdown/markdown-utils'
 import {
   normalizeMarkdownImageSourcesForPersistence,
   prepareMarkdownImagesForDisplay,
 } from '../markdown/image-asset-registry'
+import {
+  formatEditorMarkdownNoteReferenceHref,
+  formatMarkdownNoteReferenceDestination,
+  parseMarkdownNoteReferenceDestination,
+} from '../notes/note-references'
 import { measureSlowOperation } from '../performance/performance-logging'
 import { getWysiwygView, markWysiwygLoadedUndoBoundary } from './prosemirror-utils'
 
+const MARKDOWN_LINK_DESTINATION_RE = /(!?\[((?:\\.|[^\]\\])*)\])\((<[^>\n]*>|[^)\s\n]+)\)/g
+const INTERNAL_NOTE_HANDLE_RE = /--[0-9a-f]{6}(?:-\d+)?$/i
+
+function getSyntaxInternalNoteTarget(destination: string): string | null {
+  const target = parseMarkdownNoteReferenceDestination(destination)
+  if (!target) return null
+  const noteHandle = target.split('#')[0]?.trim() ?? ''
+  return INTERNAL_NOTE_HANDLE_RE.test(noteHandle) ? target : null
+}
+
+function transformMarkdownLinkDestinationsOutsideCode(
+  markdown: string,
+  transformDestination: (destination: string) => string | null,
+): string {
+  return transformOutsideFencedCode(String(markdown ?? ''), (line) =>
+    transformOutsideInlineCode(line, (segment) =>
+      segment.replace(MARKDOWN_LINK_DESTINATION_RE, (source, linkPrefix: string, _label: string, destination: string) => {
+        const nextDestination = transformDestination(destination)
+        return nextDestination ? `${linkPrefix}(${nextDestination})` : source
+      }),
+    ),
+  )
+}
+
+function escapeMarkdownPreviewTokenPart(value: string): string {
+  return String(value ?? '').replace(/([\\[\]()<>!#])/g, '\\$1')
+}
+
+export function escapeNotePreviewTokensForEditorDisplay(markdown: string): string {
+  return transformOutsideFencedCode(String(markdown ?? ''), (line) =>
+    transformOutsideInlineCode(line, (segment) =>
+      segment.replace(MARKDOWN_LINK_DESTINATION_RE, (source, linkPrefix: string, label: string, destination: string) => {
+        if (!linkPrefix.startsWith('!') || !getSyntaxInternalNoteTarget(destination)) return source
+        return `\\!\\[${escapeMarkdownPreviewTokenPart(label)}\\]\\(${escapeMarkdownPreviewTokenPart(destination)}\\)`
+      }),
+    ),
+  )
+}
+
+export function prepareMarkdownNoteLinkDestinationsForEditorDisplay(markdown: string): string {
+  return transformMarkdownLinkDestinationsOutsideCode(markdown, (destination) => {
+    const target = getSyntaxInternalNoteTarget(destination)
+    return target ? formatEditorMarkdownNoteReferenceHref(target) : null
+  })
+}
+
+export function normalizeEditorNoteLinkDestinationsForPersistence(markdown: string): string {
+  return transformMarkdownLinkDestinationsOutsideCode(markdown, (destination) => {
+    const target = getSyntaxInternalNoteTarget(destination)
+    return target ? formatMarkdownNoteReferenceDestination(target) : null
+  })
+}
+
 export function getEditorMarkdownForPersistence(editor: Editor): string {
   return normalizeMarkdownImageSourcesForPersistence(
-    normalizeEmptyHeadingMarkersFromWysiwyg(
-      editor,
-      preserveBlankParagraphsFromWysiwyg(
+    normalizeEditorNoteLinkDestinationsForPersistence(
+      normalizeEmptyHeadingMarkersFromWysiwyg(
         editor,
-        normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())),
+        preserveBlankParagraphsFromWysiwyg(
+          editor,
+          normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())),
+        ),
       ),
     ),
   )
@@ -33,8 +96,11 @@ export function prepareMarkdownForEditorDisplay(
   markdown: string,
   options: BlankParagraphDisplayOptions = {},
 ): string {
-  const blankPrepared = prepareBlankParagraphsForEditorDisplay(markdown, options)
-  return prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(blankPrepared.markdown))
+  const escapedLinksPrepared = normalizeEscapedMarkdownLinks(markdown)
+  const blankPrepared = prepareBlankParagraphsForEditorDisplay(escapedLinksPrepared, options)
+  const noteLinksPrepared = prepareMarkdownNoteLinkDestinationsForEditorDisplay(blankPrepared.markdown)
+  const notePreviewsPrepared = escapeNotePreviewTokensForEditorDisplay(noteLinksPrepared)
+  return prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(notePreviewsPrepared))
 }
 
 export function restoreEditorBlankParagraphs(editor: Editor | null, markdown: string): boolean {

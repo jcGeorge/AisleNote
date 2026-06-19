@@ -10,6 +10,7 @@ export const GENERAL_ICON_IDS = [
   'maximize',
   'settings',
   'filter',
+  'minus',
   'plus',
   'trash',
   'folder',
@@ -110,6 +111,9 @@ export const APP_ICON_DEFINITIONS = {
       { tag: 'path', d: 'M11 8h7' },
       { tag: 'path', d: 'M11 12h4' },
     ],
+  },
+  minus: {
+    shapes: [{ tag: 'path', d: 'M5 12h14' }],
   },
   plus: {
     shapes: [

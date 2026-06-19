@@ -404,6 +404,23 @@ function getParagraphSpaceBindings() {
   return pluginBundle.wysiwygPlugins[0]() as Record<string, any>
 }
 
+function getParagraphSpaceTextInputPlugin() {
+  const pluginBundle = headingSpaceShortcutPlugin({
+    pmKeymap: {
+      keymap: (bindings: Record<string, unknown>) => bindings,
+    },
+    pmState: {
+      Selection: Selection as unknown as {
+        near: (resolvedPos: unknown, bias?: number) => unknown
+      },
+      TextSelection: TextSelection as unknown as {
+        create: (doc: unknown, anchor: number, head?: number) => unknown
+      },
+    },
+  })
+  return pluginBundle.wysiwygPlugins[1]() as { props?: { handleTextInput?: (view: any, from: number, to: number, text: string) => boolean } }
+}
+
 function getThematicBreakBindings() {
   const pluginBundle = thematicBreakShortcutPlugin({
     pmKeymap: {
@@ -607,6 +624,30 @@ describe('paragraph space shortcut WYSIWYG behavior', () => {
     expect(nextState.doc.child(0).type.name).toBe('blockQuote')
     expect(nextState.doc.child(0).child(0).type.name).toBe('paragraph')
     expect(nextState.doc.child(0).textContent).toBe('')
+  })
+
+  it('turns a bare greater-than marker into a blockquote from typed Space input', () => {
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [
+      paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('>')),
+    ])
+    let state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 2),
+    })
+    const plugin = getParagraphSpaceTextInputPlugin()
+    const view = {
+      get state() {
+        return state
+      },
+      dispatch: (transaction: any) => {
+        state = state.apply(transaction)
+      },
+    }
+
+    expect(plugin.props?.handleTextInput?.(view, 2, 2, ' ')).toBe(true)
+
+    expect(state.doc.child(0).type.name).toBe('blockQuote')
+    expect(state.doc.child(0).textContent).toBe('')
   })
 
   it('turns an ordered-list marker at the start of existing text into a numbered list', () => {

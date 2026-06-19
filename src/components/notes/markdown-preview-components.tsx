@@ -1,3 +1,4 @@
+import * as React from 'react'
 import {
   Children,
   cloneElement,
@@ -11,12 +12,17 @@ import {
 import { BLOCK_INDENT_TOKEN, countBlockIndentLevels } from '../../markdown/markdown-utils'
 import { MediaPlayer } from '../../media/MediaPlayer'
 import { getMediaKindFromUrl, isPotentialMediaUrl } from '../../media/media-utils'
+import { normalizeExternalWebUrl, openExternalWebUrl } from '../../notes/external-links'
+import { resolveMarkdownNoteReferenceDestination } from '../../notes/note-references'
 import { TAG_TOKEN_CLASS_NAME } from '../../tags/tags.js'
+import type { AppState, NoteLocation } from '../../types/app'
 import {
   RENDERED_MARKDOWN_CLASS_NAMES,
   getRenderedMarkdownInlineTextParts,
   getRenderedMarkdownHeadingClassName,
 } from '../../editor/rendered-markdown-surface'
+
+void React
 
 type MarkdownParagraphProps = HTMLAttributes<HTMLParagraphElement> & {
   node?: unknown
@@ -31,6 +37,8 @@ type MarkdownHeadingProps = HTMLAttributes<HTMLHeadingElement> & {
 type MarkdownLinkProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
   node?: unknown
   children?: ReactNode
+  appState?: AppState | null
+  onOpenNote?: (target: NoteLocation) => void
 }
 
 type MarkdownListItemProps = HTMLAttributes<HTMLLIElement> & {
@@ -124,6 +132,25 @@ function renderMarkdownPreviewTags(children: ReactNode): ReactNode {
   return renderMarkdownPreviewTagsWithKey(children, 'preview')
 }
 
+function isPotentialInternalNoteHref(href: string): boolean {
+  const normalized = normalizePotentialInternalNoteHref(href)
+  if (!normalized) return false
+  if (/^(?:https?:|mailto:|tel:|data:|blob:|tabs-asset:|#|\/|\.)/i.test(normalized)) return false
+  return true
+}
+
+function normalizePotentialInternalNoteHref(href: string): string {
+  const normalized = href.trim()
+  if (!normalized) return ''
+  try {
+    const decoded = decodeURIComponent(normalized)
+    if (decoded.startsWith('<') && decoded.endsWith('>')) return decoded
+  } catch {
+    // Keep the original value if it is not URI encoded.
+  }
+  return normalized
+}
+
 export function MarkdownPreviewParagraph({
   node,
   className,
@@ -206,6 +233,8 @@ export function MarkdownPreviewLink({
   node,
   href,
   children,
+  appState = null,
+  onOpenNote,
   ...props
 }: MarkdownLinkProps) {
   void node
@@ -213,9 +242,30 @@ export function MarkdownPreviewLink({
   if (href && kind) {
     return <MediaPlayer src={href} kind={kind} label={getReactNodeText(children).trim()} />
   }
+  const noteReference = href && appState && isPotentialInternalNoteHref(href)
+    ? resolveMarkdownNoteReferenceDestination(appState, normalizePotentialInternalNoteHref(href), getReactNodeText(children), false)
+    : null
+  const noteTarget = noteReference?.target ?? null
+  const externalUrl = href ? normalizeExternalWebUrl(href) : null
 
   return (
-    <a {...props} href={href} className={mergeClassNames(props.className, RENDERED_MARKDOWN_CLASS_NAMES.link)}>
+    <a
+      {...props}
+      href={href}
+      className={mergeClassNames(props.className, RENDERED_MARKDOWN_CLASS_NAMES.link)}
+      data-note-reference={noteTarget ? 'true' : undefined}
+      target={externalUrl ? '_blank' : props.target}
+      rel={externalUrl ? 'noopener noreferrer' : props.rel}
+      onClick={noteTarget && onOpenNote ? (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        onOpenNote(noteTarget)
+      } : externalUrl ? (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        openExternalWebUrl(externalUrl)
+      } : props.onClick}
+    >
       {children}
     </a>
   )

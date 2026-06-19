@@ -8,6 +8,7 @@ import {
   EDITOR_BLANK_LINE_PLACEHOLDER,
   INDENT_TOKEN,
   mergeLeadingIndentsFromWysiwyg,
+  normalizeEscapedMarkdownLinks,
   normalizeHighlightMarkdownForPersistence,
   normalizeMarkdownForPersistence,
   prepareBlankParagraphsForEditorDisplay,
@@ -252,6 +253,34 @@ describe('markdown WYSIWYG blank line preservation', () => {
     expect(normalizeMarkdownForPersistence('one\n\n<br>\n\ntwo')).toBe('one\n\ntwo')
     expect(normalizeMarkdownForPersistence('one <br> two')).toBe('one <br> two')
     expect(normalizeMarkdownForPersistence('```\none\n<br>\ntwo\n```')).toBe('```\none\n<br>\ntwo\n```')
+  })
+
+  it('repairs fully escaped markdown links from persisted editor text', () => {
+    const escaped = [
+      String.raw`\[strike\]\(https://lucide\.dev/icons/strikethrough\)`,
+      String.raw`\!\[Welcome copy\]\(Welcome%20copy--96d9e4\)`,
+      String.raw`\[Welcome copy\]\(\<Welcome copy\-\-96d9e4\>\)`,
+    ].join('\n')
+    const repaired = [
+      '[strike](https://lucide.dev/icons/strikethrough)',
+      '![Welcome copy](Welcome%20copy--96d9e4)',
+      '[Welcome copy](<Welcome copy--96d9e4>)',
+    ].join('\n')
+
+    expect(normalizeEscapedMarkdownLinks(escaped)).toBe(repaired)
+    expect(normalizeMarkdownForPersistence(escaped)).toBe(repaired)
+  })
+
+  it('does not repair escaped markdown links inside inline or fenced code', () => {
+    const escaped = String.raw`\[strike\]\(https://lucide\.dev/icons/strikethrough\)`
+    const markdown = [
+      `\`${escaped}\``,
+      '```',
+      escaped,
+      '```',
+    ].join('\n')
+
+    expect(normalizeEscapedMarkdownLinks(markdown)).toBe(markdown)
   })
 
   it('cleans reported note preview and link spacing without hidden placeholders or standalone breaks', () => {

@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Editor } from '@toast-ui/editor'
 import { EDITOR_BLANK_LINE_PLACEHOLDER } from '../markdown/markdown-utils'
 import {
+  escapeNotePreviewTokensForEditorDisplay,
   getEditorMarkdownForPersistence,
+  normalizeEditorNoteLinkDestinationsForPersistence,
+  prepareMarkdownForEditorDisplay,
+  prepareMarkdownNoteLinkDestinationsForEditorDisplay,
   restoreEditorBlankParagraphs,
   setEditorMarkdownForDisplay,
 } from './editor-markdown-display'
@@ -91,6 +95,62 @@ describe('editor markdown display helpers', () => {
     } as unknown as Editor
 
     expect(getEditorMarkdownForPersistence(editor)).toBe('==text==\n\nplain\u2060\u2003\u2003indent')
+  })
+
+  it('uses editor-safe internal note link destinations for display', () => {
+    expect(prepareMarkdownForEditorDisplay('[2 aisle](<2 aisle--c761e6>)')).toBe('[2 aisle](2%20aisle--c761e6)')
+    expect(prepareMarkdownForEditorDisplay(String.raw`\[strike\]\(https://lucide\.dev/icons/strikethrough\)`)).toBe(
+      '[strike](https://lucide.dev/icons/strikethrough)',
+    )
+    expect(prepareMarkdownForEditorDisplay(String.raw`\[Welcome copy\]\(\<Welcome copy\-\-96d9e4\>\)`)).toBe(
+      '[Welcome copy](Welcome%20copy--96d9e4)',
+    )
+    expect(prepareMarkdownNoteLinkDestinationsForEditorDisplay('![2 aisle](<2 aisle--c761e6>)')).toBe(
+      '![2 aisle](2%20aisle--c761e6)',
+    )
+  })
+
+  it('keeps internal note preview tokens as text for the editor preview plugin', () => {
+    expect(escapeNotePreviewTokensForEditorDisplay('![Welcome copy](Welcome%20copy--96d9e4)')).toBe(
+      String.raw`\!\[Welcome copy\]\(Welcome%20copy--96d9e4\)`,
+    )
+    expect(prepareMarkdownForEditorDisplay('![Welcome copy](<Welcome copy--96d9e4>)')).toBe(
+      String.raw`\!\[Welcome copy\]\(Welcome%20copy--96d9e4\)`,
+    )
+    expect(prepareMarkdownForEditorDisplay('![Diagram](data:image/png;base64,abc)')).toBe(
+      '![Diagram](data:image/png;base64,abc)',
+    )
+  })
+
+  it('canonicalizes editor-safe internal note link destinations for persistence', () => {
+    const editor = {
+      getMarkdown: vi.fn(() => '[2 aisle](2%20aisle--c761e6)'),
+    } as unknown as Editor
+
+    expect(getEditorMarkdownForPersistence(editor)).toBe('[2 aisle](<2 aisle--c761e6>)')
+    expect(normalizeEditorNoteLinkDestinationsForPersistence('[2 aisle](2%20aisle--c761e6)')).toBe(
+      '[2 aisle](<2 aisle--c761e6>)',
+    )
+  })
+
+  it('canonicalizes escaped editor note preview text for persistence', () => {
+    const editor = {
+      getMarkdown: vi.fn(() => String.raw`\!\[Welcome copy\]\(Welcome%20copy--96d9e4\)`),
+    } as unknown as Editor
+
+    expect(getEditorMarkdownForPersistence(editor)).toBe('![Welcome copy](<Welcome copy--96d9e4>)')
+  })
+
+  it('leaves web links and code examples alone when normalizing note link destinations', () => {
+    const markdown = [
+      '[site](https://example.com/has%20space)',
+      '`[2 aisle](2%20aisle--c761e6)`',
+      '```',
+      '[2 aisle](2%20aisle--c761e6)',
+      '```',
+    ].join('\n')
+
+    expect(normalizeEditorNoteLinkDestinationsForPersistence(markdown)).toBe(markdown)
   })
 
   it('strips editor blank artifacts from persisted markdown', () => {

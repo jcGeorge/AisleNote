@@ -394,6 +394,7 @@ export function getNoteMentionQueryAtSelection(view: any | null): NoteMentionQue
   const parent = selection.$from?.parent
   const parentOffset = selection.$from?.parentOffset
   if (!parent?.isTextblock || typeof parentOffset !== 'number') return null
+  if (isCodeNodeType(parent) || isCursorInInlineCode(selection.$from, parentOffset)) return null
 
   const textBeforeCursor = String(parent.textBetween?.(0, parentOffset, '\n', '\n') ?? '')
   const match = /(^|\s)@([^@]*)$/.exec(textBeforeCursor)

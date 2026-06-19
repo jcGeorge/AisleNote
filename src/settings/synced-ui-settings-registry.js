@@ -1,6 +1,6 @@
 export const SYNCED_UI_SIMPLE_SETTING_DEFINITIONS = Object.freeze([
-  { key: 'lastLinkInsertMode', kind: 'enum', defaultValue: 'note', values: ['note', 'url'] },
-  { key: 'lastNoteCopyMode', kind: 'enum', defaultValue: 'independent', values: ['independent', 'linked'] },
+  { key: 'lastLinkInsertMode', kind: 'enum', defaultValue: 'note-link', values: ['url', 'note-link', 'note-preview'] },
+  { key: 'lastNoteCopyMode', kind: 'enum', defaultValue: 'independent', values: ['independent', 'synced'] },
   { key: 'findCaseSensitive', kind: 'boolean', defaultValue: false },
   { key: 'findWholeWord', kind: 'boolean', defaultValue: false },
   { key: 'findRegex', kind: 'boolean', defaultValue: false },
@@ -63,10 +63,16 @@ function isRecord(value) {
 export function normalizeRegisteredSyncedUiSetting(key, value) {
   const definition = SIMPLE_SETTING_BY_KEY.get(key)
   if (!definition) return undefined
+  const normalizedValue =
+    key === 'lastLinkInsertMode' && value === 'note'
+      ? 'note-link'
+      : key === 'lastNoteCopyMode' && value === 'linked'
+        ? 'synced'
+        : value
   if (definition.kind === 'boolean') {
-    return typeof value === 'boolean' ? value : definition.defaultValue
+    return typeof normalizedValue === 'boolean' ? normalizedValue : definition.defaultValue
   }
-  return definition.values.includes(value) ? value : definition.defaultValue
+  return definition.values.includes(normalizedValue) ? normalizedValue : definition.defaultValue
 }
 
 export function normalizeRegisteredSyncedUiSettings(rawUi) {

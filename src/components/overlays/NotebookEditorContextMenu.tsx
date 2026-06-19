@@ -17,12 +17,16 @@ export type NotebookEditorContextMenuState = {
 export type NotebookEditorClipboardAction = 'cut' | 'copy' | 'paste' | 'pastePlainText'
 export type NotebookEditorPasteDestination = 'here' | 'new-aisle-left' | 'new-aisle-right'
 export type NotebookEditorAisleInsertSide = 'left' | 'right'
+export type NotebookEditorCopyAsKind = 'note' | 'aisle'
+export type NotebookEditorCopyAsMode = 'independent' | 'synced'
 
 const NOTEBOOK_CONTEXT_MENU_IGNORE_SELECTOR = [
   '.note-shared-toolbar',
   '.note-toolbar-copy-popover',
   '.note-toolbar-heading-popover',
   '.tab-context-menu',
+  'td',
+  'th',
   '[data-note-workspace-skip-aisle-activation="true"]',
 ].join(',')
 
@@ -137,19 +141,27 @@ export function NotebookEditorContextMenu({
   menu,
   canDecoupleNote,
   canDecoupleAisle,
+  revealLabel,
+  canReveal,
   onClose,
   onClipboard,
   onCommand,
   onInsertUrlLink,
+  onInsertNoteLink,
+  onInsertNotePreview,
   onInsertAisle,
   onInsertAttachment,
+  onCopyAs,
   onCreateSyncedCopy,
   onDecoupleNote,
   onDecoupleAisle,
+  onRevealLocation,
 }: {
   menu: NotebookEditorContextMenuState | null
   canDecoupleNote: boolean
   canDecoupleAisle: boolean
+  revealLabel: string
+  canReveal: boolean
   onClose: () => void
   onClipboard: (
     action: NotebookEditorClipboardAction,
@@ -158,11 +170,15 @@ export function NotebookEditorContextMenu({
   ) => void
   onCommand: (command: string, payload?: Record<string, unknown>) => void
   onInsertUrlLink: () => void
+  onInsertNoteLink: () => void
+  onInsertNotePreview: () => void
   onInsertAisle: (side: NotebookEditorAisleInsertSide, aisleId: string) => void
   onInsertAttachment: () => void
+  onCopyAs: (kind: NotebookEditorCopyAsKind, mode: NotebookEditorCopyAsMode, aisleId: string) => void
   onCreateSyncedCopy: () => void
   onDecoupleNote: () => void
   onDecoupleAisle: (aisleId: string) => void
+  onRevealLocation: (aisleId: string) => void
 }) {
   const rootRef = React.useRef<HTMLDivElement | null>(null)
   const [rootPosition, setRootPosition] = React.useState<MenuPosition>({ left: 0, top: 0 })
@@ -201,6 +217,9 @@ export function NotebookEditorContextMenu({
   const runInsertAisle = (side: NotebookEditorAisleInsertSide) => {
     runAction(() => onInsertAisle(side, menu.aisleId))
   }
+  const runCopyAs = (kind: NotebookEditorCopyAsKind, mode: NotebookEditorCopyAsMode) => {
+    runAction(() => onCopyAs(kind, mode, menu.aisleId))
+  }
 
   const renderPasteSubmenu = (
     action: Extract<NotebookEditorClipboardAction, 'paste' | 'pastePlainText'>,
@@ -226,6 +245,14 @@ export function NotebookEditorContextMenu({
       <MenuButton onClick={() => runClipboard('copy')}>copy</MenuButton>
       {renderPasteSubmenu('paste', 'paste')}
       {renderPasteSubmenu('pastePlainText', 'paste as plain text')}
+      <SubMenu label="copy note as">
+        <MenuButton onClick={() => runCopyAs('note', 'independent')}>independent copy</MenuButton>
+        <MenuButton onClick={() => runCopyAs('note', 'synced')}>synced copy</MenuButton>
+      </SubMenu>
+      <SubMenu label="copy aisle as">
+        <MenuButton onClick={() => runCopyAs('aisle', 'independent')}>independent copy</MenuButton>
+        <MenuButton onClick={() => runCopyAs('aisle', 'synced')}>synced copy</MenuButton>
+      </SubMenu>
       <MenuSeparator />
       <MenuButton onClick={() => runAction(onCreateSyncedCopy)}>make this a copy of</MenuButton>
       {canDecoupleNote && <MenuButton onClick={() => runAction(onDecoupleNote)}>de-couple note</MenuButton>}
@@ -259,6 +286,8 @@ export function NotebookEditorContextMenu({
       </SubMenu>
       <SubMenu label="insert">
         <MenuButton onClick={() => runAction(onInsertUrlLink)}>url link</MenuButton>
+        <MenuButton onClick={() => runAction(onInsertNoteLink)}>note link</MenuButton>
+        <MenuButton onClick={() => runAction(onInsertNotePreview)}>note preview</MenuButton>
         <MenuSeparator />
         <SubMenu label="aisle" onClick={() => runInsertAisle('right')}>
           <MenuButton onClick={() => runInsertAisle('left')}>to the left</MenuButton>
@@ -271,6 +300,16 @@ export function NotebookEditorContextMenu({
         <MenuSeparator />
         <MenuButton onClick={() => runCommand('codeBlock')}>code block</MenuButton>
       </SubMenu>
+      <MenuSeparator />
+      <button
+        type="button"
+        className={`tab-context-delete ${canReveal ? '' : 'is-disabled'}`.trim()}
+        aria-disabled={canReveal ? undefined : 'true'}
+        disabled={!canReveal}
+        onClick={() => runAction(() => onRevealLocation(menu.aisleId))}
+      >
+        {revealLabel}
+      </button>
     </div>
   )
 }

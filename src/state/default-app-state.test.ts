@@ -9,5 +9,20 @@ describe('default app state', () => {
     expect(state.noteAisleBodies[0]).toMatchObject({ markdown: '' })
     expect(state.ui.scratchpadAisleLimit).toBe(16)
     expect(state.ui).not.toHaveProperty('trashDeleteForRealRequiresConfirmation')
+    expect(state.hotkeys.newlineShortcuts.shortcuts).toEqual({
+      controlEnter: 'operationsMenu',
+      shiftEnter: 'task',
+      commandEnter: 'aisleRight',
+    })
+    expect(state.hotkeys.newlineShortcuts.menuOperations).toEqual([
+      'task',
+      'aisleLeft',
+      'aisleRight',
+      'horizontalLine',
+      'codeBlock',
+      'inlineCode',
+      'blockQuote',
+      'strikethrough',
+    ])
   })
 })
