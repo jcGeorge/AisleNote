@@ -10,9 +10,12 @@ import {
   MarkdownPreviewHeading4,
   MarkdownPreviewHeading5,
   MarkdownPreviewHeading6,
+  MarkdownPreviewInput,
   MarkdownPreviewLink,
   MarkdownPreviewListItem,
   MarkdownPreviewParagraph,
+  createMarkdownPreviewListItem,
+  createMarkdownPreviewUnorderedList,
 } from './markdown-preview-components'
 import type { AppState } from '../../types/app'
 import { buildInternalNoteLinkToken } from '../../notes/note-references'
@@ -25,6 +28,7 @@ const previewComponents = {
   h4: MarkdownPreviewHeading4,
   h5: MarkdownPreviewHeading5,
   h6: MarkdownPreviewHeading6,
+  input: MarkdownPreviewInput,
   li: MarkdownPreviewListItem,
   p: MarkdownPreviewParagraph,
 }
@@ -34,7 +38,11 @@ function renderPreview(markdown: string) {
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       urlTransform={defaultUrlTransform}
-      components={previewComponents}
+      components={{
+        ...previewComponents,
+        li: createMarkdownPreviewListItem(markdown),
+        ul: createMarkdownPreviewUnorderedList(markdown),
+      }}
     >
       {markdown}
     </ReactMarkdown>,
@@ -143,5 +151,67 @@ describe('markdown preview tag appearance', () => {
     expect(html).toContain('class="tabs-rendered-markdown-highlight"')
     expect(html).toContain('highlighted</span>')
     expect(html).not.toContain('==highlighted==')
+  })
+
+  it('keeps dash lists distinct from bullet lists in React markdown previews', () => {
+    const html = renderPreview(['* bullet item', '', 'between', '', '- dash item'].join('\n'))
+
+    expect(html).toContain('class="tabs-dash-list"')
+    expect(html).toContain('tabs-dash-list-item')
+    expect(html).toContain('bullet item')
+    expect(html).toContain('dash item')
+  })
+
+  it('renders annotation markers without exposing their source marker text', () => {
+    const html = renderPreview(['-- And this bad boy', '^-- Man that is inconsistent.'].join('\n\n'))
+
+    expect(html).toContain('tabs-annotation-line')
+    expect(html).toContain('And this bad boy')
+    expect(html).toContain('tabs-annotation-inline-arrow')
+    expect(html).toContain('\u21b0')
+    expect(html).toContain('Man that is inconsistent.')
+    expect(html).not.toContain('-- And this bad boy')
+    expect(html).not.toContain('^-- Man that is inconsistent.')
+  })
+
+  it('renders one real checkbox for task list rows', () => {
+    const html = renderPreview("- [x] That's not great")
+
+    expect(html).toContain('class="task-list-item tabs-rendered-markdown-list-item"')
+    expect(html.match(/type="checkbox"/g) ?? []).toHaveLength(1)
+    expect(html).toContain('checked=""')
+    expect(html).not.toContain('disabled=""')
+  })
+
+  it('renders shortcut-menu blocks with editor preview conventions when markdown blocks are already separated', () => {
+    const markdown = [
+      '# Shortcut menu',
+      '',
+      "> totally doesn't work",
+      '',
+      '* how something is that?',
+      '',
+      '- at least dashes work',
+      '',
+      '-- And this bad boy',
+      '',
+      '1. and this one.',
+      '',
+      '^--\u00a0Man that is inconsistent.',
+      '',
+      '* [x] Hmm',
+      "* [ ] That's not great",
+    ].join('\n')
+    const html = renderPreview(markdown)
+
+    expect(html).toContain('tabs-dash-list-item')
+    expect(html).toContain('tabs-annotation-line')
+    expect(html).toContain('And this bad boy')
+    expect(html).toContain('tabs-annotation-inline-arrow')
+    expect(html).toContain('Man that is inconsistent.')
+    expect(html.match(/type="checkbox"/g) ?? []).toHaveLength(2)
+    expect(html).toContain('checked=""')
+    expect(html).not.toContain(String.raw`\-\-`)
+    expect(html).not.toContain('^--')
   })
 })

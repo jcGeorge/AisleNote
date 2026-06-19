@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { AppState, NoteBody } from '../types/app'
 import {
   buildNotebookNoteReferenceInsertionText,
+  getNotePreviewRenderMarkdown,
   getNotebookAisleDecoupleRows,
   getNotebookNoteDecoupleRows,
   replaceActiveNoteBodyFromTargetNote,
@@ -85,7 +86,33 @@ describe('notebook note actions', () => {
       /^\[Target\]\(Target--[0-9a-f]{6}\)$/,
     )
     expect(buildNotebookNoteReferenceInsertionText(state, { noteId: 'note-target' }, 'note-preview')).toMatch(
-      /^!\[Target\]\(Target--[0-9a-f]{6}\)$/,
+      /^!\[Target\]\(<Target--[0-9a-f]{6}#aisle 1--[0-9a-f]{6}>\)$/,
+    )
+    expect(
+      buildNotebookNoteReferenceInsertionText(state, { noteId: 'note-target' }, 'note-preview', {
+        aisleId: 'target-aisle-2',
+      }),
+    ).toMatch(
+      /^!\[Target\]\(<Target--[0-9a-f]{6}#aisle 2--[0-9a-f]{6}>\)$/,
+    )
+    expect(
+      buildNotebookNoteReferenceInsertionText(state, { noteId: 'note-target' }, 'note-link', {
+        aisleId: 'target-aisle-2',
+      }),
+    ).toMatch(
+      /^\[Target\]\(Target--[0-9a-f]{6}\)$/,
+    )
+  })
+
+  it('renders exactly one note preview aisle with fallback to the first aisle', () => {
+    const state = createState()
+
+    expect(getNotePreviewRenderMarkdown(state, { noteId: 'note-target' }).markdown).toBe('target one')
+    expect(getNotePreviewRenderMarkdown(state, { noteId: 'note-target' }, '', ['target-aisle-2']).markdown).toBe(
+      'target two',
+    )
+    expect(getNotePreviewRenderMarkdown(state, { noteId: 'note-target' }, '', ['deleted-aisle']).markdown).toBe(
+      'target one',
     )
   })
 

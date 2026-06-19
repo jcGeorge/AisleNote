@@ -2,13 +2,13 @@ import type { AppState } from '../../types/app'
 import { normalizeEscapedMarkdownLinks } from '../../markdown/markdown-utils'
 import {
   NOTE_PREVIEW_REFERENCE_RE,
-  parsePreviewToken,
+  resolveMarkdownNoteReferenceToken,
   type NotePreviewReferencePayload,
 } from '../../notes/note-references'
 
 export type AislePreviewSegment =
   | { type: 'markdown'; markdown: string }
-  | { type: 'note-preview'; token: string; payload: NotePreviewReferencePayload }
+  | { type: 'note-preview'; token: string; payload: NotePreviewReferencePayload; label: string }
 
 export function getAislePreviewSegments(markdown: string, appState?: AppState | null): AislePreviewSegment[] {
   const source = normalizeEscapedMarkdownLinks(markdown)
@@ -22,11 +22,11 @@ export function getAislePreviewSegments(markdown: string, appState?: AppState | 
     const token = match[0]
     const from = match.index ?? 0
     if (!token.startsWith('!')) continue
-    const payload = parsePreviewToken(token, appState)
-    if (!payload) continue
+    const reference = resolveMarkdownNoteReferenceToken(appState, token)
+    if (!reference?.parsed.embed) continue
     const markdownBefore = source.slice(cursor, from)
     if (markdownBefore.trim()) segments.push({ type: 'markdown', markdown: markdownBefore })
-    segments.push({ type: 'note-preview', token, payload })
+    segments.push({ type: 'note-preview', token, payload: reference.payload, label: reference.label })
     cursor = from + token.length
   }
   const markdownAfter = source.slice(cursor)

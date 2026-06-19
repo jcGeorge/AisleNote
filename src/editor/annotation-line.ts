@@ -65,13 +65,13 @@ function parseAnnotationMarker(raw: string): AnnotationLineMarker | null {
 
 function getWhitespaceRunStart(text: string, position: number) {
   let cursor = position
-  while (cursor > 0 && /[ \t]/.test(text[cursor - 1] ?? '')) cursor -= 1
+  while (cursor > 0 && /[ \t\u00a0]/.test(text[cursor - 1] ?? '')) cursor -= 1
   return cursor
 }
 
 function getWhitespaceRunEnd(text: string, position: number) {
   let cursor = position
-  while (cursor < text.length && /[ \t]/.test(text[cursor] ?? '')) cursor += 1
+  while (cursor < text.length && /[ \t\u00a0]/.test(text[cursor] ?? '')) cursor += 1
   return cursor
 }
 
@@ -136,7 +136,7 @@ function parseArrowAnnotationLine(normalizedText: string): AnnotationLineMatch |
 }
 
 function parseLineAnnotationLine(normalizedText: string): AnnotationLineMatch | null {
-  const match = normalizedText.match(/^([ \t]*)--([ \t]+)(.*)$/)
+  const match = normalizedText.match(/^([ \t\u00a0]*)--([ \t\u00a0]+)(.*)$/)
   if (!match) return null
   const marker = parseAnnotationMarker('--')
   if (!marker) return null

@@ -71,7 +71,18 @@ describe('notebook sidebar tree', () => {
     expect(notebookAppSource).toContain('usePendingNoteCursorRestore')
     expect(notebookAppSource).toContain('applyActiveCursorToState(previous)')
     expect(notebookAppSource).toContain('pendingFocusToAisleIdRef.current = preferredAisleId || null')
-    expect(notebookAppSource).toContain('activateAisleEditor(buildAisleEditorKey(active.noteBody.id, aisleId), { focus: true })')
+    expect(notebookAppSource).toContain('if (pendingFocusToAisleIdRef.current !== (preferredAisleId || null)) return')
+    expect(notebookAppSource).toContain('activateAisleEditor(buildAisleEditorKey(active.noteBody.id, aisleId), {')
+    expect(notebookAppSource).toContain("source: 'programmatic'")
+  })
+
+  it('lets workspace pointer activation cancel pending cursor restore before focusing an aisle', () => {
+    expect(notebookAppSource).toContain('shouldClearPendingCursorRestoreForAisleActivation')
+    expect(notebookAppSource).toContain('onActivateAisle={(editorKey, pointer) => {')
+    expect(notebookAppSource).toContain('pendingCursorRestoreRef.current = null')
+    expect(notebookAppSource).toContain('pendingFocusToAisleIdRef.current = null')
+    expect(notebookAppSource).toContain('focusAtClientPoint: pointer')
+    expect(notebookAppSource).toContain("source: 'pointer'")
   })
 
   it('wires note and folder sidebar context menus with reveal, rename, and delete actions', () => {

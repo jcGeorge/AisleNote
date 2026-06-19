@@ -23,6 +23,7 @@ import {
   insertParagraphAfterInternalNoteLink,
   isProseMirrorDocMeaningful,
   markWysiwygLoadedUndoBoundary,
+  placeEditorCaretAtClientPoint,
   restoreEditorCursorSelection,
   runWysiwygHistory,
   shouldBlockWysiwygUndo,
@@ -383,6 +384,58 @@ describe('cursor selection restore safety', () => {
       anchor: 5,
       head: 5,
     })).toBe(false)
+  })
+})
+
+describe('client point cursor placement', () => {
+  it('places the caret at the ProseMirror position resolved from click coordinates', () => {
+    const doc = schema.nodes.doc.create(null, [schema.nodes.paragraph.create(null, [schema.text('abcdef')])])
+    let state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 1),
+    })
+    const view = {
+      get state() {
+        return state
+      },
+      posAtCoords: vi.fn(() => ({ pos: 4 })),
+      dispatch: vi.fn((transaction) => {
+        state = state.apply(transaction)
+      }),
+    }
+    const focus = vi.fn()
+
+    expect(placeEditorCaretAtClientPoint({ wwEditor: { view }, focus } as unknown as Editor, {
+      clientX: 12,
+      clientY: 24,
+    })).toBe(true)
+
+    expect(view.posAtCoords).toHaveBeenCalledWith({ left: 12, top: 24 })
+    expect(state.selection.from).toBe(4)
+    expect(state.selection.to).toBe(4)
+    expect(focus).toHaveBeenCalled()
+  })
+
+  it('does not focus when click coordinates cannot be resolved', () => {
+    const doc = schema.nodes.doc.create(null, [schema.nodes.paragraph.create(null, [schema.text('abcdef')])])
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 1),
+    })
+    const view = {
+      state,
+      posAtCoords: vi.fn(() => null),
+      dispatch: vi.fn(),
+    }
+    const focus = vi.fn()
+
+    expect(placeEditorCaretAtClientPoint({ wwEditor: { view }, focus } as unknown as Editor, {
+      clientX: 12,
+      clientY: 24,
+    })).toBe(false)
+
+    expect(view.dispatch).not.toHaveBeenCalled()
+    expect(focus).not.toHaveBeenCalled()
   })
 })
 

@@ -9,6 +9,7 @@ import {
   getCachedOrStoredCursorSelection,
   getPendingCursorRestoreTargetAisleId,
   getPersistableCursorSelectionForActiveEditor,
+  isPendingCursorRestoreTargetCurrent,
   shouldClearSuppressedSavedCursorRestore,
 } from './useNoteCursorPersistence'
 import { shouldFocusForEditorIntent } from './focus-intent'
@@ -139,6 +140,33 @@ describe('pending note cursor restore focus', () => {
         pendingCursorRestore,
         activeNoteLocationKey: 'note-main',
         suppressSavedCursorRestore: true,
+      }),
+    ).toBe(false)
+  })
+
+  it('detects when a scheduled cursor restore target has gone stale', () => {
+    const pendingCursorRestore = {
+      noteLocationKey: 'note-main',
+      aisleId: 'saved-aisle',
+    }
+
+    expect(
+      isPendingCursorRestoreTargetCurrent({
+        pendingFocusAisleId: null,
+        pendingCursorRestore,
+        activeNoteLocationKey: 'note-main',
+        suppressSavedCursorRestore: false,
+        expectedTargetAisleId: 'saved-aisle',
+      }),
+    ).toBe(true)
+
+    expect(
+      isPendingCursorRestoreTargetCurrent({
+        pendingFocusAisleId: null,
+        pendingCursorRestore: null,
+        activeNoteLocationKey: 'note-main',
+        suppressSavedCursorRestore: false,
+        expectedTargetAisleId: 'saved-aisle',
       }),
     ).toBe(false)
   })

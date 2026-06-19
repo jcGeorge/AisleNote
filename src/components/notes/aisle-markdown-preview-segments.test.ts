@@ -48,8 +48,30 @@ describe('aisle markdown preview segments', () => {
 
     expect(getAislePreviewSegments(`before\n${token}\nafter`, state)).toMatchObject([
       { type: 'markdown', markdown: 'before\n' },
-      { type: 'note-preview', payload: { target: { noteId: 'note-b' } } },
+      { type: 'note-preview', payload: { target: { noteId: 'note-b' } }, label: 'Beta' },
       { type: 'markdown', markdown: '\nafter' },
+    ])
+  })
+
+  it('keeps custom note preview labels in preview segments', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, { id: 'preview:beta', target: { noteId: 'note-b' } }).replace('![Beta]', '![Pinned Beta]')
+
+    expect(getAislePreviewSegments(token, state)).toMatchObject([
+      { type: 'note-preview', payload: { target: { noteId: 'note-b' } }, label: 'Pinned Beta' },
+    ])
+  })
+
+  it('preserves parsed aisle ids in preview segments', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, {
+      id: 'preview:beta:aisle-b',
+      target: { noteId: 'note-b' },
+      aisleIds: ['aisle-b'],
+    })
+
+    expect(getAislePreviewSegments(token, state)).toMatchObject([
+      { type: 'note-preview', payload: { target: { noteId: 'note-b' }, aisleIds: ['aisle-b'] } },
     ])
   })
 
@@ -76,7 +98,7 @@ describe('aisle markdown preview segments', () => {
       .replaceAll(')', String.raw`\)`)
 
     expect(getAislePreviewSegments(escaped, state)).toMatchObject([
-      { type: 'note-preview', payload: { target: { noteId: 'note-b' } } },
+      { type: 'note-preview', payload: { target: { noteId: 'note-b' } }, label: 'Beta' },
     ])
   })
 })

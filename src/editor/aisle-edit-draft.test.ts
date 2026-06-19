@@ -13,6 +13,7 @@ import {
   getClearAisleContentsDraftAction,
   findRightmostEmptyAisleIndex,
   getAislesForNewAisle,
+  getAislePreviewMarkdown,
   getAislePreviewText,
   isEmptyAisleMarkdown,
   moveAisleInDraft,
@@ -63,6 +64,30 @@ describe('aisle edit draft helpers', () => {
     expect(isEmptyAisleMarkdown('[link](https://example.com)')).toBe(false)
     expect(isEmptyAisleMarkdown('![image](tabs-asset:image)')).toBe(false)
     expect(isEmptyAisleMarkdown('-')).toBe(false)
+  })
+
+  it('prepares app shortcut markdown without injecting preview-only blank lines', () => {
+    expect(getAislePreviewMarkdown([
+      '# Shortcut menu',
+      "> totally doesn't work",
+      '* how something is that?',
+      '- at least dashes work',
+      String.raw`\-\- And this bad boy`,
+      '1. and this one.',
+      '^--\u00a0Man that is inconsistent.',
+      '* [x] Hmm',
+      "* [ ] That's not great",
+    ].join('\n'))).toBe([
+      '# Shortcut menu',
+      "> totally doesn't work",
+      '* how something is that?',
+      '- at least dashes work',
+      '-- And this bad boy',
+      '1. and this one.',
+      '^--\u00a0Man that is inconsistent.',
+      '* [x] Hmm',
+      "* [ ] That's not great",
+    ].join('\n'))
   })
 
   it('finds and reclaims the rightmost empty aisle before adding at the limit', () => {

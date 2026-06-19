@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import {
   NotebookNoteActionPicker,
+  getNotebookNoteActionPickerActionIntent,
   getNotebookNoteActionPickerKeyboardIntent,
 } from './NotebookNoteActionPicker'
 import type { NoteSearchEntry } from '../../notes/note-locations'
@@ -88,6 +89,21 @@ describe('NotebookNoteActionPicker', () => {
     expect(html).toContain('url link')
     expect(html).toContain('note link')
     expect(html).toContain('note preview')
+  })
+
+  it('chooses the aisle step only for multi-aisle note previews', () => {
+    expect(getNotebookNoteActionPickerActionIntent('note-preview', 0)).toBe('run-action')
+    expect(getNotebookNoteActionPickerActionIntent('note-preview', 1)).toBe('run-action')
+    expect(getNotebookNoteActionPickerActionIntent('note-preview', 2)).toBe('choose-preview-aisle')
+    expect(getNotebookNoteActionPickerActionIntent('note-link', 2)).toBe('run-action')
+    expect(getNotebookNoteActionPickerActionIntent('independent-copy', 2)).toBe('run-action')
+    expect(getNotebookNoteActionPickerActionIntent('synced-copy', 2)).toBe('run-action')
+  })
+
+  it('defines picker styles for the preview aisle chooser', () => {
+    expect(appCss).toContain('.notebook-note-action-preview-aisles')
+    expect(appCss).toContain('.notebook-note-action-preview-aisle-row')
+    expect(appCss).toContain('.notebook-note-action-preview-insert')
   })
 
   it('routes Enter from results into the action row before running an action', () => {

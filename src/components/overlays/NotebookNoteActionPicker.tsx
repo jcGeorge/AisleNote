@@ -22,6 +22,15 @@ export type NotebookNoteActionPickerAnchor = {
   left: number
 }
 
+export type NotebookNoteActionPickerAisleOption = {
+  id: string
+  label: string
+}
+
+export type NotebookNoteActionPickerActionOptions = {
+  aisleId?: string
+}
+
 export type NoteActionPickerActiveRegion = 'results' | 'actions'
 
 export type NotebookNoteActionPickerKeyboardIntent =
@@ -38,6 +47,13 @@ const ACTION_LABELS: Record<NotebookNoteActionPickerAction, string> = {
   'note-preview': 'note preview',
   'independent-copy': 'independent copy',
   'synced-copy': 'synced copy',
+}
+
+export function getNotebookNoteActionPickerActionIntent(
+  action: NotebookNoteActionPickerAction,
+  aisleCount: number,
+): 'run-action' | 'choose-preview-aisle' {
+  return action === 'note-preview' && aisleCount > 1 ? 'choose-preview-aisle' : 'run-action'
 }
 
 function toCopyMode(action: NotebookNoteActionPickerAction): NotebookNoteCopyMode | null {
@@ -97,6 +113,7 @@ export function NotebookNoteActionPicker({
   onSubmitUrl,
   onAction,
   onClose,
+  getAislesForNote = () => [],
 }: {
   title: string
   entries: NoteSearchEntry[]
@@ -110,24 +127,38 @@ export function NotebookNoteActionPicker({
   urlEnabled?: boolean
   onQueryChange: (query: string) => void
   onSubmitUrl?: (url: string) => void
-  onAction: (action: NotebookNoteActionPickerAction, noteId: string) => void
+  onAction: (
+    action: NotebookNoteActionPickerAction,
+    noteId: string,
+    options?: NotebookNoteActionPickerActionOptions,
+  ) => void
   onClose: () => void
+  getAislesForNote?: (noteId: string) => NotebookNoteActionPickerAisleOption[]
 }) {
   const [highlightedIndex, setHighlightedIndex] = useState(0)
   const [highlightedActionIndex, setHighlightedActionIndex] = useState(0)
   const [activeRegion, setActiveRegion] = useState<NoteActionPickerActiveRegion>('results')
   const [selectedNoteId, setSelectedNoteId] = useState(initialSelectedNoteId)
   const [urlDraft, setUrlDraft] = useState(urlValue)
+  const [previewAisleNoteId, setPreviewAisleNoteId] = useState('')
+  const [selectedPreviewAisleId, setSelectedPreviewAisleId] = useState('')
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.noteId === selectedNoteId) ?? null,
     [entries, selectedNoteId],
   )
+  const previewAisleOptions = useMemo(
+    () => (selectedEntry && previewAisleNoteId === selectedEntry.noteId ? getAislesForNote(selectedEntry.noteId) : []),
+    [getAislesForNote, previewAisleNoteId, selectedEntry],
+  )
+  const showingPreviewAisleStep = Boolean(selectedEntry && previewAisleNoteId === selectedEntry.noteId && previewAisleOptions.length > 1)
 
   useEffect(() => {
     setHighlightedIndex(0)
     setHighlightedActionIndex(0)
     setActiveRegion('results')
     setSelectedNoteId('')
+    setPreviewAisleNoteId('')
+    setSelectedPreviewAisleId('')
   }, [query])
 
   useEffect(() => {
@@ -135,11 +166,26 @@ export function NotebookNoteActionPicker({
     if (entries.some((entry) => entry.noteId === selectedNoteId)) return
     setSelectedNoteId('')
     setActiveRegion('results')
+    setPreviewAisleNoteId('')
+    setSelectedPreviewAisleId('')
   }, [entries, selectedNoteId])
 
   useEffect(() => {
     setUrlDraft(urlValue)
   }, [urlValue])
+
+  useEffect(() => {
+    if (!previewAisleNoteId || previewAisleNoteId === selectedNoteId) return
+    setPreviewAisleNoteId('')
+    setSelectedPreviewAisleId('')
+  }, [previewAisleNoteId, selectedNoteId])
+
+  useEffect(() => {
+    if (!previewAisleNoteId) return
+    const fallbackAisleId = previewAisleOptions[0]?.id ?? ''
+    if (previewAisleOptions.some((aisle) => aisle.id === selectedPreviewAisleId)) return
+    setSelectedPreviewAisleId(fallbackAisleId)
+  }, [previewAisleNoteId, previewAisleOptions, selectedPreviewAisleId])
 
   const panelStyle: CSSProperties | undefined = anchor
     ? { top: `${anchor.top}px`, left: `${anchor.left}px` }
@@ -151,13 +197,39 @@ export function NotebookNoteActionPicker({
     setSelectedNoteId(entry.noteId)
     setHighlightedActionIndex(0)
     setActiveRegion('actions')
+    setPreviewAisleNoteId('')
+    setSelectedPreviewAisleId('')
   }, [entries, highlightedIndex])
+
+  const runAction = useCallback(
+    (action: NotebookNoteActionPickerAction, noteId: string) => {
+      const aisleOptions = getAislesForNote(noteId)
+      const intent = getNotebookNoteActionPickerActionIntent(action, aisleOptions.length)
+      if (intent === 'choose-preview-aisle') {
+        setPreviewAisleNoteId(noteId)
+        setSelectedPreviewAisleId(aisleOptions[0]?.id ?? '')
+        setActiveRegion('actions')
+        return
+      }
+
+      setPreviewAisleNoteId('')
+      setSelectedPreviewAisleId('')
+      onAction(action, noteId, action === 'note-preview' ? { aisleId: aisleOptions[0]?.id } : undefined)
+    },
+    [getAislesForNote, onAction],
+  )
 
   const runHighlightedAction = useCallback(() => {
     if (!selectedEntry || actions.length <= 0) return
     const action = actions[Math.max(0, Math.min(highlightedActionIndex, actions.length - 1))]
-    if (action) onAction(action, selectedEntry.noteId)
-  }, [actions, highlightedActionIndex, onAction, selectedEntry])
+    if (action) runAction(action, selectedEntry.noteId)
+  }, [actions, highlightedActionIndex, runAction, selectedEntry])
+
+  const insertSelectedPreviewAisle = useCallback(() => {
+    if (!selectedEntry) return
+    const aisleId = selectedPreviewAisleId || previewAisleOptions[0]?.id
+    onAction('note-preview', selectedEntry.noteId, aisleId ? { aisleId } : undefined)
+  }, [onAction, previewAisleOptions, selectedEntry, selectedPreviewAisleId])
 
   const handleNavigationKey = useCallback(
     (event: Pick<KeyboardEvent | ReactKeyboardEvent<HTMLDivElement>, 'key' | 'preventDefault'>) => {
@@ -207,6 +279,7 @@ export function NotebookNoteActionPicker({
     const onWindowKeyDown = (event: KeyboardEvent) => {
       const activeElement = document.activeElement
       if (activeElement instanceof HTMLInputElement && activeElement.getAttribute('aria-label') === 'URL') return
+      if (activeElement instanceof HTMLElement && activeElement.closest('.notebook-note-action-preview-aisles')) return
       handleNavigationKey(event)
     }
     window.addEventListener('keydown', onWindowKeyDown, true)
@@ -216,6 +289,10 @@ export function NotebookNoteActionPicker({
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement | null
     if (target instanceof HTMLInputElement && target.getAttribute('aria-label') === 'URL') {
+      event.stopPropagation()
+      return
+    }
+    if (target?.closest('.notebook-note-action-preview-aisles')) {
       event.stopPropagation()
       return
     }
@@ -295,6 +372,8 @@ export function NotebookNoteActionPicker({
                   setSelectedNoteId(entry.noteId)
                   setHighlightedActionIndex(0)
                   setActiveRegion('actions')
+                  setPreviewAisleNoteId('')
+                  setSelectedPreviewAisleId('')
                 }}
               >
                 <span>{entry.noteName}</span>
@@ -323,12 +402,39 @@ export function NotebookNoteActionPicker({
                     setActiveRegion('actions')
                     setHighlightedActionIndex(index)
                   }}
-                  onClick={() => onAction(action, selectedEntry.noteId)}
+                  onClick={() => runAction(action, selectedEntry.noteId)}
                 >
                   {ACTION_LABELS[action]}
                 </button>
               ))}
             </div>
+            {showingPreviewAisleStep ? (
+              <div className="notebook-note-action-preview-aisles" aria-label={`Preview aisle for ${selectedEntry.noteName}`}>
+                <span className="notebook-note-action-preview-aisle-label">preview aisle</span>
+                <div className="notebook-note-action-preview-aisle-row">
+                  {previewAisleOptions.map((aisle) => (
+                    <button
+                      key={aisle.id}
+                      type="button"
+                      className={`notebook-note-action-preview-aisle ${
+                        aisle.id === selectedPreviewAisleId ? 'is-selected' : ''
+                      }`}
+                      aria-pressed={aisle.id === selectedPreviewAisleId}
+                      onClick={() => setSelectedPreviewAisleId(aisle.id)}
+                    >
+                      {aisle.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="notebook-note-action-preview-insert"
+                  onClick={insertSelectedPreviewAisle}
+                >
+                  insert preview
+                </button>
+              </div>
+            ) : null}
           </div>
         )}
       </section>

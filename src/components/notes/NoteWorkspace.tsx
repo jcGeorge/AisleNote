@@ -33,9 +33,12 @@ import {
   MarkdownPreviewHeading4,
   MarkdownPreviewHeading5,
   MarkdownPreviewHeading6,
+  MarkdownPreviewInput,
   MarkdownPreviewLink,
   MarkdownPreviewListItem,
   MarkdownPreviewParagraph,
+  createMarkdownPreviewListItem,
+  createMarkdownPreviewUnorderedList,
 } from './markdown-preview-components'
 import {
   getAisleActivationPointerFromNoteWorkspaceEvent,
@@ -78,6 +81,7 @@ const noteWorkspacePreviewMarkdownComponents = {
   h4: MarkdownPreviewHeading4,
   h5: MarkdownPreviewHeading5,
   h6: MarkdownPreviewHeading6,
+  input: MarkdownPreviewInput,
   li: MarkdownPreviewListItem,
   p: MarkdownPreviewParagraph,
 }
@@ -96,11 +100,13 @@ const NoteWorkspaceMarkdownPreview = memo(function NoteWorkspaceMarkdownPreview(
   const markdownComponents = useMemo(
     () => ({
       ...noteWorkspacePreviewMarkdownComponents,
+      li: createMarkdownPreviewListItem(markdown),
+      ul: createMarkdownPreviewUnorderedList(markdown),
       a: (props: React.ComponentProps<typeof MarkdownPreviewLink>) => (
         <MarkdownPreviewLink {...props} appState={appState} onOpenNote={onOpenNoteReference} />
       ),
     }),
-    [appState, onOpenNoteReference],
+    [appState, markdown, onOpenNoteReference],
   )
 
   return getAislePreviewSegments(markdown, appState).map((segment, segmentIndex) => (
@@ -119,6 +125,8 @@ const NoteWorkspaceMarkdownPreview = memo(function NoteWorkspaceMarkdownPreview(
           target={segment.payload.target}
           currentNoteBodyId={currentNoteBodyId}
           depth={1}
+          label={segment.label}
+          aisleIds={segment.payload.aisleIds}
           onOpenNote={onOpenNoteReference}
         />
       ) : (

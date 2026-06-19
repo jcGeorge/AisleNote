@@ -110,6 +110,10 @@ describe('editor markdown display helpers', () => {
     )
   })
 
+  it('normalizes escaped annotation lines for editor display', () => {
+    expect(prepareMarkdownForEditorDisplay(String.raw`\-\- And this bad boy`)).toBe('-- And this bad boy')
+  })
+
   it('keeps internal note preview tokens as text for the editor preview plugin', () => {
     expect(escapeNotePreviewTokensForEditorDisplay('![Welcome copy](Welcome%20copy--96d9e4)')).toBe(
       String.raw`\!\[Welcome copy\]\(Welcome%20copy--96d9e4\)`,

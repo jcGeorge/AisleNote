@@ -6,6 +6,7 @@ import {
   type AnchorHTMLAttributes,
   type CSSProperties,
   type HTMLAttributes,
+  type InputHTMLAttributes,
   type ReactElement,
   type ReactNode,
 } from 'react'
@@ -16,6 +17,12 @@ import { normalizeExternalWebUrl, openExternalWebUrl } from '../../notes/externa
 import { resolveMarkdownNoteReferenceDestination } from '../../notes/note-references'
 import { TAG_TOKEN_CLASS_NAME } from '../../tags/tags.js'
 import type { AppState, NoteLocation } from '../../types/app'
+import {
+  getAnnotationInlineArrowClassNames,
+  getAnnotationLineClassNames,
+  parseAnnotationLineMarkers,
+  type AnnotationLineMatch,
+} from '../../editor/annotation-line'
 import {
   RENDERED_MARKDOWN_CLASS_NAMES,
   getRenderedMarkdownInlineTextParts,
@@ -43,6 +50,21 @@ type MarkdownLinkProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
 
 type MarkdownListItemProps = HTMLAttributes<HTMLLIElement> & {
   node?: unknown
+  children?: ReactNode
+}
+
+type MarkdownInputProps = InputHTMLAttributes<HTMLInputElement> & {
+  node?: unknown
+}
+
+type MarkdownUnorderedListProps = HTMLAttributes<HTMLUListElement> & {
+  node?: {
+    position?: {
+      start?: {
+        line?: number
+      }
+    }
+  }
   children?: ReactNode
 }
 
@@ -132,6 +154,40 @@ function renderMarkdownPreviewTags(children: ReactNode): ReactNode {
   return renderMarkdownPreviewTagsWithKey(children, 'preview')
 }
 
+function getAnnotationArrowText(match: AnnotationLineMatch): string {
+  if (match.marker.kind !== 'arrow') return ''
+  if (match.marker.arrowDirection === 'up') return '\u21b0'
+  if (match.marker.arrowDirection === 'down') return '\u21b2'
+  if (match.marker.arrowDirection === 'left') return '\u2190'
+  return '\u2192'
+}
+
+function renderAnnotationText(value: string, matches: AnnotationLineMatch[]): ReactNode {
+  if (matches.length === 0) return renderInlineText(value, 'preview-annotation')
+
+  const nodes: ReactNode[] = []
+  let cursor = 0
+  matches.forEach((match, index) => {
+    const removeStart = match.marker.kind === 'arrow' ? match.markerStart : match.markerRemovalStart
+    const removeEnd = match.marker.kind === 'arrow' ? match.markerEnd : match.markerRemovalEnd
+    if (removeStart > cursor) nodes.push(renderInlineText(value.slice(cursor, removeStart), `preview-annotation-${index}-before`))
+    if (match.marker.kind === 'arrow') {
+      nodes.push(
+        <span
+          key={`preview-annotation-arrow-${index}`}
+          className={mergeClassNames(...getAnnotationInlineArrowClassNames(match))}
+          aria-hidden="true"
+        >
+          {getAnnotationArrowText(match)}
+        </span>,
+      )
+    }
+    cursor = Math.max(cursor, removeEnd)
+  })
+  if (cursor < value.length) nodes.push(renderInlineText(value.slice(cursor), 'preview-annotation-after'))
+  return nodes
+}
+
 function isPotentialInternalNoteHref(href: string): boolean {
   const normalized = normalizePotentialInternalNoteHref(href)
   if (!normalized) return false
@@ -164,6 +220,9 @@ export function MarkdownPreviewParagraph({
     previewChildren.blockIndentLevel > 0
       ? { ...style, '--tabs-block-indent-level': previewChildren.blockIndentLevel }
       : style
+  const annotationText = getReactNodeText(previewChildren.children)
+  const annotationMatches = parseAnnotationLineMarkers(annotationText)
+  const annotationLineMatch = annotationMatches.find((match) => match.marker.kind === 'line') ?? null
   return (
     <p
       {...props}
@@ -172,9 +231,12 @@ export function MarkdownPreviewParagraph({
         className,
         RENDERED_MARKDOWN_CLASS_NAMES.paragraph,
         previewChildren.blockIndentLevel > 0 ? 'tabs-block-indent' : undefined,
+        annotationLineMatch ? getAnnotationLineClassNames(annotationLineMatch).join(' ') : undefined,
       )}
     >
-      {renderMarkdownPreviewTags(previewChildren.children)}
+      {annotationMatches.length > 0
+        ? renderAnnotationText(annotationText, annotationMatches)
+        : renderMarkdownPreviewTags(previewChildren.children)}
     </p>
   )
 }
@@ -218,15 +280,83 @@ export function MarkdownPreviewHeading6(props: MarkdownHeadingProps) {
 
 export function MarkdownPreviewListItem({
   node,
+  className,
   children,
   ...props
 }: MarkdownListItemProps) {
   void node
   return (
-    <li {...props} className={mergeClassNames(props.className, RENDERED_MARKDOWN_CLASS_NAMES.listItem)}>
+    <li {...props} className={mergeClassNames(className, RENDERED_MARKDOWN_CLASS_NAMES.listItem)}>
       {renderMarkdownPreviewTags(children)}
     </li>
   )
+}
+
+export function createMarkdownPreviewListItem(markdown: string) {
+  const dashListItemLines = new Set<number>()
+  String(markdown ?? '')
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .forEach((line, index) => {
+      if (/^\s*-\s+(?!\[[ xX]\]\s)/.test(line)) dashListItemLines.add(index + 1)
+    })
+
+  return function MarkdownPreviewListItemWithMarker({
+    node,
+    className,
+    children,
+    ...props
+  }: MarkdownListItemProps) {
+    const line = (node as { position?: { start?: { line?: number } } } | undefined)?.position?.start?.line ?? 0
+    return (
+      <li
+        {...props}
+        className={mergeClassNames(
+          className,
+          RENDERED_MARKDOWN_CLASS_NAMES.listItem,
+          dashListItemLines.has(line) ? 'tabs-dash-list-item' : undefined,
+        )}
+      >
+        {renderMarkdownPreviewTags(children)}
+      </li>
+    )
+  }
+}
+
+export function createMarkdownPreviewUnorderedList(markdown: string) {
+  const dashListLines = new Set<number>()
+  String(markdown ?? '')
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .forEach((line, index) => {
+      if (/^\s*-\s+(?!\[[ xX]\]\s)/.test(line)) dashListLines.add(index + 1)
+    })
+
+  return function MarkdownPreviewUnorderedList({
+    node,
+    className,
+    children,
+    ...props
+  }: MarkdownUnorderedListProps) {
+    const line = node?.position?.start?.line ?? 0
+    return (
+      <ul {...props} className={mergeClassNames(className, dashListLines.has(line) ? 'tabs-dash-list' : undefined)}>
+        {children}
+      </ul>
+    )
+  }
+}
+
+export function MarkdownPreviewInput({
+  node,
+  type,
+  checked,
+  disabled,
+  ...props
+}: MarkdownInputProps) {
+  void node
+  if (type !== 'checkbox') return <input {...props} type={type} checked={checked} disabled={disabled} />
+  return <input {...props} type="checkbox" checked={Boolean(checked)} readOnly />
 }
 
 export function MarkdownPreviewLink({

@@ -125,6 +125,78 @@
   pointer-events: none;
 }
 
+.tabs-rendered-markdown-surface ul.tabs-dash-list {
+  list-style: none;
+  padding-left: 1.35rem;
+}
+
+.tabs-rendered-markdown-surface ul.tabs-dash-list > li:not(.task-list-item) {
+  position: relative;
+  list-style: none;
+}
+
+.tabs-rendered-markdown-surface ul.tabs-dash-list > li:not(.task-list-item)::before {
+  content: '';
+  position: absolute;
+  left: -1.2rem;
+  top: 0.78em;
+  width: 0.85rem;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: var(--editor-list-marker-opacity, 1);
+}
+
+.tabs-rendered-markdown-surface .contains-task-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.tabs-rendered-markdown-surface .task-list-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.42rem;
+  list-style: none;
+}
+
+.tabs-rendered-markdown-surface .task-list-item::before,
+.tabs-rendered-markdown-surface .task-list-item::marker {
+  content: none !important;
+}
+
+.tabs-rendered-markdown-surface .task-list-item > input[type='checkbox'] {
+  flex: 0 0 auto;
+  margin: 0 0.08rem 0 0;
+  accent-color: var(--app-primary);
+}
+
+.tabs-rendered-markdown-surface p.tabs-annotation-line {
+  position: relative;
+  padding-left: 2.4rem;
+}
+
+.tabs-rendered-markdown-surface p.tabs-annotation-line::before {
+  content: '';
+  position: absolute;
+  left: 0.35rem;
+  top: 50%;
+  width: 1.55rem;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.86;
+  transform: translateY(-50%);
+}
+
+.tabs-rendered-markdown-surface .tabs-annotation-inline-arrow {
+  display: inline-block;
+  width: 1.35rem;
+  color: var(--editor-text);
+  font-size: 1em;
+  line-height: 1;
+  vertical-align: -0.08em;
+}
+
 .tabs-rendered-markdown-surface table {
   border-collapse: collapse;
   border: 1px solid var(--editor-table-grid-border);
@@ -385,6 +457,7 @@
 
 .note-context-widget .context-bar-top,
 .note-context-widget .context-bar-lower {
+  box-sizing: border-box;
   width: 100%;
   background: var(--app-bg);
 }
@@ -434,6 +507,7 @@
 }
 
 .note-context-widget .context-bar-title {
+  align-self: stretch;
   flex-wrap: nowrap;
   justify-content: flex-start;
   overflow: hidden;
@@ -463,8 +537,18 @@
 }
 
 .note-context-widget .context-preview-title-btn {
-  --rail-control-flex: 0 0 auto;
-  flex: 0 0 auto;
+  --rail-control-flex: 1 1 auto;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.note-preview-widget .context-preview-title-btn.note-preview-title-btn {
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .toastui-editor .ProseMirror .note-context-widget .context-preview-title-btn,
@@ -503,6 +587,58 @@
   border-color: var(--rail-control-hover-border) !important;
   outline: 0 !important;
   box-shadow: none !important;
+}
+
+.toastui-editor .ProseMirror .note-context-widget .context-preview-title-btn.note-preview-title-btn,
+.toastui-editor-contents .note-context-widget .context-preview-title-btn.note-preview-title-btn {
+  justify-content: flex-start !important;
+  height: auto !important;
+  min-height: 1.9rem !important;
+  max-height: none !important;
+  padding: 0 0.15rem !important;
+  color: var(--app-text) !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: 0 !important;
+  border-color: transparent !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  line-height: inherit !important;
+  border-radius: 0 !important;
+}
+
+.toastui-editor .ProseMirror .note-context-widget .context-preview-title-btn.note-preview-title-btn:hover,
+.toastui-editor-contents .note-context-widget .context-preview-title-btn.note-preview-title-btn:hover {
+  color: var(--app-text) !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: 0 !important;
+  border-color: transparent !important;
+}
+
+.note-context-widget .context-preview-title-btn.note-preview-title-btn:focus-visible {
+  outline: 1px solid var(--app-primary-border);
+  outline-offset: 2px;
+}
+
+.context-preview-title-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 1.9rem;
+  padding: 0 0.25rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.25rem;
+  background: var(--app-bg);
+  color: var(--app-text);
+  font: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+}
+
+.context-preview-title-input:focus {
+  outline: 1px solid var(--app-primary-border);
+  outline-offset: 1px;
 }
 
 .context-preview-title-missing {
@@ -655,6 +791,10 @@
   color: var(--app-text);
 }
 
+.note-preview-widget .context-bar-lower {
+  display: block;
+}
+
 .context-bar-lower[hidden] {
   display: none !important;
 }
@@ -674,6 +814,10 @@
 
 .context-preview-editor-host {
   display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
   min-height: var(--note-preview-editor-height, 21.5rem) !important;
   height: var(--note-preview-editor-height, 21.5rem) !important;
   max-height: var(--note-preview-editor-height, 21.5rem) !important;
@@ -694,8 +838,8 @@
 }
 
 .context-preview-editor-host .toastui-editor-defaultUI {
-  min-height: var(--note-preview-editor-height, 21.5rem) !important;
-  height: var(--note-preview-editor-height, 21.5rem) !important;
+  min-height: 0 !important;
+  height: auto !important;
   background: transparent !important;
 }
 
@@ -703,16 +847,16 @@
 .context-preview-editor-host .toastui-editor-main-container,
 .context-preview-editor-host .toastui-editor-ww-container,
 .context-preview-editor-host .toastui-editor-ww-container > .toastui-editor {
-  min-height: var(--note-preview-editor-height, 21.5rem) !important;
-  height: var(--note-preview-editor-height, 21.5rem) !important;
+  min-height: 0 !important;
+  height: auto !important;
   background: transparent !important;
 }
 
 .context-preview-editor-host .toastui-editor-contents {
   min-height: 0 !important;
-  height: 100% !important;
+  height: auto !important;
   overflow-x: hidden !important;
-  overflow-y: auto !important;
+  overflow-y: visible !important;
   padding-inline: 0;
   padding-top: 0 !important;
   background: transparent !important;
@@ -722,9 +866,9 @@
 
 .context-preview-editor-host .ProseMirror {
   min-height: 0 !important;
-  height: 100% !important;
+  height: auto !important;
   overflow-x: hidden !important;
-  overflow-y: auto !important;
+  overflow-y: visible !important;
   padding-inline: 0;
   padding-top: 0 !important;
   background: transparent !important;

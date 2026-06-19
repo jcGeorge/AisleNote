@@ -36,6 +36,7 @@ import {
   getNoteMentionQueryAtSelection,
   getWysiwygView,
   createLinkMark,
+  placeEditorCaretAtClientPoint,
   type NoteMentionQuery,
 } from './prosemirror-utils'
 import {
@@ -76,6 +77,7 @@ import { getUrlLinkPromptDraftFromSelection } from './url-link-prompt'
 import { recordDiagnosticEvent } from '../diagnostics/diagnostic-logger'
 import { installCompletedTaskCheckboxBehavior } from './task-behavior'
 import type { NotebookEditorMarkdownSnapshot } from '../app/notebook-editor-persistence'
+import type { AisleActivationSource } from './aisle-activation'
 import type { AppState, LinkPromptState, NewlineOperationId, NoteLocation, ResolvedNoteAisle, ToastTone, ViewMode } from '../types/app'
 
 export type NotebookEditorClipboardAction = 'cut' | 'copy' | 'paste' | 'pastePlainText'
@@ -90,6 +92,14 @@ type NotebookAisleEditorMeta = {
   aisleBodyId: string
   markdown: string
   cleanup: () => void
+}
+
+export type NotebookAisleEditorActivationOptions = {
+  focus?: boolean
+  flushPrevious?: boolean
+  focusAtClientPoint?: { clientX: number; clientY: number }
+  allowDuringPendingRename?: boolean
+  source?: AisleActivationSource
 }
 
 type UseNotebookAisleEditorsOptions = {
@@ -759,10 +769,14 @@ export function useNotebookAisleEditors({
   }, [])
 
   const activateAisleEditor = useCallback(
-    (editorKey: string, options: { focus?: boolean } = {}) => {
+    (editorKey: string, options: NotebookAisleEditorActivationOptions = {}) => {
       const aisleId = getAisleIdFromAisleEditorKey(editorKey)
       if (!setActiveEditor(aisleId)) return false
-      if (options.focus) getEditorMetaForAisle(aisleId)?.editor.focus()
+      const editor = getEditorMetaForAisle(aisleId)?.editor
+      if (options.focusAtClientPoint && placeEditorCaretAtClientPoint(editor ?? null, options.focusAtClientPoint)) {
+        return true
+      }
+      if (options.focus) editor?.focus()
       return true
     },
     [getEditorMetaForAisle, setActiveEditor],

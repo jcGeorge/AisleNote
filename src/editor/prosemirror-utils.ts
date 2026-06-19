@@ -296,6 +296,49 @@ export function restoreEditorCursorSelection(
   return true
 }
 
+export function placeEditorCaretAtClientPoint(
+  editor: Editor | null,
+  point: { clientX: number; clientY: number },
+  options: { focus?: boolean } = {},
+): boolean {
+  const view = getWysiwygView(editor)
+  if (!editor || !view?.state?.doc || typeof view.posAtCoords !== 'function' || typeof view.dispatch !== 'function') {
+    return false
+  }
+
+  let targetPosition: number | null
+  try {
+    const result = view.posAtCoords({ left: point.clientX, top: point.clientY })
+    targetPosition = typeof result?.pos === 'number' ? result.pos : null
+  } catch {
+    return false
+  }
+  if (targetPosition === null) return false
+
+  const doc = view.state.doc
+  const docSize = typeof doc.content?.size === 'number' ? doc.content.size : 0
+  const position = clampEditorPosition(targetPosition, docSize)
+
+  try {
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(doc, position, position)).scrollIntoView())
+  } catch {
+    try {
+      view.dispatch(view.state.tr.setSelection(Selection.near(doc.resolve(position), 1)).scrollIntoView())
+    } catch {
+      return false
+    }
+  }
+
+  if (options.focus !== false) {
+    try {
+      editor.focus()
+    } catch {
+      return false
+    }
+  }
+  return true
+}
+
 export function collectProseMirrorTextPositions(doc: any): ProseMirrorTextPositionMap {
   let text = ''
   const positions: number[] = []

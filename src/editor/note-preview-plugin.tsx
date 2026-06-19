@@ -3,7 +3,9 @@ import { createRoot, type Root } from 'react-dom/client'
 import type { AppState, NoteLocation } from '../types/app'
 import {
   NOTE_PREVIEW_REFERENCE_RE,
-  parsePreviewToken,
+  buildMarkdownNoteReferenceToken,
+  parseMarkdownNoteReferenceToken,
+  resolveMarkdownNoteReferenceToken,
   type NotePreviewReferencePayload,
 } from '../notes/note-references'
 import { NotePreviewContent } from '../components/notes/NotePreviewContent'
@@ -20,9 +22,10 @@ export type NotePreviewRange = {
   hideAsBlock: boolean
   token: string
   payload: NotePreviewReferencePayload
+  label: string
 }
 
-const notePreviewRangeCache = new WeakMap<object, NotePreviewRange[]>()
+const notePreviewRangeCache = new WeakMap<object, { appState: AppState | null; ranges: NotePreviewRange[] }>()
 
 function getSolePreviewBlockRange(
   doc: any,
@@ -68,8 +71,9 @@ function collectNotePreviewRangesUncached(doc: any, appState: AppState | null): 
     for (const match of node.text.matchAll(referenceRe)) {
       const token = match[0]
       if (!token.startsWith('!')) continue
-      const payload = parsePreviewToken(token, appState)
-      if (!payload) continue
+      const reference = resolveMarkdownNoteReferenceToken(appState, token)
+      if (!reference?.parsed.embed) continue
+      const payload = reference.payload
       const offset = match.index ?? 0
       const from = position + offset
       const to = from + token.length
@@ -83,6 +87,7 @@ function collectNotePreviewRangesUncached(doc: any, appState: AppState | null): 
         hideAsBlock: Boolean(blockRange),
         token,
         payload,
+        label: reference.label,
       })
     }
     return true
@@ -95,9 +100,9 @@ export function collectNotePreviewRanges(doc: any, appState: AppState | null): N
   if (!doc || typeof doc.descendants !== 'function') return []
   if (typeof doc === 'object' || typeof doc === 'function') {
     const cachedRanges = notePreviewRangeCache.get(doc)
-    if (cachedRanges) return cachedRanges
+    if (cachedRanges?.appState === appState) return cachedRanges.ranges
     const ranges = collectNotePreviewRangesUncached(doc, appState)
-    notePreviewRangeCache.set(doc, ranges)
+    notePreviewRangeCache.set(doc, { appState, ranges })
     return ranges
   }
   return collectNotePreviewRangesUncached(doc, appState)
@@ -110,6 +115,31 @@ export function deleteNotePreviewRangeFromView(view: any, range: Pick<NotePrevie
   const to = Math.max(from, Math.min(docSize, Math.floor(Math.max(range.from, range.to))))
   if (to <= from || typeof view.state.tr.delete !== 'function') return false
   let transaction = view.state.tr.delete(from, to)
+  if (typeof transaction?.scrollIntoView === 'function') transaction = transaction.scrollIntoView()
+  view.dispatch(transaction)
+  if (typeof view.focus === 'function') view.focus()
+  return true
+}
+
+export function renameNotePreviewRangeLabelFromView(
+  view: any,
+  range: Pick<NotePreviewRange, 'from' | 'to' | 'token'>,
+  label: string,
+): boolean {
+  if (!view?.state?.tr || typeof view.dispatch !== 'function') return false
+  const parsed = parseMarkdownNoteReferenceToken(range.token)
+  if (!parsed?.embed || typeof view.state.tr.insertText !== 'function') return false
+  const nextToken = buildMarkdownNoteReferenceToken({
+    embed: true,
+    target: parsed.target,
+    label,
+  })
+  if (!nextToken) return false
+  const docSize = view.state.doc?.content?.size ?? range.to
+  const from = Math.max(0, Math.min(docSize, Math.floor(Math.min(range.from, range.to))))
+  const to = Math.max(from, Math.min(docSize, Math.floor(Math.max(range.from, range.to))))
+  if (to <= from) return false
+  let transaction = view.state.tr.insertText(nextToken, from, to)
   if (typeof transaction?.scrollIntoView === 'function') transaction = transaction.scrollIntoView()
   view.dispatch(transaction)
   if (typeof view.focus === 'function') view.focus()
@@ -163,8 +193,11 @@ export function createNotePreviewPlugin({
                                 appState={appState}
                                 target={range.payload.target}
                                 currentNoteBodyId={currentNoteBodyId}
+                                label={range.label}
+                                aisleIds={range.payload.aisleIds}
                                 onOpenNote={onOpenNote}
                                 onDelete={() => deleteNotePreviewRangeFromView(view, range)}
+                                onRenameLabel={(label) => renameNotePreviewRangeLabelFromView(view, range, label)}
                               />,
                             )
                           }

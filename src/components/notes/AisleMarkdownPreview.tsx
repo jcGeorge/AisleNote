@@ -15,9 +15,12 @@ import {
   MarkdownPreviewHeading4,
   MarkdownPreviewHeading5,
   MarkdownPreviewHeading6,
+  MarkdownPreviewInput,
   MarkdownPreviewLink,
   MarkdownPreviewListItem,
   MarkdownPreviewParagraph,
+  createMarkdownPreviewListItem,
+  createMarkdownPreviewUnorderedList,
 } from './markdown-preview-components'
 import { getAislePreviewSegments } from './aisle-markdown-preview-segments'
 import { NotePreviewContent } from './NotePreviewContent'
@@ -40,6 +43,7 @@ const aislePreviewMarkdownComponents = {
   h4: MarkdownPreviewHeading4,
   h5: MarkdownPreviewHeading5,
   h6: MarkdownPreviewHeading6,
+  input: MarkdownPreviewInput,
   li: MarkdownPreviewListItem,
   p: MarkdownPreviewParagraph,
   img: ({ node, ...props }: ImgHTMLAttributes<HTMLImageElement> & { node?: unknown }) => {
@@ -70,11 +74,13 @@ export function AisleMarkdownPreview({
   const markdownComponents = useMemo(
     () => ({
       ...aislePreviewMarkdownComponents,
+      li: createMarkdownPreviewListItem(previewMarkdown),
+      ul: createMarkdownPreviewUnorderedList(previewMarkdown),
       a: (props: React.ComponentProps<typeof MarkdownPreviewLink>) => (
         <MarkdownPreviewLink {...props} appState={appState} onOpenNote={onOpenNote} />
       ),
     }),
-    [appState, onOpenNote],
+    [appState, onOpenNote, previewMarkdown],
   )
 
   return (
@@ -96,6 +102,8 @@ export function AisleMarkdownPreview({
                 target={segment.payload.target}
                 currentNoteBodyId={currentNoteBodyId}
                 depth={previewDepth + 1}
+                label={segment.label}
+                aisleIds={segment.payload.aisleIds}
                 onOpenNote={onOpenNote}
               />
             ) : (

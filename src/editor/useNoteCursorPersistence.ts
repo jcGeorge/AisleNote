@@ -79,6 +79,27 @@ export function shouldClearSuppressedSavedCursorRestore({
   )
 }
 
+export function isPendingCursorRestoreTargetCurrent({
+  pendingFocusAisleId,
+  pendingCursorRestore,
+  activeNoteLocationKey,
+  suppressSavedCursorRestore,
+  expectedTargetAisleId,
+}: {
+  pendingFocusAisleId: string | null | undefined
+  pendingCursorRestore: Pick<PendingCursorRestore, 'noteLocationKey' | 'aisleId'> | null | undefined
+  activeNoteLocationKey: string
+  suppressSavedCursorRestore: boolean
+  expectedTargetAisleId: string
+}): boolean {
+  return getPendingCursorRestoreTargetAisleId({
+    pendingFocusAisleId,
+    pendingCursorRestore,
+    activeNoteLocationKey,
+    suppressSavedCursorRestore,
+  }) === expectedTargetAisleId
+}
+
 type UsePendingNoteCursorRestoreParams = {
   viewMode: ViewMode
   activeNoteBodyId: string
@@ -322,6 +343,15 @@ export const usePendingNoteCursorRestore = ({
     const shouldFocus = shouldFocusForEditorIntent(focusIntent)
 
     const animationFrame = window.requestAnimationFrame(() => {
+      if (!isPendingCursorRestoreTargetCurrent({
+        pendingFocusAisleId: pendingFocusToAisleIdRef.current,
+        pendingCursorRestore: pendingCursorRestoreRef.current,
+        activeNoteLocationKey,
+        suppressSavedCursorRestore: Boolean(suppressSavedCursorRestoreRef?.current),
+        expectedTargetAisleId: targetAisleId,
+      })) {
+        return
+      }
       const editorKey = buildAisleEditorKey(activeNoteBodyId, targetAisleId)
       if (activateAisleEditor(editorKey, { focus: shouldFocus })) {
         if (pendingNavigationTopAisleIdRef.current === targetAisleId) {

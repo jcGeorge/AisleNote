@@ -1,70 +1,43 @@
 import * as React from 'react'
-import type { ImgHTMLAttributes } from 'react'
-import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import type { AppState, NoteLocation } from '../../types/app'
+import { getAislePreviewMarkdown } from '../../editor/aisle-edit-draft'
 import { getLocationInfo } from '../../notes/note-locations'
 import { getNotePreviewRenderMarkdown } from '../../notes/notebook-note-actions'
 import { wouldCreatePreviewCycle } from '../../notes/note-references'
-import { RENDERED_MARKDOWN_SURFACE_CLASS } from '../../editor/rendered-markdown-surface'
-import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
-import { normalizeEscapedMarkdownLinks } from '../../markdown/markdown-utils'
 import { AppIcon } from '../icons/AppIcon'
-import {
-  MarkdownPreviewHeading1,
-  MarkdownPreviewHeading2,
-  MarkdownPreviewHeading3,
-  MarkdownPreviewHeading4,
-  MarkdownPreviewHeading5,
-  MarkdownPreviewHeading6,
-  MarkdownPreviewLink,
-  MarkdownPreviewListItem,
-  MarkdownPreviewParagraph,
-} from './markdown-preview-components'
+import { ReadOnlyMarkdownViewer } from './ReadOnlyMarkdownViewer'
 
 void React
 
 const MAX_NOTE_PREVIEW_DEPTH = 3
 const NOTE_PREVIEW_SIZE_ORDER = ['compact', 'normal', 'expanded'] as const
+const NOTE_PREVIEW_MODE_ORDER = ['collapsed', ...NOTE_PREVIEW_SIZE_ORDER] as const
+const NOTE_PREVIEW_RENAME_LONG_PRESS_MS = 500
+const NOTE_PREVIEW_LONG_PRESS_MOVE_TOLERANCE_PX = 6
 
 type NotePreviewSize = (typeof NOTE_PREVIEW_SIZE_ORDER)[number]
+type NotePreviewMode = (typeof NOTE_PREVIEW_MODE_ORDER)[number]
 
 function clampPreviewSizeIndex(index: number): number {
-  return Math.min(NOTE_PREVIEW_SIZE_ORDER.length - 1, Math.max(0, index))
+  return Math.min(NOTE_PREVIEW_MODE_ORDER.length - 1, Math.max(0, index))
 }
 
-function getNextPreviewSize(size: NotePreviewSize, direction: -1 | 1): NotePreviewSize {
-  const currentIndex = NOTE_PREVIEW_SIZE_ORDER.indexOf(size)
-  return NOTE_PREVIEW_SIZE_ORDER[clampPreviewSizeIndex(currentIndex + direction)]
+function getNextPreviewMode(mode: NotePreviewMode, direction: -1 | 1): NotePreviewMode {
+  const currentIndex = NOTE_PREVIEW_MODE_ORDER.indexOf(mode)
+  return NOTE_PREVIEW_MODE_ORDER[clampPreviewSizeIndex(currentIndex + direction)]
+}
+
+function getPreviewSizeForMode(mode: NotePreviewMode): NotePreviewSize {
+  return mode === 'collapsed' ? 'compact' : mode
+}
+
+function normalizePreviewLabelDraft(value: string, fallback: string): string {
+  return value.replace(/\s+/g, ' ').trim() || fallback
 }
 
 function stopEditorMouseDown(event: React.MouseEvent) {
   event.preventDefault()
   event.stopPropagation()
-}
-
-const transformNotePreviewUrl = (url: string, key: string) => {
-  if (key === 'href' && /^tabs-asset:/i.test(url)) return url
-  if (key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^tabs-asset:/i.test(url))) {
-    return resolveAssetDisplayUrl(url)
-  }
-  return defaultUrlTransform(url)
-}
-
-const notePreviewMarkdownComponents = {
-  a: MarkdownPreviewLink,
-  h1: MarkdownPreviewHeading1,
-  h2: MarkdownPreviewHeading2,
-  h3: MarkdownPreviewHeading3,
-  h4: MarkdownPreviewHeading4,
-  h5: MarkdownPreviewHeading5,
-  h6: MarkdownPreviewHeading6,
-  li: MarkdownPreviewListItem,
-  p: MarkdownPreviewParagraph,
-  img: ({ node, ...props }: ImgHTMLAttributes<HTMLImageElement> & { node?: unknown }) => {
-    void node
-    return <img {...props} draggable={false} />
-  },
 }
 
 export function NotePreviewContent({
@@ -74,6 +47,9 @@ export function NotePreviewContent({
   depth = 0,
   onOpenNote,
   onDelete,
+  label,
+  aisleIds = [],
+  onRenameLabel,
 }: {
   appState: AppState
   target: NoteLocation
@@ -81,6 +57,9 @@ export function NotePreviewContent({
   depth?: number
   onOpenNote?: (target: NoteLocation) => void
   onDelete?: () => void
+  label?: string
+  aisleIds?: string[]
+  onRenameLabel?: (label: string) => void
 }) {
   const info = getLocationInfo(appState, target)
   const blocked =
@@ -93,15 +72,97 @@ export function NotePreviewContent({
         breadcrumb: info.note ? info.title : '',
         markdown: '',
       }
-    : getNotePreviewRenderMarkdown(appState, target, currentNoteBodyId)
+    : getNotePreviewRenderMarkdown(appState, target, currentNoteBodyId, aisleIds)
   const statusClass = preview.status === 'ok' ? '' : `is-${preview.status}`
-  const [previewSize, setPreviewSize] = React.useState<NotePreviewSize>('normal')
-  const [collapsed, setCollapsed] = React.useState(false)
-  const breadcrumb = preview.breadcrumb.trim()
-  const title = preview.title.trim()
-  const showBreadcrumb = Boolean(breadcrumb && (preview.status !== 'ok' || breadcrumb !== title))
-  const canShrink = previewSize !== 'compact'
-  const canGrow = previewSize !== 'expanded'
+  const [previewMode, setPreviewMode] = React.useState<NotePreviewMode>('normal')
+  const [renamingLabel, setRenamingLabel] = React.useState(false)
+  const [labelDraft, setLabelDraft] = React.useState('')
+  const longPressRef = React.useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    timerId: number
+  } | null>(null)
+  const suppressNextClickRef = React.useRef(false)
+  const skipNextLabelCommitRef = React.useRef(false)
+  const previewSize = getPreviewSizeForMode(previewMode)
+  const collapsed = previewMode === 'collapsed'
+  const title = preview.title.trim() || 'note'
+  const displayTitle = normalizePreviewLabelDraft(label ?? '', title)
+  const canShrink = previewMode !== 'collapsed'
+  const canGrow = previewMode !== 'expanded'
+  const renderedMarkdown = getAislePreviewMarkdown(preview.markdown)
+
+  const clearLabelLongPress = React.useCallback(() => {
+    if (!longPressRef.current) return
+    window.clearTimeout(longPressRef.current.timerId)
+    longPressRef.current = null
+  }, [])
+
+  React.useEffect(() => clearLabelLongPress, [clearLabelLongPress])
+
+  React.useEffect(() => {
+    if (!renamingLabel) setLabelDraft(displayTitle)
+  }, [displayTitle, renamingLabel])
+
+  const startLabelRename = React.useCallback(() => {
+    if (!onRenameLabel) return
+    skipNextLabelCommitRef.current = false
+    setLabelDraft(displayTitle)
+    setRenamingLabel(true)
+  }, [displayTitle, onRenameLabel])
+
+  const commitLabelRename = React.useCallback(() => {
+    if (skipNextLabelCommitRef.current) {
+      skipNextLabelCommitRef.current = false
+      return
+    }
+    const nextLabel = normalizePreviewLabelDraft(labelDraft, title)
+    setRenamingLabel(false)
+    setLabelDraft(nextLabel)
+    if (nextLabel !== displayTitle) onRenameLabel?.(nextLabel)
+  }, [displayTitle, labelDraft, onRenameLabel, title])
+
+  const cancelLabelRename = React.useCallback(() => {
+    skipNextLabelCommitRef.current = true
+    setRenamingLabel(false)
+    setLabelDraft(displayTitle)
+  }, [displayTitle])
+
+  const beginLabelLongPress = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    if (!onRenameLabel || renamingLabel || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+      return
+    }
+    clearLabelLongPress()
+    const pointerId = event.pointerId
+    const startX = event.clientX
+    const startY = event.clientY
+    const timerId = window.setTimeout(() => {
+      longPressRef.current = null
+      suppressNextClickRef.current = true
+      startLabelRename()
+    }, NOTE_PREVIEW_RENAME_LONG_PRESS_MS)
+    longPressRef.current = {
+      pointerId,
+      startX,
+      startY,
+      timerId,
+    }
+  }
+
+  const updateLabelLongPress = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const pending = longPressRef.current
+    if (!pending || pending.pointerId !== event.pointerId) return
+    const moved =
+      Math.abs(event.clientX - pending.startX) > NOTE_PREVIEW_LONG_PRESS_MOVE_TOLERANCE_PX ||
+      Math.abs(event.clientY - pending.startY) > NOTE_PREVIEW_LONG_PRESS_MOVE_TOLERANCE_PX
+    if (moved) clearLabelLongPress()
+  }
+
+  const finishLabelLongPress = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (longPressRef.current?.pointerId === event.pointerId) clearLabelLongPress()
+  }
 
   return (
     <article
@@ -113,62 +174,85 @@ export function NotePreviewContent({
     >
       <div className="context-bar-top">
         <div className="context-bar-title">
-          {onOpenNote && preview.status !== 'missing' ? (
-            <button type="button" className="context-preview-title-btn" onClick={() => onOpenNote(target)}>
-              {preview.title}
+          {renamingLabel && onRenameLabel ? (
+            <input
+              className="context-preview-title-input"
+              value={labelDraft}
+              autoFocus
+              onFocus={(event) => event.currentTarget.select()}
+              onChange={(event) => setLabelDraft(event.target.value)}
+              onBlur={commitLabelRename}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  event.currentTarget.blur()
+                }
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  cancelLabelRename()
+                }
+              }}
+              onMouseDown={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+              aria-label={`Rename note preview label ${displayTitle}`}
+            />
+          ) : onOpenNote && preview.status !== 'missing' ? (
+            <button
+              type="button"
+              className="context-preview-title-btn note-preview-title-btn"
+              onMouseDown={(event) => event.stopPropagation()}
+              onPointerDown={beginLabelLongPress}
+              onPointerMove={updateLabelLongPress}
+              onPointerUp={finishLabelLongPress}
+              onPointerCancel={finishLabelLongPress}
+              onPointerLeave={finishLabelLongPress}
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                if (suppressNextClickRef.current) {
+                  suppressNextClickRef.current = false
+                  return
+                }
+                onOpenNote(target)
+              }}
+              title={onRenameLabel ? 'Open note. Press and hold to rename this preview label.' : 'Open note'}
+            >
+              {displayTitle}
             </button>
           ) : (
-            <span className="context-preview-title-missing">{preview.title}</span>
+            <span className="context-preview-title-missing">{displayTitle}</span>
           )}
         </div>
-        {showBreadcrumb ? <span className="context-preview-navigation-status">{preview.breadcrumb}</span> : null}
         <div className="context-bar-actions" aria-label="Note preview controls">
-          <div className="context-bar-size-control" aria-label="Note preview size">
-            <button
-              type="button"
-              className="context-bar-icon-btn context-preview-size-btn"
-              aria-label="Make note preview smaller"
-              title="Make note preview smaller"
-              disabled={!canShrink}
-              onMouseDown={stopEditorMouseDown}
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                setPreviewSize((size) => getNextPreviewSize(size, -1))
-              }}
-            >
-              <AppIcon iconId="minus" className="context-bar-size-icon" />
-            </button>
-            <button
-              type="button"
-              className="context-bar-icon-btn context-preview-size-btn"
-              aria-label="Make note preview larger"
-              title="Make note preview larger"
-              disabled={!canGrow}
-              onMouseDown={stopEditorMouseDown}
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                setPreviewSize((size) => getNextPreviewSize(size, 1))
-              }}
-            >
-              <AppIcon iconId="plus" className="context-bar-size-icon" />
-            </button>
-          </div>
           <button
             type="button"
-            className="context-bar-icon-btn context-preview-collapse-btn"
-            aria-label={collapsed ? 'Expand note preview' : 'Collapse note preview'}
-            title={collapsed ? 'Expand note preview' : 'Collapse note preview'}
-            aria-expanded={!collapsed}
+            className="context-bar-icon-btn context-preview-size-btn"
+            aria-label="Make note preview smaller"
+            title="Make note preview smaller"
+            disabled={!canShrink}
             onMouseDown={stopEditorMouseDown}
             onClick={(event) => {
               event.preventDefault()
               event.stopPropagation()
-              setCollapsed((current) => !current)
+              setPreviewMode((mode) => getNextPreviewMode(mode, -1))
             }}
           >
-            <AppIcon iconId={collapsed ? 'maximize' : 'minimize'} className="context-bar-size-icon" />
+            <AppIcon iconId="minimize" className="context-bar-size-icon" />
+          </button>
+          <button
+            type="button"
+            className="context-bar-icon-btn context-preview-size-btn"
+            aria-label="Make note preview larger"
+            title="Make note preview larger"
+            disabled={!canGrow}
+            onMouseDown={stopEditorMouseDown}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              setPreviewMode((mode) => getNextPreviewMode(mode, 1))
+            }}
+          >
+            <AppIcon iconId="maximize" className="context-bar-size-icon" />
           </button>
           {onDelete ? (
             <button
@@ -190,15 +274,11 @@ export function NotePreviewContent({
       </div>
       <div className="context-bar-lower" hidden={collapsed}>
         {preview.status === 'ok' ? (
-          <div className={`context-preview-editor-host ${RENDERED_MARKDOWN_SURFACE_CLASS}`}>
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              urlTransform={transformNotePreviewUrl}
-              components={notePreviewMarkdownComponents}
-            >
-              {normalizeEscapedMarkdownLinks(preview.markdown)}
-            </ReactMarkdown>
-          </div>
+          <ReadOnlyMarkdownViewer
+            markdown={renderedMarkdown}
+            appState={appState}
+            onOpenNote={onOpenNote}
+          />
         ) : (
           <p className="context-preview-navigation-status">
             {preview.status === 'missing' ? 'Missing note preview target.' : 'Preview blocked to avoid a cycle.'}

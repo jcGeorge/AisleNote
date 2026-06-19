@@ -63,6 +63,7 @@ import {
   listSearchableNoteLocations,
 } from '../notes/note-locations'
 import { buildAisleEditorKey, getAisleIdFromAisleEditorKey } from '../editor/aisle-editor'
+import { shouldClearPendingCursorRestoreForAisleActivation } from '../editor/aisle-activation'
 import {
   DEFAULT_TOOLBAR_LAYOUT_ID,
   createCustomToolbarLayout,
@@ -185,7 +186,9 @@ import {
   getCopyModeForNoteAction,
   getReferenceKindForNoteAction,
   type NotebookNoteActionPickerAction,
+  type NotebookNoteActionPickerActionOptions,
   type NotebookNoteActionPickerAnchor,
+  type NotebookNoteActionPickerAisleOption,
 } from '../components/overlays/NotebookNoteActionPicker'
 import { NotebookDecoupleDialog } from '../components/overlays/NotebookDecoupleDialog'
 import {
@@ -1458,6 +1461,11 @@ export function NotebookApp() {
       12,
     )
   }, [activeModel?.noteId, noteActionPicker, state])
+  const getNoteActionPickerAislesForNote = useCallback((noteId: string): NotebookNoteActionPickerAisleOption[] => {
+    const note = findNotebookNote(state.notebook.items, noteId)?.note
+    const noteBody = note ? state.noteBodies.find((body) => body.id === note.noteBodyId) : null
+    return noteBody?.aisles.map((aisle, index) => ({ id: aisle.id, label: `aisle ${index + 1}` })) ?? []
+  }, [state.noteBodies, state.notebook.items])
   const activeAisleIdsSignature = activeModel?.resolved.aisles.map((aisle) => aisle.id).join('|') ?? ''
   const activeNoteLocationKey = activeModel?.noteId ?? ''
   const activeNoteAisles = activeModel?.noteBody.aisles ?? []
@@ -2409,11 +2417,15 @@ export function NotebookApp() {
       })
       setViewMode('main')
       window.requestAnimationFrame(() => {
+        if (pendingFocusToAisleIdRef.current !== (preferredAisleId || null)) return
         const active = getActiveNoteModel(stateRef.current)
         if (!active || active.noteId !== noteId) return
         const aisleId = preferredAisleId || (active.noteBody.aisles[0]?.id ?? '')
         if (!aisleId) return
-        notebookEditors.activateAisleEditor(buildAisleEditorKey(active.noteBody.id, aisleId), { focus: true })
+        notebookEditors.activateAisleEditor(buildAisleEditorKey(active.noteBody.id, aisleId), {
+          focus: true,
+          source: 'programmatic',
+        })
       })
     },
     [applyActiveCursorToState, mutateState, notebookEditors, stateRef],
@@ -2634,8 +2646,18 @@ export function NotebookApp() {
   )
 
   const openNoteLinkFromLinkPrompt = useCallback(() => {
-    openContextNoteReferencePicker('note-link')
-  }, [openContextNoteReferencePicker])
+    toolbarState.closeToolbarPopovers()
+    setEditorContextMenu(null)
+    setAisleContextMenu(null)
+    setShortcutMenu(null)
+    setLinkPrompt(CLOSED_LINK_PROMPT_STATE)
+    setNoteActionPicker({
+      source: 'toolbar-link',
+      title: 'Insert note reference',
+      query: '',
+      actions: ['note-link', 'note-preview'],
+    })
+  }, [toolbarState])
 
   const openWholeNoteCopyPicker = useCallback(() => {
     toolbarState.closeToolbarPopovers()
@@ -2681,8 +2703,8 @@ export function NotebookApp() {
   )
 
   const insertNotebookNoteReference = useCallback(
-    (target: NoteLocation, kind: 'note-link' | 'note-preview') => {
-      const token = buildNotebookNoteReferenceInsertionText(stateRef.current, target, kind)
+    (target: NoteLocation, kind: 'note-link' | 'note-preview', options: NotebookNoteActionPickerActionOptions = {}) => {
+      const token = buildNotebookNoteReferenceInsertionText(stateRef.current, target, kind, options)
       const currentPicker = noteActionPicker
       if (currentPicker?.source === 'mention' && currentPicker.mentionRange) {
         notebookEditors.replaceActiveEditorRangeWithText(currentPicker.mentionRange.from, currentPicker.mentionRange.to, token)
@@ -2730,10 +2752,10 @@ export function NotebookApp() {
   )
 
   const handleNoteActionPickerAction = useCallback(
-    (action: NotebookNoteActionPickerAction, noteId: string) => {
+    (action: NotebookNoteActionPickerAction, noteId: string, options: NotebookNoteActionPickerActionOptions = {}) => {
       const referenceKind = getReferenceKindForNoteAction(action)
       if (referenceKind) {
-        insertNotebookNoteReference({ noteId }, referenceKind)
+        insertNotebookNoteReference({ noteId }, referenceKind, options)
         return
       }
       const copyMode = getCopyModeForNoteAction(action)
@@ -4207,9 +4229,24 @@ export function NotebookApp() {
                   workspaceRootRef.current = node
                 }}
                 onAisleScroll={() => undefined}
-                onActivateAisle={(editorKey) => {
+                onActivateAisle={(editorKey, pointer) => {
+                  const activationSource = pointer ? 'pointer' : undefined
+                  if (shouldClearPendingCursorRestoreForAisleActivation(activationSource)) {
+                    pendingCursorRestoreRef.current = null
+                    pendingFocusToAisleIdRef.current = null
+                    pendingNavigationTopAisleIdRef.current = null
+                    pendingScrollToAisleIdRef.current = null
+                  }
                   setActiveAisleId(getAisleIdFromAisleEditorKey(editorKey))
-                  notebookEditors.activateAisleEditor(editorKey)
+                  notebookEditors.activateAisleEditor(
+                    editorKey,
+                    pointer
+                      ? {
+                          focusAtClientPoint: pointer,
+                          source: 'pointer',
+                        }
+                      : undefined,
+                  )
                 }}
                 onResizeAisleWidth={(aisleId, width) => {
                   if (!activeAisleWidthLocationKey) return
@@ -4329,6 +4366,7 @@ export function NotebookApp() {
           onQueryChange={updateNoteActionPickerQuery}
           onSubmitUrl={submitUrlLink}
           onAction={handleNoteActionPickerAction}
+          getAislesForNote={getNoteActionPickerAislesForNote}
           onClose={closeNoteActionPicker}
         />
       ) : null}

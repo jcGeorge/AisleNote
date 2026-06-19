@@ -221,6 +221,5 @@ export function getAislePreviewText(markdown: string, maxLength = 140) {
 }
 
 export function getAislePreviewMarkdown(markdown: string) {
-  return normalizeMarkdownForPersistence(markdown)
-    .replace(/<br\s*\/?>/gi, '\n')
+  return normalizeMarkdownForPersistence(markdown).replace(/<br\s*\/?>/gi, '\n')
 }

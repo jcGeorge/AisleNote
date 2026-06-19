@@ -11,4 +11,10 @@ describe('notebook aisle editor task checkbox wiring', () => {
     )
     expect(source).toContain('commitActiveEditorMarkdownNow,')
   })
+
+  it('places the caret from pointer activation coordinates instead of restoring the old selection', () => {
+    expect(source).toContain('placeEditorCaretAtClientPoint')
+    expect(source).toContain('focusAtClientPoint?: { clientX: number; clientY: number }')
+    expect(source).toContain('placeEditorCaretAtClientPoint(editor ?? null, options.focusAtClientPoint)')
+  })
 })

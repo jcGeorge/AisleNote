@@ -238,11 +238,20 @@ function stripBlockIndentTokensFromQuotedLines(markdown: string): string {
 
 export function normalizeMarkdownForPersistence(markdown: string): string {
   const escapedLinksNormalized = normalizeEscapedMarkdownLinks(markdown)
-  const blankNormalized = normalizeBlankLineRuns(escapedLinksNormalized)
+  const annotationMarkersNormalized = normalizeEscapedAnnotationLineMarkers(escapedLinksNormalized)
+  const blankNormalized = normalizeBlankLineRuns(annotationMarkersNormalized)
   const repaired = repairBrokenMarkdownTables(repairBrokenDataImageMarkdown(blankNormalized))
   const highlighted = normalizeHighlightMarkdownForPersistence(repaired)
   return normalizeBlankLineRuns(
     stripBlockIndentTokensFromQuotedLines(highlighted).replace(/(?<!\u2060)\u2003\u2003/g, INDENT_TOKEN),
+  )
+}
+
+export function normalizeEscapedAnnotationLineMarkers(markdown: string): string {
+  return transformOutsideFencedCode(String(markdown ?? ''), (line) =>
+    transformOutsideInlineCode(line, (segment) =>
+      segment.replace(/^([ \t\u00a0]*)\\-\\-(?=$|[ \t\u00a0])/, '$1--'),
+    ),
   )
 }
 

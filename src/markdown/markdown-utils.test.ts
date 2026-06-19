@@ -8,6 +8,7 @@ import {
   EDITOR_BLANK_LINE_PLACEHOLDER,
   INDENT_TOKEN,
   mergeLeadingIndentsFromWysiwyg,
+  normalizeEscapedAnnotationLineMarkers,
   normalizeEscapedMarkdownLinks,
   normalizeHighlightMarkdownForPersistence,
   normalizeMarkdownForPersistence,
@@ -269,6 +270,27 @@ describe('markdown WYSIWYG blank line preservation', () => {
 
     expect(normalizeEscapedMarkdownLinks(escaped)).toBe(repaired)
     expect(normalizeMarkdownForPersistence(escaped)).toBe(repaired)
+  })
+
+  it('normalizes escaped annotation line markers outside code', () => {
+    const markdown = [
+      String.raw`\-\- And this bad boy`,
+      `\`${String.raw`\-\- not an annotation`}\``,
+      '```',
+      String.raw`\-\- not an annotation`,
+      '```',
+    ].join('\n')
+
+    const normalized = [
+      '-- And this bad boy',
+      `\`${String.raw`\-\- not an annotation`}\``,
+      '```',
+      String.raw`\-\- not an annotation`,
+      '```',
+    ].join('\n')
+
+    expect(normalizeEscapedAnnotationLineMarkers(markdown)).toBe(normalized)
+    expect(normalizeMarkdownForPersistence(markdown)).toBe(normalized)
   })
 
   it('does not repair escaped markdown links inside inline or fenced code', () => {

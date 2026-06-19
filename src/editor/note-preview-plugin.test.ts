@@ -13,7 +13,7 @@ vi.mock('react-dom/client', () => ({
   })),
 }))
 
-import { collectNotePreviewRanges, createNotePreviewPlugin } from './note-preview-plugin'
+import { collectNotePreviewRanges, createNotePreviewPlugin, renameNotePreviewRangeLabelFromView } from './note-preview-plugin'
 
 const pmSchema = new Schema({
   nodes: {
@@ -135,12 +135,44 @@ describe('note preview plugin', () => {
       to: 8 + token.length,
       token,
       payload: { target: { noteId: 'note-b' } },
+      label: 'Beta',
+    })
+  })
+
+  it('collects custom preview token labels', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, { id: 'preview:beta', target: { noteId: 'note-b' } }).replace('![Beta]', '![Pinned Beta]')
+    const ranges = collectNotePreviewRanges(createDoc(token), state)
+
+    expect(ranges[0]).toMatchObject({
+      token,
+      payload: { target: { noteId: 'note-b' } },
+      label: 'Pinned Beta',
+    })
+  })
+
+  it('preserves parsed aisle ids in preview token ranges', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, {
+      id: 'preview:beta:aisle-b',
+      target: { noteId: 'note-b' },
+      aisleIds: ['aisle-b'],
+    })
+    const ranges = collectNotePreviewRanges(createDoc(token), state)
+
+    expect(ranges[0]).toMatchObject({
+      token,
+      payload: { target: { noteId: 'note-b' }, aisleIds: ['aisle-b'] },
     })
   })
 
   it('renders preview widgets and hides source tokens with decorations', () => {
     const state = createState()
-    const token = buildPreviewToken(state, { id: 'preview:beta', target: { noteId: 'note-b' } })
+    const token = buildPreviewToken(state, {
+      id: 'preview:beta:aisle-b',
+      target: { noteId: 'note-b' },
+      aisleIds: ['aisle-b'],
+    })
     const context = createPluginContext()
     const plugin = createNotePreviewPlugin({
       getAppState: () => state,
@@ -155,6 +187,7 @@ describe('note preview plugin', () => {
 
     expect(widget.from).toBe(1)
     expect(renderRoot).toHaveBeenCalled()
+    expect(renderRoot.mock.calls.at(-1)?.[0].props.aisleIds).toEqual(['aisle-b'])
     expect(inline).toMatchObject({
       from: 1,
       to: 1 + token.length,
@@ -241,5 +274,68 @@ describe('note preview plugin', () => {
     expect(transaction.scrollIntoView).toHaveBeenCalled()
     expect(view.dispatch).toHaveBeenCalledWith(transaction)
     expect(view.focus).toHaveBeenCalled()
+  })
+
+  it('wires preview label rename to the hidden source token range', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, { id: 'preview:beta', target: { noteId: 'note-b' } })
+    const context = createPluginContext()
+    const plugin = createNotePreviewPlugin({
+      getAppState: () => state,
+      getCurrentNoteBodyId: () => 'body-a',
+      onOpenNote: vi.fn(),
+    })(context).wysiwygPlugins[0]()
+    const decorations = plugin.props.decorations({ doc: createDoc(token) })
+    const widget = decorations.find((decoration: any) => decoration.type === 'widget')
+    const transaction: any = {
+      insertText: vi.fn(() => transaction),
+      scrollIntoView: vi.fn(() => transaction),
+    }
+    const view = {
+      state: {
+        doc: { content: { size: 1 + token.length } },
+        tr: transaction,
+      },
+      dispatch: vi.fn(),
+      focus: vi.fn(),
+    }
+
+    widget.factory(view)
+    const renderedPreview = renderRoot.mock.calls.at(-1)?.[0]
+    renderedPreview.props.onRenameLabel('Pinned Beta')
+
+    expect(renderedPreview.props.label).toBe('Beta')
+    expect(transaction.insertText).toHaveBeenCalledWith(expect.stringMatching(/^!\[Pinned Beta\]\(Beta--[0-9a-f]{6}\)$/), 1, 1 + token.length)
+    expect(transaction.scrollIntoView).toHaveBeenCalled()
+    expect(view.dispatch).toHaveBeenCalledWith(transaction)
+    expect(view.focus).toHaveBeenCalled()
+  })
+
+  it('renames preview labels with a direct transaction helper', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, {
+      id: 'preview:beta:aisle-b',
+      target: { noteId: 'note-b' },
+      aisleIds: ['aisle-b'],
+    })
+    const transaction: any = {
+      insertText: vi.fn(() => transaction),
+      scrollIntoView: vi.fn(() => transaction),
+    }
+    const view = {
+      state: {
+        doc: { content: { size: token.length } },
+        tr: transaction,
+      },
+      dispatch: vi.fn(),
+      focus: vi.fn(),
+    }
+
+    expect(renameNotePreviewRangeLabelFromView(view, { from: 0, to: token.length, token }, 'Pinned Beta')).toBe(true)
+    expect(transaction.insertText).toHaveBeenCalledWith(
+      expect.stringMatching(/^!\[Pinned Beta\]\(<Beta--[0-9a-f]{6}#aisle 1--[0-9a-f]{6}>\)$/),
+      0,
+      token.length,
+    )
   })
 })

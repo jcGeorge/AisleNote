@@ -4,6 +4,7 @@ import {
   type BlankParagraphDisplayOptions,
   isBlankParagraphNode,
   mergeLeadingIndentsFromWysiwyg,
+  normalizeEscapedAnnotationLineMarkers,
   normalizeEscapedMarkdownLinks,
   normalizeEmptyHeadingMarkersFromWysiwyg,
   normalizeMarkdownForPersistence,
@@ -97,7 +98,8 @@ export function prepareMarkdownForEditorDisplay(
   options: BlankParagraphDisplayOptions = {},
 ): string {
   const escapedLinksPrepared = normalizeEscapedMarkdownLinks(markdown)
-  const blankPrepared = prepareBlankParagraphsForEditorDisplay(escapedLinksPrepared, options)
+  const annotationMarkersPrepared = normalizeEscapedAnnotationLineMarkers(escapedLinksPrepared)
+  const blankPrepared = prepareBlankParagraphsForEditorDisplay(annotationMarkersPrepared, options)
   const noteLinksPrepared = prepareMarkdownNoteLinkDestinationsForEditorDisplay(blankPrepared.markdown)
   const notePreviewsPrepared = escapeNotePreviewTokensForEditorDisplay(noteLinksPrepared)
   return prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(notePreviewsPrepared))

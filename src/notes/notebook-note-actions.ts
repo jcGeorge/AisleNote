@@ -7,7 +7,7 @@ import {
   listNotebookNotes,
   replaceNotebookNoteBodyId,
 } from '../state/notebook'
-import { buildInternalNoteLinkToken, buildPreviewToken } from './note-references'
+import { buildInternalNoteLinkToken, buildMarkdownNoteReferenceToken, buildPreviewToken, parseMarkdownNoteReferenceToken } from './note-references'
 import { getNotebookNotePathLabel } from '../state/notebook'
 import { getLocationInfo, listNoteLocationsForBody } from './note-locations'
 
@@ -117,10 +117,20 @@ export function buildNotebookNoteReferenceInsertionText(
   state: AppState,
   target: NoteLocation,
   kind: NotebookNoteReferenceActionKind,
+  options: { aisleId?: string } = {},
 ): string {
-  return kind === 'note-preview'
-    ? buildPreviewToken(state, { id: `preview:${target.noteId}`, target })
-    : buildInternalNoteLinkToken(state, target)
+  if (kind !== 'note-preview') return buildInternalNoteLinkToken(state, target)
+
+  const info = getLocationInfo(state, target)
+  const targetBody = getNoteBody(state, info.noteBodyId)
+  const selectedAisle = targetBody?.aisles.find((aisle) => aisle.id === options.aisleId) ?? targetBody?.aisles[0] ?? null
+  const token = buildPreviewToken(state, {
+    id: `preview:${target.noteId}${selectedAisle ? `:${selectedAisle.id}` : ''}`,
+    target,
+    ...(selectedAisle ? { aisleIds: [selectedAisle.id] } : {}),
+  })
+  const parsed = parseMarkdownNoteReferenceToken(token)
+  return parsed ? buildMarkdownNoteReferenceToken({ embed: true, target: parsed.target, label: info.title }) : token
 }
 
 export function replaceFocusedAisleFromTargetNote(
@@ -248,7 +258,12 @@ export function getNotebookAisleDecoupleRows(state: AppState, aisleBodyId: strin
   return rows
 }
 
-export function getNotePreviewRenderMarkdown(state: AppState, target: NoteLocation, blockedNoteBodyId = ''): {
+export function getNotePreviewRenderMarkdown(
+  state: AppState,
+  target: NoteLocation,
+  blockedNoteBodyId = '',
+  aisleIds: string[] = [],
+): {
   status: 'ok' | 'missing' | 'blocked'
   title: string
   breadcrumb: string
@@ -268,10 +283,12 @@ export function getNotePreviewRenderMarkdown(state: AppState, target: NoteLocati
     }
   }
   const sourceBodies = new Map((state.noteAisleBodies ?? []).map((body) => [body.id, body.markdown]))
+  const selectedAisleId = aisleIds[0] ?? ''
+  const selectedAisle = targetBody.aisles.find((aisle) => aisle.id === selectedAisleId) ?? targetBody.aisles[0] ?? null
   return {
     status: 'ok',
     title: info.title,
     breadcrumb: getNotebookNotePathLabel(state.notebook.items, target.noteId),
-    markdown: targetBody.aisles.map((aisle) => sourceBodies.get(aisle.aisleBodyId) ?? '').join('\n\n'),
+    markdown: selectedAisle ? sourceBodies.get(selectedAisle.aisleBodyId) ?? '' : '',
   }
 }
