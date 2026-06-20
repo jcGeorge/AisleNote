@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { AppState } from '../types/app'
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from './shortcuts'
 import {
+  getNotebookHistoryNavigationDirection,
   getNotebookHotkeyIntent,
+  getNotebookMouseHistoryNavigationDirection,
   shouldIgnoreNotebookHotkeyEvent,
 } from './useNotebookHotkeys'
 
@@ -126,5 +128,46 @@ describe('notebook hotkey intents', () => {
       isMacPlatform: true,
       viewMode: 'main',
     })).toBeNull()
+  })
+
+  it('recognizes restored history navigation keys without using Mac command arrows', () => {
+    expect(getNotebookHistoryNavigationDirection(
+      keyboardEvent('[', { code: 'BracketLeft', metaKey: true }),
+      true,
+    )).toBe(-1)
+    expect(getNotebookHistoryNavigationDirection(
+      keyboardEvent(']', { code: 'BracketRight', metaKey: true }),
+      true,
+    )).toBe(1)
+    expect(getNotebookHistoryNavigationDirection(
+      keyboardEvent('ArrowLeft', { code: 'ArrowLeft', altKey: true }),
+      false,
+    )).toBe(-1)
+    expect(getNotebookHistoryNavigationDirection(
+      keyboardEvent('ArrowRight', { code: 'ArrowRight', altKey: true }),
+      false,
+    )).toBe(1)
+    expect(getNotebookHistoryNavigationDirection(
+      keyboardEvent('BrowserBack', { code: 'BrowserBack' }),
+      true,
+    )).toBe(-1)
+    expect(getNotebookHistoryNavigationDirection(
+      keyboardEvent('BrowserForward', { code: 'BrowserForward' }),
+      false,
+    )).toBe(1)
+    expect(getNotebookHistoryNavigationDirection(
+      keyboardEvent('ArrowLeft', { code: 'ArrowLeft', metaKey: true }),
+      true,
+    )).toBeNull()
+    expect(getNotebookHistoryNavigationDirection(
+      keyboardEvent('ArrowRight', { code: 'ArrowRight', metaKey: true }),
+      true,
+    )).toBeNull()
+  })
+
+  it('recognizes mouse side buttons for history navigation', () => {
+    expect(getNotebookMouseHistoryNavigationDirection({ button: 3 })).toBe(-1)
+    expect(getNotebookMouseHistoryNavigationDirection({ button: 4 })).toBe(1)
+    expect(getNotebookMouseHistoryNavigationDirection({ button: 0 })).toBeNull()
   })
 })

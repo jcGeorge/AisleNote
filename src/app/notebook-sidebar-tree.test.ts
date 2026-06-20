@@ -69,10 +69,13 @@ describe('notebook sidebar tree', () => {
   it('wires sidebar note activation to notebook cursor restore', () => {
     expect(notebookAppSource).toContain('useNoteCursorPersistence')
     expect(notebookAppSource).toContain('usePendingNoteCursorRestore')
+    expect(notebookAppSource).toContain('useNotebookNavigationHistory')
+    expect(notebookAppSource).toContain('resolveNotebookNavigationLocation(stateRef.current, location)')
+    expect(notebookAppSource).toContain('applyNotebookNavigationLocation({ noteId, aisleId: \'\' })')
     expect(notebookAppSource).toContain('applyActiveCursorToState(previous)')
-    expect(notebookAppSource).toContain('pendingFocusToAisleIdRef.current = preferredAisleId || null')
-    expect(notebookAppSource).toContain('if (pendingFocusToAisleIdRef.current !== (preferredAisleId || null)) return')
-    expect(notebookAppSource).toContain('activateAisleEditor(buildAisleEditorKey(active.noteBody.id, aisleId), {')
+    expect(notebookAppSource).toContain('pendingFocusToAisleIdRef.current = resolvedLocation.aisleId || null')
+    expect(notebookAppSource).toContain('if (pendingFocusToAisleIdRef.current !== (resolvedLocation.aisleId || null)) return')
+    expect(notebookAppSource).toContain('activateAisleEditor(buildAisleEditorKey(active.noteBody.id, resolvedLocation.aisleId), {')
     expect(notebookAppSource).toContain("source: 'programmatic'")
   })
 

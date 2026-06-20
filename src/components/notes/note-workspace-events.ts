@@ -2,6 +2,10 @@ export function shouldExitArrangeModeFromNoteWorkspacePointer(arrangeModeActive:
   return arrangeModeActive && button === 0
 }
 
+export function shouldActivateAisleFromNoteWorkspacePointer(button: number) {
+  return button === 0
+}
+
 export function scheduleNoteWorkspaceArrangeExit(onExitArrangeMode: (() => void) | undefined) {
   if (!onExitArrangeMode) return
   window.setTimeout(onExitArrangeMode, 0)

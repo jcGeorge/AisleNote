@@ -14,7 +14,10 @@ export type NotebookHotkeyIntent = Extract<
   | 'formatStrikethrough'
 >
 
-type NotebookHotkeyActions = Record<NotebookHotkeyIntent, () => void>
+type NotebookHotkeyActions = Record<NotebookHotkeyIntent, () => void> & {
+  navigateHistoryBack: () => void
+  navigateHistoryForward: () => void
+}
 
 const NOTEBOOK_HOTKEY_INTENTS: NotebookHotkeyIntent[] = [
   'openSettings',
@@ -49,6 +52,32 @@ function isEditableTarget(target: EventTarget | null): boolean {
 
 export function shouldIgnoreNotebookHotkeyEvent(event: KeyboardEvent): boolean {
   return !hasShortcutModifier(event) && String(event.key ?? '').length === 1 && isEditableTarget(event.target)
+}
+
+export function getNotebookHistoryNavigationDirection(event: KeyboardEvent, isMacPlatform: boolean): -1 | 1 | null {
+  if (event.defaultPrevented) return null
+  if (event.key === 'BrowserBack') return -1
+  if (event.key === 'BrowserForward') return 1
+
+  const isBracketLeft = event.key === '[' || event.code === 'BracketLeft'
+  const isBracketRight = event.key === ']' || event.code === 'BracketRight'
+  if (isMacPlatform && event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+    if (isBracketLeft) return -1
+    if (isBracketRight) return 1
+  }
+
+  if (!isMacPlatform && event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+    if (event.key === 'ArrowLeft' || event.code === 'ArrowLeft') return -1
+    if (event.key === 'ArrowRight' || event.code === 'ArrowRight') return 1
+  }
+
+  return null
+}
+
+export function getNotebookMouseHistoryNavigationDirection(event: Pick<MouseEvent, 'button'>): -1 | 1 | null {
+  if (event.button === 3) return -1
+  if (event.button === 4) return 1
+  return null
 }
 
 export function getNotebookHotkeyIntent({
@@ -89,6 +118,15 @@ export function useNotebookHotkeys({
 
   useEffect(() => {
     const handleKeydown = (event: KeyboardEvent) => {
+      const historyDirection = getNotebookHistoryNavigationDirection(event, isMacPlatform)
+      if (historyDirection) {
+        event.preventDefault()
+        event.stopPropagation()
+        if (historyDirection < 0) actionsRef.current.navigateHistoryBack()
+        else actionsRef.current.navigateHistoryForward()
+        return
+      }
+
       const intent = getNotebookHotkeyIntent({ event, hotkeys, isMacPlatform, viewMode })
       if (!intent) return
 
@@ -99,7 +137,20 @@ export function useNotebookHotkeys({
       actionsRef.current[intent]()
     }
 
+    const handleMouseup = (event: MouseEvent) => {
+      const historyDirection = getNotebookMouseHistoryNavigationDirection(event)
+      if (!historyDirection) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (historyDirection < 0) actionsRef.current.navigateHistoryBack()
+      else actionsRef.current.navigateHistoryForward()
+    }
+
     window.addEventListener('keydown', handleKeydown, true)
-    return () => window.removeEventListener('keydown', handleKeydown, true)
+    window.addEventListener('mouseup', handleMouseup, true)
+    return () => {
+      window.removeEventListener('keydown', handleKeydown, true)
+      window.removeEventListener('mouseup', handleMouseup, true)
+    }
   }, [hotkeys, isMacPlatform, viewMode])
 }

@@ -39,6 +39,7 @@ type UseNoteCursorPersistenceParams = {
   activeNoteLocationKeyRef: MutableRefObject<string>
   isMainViewRef: MutableRefObject<boolean>
   noteCursorLocations: AppState['ui']['noteCursorLocations']
+  pendingFocusToAisleIdRef: MutableRefObject<string | null>
   pendingScrollToAisleIdRef: MutableRefObject<string | null>
   setActiveAisleId: Dispatch<SetStateAction<string>>
 }
@@ -142,6 +143,21 @@ export function getCachedOrStoredCursorSelection(
   return noteCursorLocations[noteLocationKey]?.aisles[aisleId] ?? null
 }
 
+export function getPreferredCursorRestoreAisleId({
+  pendingFocusAisleId,
+  savedActiveAisleId,
+  aisles,
+}: {
+  pendingFocusAisleId: string | null | undefined
+  savedActiveAisleId: string
+  aisles: readonly Pick<NoteAisle, 'id'>[]
+}): string {
+  const explicitAisleId = pendingFocusAisleId?.trim() ?? ''
+  if (explicitAisleId && aisles.some((aisle) => aisle.id === explicitAisleId)) return explicitAisleId
+  if (savedActiveAisleId && aisles.some((aisle) => aisle.id === savedActiveAisleId)) return savedActiveAisleId
+  return aisles[0]?.id ?? ''
+}
+
 export function getPersistableCursorSelectionForActiveEditor({
   activeAisleId,
   activeEditorAisleId,
@@ -172,6 +188,7 @@ export const useNoteCursorPersistence = ({
   activeNoteLocationKeyRef,
   isMainViewRef,
   noteCursorLocations,
+  pendingFocusToAisleIdRef,
   pendingScrollToAisleIdRef,
   setActiveAisleId,
 }: UseNoteCursorPersistenceParams) => {
@@ -248,10 +265,11 @@ export const useNoteCursorPersistence = ({
     previousNoteLocationKeyRef.current = activeNoteLocationKey
 
     const savedLocation = noteCursorLocations[activeNoteLocationKey] ?? null
-    const preferredAisleId =
-      savedLocation && activeNoteAisles.some((aisle) => aisle.id === savedLocation.activeAisleId)
-        ? savedLocation.activeAisleId
-        : activeNoteAisles[0]?.id ?? ''
+    const preferredAisleId = getPreferredCursorRestoreAisleId({
+      pendingFocusAisleId: pendingFocusToAisleIdRef.current,
+      savedActiveAisleId: savedLocation?.activeAisleId ?? '',
+      aisles: activeNoteAisles,
+    })
     const savedSelection = savedLocation?.aisles[preferredAisleId] ?? null
     if (!preferredAisleId) {
       pendingCursorRestoreRef.current = null
@@ -288,6 +306,7 @@ export const useNoteCursorPersistence = ({
     activeNoteAisles,
     activeAisleId,
     noteCursorLocations,
+    pendingFocusToAisleIdRef,
     pendingScrollToAisleIdRef,
     setActiveAisleId,
   ])

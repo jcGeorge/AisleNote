@@ -722,24 +722,40 @@ function hasExplicitBlankLineArtifact(markdown: string): boolean {
     .some(isBlankLineArtifactLine)
 }
 
-function stripTableAdjacentBlankBlockKinds(
-  blockKinds: Array<'blank' | 'content'>,
-  contentChunks: MarkdownBlockChunk[],
-): Array<'blank' | 'content'> {
-  let contentIndex = 0
-  return blockKinds.filter((kind) => {
-    if (kind === 'content') {
-      contentIndex += 1
-      return true
-    }
+function countLeadingBlankBlockKinds(blockKinds: Array<'blank' | 'content'>): number {
+  let count = 0
+  while (blockKinds[count] === 'blank') count += 1
+  return count
+}
 
-    const previousContent = contentChunks[contentIndex - 1]
-    const nextContent = contentChunks[contentIndex]
-    return !(
-      (previousContent && isMarkdownTableChunk(previousContent)) ||
-      (nextContent && isMarkdownTableChunk(nextContent))
-    )
-  })
+function countTrailingBlankBlockKinds(blockKinds: Array<'blank' | 'content'>): number {
+  let count = 0
+  let index = blockKinds.length - 1
+  while (blockKinds[index] === 'blank') {
+    count += 1
+    index -= 1
+  }
+  return count
+}
+
+function applyBoundaryBlankBlockCounts(markdown: string, blockKinds: Array<'blank' | 'content'>): string {
+  const leadingBlankCount = countLeadingBlankBlockKinds(blockKinds)
+  const trailingBlankCount = countTrailingBlankBlockKinds(blockKinds)
+  if (leadingBlankCount === 0 && trailingBlankCount === 0) return normalizeBlankLineRuns(markdown)
+
+  const lines = normalizeBlankLineRuns(markdown).split('\n')
+  while (lines.length > 0 && isStandaloneBlankLineRunLine(lines[0])) {
+    lines.shift()
+  }
+  while (lines.length > 0 && isStandaloneBlankLineRunLine(lines[lines.length - 1])) {
+    lines.pop()
+  }
+
+  return [
+    ...Array.from({ length: leadingBlankCount }, () => ''),
+    ...lines,
+    ...Array.from({ length: trailingBlankCount }, () => ''),
+  ].join('\n')
 }
 
 export function preserveBlankParagraphsFromWysiwyg(editor: Editor | null, markdown: string): string {
@@ -769,8 +785,8 @@ export function preserveBlankParagraphsFromWysiwyg(editor: Editor | null, markdo
       tableContentChunks = mergePlainParagraphChunksToCount(tableContentChunks, contentBlockCount)
     }
     return contentBlockCount === tableContentChunks.length
-      ? serializeCleanMarkdownBlocks(stripTableAdjacentBlankBlockKinds(blockKinds, tableContentChunks), tableContentChunks)
-      : normalizedMarkdown
+      ? serializeCleanMarkdownBlocks(blockKinds, tableContentChunks)
+      : applyBoundaryBlankBlockCounts(normalizedMarkdown, blockKinds)
   }
 
   if (contentBlockCount > contentChunks.length && (hasBlankBlocks || hasBlankChunks)) {
@@ -783,7 +799,7 @@ export function preserveBlankParagraphsFromWysiwyg(editor: Editor | null, markdo
     if (!hasBlankBlocks && !hasBlankChunks) return normalizeBlankLineRuns(markdown)
     return contentBlockCount === 0
       ? serializeCleanMarkdownBlocks(blockKinds, [])
-      : normalizeBlankLineRuns(markdown)
+      : applyBoundaryBlankBlockCounts(markdown, blockKinds)
   }
 
   if (!hasBlankBlocks && !hasBlankChunks && contentChunks.length <= 1) return normalizeBlankLineRuns(markdown)

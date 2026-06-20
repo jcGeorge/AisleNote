@@ -44,6 +44,7 @@ import {
   getAisleActivationPointerFromNoteWorkspaceEvent,
   getAisleEditorKeyFromNoteWorkspacePointerTarget,
   scheduleNoteWorkspaceArrangeExit,
+  shouldActivateAisleFromNoteWorkspacePointer,
   shouldExitArrangeModeFromNoteWorkspacePointer,
 } from './note-workspace-events'
 import {
@@ -501,12 +502,15 @@ export function NoteWorkspace({
           if (shouldExitArrangeModeFromNoteWorkspacePointer(arrangeModeActive, event.button)) {
             scheduleNoteWorkspaceArrangeExit(onExitArrangeMode)
           }
-          if (!editorReadOnly && event.target instanceof Element) {
+          const shouldActivateAisle = shouldActivateAisleFromNoteWorkspacePointer(event.button)
+          if (shouldActivateAisle && !editorReadOnly && event.target instanceof Element) {
             onSelectEditableAsset(event.target)
           }
-          const editorKey = getAisleEditorKeyFromNoteWorkspacePointerTarget(event.target)
-          if (editorKey) {
-            onActivateAisle(editorKey, getAisleActivationPointerFromNoteWorkspaceEvent(event.nativeEvent))
+          if (shouldActivateAisle) {
+            const editorKey = getAisleEditorKeyFromNoteWorkspacePointerTarget(event.target)
+            if (editorKey) {
+              onActivateAisle(editorKey, getAisleActivationPointerFromNoteWorkspaceEvent(event.nativeEvent))
+            }
           }
         }}
         onClickCapture={(event) => {

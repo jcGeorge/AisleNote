@@ -14,6 +14,7 @@ import {
 import {
   getAisleActivationPointerFromNoteWorkspaceEvent,
   getAisleEditorKeyFromNoteWorkspacePointerTarget,
+  shouldActivateAisleFromNoteWorkspacePointer,
   shouldExitArrangeModeFromNoteWorkspacePointer,
 } from './note-workspace-events'
 import type { AppState, NoteLocation, ResolvedNoteAisle } from '../../types/app'
@@ -838,6 +839,15 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(shouldExitArrangeModeFromNoteWorkspacePointer(true, 1)).toBe(false)
     expect(shouldExitArrangeModeFromNoteWorkspacePointer(true, 2)).toBe(false)
     expect(shouldExitArrangeModeFromNoteWorkspacePointer(false, 0)).toBe(false)
+  })
+
+  it('only activates aisles for primary note workspace pointer buttons', () => {
+    expect(shouldActivateAisleFromNoteWorkspacePointer(0)).toBe(true)
+    expect(shouldActivateAisleFromNoteWorkspacePointer(1)).toBe(false)
+    expect(shouldActivateAisleFromNoteWorkspacePointer(2)).toBe(false)
+    expect(shouldActivateAisleFromNoteWorkspacePointer(3)).toBe(false)
+    expect(shouldActivateAisleFromNoteWorkspacePointer(4)).toBe(false)
+    expect(noteWorkspaceSource).toContain('shouldActivateAisleFromNoteWorkspacePointer(event.button)')
   })
 
   it('captures first-click coordinates only for primary aisle activation pointers', () => {

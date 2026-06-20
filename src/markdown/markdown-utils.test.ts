@@ -228,6 +228,31 @@ describe('markdown WYSIWYG blank line preservation', () => {
     expect(markdown).toBe('one\n\n\ntwo')
   })
 
+  it('keeps repeated and trailing blank rows stable through display and persistence', () => {
+    const source = 'one\n\n\ntwo\n\n'
+    const display = prepareBlankParagraphsForEditorDisplay(source)
+
+    expect(display).toEqual({
+      markdown: 'one\n\ntwo',
+      blockKinds: ['content', 'blank', 'blank', 'content', 'blank', 'blank'],
+    })
+
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', 'one'),
+        emptyParagraph(),
+        emptyParagraph(),
+        block('paragraph', 'two'),
+        emptyParagraph(),
+        emptyParagraph(),
+      ]),
+      display.markdown,
+    )
+
+    expect(markdown).toBe(source)
+    expect(normalizeMarkdownForPersistence(markdown)).toBe(source)
+  })
+
   it('strips blank placeholders around headings and horizontal rules while preserving their positions', () => {
     const markdown = `# Head\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n---\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\n## Next`
 
@@ -528,7 +553,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
     })
   })
 
-  it('strips non-explicit table spacing after WYSIWYG serialization', () => {
+  it('preserves visible table-adjacent blank paragraphs after WYSIWYG serialization', () => {
     const markdown = preserveBlankParagraphsFromWysiwyg(
       editorForBlocks([
         block('paragraph', 'before'),
@@ -550,9 +575,11 @@ describe('markdown WYSIWYG blank line preservation', () => {
 
     expect(markdown).toBe([
       'before',
+      '',
       '| A | B |',
       '| --- | --- |',
       '| C | D |',
+      '',
       'after',
     ].join('\n'))
   })
@@ -592,7 +619,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
     ].join('\n'))
   })
 
-  it('strips multiple non-explicit blank paragraph nodes around a table', () => {
+  it('preserves multiple visible blank paragraph nodes around a table', () => {
     const markdown = preserveBlankParagraphsFromWysiwyg(
       editorForBlocks([
         block('paragraph', 'before'),
@@ -618,10 +645,79 @@ describe('markdown WYSIWYG blank line preservation', () => {
 
     expect(markdown).toBe([
       'before',
+      '',
+      '',
       '| A | B |',
       '| --- | --- |',
       '| C | D |',
+      '',
+      '',
       'after',
+    ].join('\n'))
+  })
+
+  it('preserves repeated trailing blank paragraphs after a table', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', 'before'),
+        block('table', 'A B C D'),
+        emptyParagraph(),
+        emptyParagraph(),
+        emptyParagraph(),
+        emptyParagraph(),
+      ]),
+      [
+        'before',
+        '| A | B |',
+        '| --- | --- |',
+        '| C | D |',
+      ].join('\n'),
+    )
+
+    expect(markdown).toBe([
+      'before',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      '',
+      '',
+      '',
+      '',
+    ].join('\n'))
+  })
+
+  it('preserves trailing blank paragraphs when raw table markdown has not been parsed yet', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', 'before'),
+        block('paragraph', '| A | B |'),
+        block('paragraph', '| --- | --- |'),
+        block('paragraph', '| C | D |'),
+        emptyParagraph(),
+        emptyParagraph(),
+        emptyParagraph(),
+        emptyParagraph(),
+      ]),
+      [
+        'before',
+        '',
+        '| A | B |',
+        '| --- | --- |',
+        '| C | D |',
+        '',
+      ].join('\n'),
+    )
+
+    expect(markdown).toBe([
+      'before',
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      '',
+      '',
+      '',
+      '',
     ].join('\n'))
   })
 

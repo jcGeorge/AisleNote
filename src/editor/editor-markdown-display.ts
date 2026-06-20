@@ -106,22 +106,25 @@ export function prepareMarkdownForEditorDisplay(
 }
 
 export function restoreEditorBlankParagraphs(editor: Editor | null, markdown: string): boolean {
-  return measureSlowOperation('editor blank paragraph restoration', () => restoreEditorBlankParagraphsUnmeasured(editor, markdown))
+  return measureBlankParagraphRestore(editor, markdown) === 'restored'
 }
 
 export type EditorDisplayRestoreResult = {
   restored: boolean
   viewReady: boolean
+  displayReady: boolean
 }
 
 export function restoreEditorDisplay(editor: Editor | null, markdown: string): EditorDisplayRestoreResult {
   const view = getWysiwygView(editor)
   const viewReady = Boolean(view?.state?.doc)
-  const restored = viewReady ? restoreEditorBlankParagraphs(editor, markdown) : false
-  if (viewReady) {
+  const restoreState = viewReady ? measureBlankParagraphRestore(editor, markdown) : 'pending'
+  const displayReady = restoreState !== 'pending'
+  const restored = restoreState === 'restored'
+  if (displayReady) {
     markWysiwygLoadedUndoBoundary(editor)
   }
-  return { restored, viewReady }
+  return { restored, viewReady, displayReady }
 }
 
 type TopLevelEditorNode = {
@@ -303,25 +306,39 @@ function applyFullBlankParagraphRestore({
   }
 }
 
-function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown: string): boolean {
-  const blankPrepared = prepareBlankParagraphsForEditorDisplay(markdown)
-  if (hasMarkdownTable(markdown) && !hasExplicitBlankRestoreMarker(markdown)) return false
+type BlankParagraphRestoreState = 'restored' | 'ready' | 'pending'
+
+function measureBlankParagraphRestore(editor: Editor | null, markdown: string): BlankParagraphRestoreState {
+  return measureSlowOperation('editor blank paragraph restoration', () => restoreEditorBlankParagraphsUnmeasured(editor, markdown))
+}
+
+function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown: string): BlankParagraphRestoreState {
+  let blankPrepared = prepareBlankParagraphsForEditorDisplay(markdown)
+  const tableRestoreWithoutExplicitMarkers = hasMarkdownTable(markdown) && !hasExplicitBlankRestoreMarker(markdown)
 
   const view = getWysiwygView(editor)
   const doc = view?.state?.doc
   const paragraphType = view?.state?.schema?.nodes?.paragraph
-  if (!view?.dispatch || !doc || typeof doc.forEach !== 'function' || !paragraphType) return false
+  if (!view?.dispatch || !doc || typeof doc.forEach !== 'function' || !paragraphType) return 'pending'
 
   const topLevelNodes = collectTopLevelEditorNodes(doc)
-  if (!blankPrepared.blockKinds.includes('blank') && topLevelNodes.every((item) => item.kind !== 'blank')) return false
+  if (!blankPrepared.blockKinds.includes('blank') && topLevelNodes.every((item) => item.kind !== 'blank')) return 'ready'
 
   if (hasExpectedBlankParagraphLayout(topLevelNodes, blankPrepared.blockKinds)) {
-    return false
+    return 'ready'
   }
 
   const currentContentCount = topLevelNodes.filter((item) => item.kind === 'content').length
-  const expectedContentCount = getContentNodeCount(blankPrepared.blockKinds)
-  if (currentContentCount !== expectedContentCount) return false
+  let expectedContentCount = getContentNodeCount(blankPrepared.blockKinds)
+  if (currentContentCount !== expectedContentCount) {
+    const splitPlainPrepared = prepareBlankParagraphsForEditorDisplay(markdown, { splitPlainParagraphLines: true })
+    const splitPlainContentCount = getContentNodeCount(splitPlainPrepared.blockKinds)
+    if (currentContentCount === splitPlainContentCount) {
+      blankPrepared = splitPlainPrepared
+      expectedContentCount = splitPlainContentCount
+    }
+  }
+  if (currentContentCount !== expectedContentCount) return 'pending'
 
   if (applyTargetedBlankParagraphRestore({
     view,
@@ -330,8 +347,10 @@ function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown:
     topLevelNodes,
     blockKinds: blankPrepared.blockKinds,
   })) {
-    return true
+    return 'restored'
   }
+
+  if (tableRestoreWithoutExplicitMarkers) return 'pending'
 
   return applyFullBlankParagraphRestore({
     view,
@@ -340,6 +359,8 @@ function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown:
     topLevelNodes,
     blockKinds: blankPrepared.blockKinds,
   })
+    ? 'restored'
+    : 'pending'
 }
 
 export function setEditorMarkdownForDisplay(

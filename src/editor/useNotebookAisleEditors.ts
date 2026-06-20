@@ -29,6 +29,7 @@ import {
   setEditorMarkdownForDisplay,
 } from './editor-markdown-display'
 import { importBlobAsAssetUrl, importImageBlobAsAssetUrl } from '../markdown/image-asset-registry'
+import { installImageDisplayMetadataSync } from './image-dom-metadata'
 import { withDefaultInsertedImageDisplayWidth } from './image-insertion'
 import { buildAisleEditorKey, getAisleIdFromAisleEditorKey } from './aisle-editor'
 import {
@@ -91,6 +92,7 @@ type NotebookAisleEditorMeta = {
   aisleId: string
   aisleBodyId: string
   markdown: string
+  displayRestoreReady: boolean
   cleanup: () => void
 }
 
@@ -128,6 +130,7 @@ type UseNotebookAisleEditorsOptions = {
 const TOAST_AISLE_EDITOR_RECENT_RETAIN_LIMIT = 3
 const AISLE_EDITOR_SMALL_NOTE_LIVE_LIMIT = 4
 const AISLE_EDITOR_INTERSECTION_ROOT_MARGIN = '240px'
+const DISPLAY_RESTORE_MAX_FRAME_ATTEMPTS = 8
 
 function countMarkdownLinks(markdown: string): number {
   return String(markdown ?? '').match(/\[[^\]\n]+\]\((?:https?:\/\/|#tabs-note\/)[^)]+\)/gi)?.length ?? 0
@@ -314,6 +317,36 @@ export function useNotebookAisleEditors({
     return editorMetaRef.current.get(editorKey) ?? null
   }, [])
 
+  const restoreEditorDisplayWhenReady = useCallback(
+    (
+      editorKey: string,
+      meta: NotebookAisleEditorMeta,
+      markdown = meta.markdown,
+      remainingFrameAttempts = DISPLAY_RESTORE_MAX_FRAME_ATTEMPTS,
+    ): boolean => {
+      const result = restoreEditorDisplay(meta.editor, markdown)
+      if (result.displayReady) {
+        meta.displayRestoreReady = true
+        return true
+      }
+
+      meta.displayRestoreReady = false
+      if (
+        remainingFrameAttempts > 0 &&
+        typeof window !== 'undefined' &&
+        typeof window.requestAnimationFrame === 'function'
+      ) {
+        window.requestAnimationFrame(() => {
+          const current = editorMetaRef.current.get(editorKey)
+          if (current !== meta) return
+          restoreEditorDisplayWhenReady(editorKey, meta, meta.markdown, remainingFrameAttempts - 1)
+        })
+      }
+      return false
+    },
+    [],
+  )
+
   const setActiveEditor = useCallback(
     (aisleId: string) => {
       const meta = getEditorMetaForAisle(aisleId)
@@ -330,7 +363,7 @@ export function useNotebookAisleEditors({
   const commitEditorMarkdown = useCallback(
     (meta: NotebookAisleEditorMeta, editor: Editor = meta.editor) => {
       const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
-      const nextMarkdown = getEditorMarkdownForPersistence(editor)
+      const nextMarkdown = meta.displayRestoreReady ? getEditorMarkdownForPersistence(editor) : meta.markdown
       if (nextMarkdown === meta.markdown) return nextMarkdown
       meta.markdown = nextMarkdown
       lastMarkdownByAisleBodyRef.current.set(meta.aisleBodyId, nextMarkdown)
@@ -387,7 +420,7 @@ export function useNotebookAisleEditors({
 
   const getMountedEditorMarkdownSnapshots = useCallback((): NotebookEditorMarkdownSnapshot[] => {
     return Array.from(editorMetaRef.current.values()).map((meta) => {
-      const markdown = getEditorMarkdownForPersistence(meta.editor)
+      const markdown = meta.displayRestoreReady ? getEditorMarkdownForPersistence(meta.editor) : meta.markdown
       meta.markdown = markdown
       lastMarkdownByAisleBodyRef.current.set(meta.aisleBodyId, markdown)
       return {
@@ -411,14 +444,16 @@ export function useNotebookAisleEditors({
       const editor = editorRef.current
       if (!editor) return
       const meta = Array.from(editorMetaRef.current.values()).find((candidate) => candidate.editor === editor)
+      if (meta) meta.displayRestoreReady = false
       setEditorMarkdownForDisplay(editor, markdown, false)
       if (meta) {
-        meta.markdown = getEditorMarkdownForPersistence(editor)
+        restoreEditorDisplayWhenReady(buildAisleEditorKey(meta.noteBodyId, meta.aisleId), meta, markdown)
+        meta.markdown = meta.displayRestoreReady ? getEditorMarkdownForPersistence(editor) : markdown
         lastMarkdownByAisleBodyRef.current.set(meta.aisleBodyId, meta.markdown)
         commitAisleMarkdown(meta.aisleBodyId, meta.markdown)
       }
     },
-    [commitAisleMarkdown, editorRef],
+    [commitAisleMarkdown, editorRef, restoreEditorDisplayWhenReady],
   )
 
   const editorOperationRuntime = useMemo<EditorOperationRuntime>(
@@ -539,9 +574,10 @@ export function useNotebookAisleEditors({
         const cachedMarkdown = lastMarkdownByAisleBodyRef.current.get(aisle.aisleBodyId) ?? aisle.markdown
         if (cachedMarkdown !== aisle.markdown && existing.markdown !== aisle.markdown) {
           existing.markdown = aisle.markdown
+          existing.displayRestoreReady = false
           lastMarkdownByAisleBodyRef.current.set(aisle.aisleBodyId, aisle.markdown)
           setEditorMarkdownForDisplay(existing.editor, aisle.markdown, false)
-          restoreEditorDisplay(existing.editor, aisle.markdown)
+          restoreEditorDisplayWhenReady(editorKey, existing, aisle.markdown)
         }
         return
       }
@@ -699,6 +735,7 @@ export function useNotebookAisleEditors({
         const mountedEditor = editor
         cleanupFns.push(installEditorSpellcheck(root))
         cleanupFns.push(installToolbarAppTooltips(root))
+        cleanupFns.push(installImageDisplayMetadataSync(root))
         cleanupFns.push(installHeadingPopupActiveState(root, () => mountedEditor))
         cleanupFns.push(installCompletedTaskCheckboxBehavior(root, () => mountedEditor, undefined, commitActiveEditorMarkdownNow))
 
@@ -709,11 +746,12 @@ export function useNotebookAisleEditors({
           aisleId: aisle.id,
           aisleBodyId: aisle.aisleBodyId,
           markdown: aisle.markdown,
+          displayRestoreReady: false,
           cleanup: () => cleanupFns.forEach((cleanup) => cleanup()),
         }
         editorMetaRef.current.set(editorKey, meta)
         lastMarkdownByAisleBodyRef.current.set(aisle.aisleBodyId, aisle.markdown)
-        restoreEditorDisplay(mountedEditor, aisle.markdown)
+        restoreEditorDisplayWhenReady(editorKey, meta, aisle.markdown)
         if (aisle.id === resolvedActiveAisleId) {
           editorRef.current = mountedEditor
           activeEditorAisleIdRef.current = aisle.id
@@ -748,6 +786,7 @@ export function useNotebookAisleEditors({
     mountedAisleIds,
     noteBodyId,
     onNotebookStructurePaste,
+    restoreEditorDisplayWhenReady,
     setActiveEditor,
     viewMode,
   ])

@@ -8,6 +8,7 @@ import {
 import {
   getCachedOrStoredCursorSelection,
   getPendingCursorRestoreTargetAisleId,
+  getPreferredCursorRestoreAisleId,
   getPersistableCursorSelectionForActiveEditor,
   isPendingCursorRestoreTargetCurrent,
   shouldClearSuppressedSavedCursorRestore,
@@ -169,6 +170,29 @@ describe('pending note cursor restore focus', () => {
         expectedTargetAisleId: 'saved-aisle',
       }),
     ).toBe(false)
+  })
+
+  it('prefers an explicit history aisle target over the saved active aisle', () => {
+    const aisles = [
+      { id: 'aisle-first' },
+      { id: 'aisle-saved' },
+      { id: 'aisle-history' },
+    ]
+
+    expect(
+      getPreferredCursorRestoreAisleId({
+        pendingFocusAisleId: 'aisle-history',
+        savedActiveAisleId: 'aisle-saved',
+        aisles,
+      }),
+    ).toBe('aisle-history')
+    expect(
+      getPreferredCursorRestoreAisleId({
+        pendingFocusAisleId: 'aisle-missing',
+        savedActiveAisleId: 'aisle-saved',
+        aisles,
+      }),
+    ).toBe('aisle-saved')
   })
 })
 

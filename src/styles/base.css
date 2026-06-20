@@ -237,20 +237,23 @@
   --task-reorder-ghost-shadow: 0 12px 28px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(111, 160, 255, 0.15);
   --task-reorder-marker: #77a7ff;
 
-  --image-tool-btn-border: #4c72ad;
-  --image-tool-btn-bg: #142542;
-  --image-tool-btn-text: #e9f1ff;
-  --image-tool-btn-hover-bg: #20385f;
-  --image-tool-btn-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
-  --table-tool-btn-shadow: 3px 3px 10px rgba(0, 0, 0, 0.28);
-  --image-tool-handle-border: #c9d5e7;
-  --image-tool-handle-bg: #101621;
-  --image-tool-handle-stripe: #f3f7ff;
-  --image-tool-handle-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
-  --image-tool-crop-border: #69a4ff;
-  --image-tool-crop-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
-  --image-tool-crop-handle-border: #8cb5ff;
-  --image-tool-crop-handle-bg: #17315e;
+  --image-tool-btn-border: var(--action-chip-border);
+  --image-tool-btn-bg: var(--action-chip-bg);
+  --image-tool-btn-text: var(--action-chip-text);
+  --image-tool-btn-hover-border: var(--rail-control-hover-border);
+  --image-tool-btn-hover-bg: var(--rail-control-hover-bg);
+  --image-tool-btn-hover-text: var(--rail-control-hover-text);
+  --image-tool-btn-active-border: var(--action-chip-selected-border);
+  --image-tool-btn-active-bg: var(--action-chip-selected-bg);
+  --image-tool-btn-active-text: var(--action-chip-selected-text);
+  --image-tool-btn-shadow: 0 6px 16px color-mix(in srgb, var(--app-bg) 32%, transparent);
+  --table-tool-btn-shadow: 3px 3px 10px color-mix(in srgb, var(--app-bg) 32%, transparent);
+  --image-tool-handle-border: var(--image-tool-btn-border);
+  --image-tool-handle-bg: var(--image-tool-btn-bg);
+  --image-tool-handle-stripe: var(--image-tool-btn-text);
+  --image-tool-handle-shadow: 0 2px 6px color-mix(in srgb, var(--app-bg) 38%, transparent);
+  --image-tool-crop-border: var(--app-primary);
+  --image-tool-crop-shadow: 0 0 0 1px color-mix(in srgb, var(--app-bg) 36%, transparent);
 
   --link-prompt-border: #2f4672;
   --link-prompt-bg: rgba(15, 27, 50, 0.96);
@@ -519,21 +522,6 @@
   --task-reorder-ghost-shadow: 0 12px 28px color-mix(in srgb, var(--custom-palette-canvas) 40%, transparent),
     0 0 0 1px color-mix(in srgb, var(--custom-palette-primary) 15%, transparent);
   --task-reorder-marker: var(--custom-palette-primary);
-
-  --image-tool-btn-border: color-mix(in srgb, var(--custom-palette-border) 60%, var(--custom-palette-primary));
-  --image-tool-btn-bg: color-mix(in srgb, var(--custom-palette-surface) 84%, var(--custom-palette-primary));
-  --image-tool-btn-text: var(--app-text-bright);
-  --image-tool-btn-hover-bg: color-mix(in srgb, var(--custom-palette-surface) 68%, var(--custom-palette-primary));
-  --image-tool-btn-shadow: 0 6px 16px color-mix(in srgb, var(--custom-palette-canvas) 32%, transparent);
-  --table-tool-btn-shadow: 3px 3px 10px color-mix(in srgb, var(--custom-palette-canvas) 32%, transparent);
-  --image-tool-handle-border: var(--custom-palette-primary);
-  --image-tool-handle-bg: var(--custom-palette-canvas);
-  --image-tool-handle-stripe: var(--app-text-bright);
-  --image-tool-handle-shadow: 0 2px 6px color-mix(in srgb, var(--custom-palette-canvas) 38%, transparent);
-  --image-tool-crop-border: var(--custom-palette-primary);
-  --image-tool-crop-shadow: 0 0 0 1px color-mix(in srgb, var(--custom-palette-canvas) 36%, transparent);
-  --image-tool-crop-handle-border: var(--app-primary-border);
-  --image-tool-crop-handle-bg: color-mix(in srgb, var(--custom-palette-surface) 64%, var(--custom-palette-primary));
 
   --link-prompt-border: var(--app-border);
   --link-prompt-bg: color-mix(in srgb, var(--custom-palette-surface-raised) 96%, transparent);

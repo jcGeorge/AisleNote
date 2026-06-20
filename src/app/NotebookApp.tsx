@@ -29,6 +29,7 @@ import type {
   NoteAisleBody,
   NoteBody,
   NoteLocation,
+  NoteNavigationTarget,
   NotebookTreeItem,
   NewlineOperationId,
   NewlineShortcutId,
@@ -130,6 +131,11 @@ import {
   normalizeHotkeySettings,
 } from '../hotkeys/shortcuts'
 import { useNotebookHotkeys } from '../hotkeys/useNotebookHotkeys'
+import {
+  resolveNotebookNavigationLocation,
+  useNotebookNavigationHistory,
+  type NotebookNavigationLocation,
+} from '../navigation/notebook-navigation-history'
 import { getTipDefinition } from '../tips/tips'
 import {
   buildTableOfContentsPanels,
@@ -405,6 +411,11 @@ function getPreferredNotebookAisleId(
   return savedLocation && aisles.some((aisle) => aisle.id === savedLocation.activeAisleId)
     ? savedLocation.activeAisleId
     : aisles[0]?.id ?? ''
+}
+
+function getAisleIdFromNavigationTarget(target: NoteLocation): string {
+  const navigationTarget = target as NoteLocation & Partial<Pick<NoteNavigationTarget, 'aisleId' | 'aisleIds' | 'heading'>>
+  return navigationTarget.aisleId?.trim() || navigationTarget.heading?.aisleId?.trim() || navigationTarget.aisleIds?.[0]?.trim() || ''
 }
 
 function collectDeletedNoteBodyIds(item: NotebookTreeItem, ids = new Set<string>()): Set<string> {
@@ -1416,10 +1427,12 @@ export function NotebookApp() {
   const dismissedMentionStartRef = useRef<number | null>(null)
   const activeAisleIdRef = useRef('')
   const activeNoteLocationKeyRef = useRef('')
+  const previousAssetToolsNoteLocationKeyRef = useRef('')
   const isMainViewRef = useRef(true)
   const pendingScrollToAisleIdRef = useRef<string | null>(null)
   const pendingFocusToAisleIdRef = useRef<string | null>(null)
   const pendingNavigationTopAisleIdRef = useRef<string | null>(null)
+  const navigateToNotebookLocationRef = useRef<(location: NotebookNavigationLocation) => boolean>(() => false)
   const pendingCreatedEditRef = useRef<unknown>(null)
   const addAisleFromNewlineRef = useRef<((side: 'left' | 'right', aisleId: string, markdown: string) => void) | null>(null)
   const frontmatterStateSnapshotRef = useRef(state.frontmatter)
@@ -1853,18 +1866,12 @@ export function NotebookApp() {
 
   const openNoteReferenceFromEditor = useCallback(
     (target: NoteLocation) => {
-      if (!findNotebookNote(stateRef.current.notebook.items, target.noteId)) return
-      setSelectedFolderId('')
-      setViewMode('main')
-      mutateState((previous) => ({
-        ...previous,
-        notebook: {
-          ...previous.notebook,
-          activeNoteId: target.noteId,
-        },
-      }))
+      navigateToNotebookLocationRef.current({
+        noteId: target.noteId,
+        aisleId: getAisleIdFromNavigationTarget(target),
+      })
     },
-    [mutateState, stateRef],
+    [],
   )
 
   const applyNotebookStructureClipboardPaste = useCallback(
@@ -2005,6 +2012,13 @@ export function NotebookApp() {
     mediaToolsController.close()
   }, [aisleEditModalOpen, imageToolsController, mediaToolsController, viewMode])
 
+  useEffect(() => {
+    if (previousAssetToolsNoteLocationKeyRef.current === activeNoteLocationKey) return
+    previousAssetToolsNoteLocationKeyRef.current = activeNoteLocationKey
+    imageToolsController.close()
+    mediaToolsController.close()
+  }, [activeNoteLocationKey, imageToolsController, mediaToolsController])
+
   const selectEditableAssetFromWorkspace = useCallback(
     (target: Element) => {
       if (!target.closest('.toastui-editor .ProseMirror')) {
@@ -2045,11 +2059,76 @@ export function NotebookApp() {
     activeNoteLocationKeyRef,
     isMainViewRef,
     noteCursorLocations: state.ui.noteCursorLocations,
+    pendingFocusToAisleIdRef,
     pendingScrollToAisleIdRef,
     setActiveAisleId,
   })
   const pendingCursorRestoreRef = cursorPersistence.pendingCursorRestoreRef
   const applyActiveCursorToState = cursorPersistence.applyActiveCursorToState
+
+  const clearNotebookNavigationTransientUi = useCallback(() => {
+    setAisleContextMenu(null)
+    setEditorContextMenu(null)
+    setTreeContextMenu(null)
+    setShortcutMenu(null)
+    setNoteActionPicker(null)
+    setTableOfContentsPanels(null)
+    setLinkPrompt(CLOSED_LINK_PROMPT_STATE)
+    toolbarState.closeToolbarPopovers()
+  }, [toolbarState])
+
+  const applyNotebookNavigationLocation = useCallback(
+    (location: NotebookNavigationLocation) => {
+      const resolvedLocation = resolveNotebookNavigationLocation(stateRef.current, location)
+      if (!resolvedLocation) return false
+
+      pendingFocusToAisleIdRef.current = resolvedLocation.aisleId || null
+      pendingScrollToAisleIdRef.current = resolvedLocation.aisleId || null
+      pendingNavigationTopAisleIdRef.current = null
+      setActiveAisleId(resolvedLocation.aisleId)
+      setSelectedFolderId('')
+      clearNotebookNavigationTransientUi()
+      mutateState((previous) => {
+        const previousWithCursor = applyActiveCursorToState(previous)
+        if (previousWithCursor.notebook.activeNoteId === resolvedLocation.noteId) return previousWithCursor
+        return {
+          ...previousWithCursor,
+          notebook: {
+            ...previousWithCursor.notebook,
+            activeNoteId: resolvedLocation.noteId,
+          },
+        }
+      })
+      setViewMode('main')
+      window.requestAnimationFrame(() => {
+        if (pendingFocusToAisleIdRef.current !== (resolvedLocation.aisleId || null)) return
+        const active = getActiveNoteModel(stateRef.current)
+        if (!active || active.noteId !== resolvedLocation.noteId) return
+        if (!active.noteBody.aisles.some((aisle) => aisle.id === resolvedLocation.aisleId)) return
+        notebookEditors.activateAisleEditor(buildAisleEditorKey(active.noteBody.id, resolvedLocation.aisleId), {
+          focus: true,
+          source: 'programmatic',
+        })
+      })
+      return true
+    },
+    [applyActiveCursorToState, clearNotebookNavigationTransientUi, mutateState, notebookEditors, stateRef],
+  )
+
+  navigateToNotebookLocationRef.current = applyNotebookNavigationLocation
+
+  const resolveNotebookNavigationHistoryLocation = useCallback(
+    (location: NotebookNavigationLocation) => resolveNotebookNavigationLocation(stateRef.current, location),
+    [stateRef],
+  )
+
+  const { navigateNotebookHistoryBy } = useNotebookNavigationHistory({
+    viewMode,
+    activeNoteId: activeModel?.noteId ?? '',
+    activeAisleId: renderedActiveAisleId,
+    resolveLocation: resolveNotebookNavigationHistoryLocation,
+    onApplyLocation: applyNotebookNavigationLocation,
+  })
 
   usePendingNoteCursorRestore({
     viewMode,
@@ -2395,40 +2474,9 @@ export function NotebookApp() {
 
   const setActiveNote = useCallback(
     (noteId: string) => {
-      const notePath = findNotebookNote(stateRef.current.notebook.items, noteId)
-      const noteBody = notePath
-        ? stateRef.current.noteBodies.find((candidate) => candidate.id === notePath.note.noteBodyId) ?? null
-        : null
-      const preferredAisleId = noteBody
-        ? getPreferredNotebookAisleId(stateRef.current, noteId, noteBody.aisles)
-        : ''
-      pendingFocusToAisleIdRef.current = preferredAisleId || null
-      pendingScrollToAisleIdRef.current = preferredAisleId || null
-      setSelectedFolderId('')
-      mutateState((previous) => {
-        const previousWithCursor = applyActiveCursorToState(previous)
-        return {
-          ...previousWithCursor,
-          notebook: {
-            ...previousWithCursor.notebook,
-            activeNoteId: noteId,
-          },
-        }
-      })
-      setViewMode('main')
-      window.requestAnimationFrame(() => {
-        if (pendingFocusToAisleIdRef.current !== (preferredAisleId || null)) return
-        const active = getActiveNoteModel(stateRef.current)
-        if (!active || active.noteId !== noteId) return
-        const aisleId = preferredAisleId || (active.noteBody.aisles[0]?.id ?? '')
-        if (!aisleId) return
-        notebookEditors.activateAisleEditor(buildAisleEditorKey(active.noteBody.id, aisleId), {
-          focus: true,
-          source: 'programmatic',
-        })
-      })
+      applyNotebookNavigationLocation({ noteId, aisleId: '' })
     },
-    [applyActiveCursorToState, mutateState, notebookEditors, stateRef],
+    [applyNotebookNavigationLocation],
   )
 
   const toggleNotesTrashFromShortcut = useCallback(() => {
@@ -2576,6 +2624,12 @@ export function NotebookApp() {
       cycleAisleNext: () => cycleActiveAisle(1),
       formatStrikethrough: () => {
         notebookEditors.runCommand('strike')
+      },
+      navigateHistoryBack: () => {
+        navigateNotebookHistoryBy(-1)
+      },
+      navigateHistoryForward: () => {
+        navigateNotebookHistoryBy(1)
       },
     },
   })

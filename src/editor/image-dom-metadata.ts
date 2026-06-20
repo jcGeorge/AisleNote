@@ -1,14 +1,48 @@
 import { getImageResizeMetadata } from '../markdown/image-metadata'
 
+export type ImageDisplayLayoutReservation = {
+  width: number
+  height: number
+}
+
+const RESERVED_IMAGE_LAYOUT_ATTR = 'data-tabs-image-layout-reserved'
+
+function normalizeReservedImageLayout(value: number): number | null {
+  if (!Number.isFinite(value)) return null
+  const rounded = Math.round(value)
+  return rounded > 0 ? rounded : null
+}
+
+export function reserveImageDisplayLayout(image: HTMLImageElement, layout: ImageDisplayLayoutReservation) {
+  const width = normalizeReservedImageLayout(layout.width)
+  const height = normalizeReservedImageLayout(layout.height)
+  if (!width || !height) return false
+
+  image.style.width = `${width}px`
+  image.style.height = `${height}px`
+  image.style.maxWidth = '100%'
+  image.setAttribute('width', String(width))
+  image.setAttribute('height', String(height))
+  image.setAttribute(RESERVED_IMAGE_LAYOUT_ATTR, 'true')
+  return true
+}
+
+export function releaseImageDisplayLayoutReservation(image: HTMLImageElement) {
+  image.removeAttribute(RESERVED_IMAGE_LAYOUT_ATTR)
+  return syncImageDisplayMetadata(image)
+}
+
 export function syncImageDisplayMetadata(image: HTMLImageElement) {
   const metadata = getImageResizeMetadata(image.getAttribute('src') ?? image.src)
   if (!metadata) return false
 
   image.style.width = `${metadata.w}px`
-  image.style.height = 'auto'
   image.style.maxWidth = '100%'
   image.setAttribute('width', String(metadata.w))
-  image.removeAttribute('height')
+  if (image.getAttribute(RESERVED_IMAGE_LAYOUT_ATTR) !== 'true') {
+    image.style.height = 'auto'
+    image.removeAttribute('height')
+  }
   const transforms: string[] = []
   if (metadata.r) transforms.push(`rotate(${metadata.r}deg)`)
   if (metadata.fh) transforms.push('scaleX(-1)')

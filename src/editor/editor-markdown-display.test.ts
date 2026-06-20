@@ -8,6 +8,7 @@ import {
   prepareMarkdownForEditorDisplay,
   prepareMarkdownNoteLinkDestinationsForEditorDisplay,
   restoreEditorBlankParagraphs,
+  restoreEditorDisplay,
   setEditorMarkdownForDisplay,
 } from './editor-markdown-display'
 
@@ -238,6 +239,71 @@ describe('editor markdown display helpers', () => {
     expect(dispatch).toHaveBeenCalled()
   })
 
+  it('restores blanks when Toast splits plain markdown lines into separate content blocks', () => {
+    const { editor, tr, dispatch } = fakeEditorWithBlocks([
+      textBlock('paragraph', 'first'),
+      textBlock('paragraph', 'second'),
+      textBlock('paragraph', 'A'),
+      textBlock('paragraph', 'B'),
+    ])
+
+    expect(restoreEditorBlankParagraphs(editor, [
+      'first',
+      'second',
+      '',
+      'A',
+      '',
+      '',
+      '',
+      'B',
+    ].join('\n'))).toBe(true)
+
+    expect(tr.replaceWith).not.toHaveBeenCalled()
+    expect(tr.insertedNodes.map((entry: any) => entry.node.textContent)).toEqual(['', '', '', ''])
+    expect(dispatch).toHaveBeenCalled()
+  })
+
+  it('keeps editor display restore pending when Toast has not produced the expected content blocks', () => {
+    const { editor, dispatch } = fakeEditorWithBlocks([
+      textBlock('paragraph', 'one two'),
+    ])
+
+    expect(restoreEditorDisplay(editor, [
+      'one',
+      '',
+      '',
+      'two',
+    ].join('\n'))).toEqual({
+      restored: false,
+      viewReady: true,
+      displayReady: false,
+    })
+
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  it('marks editor display restore ready when the blank paragraph layout already matches', () => {
+    const { editor, dispatch } = fakeEditorWithBlocks([
+      textBlock('paragraph', 'one'),
+      textBlock('paragraph'),
+      textBlock('paragraph'),
+      textBlock('paragraph', 'two'),
+    ])
+
+    expect(restoreEditorDisplay(editor, [
+      'one',
+      '',
+      '',
+      'two',
+    ].join('\n'))).toEqual({
+      restored: false,
+      viewReady: true,
+      displayReady: true,
+    })
+
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
   it('repairs broken table markdown before passing it to Toast UI', () => {
     const { editor } = fakeEditorWithBlocks([textBlock('table')])
     const brokenTable = [
@@ -259,7 +325,7 @@ describe('editor markdown display helpers', () => {
     ].join('\n'), false)
   })
 
-  it('does not run blank restoration against ordinary table markdown', () => {
+  it('removes parser-only table spacing without replacing table content', () => {
     const { editor, tr, dispatch } = fakeEditorWithBlocks([
       textBlock('paragraph', 'before'),
       textBlock('paragraph'),
@@ -271,11 +337,37 @@ describe('editor markdown display helpers', () => {
       '| A | B |',
       '| --- | --- |',
       '| C | D |',
-    ].join('\n'))).toBe(false)
+    ].join('\n'))).toBe(true)
 
-    expect(tr.deletedRanges).toEqual([])
+    expect(tr.replaceWith).not.toHaveBeenCalled()
+    expect(tr.deletedRanges).toEqual([[1, 2]])
     expect(tr.insertedNodes).toHaveLength(0)
-    expect(dispatch).not.toHaveBeenCalled()
+    expect(dispatch).toHaveBeenCalled()
+  })
+
+  it('restores trailing blank paragraphs after table markdown without replacing table content', () => {
+    const { editor, tr, dispatch } = fakeEditorWithBlocks([
+      textBlock('paragraph', 'before'),
+      textBlock('table', 'A B C D'),
+    ])
+
+    expect(restoreEditorBlankParagraphs(editor, [
+      'before',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      '',
+      '',
+      '',
+    ].join('\n'))).toBe(true)
+
+    expect(tr.replaceWith).not.toHaveBeenCalled()
+    expect(tr.insertedNodes.map((entry: any) => [entry.position, entry.node.textContent])).toEqual([
+      [2, ''],
+      [3, ''],
+      [4, ''],
+    ])
+    expect(dispatch).toHaveBeenCalled()
   })
 
   it('still restores explicit blank placeholders around table markdown', () => {
