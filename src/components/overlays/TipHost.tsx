@@ -1,4 +1,5 @@
 import type { TipDefinition, TipId } from '../../tips/tips'
+import { AppIcon } from '../icons/AppIcon'
 
 type TipHostProps = {
   tips: TipDefinition[]
@@ -15,12 +16,12 @@ export function TipHost({ tips, onDismissTip }: TipHostProps) {
           <p>{tip.message}</p>
           <button
             type="button"
-            className="app-tip-dismiss"
+            className="app-tip-dismiss app-close-button"
             aria-label={`Dismiss ${tip.label} tip`}
             data-app-tooltip={`Dismiss ${tip.label} tip`}
             onClick={() => onDismissTip(tip.id)}
           >
-            ×
+            <AppIcon iconId="x" className="app-close-button-icon" />
           </button>
         </section>
       ))}

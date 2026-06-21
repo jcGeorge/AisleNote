@@ -31,7 +31,7 @@
   background: var(--settings-control-bg);
   color: var(--settings-control-text);
   padding: 0.42rem 0.48rem;
-  font-size: 0.9em;
+  font-size: 1em;
 }
 
 .settings-text-input:focus {
@@ -148,7 +148,7 @@
   flex: 1 1 auto;
   min-width: 0;
   padding: 0.42rem 0.42rem;
-  font-size: 0.95em;
+  font-size: 1em;
   overflow: hidden;
   text-align: center;
   text-overflow: clip;
@@ -261,6 +261,16 @@
 
 .frontmatter-template-field-row .settings-action-btn {
   min-width: 4.75rem;
+}
+
+.frontmatter-fixed-list-default {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.frontmatter-fixed-list-options-input {
+  min-width: 0;
 }
 
 .settings-hotkey-row {
@@ -417,7 +427,7 @@
 
 .frontmatter-boolean-switch-label {
   min-width: 2.4rem;
-  font-size: 0.82em;
+  font-size: 1em;
   line-height: 1;
   color: inherit;
 }
@@ -439,7 +449,7 @@
   border-radius: 0.32rem;
   background: transparent;
   color: var(--theme-switch-option-text);
-  font-size: 0.95em;
+  font-size: 1em;
   line-height: 1.2;
   padding: 0.28rem 0.45rem;
   text-transform: lowercase;
@@ -481,7 +491,7 @@
   border-radius: 0.32rem;
   background: transparent;
   color: var(--theme-switch-option-text);
-  font-size: 0.95em;
+  font-size: 1em;
   line-height: 1.2;
   padding: 0.28rem 0.45rem;
   text-transform: lowercase;
@@ -986,7 +996,7 @@
 .custom-theme-slot-label {
   min-width: 0;
   color: var(--settings-card-body-text);
-  font-size: 0.95em;
+  font-size: 1em;
   line-height: 1.15;
   text-transform: lowercase;
 }
@@ -1185,7 +1195,7 @@
   background: var(--settings-shortcut-bg);
   color: var(--settings-shortcut-text);
   border-radius: 0.36rem;
-  font-size: 0.95em;
+  font-size: 1em;
   line-height: 1.2;
   padding: 0.24rem 0.46rem;
   min-width: 115px;
@@ -1196,7 +1206,7 @@
 
 .settings-shortcut-select {
   width: min(220px, 48vw);
-  font-size: 0.95em;
+  font-size: 1em;
 }
 
 .settings-shortcut-btn:hover {

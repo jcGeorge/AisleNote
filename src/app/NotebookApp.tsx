@@ -1,3 +1,4 @@
+import * as React from 'react'
 import {
   useCallback,
   useEffect,
@@ -20,7 +21,9 @@ import type {
   CustomThemeId,
   CustomThemePaletteSlot,
   DataSettingsSection,
+  DeletedNotebookItem,
   FrontmatterData,
+  FrontmatterSaveOptions,
   FrontmatterTemplate,
   FrontmatterTemplateField,
   MessagesSection,
@@ -28,6 +31,7 @@ import type {
   NoteAisle,
   NoteAisleBody,
   NoteBody,
+  NoteFilterSettings,
   NoteLocation,
   NoteNavigationTarget,
   NotebookTreeItem,
@@ -55,9 +59,21 @@ import {
   getFrontmatterDatetimePickerValue,
   getFrontmatterDraftValueForType,
   isFrontmatterComputedValueCompatibleWithFieldType,
-  parseFrontmatterYaml,
+  normalizeFrontmatterFixedListOptions,
+  resolveFrontmatterFixedListValue,
   stringifyFrontmatterYaml,
 } from '../frontmatter/frontmatter'
+import {
+  buildFrontmatterDataFromRows,
+  buildFrontmatterMeta,
+  buildFrontmatterModalDraftForAisle,
+  buildFrontmatterRowsForAisle,
+  disableInvalidComputedFrontmatterRows,
+  makeFrontmatterRowsManual,
+  normalizeFrontmatterDraftRows,
+  resolveFrontmatterRowComputedForType,
+  type FrontmatterRowDraft,
+} from '../frontmatter/frontmatter-state'
 import {
   buildNoteLocationKey,
   filterNoteSearchEntries,
@@ -108,8 +124,10 @@ import {
   type NotebookEditorPasteDestination,
 } from '../components/overlays/NotebookEditorContextMenu'
 import { AppIcon } from '../components/icons/AppIcon'
+import { SidebarSearchPanel } from '../components/navigation/SidebarSearchPanel'
 import { AboutView } from '../components/about/AboutView'
 import { MessagesView } from '../components/messages/MessagesView'
+import { TrashMarkdownPreview } from '../components/trash/TrashMarkdownPreview'
 import { ToolbarSettingsPanel } from '../components/settings/ToolbarSettingsPanel'
 import { ShortcutMenuSettingsPanel } from '../components/settings/ShortcutMenuSettingsPanel'
 import { clampContextMenuPosition, type MenuPosition, type MenuSize, type MenuViewport } from '../components/overlays/context-menu-position'
@@ -165,6 +183,7 @@ import {
   MIN_TOOLBAR_BUTTON_SCALE,
   NOTE_FONT_SCALE_STEP,
   TOOLBAR_BUTTON_SCALE_STEP,
+  DEFAULT_UI_SETTINGS,
   clampNoteFontScale,
   clampToolbarButtonScale,
 } from '../settings/defaults'
@@ -173,7 +192,6 @@ import {
   createNoteBodyWithAisle,
   createNotebookFolderInState,
   createNotebookNoteInState,
-  decoupleNotebookAisleBodyInState,
   decoupleNotebookNoteBodyInState,
   deleteNotebookItemInState,
   findNotebookFolder,
@@ -199,11 +217,36 @@ import {
 import { NotebookDecoupleDialog } from '../components/overlays/NotebookDecoupleDialog'
 import {
   buildNotebookNoteReferenceInsertionText,
+  decoupleNotebookNoteLocationsInState,
   getNotebookAisleDecoupleRows,
   getNotebookNoteDecoupleRows,
   replaceActiveNoteBodyFromTargetNote,
   replaceFocusedAisleFromTargetNote,
 } from '../notes/notebook-note-actions'
+import {
+  buildAisleSlotKey,
+  decoupleAisleSlotsInState,
+  listLinkedAisleSlotsForAisleBody,
+} from '../notes/aisle-links'
+import {
+  getFrontmatterTemplateFilterKey,
+  getSyncedAisleFilterKey,
+  getSyncedNoteFilterKey,
+} from '../filters/note-filter'
+import {
+  buildSidebarSearchIndexes,
+  buildSidebarSearchResultGroups,
+  clearActiveSidebarSearchPrefix,
+  getSidebarSearchSelectedTokens,
+  getSidebarSearchSuggestions,
+  mergeSidebarSearchTokens,
+  parseSidebarSearchInput,
+  type SidebarSearchFilterKind,
+  type SidebarSearchResult,
+  type SidebarSearchSuggestion,
+  type SidebarSearchToken,
+} from '../filters/sidebar-search'
+import { normalizeTagKey } from '../tags/tag-filter'
 import {
   applyNotebookStructureClipboardPayload,
   buildNotebookStructureClipboardPayload,
@@ -225,9 +268,75 @@ import { CLOSED_LINK_PROMPT_STATE, closeLinkPromptState } from './linkPromptStat
 import { MEDIA_PLAYER_SELECTOR } from '../media/media-utils'
 import { openExternalWebUrl } from '../notes/external-links'
 
+void React
+
 const SIDEBAR_MIN_WIDTH = 220
 const SIDEBAR_MAX_WIDTH = 520
 const NOTEBOOK_FOCUS_BOUNDARY_FLUSH_DELAY_MS = 60
+
+function getDefaultNoteFilterSettings(): NonNullable<AppState['ui']['noteFilter']> {
+  return DEFAULT_UI_SETTINGS.noteFilter ?? {
+    active: false,
+    kind: 'tags',
+    tags: { selectedKeys: [], sortMode: 'az' },
+    synced: { selectedKeys: [] },
+    frontmatter: { selectedKeys: [] },
+    media: { selectedKeys: [] },
+  }
+}
+
+const SIDEBAR_SEARCH_FILTER_KINDS: SidebarSearchFilterKind[] = ['tags', 'synced', 'frontmatter']
+
+function hasSidebarSearchFilterKeys(filter: NoteFilterSettings): boolean {
+  return SIDEBAR_SEARCH_FILTER_KINDS.some((kind) => filter[kind].selectedKeys.length > 0)
+}
+
+function addSidebarSearchFilterKey(
+  currentFilter: NoteFilterSettings | null | undefined,
+  kind: SidebarSearchFilterKind,
+  key: string,
+): NoteFilterSettings {
+  const fallback = getDefaultNoteFilterSettings()
+  const base = currentFilter?.active ? currentFilter : fallback
+  const selectedKeys = Array.from(new Set([...base[kind].selectedKeys, key].filter(Boolean)))
+  return {
+    ...base,
+    active: true,
+    kind,
+    [kind]: {
+      ...base[kind],
+      selectedKeys,
+    },
+  } as NoteFilterSettings
+}
+
+function addSidebarSearchFilterTokens(
+  currentFilter: NoteFilterSettings | null | undefined,
+  tokens: SidebarSearchToken[],
+): NoteFilterSettings {
+  return tokens.reduce(
+    (filter, token) => addSidebarSearchFilterKey(filter, token.kind, token.key),
+    currentFilter ?? getDefaultNoteFilterSettings(),
+  )
+}
+
+function removeSidebarSearchFilterToken(
+  currentFilter: NoteFilterSettings | null | undefined,
+  token: SidebarSearchToken,
+): NoteFilterSettings {
+  const base = currentFilter ?? getDefaultNoteFilterSettings()
+  const next = {
+    ...base,
+    [token.kind]: {
+      ...base[token.kind],
+      selectedKeys: base[token.kind].selectedKeys.filter((key) => key !== token.key),
+    },
+  } as NoteFilterSettings
+  return {
+    ...next,
+    active: hasSidebarSearchFilterKeys(next),
+  }
+}
 
 const THEME_LABELS: Record<AppTheme, string> = {
   dark: 'Dark',
@@ -300,6 +409,13 @@ const TABLE_OF_CONTENTS_SCOPE_OPTIONS: Array<{ id: TableOfContentsScope; label: 
 
 const SETTINGS_SECTION_SET = new Set<SettingsSection>(SETTINGS_SECTION_TABS.map((tab) => tab.id))
 const DATA_SECTION_SET = new Set<DataSettingsSection>(DATA_SECTION_TABS.map((tab) => tab.id))
+const DELETED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+})
 
 function isUtilityViewMode(viewMode: ViewMode): viewMode is UtilityViewMode {
   return (UTILITY_VIEW_MODES as readonly string[]).includes(viewMode)
@@ -328,6 +444,39 @@ function createFrontmatterTemplateId(): string {
 function isFrontmatterBooleanTrue(value: string) {
   const normalized = value.trim().toLowerCase()
   return normalized === 'true' || normalized === 'yes' || normalized === 'on' || normalized === '1'
+}
+
+function getFrontmatterTypeLabel(type: FrontmatterTemplateField['type']) {
+  return type === 'fixedList' ? 'fixed list' : type
+}
+
+function getEditableFixedListOptions(options: unknown, fallbackValue?: unknown): string[] {
+  const normalizedOptions = normalizeFrontmatterFixedListOptions(options)
+  if (normalizedOptions.length > 0) return normalizedOptions
+  const fallbackOptions = normalizeFrontmatterFixedListOptions(fallbackValue)
+  return fallbackOptions.length > 0 ? fallbackOptions : ['option']
+}
+
+function formatDeletedAt(timestamp: number): string {
+  const date = new Date(timestamp)
+  return Number.isNaN(date.getTime()) ? 'Unknown' : DELETED_AT_FORMATTER.format(date)
+}
+
+function getDeletedAtTitle(timestamp: number): string | undefined {
+  const date = new Date(timestamp)
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString()
+}
+
+function getNotebookItemDisplayTitle(item: NotebookTreeItem): string {
+  return item.title.trim() || 'Untitled'
+}
+
+function getDeletedNotebookNoteMarkdown(entry: DeletedNotebookItem, state: AppState): string {
+  const item = entry.item
+  if (item.type !== 'note') return ''
+  const noteBody = state.noteBodies.find((body) => body.id === item.noteBodyId)
+  const resolved = resolveNoteBody(noteBody, state.noteAisleBodies)
+  return resolved?.aisles.map((aisle) => aisle.markdown).join('\n\n') ?? ''
 }
 
 type ActiveNoteModel = {
@@ -359,10 +508,16 @@ type NotebookShortcutMenuState = {
   activeIndex: number
 }
 
-type NotebookFrontmatterModalState = {
+export type NotebookFrontmatterModalState = {
+  noteBodyId: string
   aisleId: string
   aisleBodyId: string
-  initialYaml: string
+  location: NoteLocation
+  aisles: Array<{ id: string; aisleBodyId: string; label: string }>
+  rows: FrontmatterRowDraft[]
+  selectedTemplateId: string
+  templateDerived: boolean
+  isTemplateSuggestionDraft: boolean
 }
 
 type NoteActionPickerSource = 'mention' | 'toolbar-link' | 'context-note-link' | 'context-note-preview' | 'whole-note-copy'
@@ -373,13 +528,29 @@ type NoteActionPickerState = {
   query: string
   actions: NotebookNoteActionPickerAction[]
   mentionRange?: NoteMentionQuery
+  insertRange?: LinkPromptState['editRange']
   anchor?: NotebookNoteActionPickerAnchor | null
   urlEnabled?: boolean
 }
 
 type DecoupleDialogState =
-  | { kind: 'note' }
-  | { kind: 'aisle'; aisleId: string }
+  | {
+      kind: 'note'
+      noteBodyId: string
+      currentKey: string
+      keepKeys: string[]
+      keepData: boolean
+      error?: string
+    }
+  | {
+      kind: 'aisle'
+      aisleId: string
+      aisleBodyId: string
+      currentKey: string
+      keepKeys: string[]
+      keepData: boolean
+      error?: string
+    }
 
 function getActiveNoteModel(state: AppState): ActiveNoteModel | null {
   const notePath = findNotebookNote(state.notebook.items, state.notebook.activeNoteId)
@@ -573,10 +744,12 @@ function updateAisleBodyFrontmatterInState(
   state: AppState,
   aisleBodyId: string,
   frontmatter: FrontmatterData | null,
-  rawYaml: string,
+  saveOptions?: FrontmatterSaveOptions,
 ): AppState {
   const timestamp = new Date().toISOString()
   const existingBodies = state.noteAisleBodies ?? []
+  const templateId = saveOptions?.templateId?.trim() || ''
+  const frontmatterRaw = frontmatter ? stringifyFrontmatterYaml(frontmatter) : undefined
   const nextBodies = existingBodies.map((body) =>
     body.id === aisleBodyId
       ? {
@@ -585,13 +758,18 @@ function updateAisleBodyFrontmatterInState(
           frontmatter,
           frontmatterStatus: frontmatter ? 'valid' as const : 'none' as const,
           frontmatterParseError: undefined,
-          frontmatterRaw: rawYaml.trim() ? rawYaml : undefined,
+          frontmatterRaw,
+          frontmatterMeta: buildFrontmatterMeta(frontmatter, saveOptions),
         }
       : body,
   )
   return {
     ...state,
     noteAisleBodies: nextBodies,
+    frontmatter: {
+      ...state.frontmatter,
+      lastAppliedTemplateId: templateId && frontmatter ? templateId : '',
+    },
   }
 }
 
@@ -705,6 +883,8 @@ function NotebookTreeContextMenu({
   revealLabel,
   canReveal,
   onClose,
+  onCreateNote,
+  onCreateFolder,
   onReveal,
   onRename,
   onDelete,
@@ -713,6 +893,8 @@ function NotebookTreeContextMenu({
   revealLabel: string
   canReveal: boolean
   onClose: () => void
+  onCreateNote: () => void
+  onCreateFolder: () => void
   onReveal: () => void
   onRename: () => void
   onDelete: () => void
@@ -756,6 +938,19 @@ function NotebookTreeContextMenu({
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
     >
+      <button type="button" className="tab-context-delete" onClick={() => runAction(onCreateNote)}>
+        New note
+      </button>
+      <button type="button" className="tab-context-delete" onClick={() => runAction(onCreateFolder)}>
+        New folder
+      </button>
+      <div className="tab-context-separator" role="separator" />
+      <button type="button" className="tab-context-delete" onClick={() => runAction(onRename)}>
+        Rename
+      </button>
+      <button type="button" className="tab-context-delete" onClick={() => runAction(onDelete)}>
+        {deleteLabel}
+      </button>
       <button
         type="button"
         className={`tab-context-delete ${canReveal ? '' : 'is-disabled'}`.trim()}
@@ -764,13 +959,6 @@ function NotebookTreeContextMenu({
         onClick={() => runAction(onReveal)}
       >
         {revealLabel}
-      </button>
-      <button type="button" className="tab-context-delete" onClick={() => runAction(onRename)}>
-        Rename
-      </button>
-      <div className="tab-context-separator" role="separator" />
-      <button type="button" className="tab-context-delete" onClick={() => runAction(onDelete)}>
-        {deleteLabel}
       </button>
     </div>
   )
@@ -1053,17 +1241,30 @@ function NotebookAisleContextMenu({
   canDecoupleNote,
   canDecoupleAisle,
   onClose,
-  onDecoupleNote,
-  onDecoupleAisle,
+  onFilterSyncedNote,
+  onFilterSyncedAisle,
+  onQuickDecoupleNote,
+  onQuickDecoupleAisle,
+  onShowSyncedNote,
+  onShowSyncedAisle,
 }: {
   menu: NotebookAisleContextMenuState | null
   canDecoupleNote: boolean
   canDecoupleAisle: boolean
   onClose: () => void
-  onDecoupleNote: () => void
-  onDecoupleAisle: () => void
+  onFilterSyncedNote: () => void
+  onFilterSyncedAisle: () => void
+  onQuickDecoupleNote: () => void
+  onQuickDecoupleAisle: () => void
+  onShowSyncedNote: () => void
+  onShowSyncedAisle: () => void
 }) {
   if (!menu || (!canDecoupleNote && !canDecoupleAisle)) return null
+  const runAction = (action: () => void) => {
+    action()
+    onClose()
+  }
+  const itemLabel = canDecoupleNote ? 'note' : 'aisle'
   return (
     <div
       className="tab-context-menu"
@@ -1072,57 +1273,220 @@ function NotebookAisleContextMenu({
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
     >
-      {canDecoupleNote ? (
-        <button
-          type="button"
-          className="tab-context-delete"
-          onClick={() => {
-            onDecoupleNote()
-            onClose()
-          }}
-        >
-          De-couple note
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="tab-context-delete"
-          onClick={() => {
-            onDecoupleAisle()
-            onClose()
-          }}
-        >
-          De-couple aisle
-        </button>
-      )}
+      <button
+        type="button"
+        className="tab-context-delete"
+        onClick={() => runAction(canDecoupleNote ? onFilterSyncedNote : onFilterSyncedAisle)}
+      >
+        filter synced {itemLabel}
+      </button>
+      <button
+        type="button"
+        className="tab-context-delete"
+        onClick={() => runAction(canDecoupleNote ? onQuickDecoupleNote : onQuickDecoupleAisle)}
+      >
+        de-couple {itemLabel}
+      </button>
+      <button
+        type="button"
+        className="tab-context-delete"
+        onClick={() => runAction(canDecoupleNote ? onShowSyncedNote : onShowSyncedAisle)}
+      >
+        show synced {itemLabel}s
+      </button>
     </div>
   )
 }
 
-function NotebookFrontmatterModal({
+export function NotebookFrontmatterModal({
   modal,
+  templates,
   onCancel,
+  onChange,
   onSave,
+  onSelectAisle,
+  onSelectTemplate,
+  onToggleTemplateDerived,
+  onEditTemplate,
 }: {
   modal: NotebookFrontmatterModalState | null
+  templates: FrontmatterTemplate[]
   onCancel: () => void
-  onSave: (yaml: string) => string | null
+  onChange: (modal: NotebookFrontmatterModalState) => void
+  onSave: (modal: NotebookFrontmatterModalState) => string[] | string | null
+  onSelectAisle: (modal: NotebookFrontmatterModalState, aisleId: string) => NotebookFrontmatterModalState | string | null
+  onSelectTemplate: (modal: NotebookFrontmatterModalState, templateId: string) => NotebookFrontmatterModalState
+  onToggleTemplateDerived: (modal: NotebookFrontmatterModalState, templateDerived: boolean) => NotebookFrontmatterModalState
+  onEditTemplate: (templateId: string) => void
 }) {
-  const [yaml, setYaml] = useState('')
   const [error, setError] = useState('')
+  const [warnings, setWarnings] = useState<string[]>([])
 
   useEffect(() => {
     if (!modal) return
-    setYaml(modal.initialYaml)
     setError('')
-  }, [modal])
+    setWarnings([])
+  }, [modal?.noteBodyId, modal?.aisleBodyId])
 
   if (!modal) return null
+
+  const selectedTemplate = templates.find((template) => template.id === modal.selectedTemplateId) ?? null
+  const updateModal = (nextModal: NotebookFrontmatterModalState) => {
+    setError('')
+    setWarnings([])
+    onChange(nextModal)
+  }
+  const updateRows = (updater: (rows: FrontmatterRowDraft[]) => FrontmatterRowDraft[]) => {
+    updateModal(normalizeFrontmatterDraftRows(modal, updater(modal.rows)))
+  }
+  const updateRow = (rowId: string, patch: Partial<FrontmatterRowDraft>) => {
+    updateRows((rows) => rows.map((row) => (row.id === rowId ? { ...row, ...patch } : row)))
+  }
+  const createRowKey = () => {
+    const existingKeys = new Set(modal.rows.map((row) => row.key.trim()).filter(Boolean))
+    let key = 'field'
+    let index = 2
+    while (existingKeys.has(key)) {
+      key = `field ${index}`
+      index += 1
+    }
+    return key
+  }
+  const isComputedEnabled = (row: FrontmatterRowDraft) => row.computedEnabled ?? row.computed !== 'none'
+  const isComputedLocked = (row: FrontmatterRowDraft) => Boolean(row.computedLocked || (row.derived && row.computed !== 'none'))
+  const isKeyTypeLocked = (row: FrontmatterRowDraft) => Boolean(row.derived)
+  const getRowFieldTypes = (row: FrontmatterRowDraft) =>
+    row.type === 'fixedList' || (row.fixedListOptions?.length ?? 0) > 0
+      ? FRONTMATTER_FIELD_TYPES
+      : FRONTMATTER_FIELD_TYPES.filter((type) => type !== 'fixedList')
+  const getRowValueInputType = (type: FrontmatterRowDraft['type']) => {
+    if (type === 'number') return 'number'
+    if (type === 'date') return 'date'
+    if (type === 'datetime') return 'datetime-local'
+    return 'text'
+  }
+  const getRowValueInputValue = (row: FrontmatterRowDraft) => {
+    if (row.type === 'date') return getFrontmatterDatePickerValue(row.value)
+    if (row.type === 'datetime') return getFrontmatterDatetimePickerValue(row.value)
+    return row.value
+  }
+  const computedLockedMessage = (row: FrontmatterRowDraft) =>
+    row.derived
+      ? 'Computed fields from templates are changed in frontmatter settings.'
+      : 'Computed fields are recalculated automatically.'
+  const templateLockedMessage = 'Template field names and types are changed in frontmatter settings.'
+
+  const renderValueControl = (row: FrontmatterRowDraft) => {
+    if (isComputedEnabled(row)) {
+      const computedOptions = getFrontmatterComputedValuesForFieldType(row.type).filter((computed) => computed !== 'none')
+      return (
+        <select
+          className="settings-select-input frontmatter-row-value-input"
+          value={row.computed !== 'none' && isFrontmatterComputedValueCompatibleWithFieldType(row.computed, row.type) ? row.computed : ''}
+          aria-label="computed frontmatter value"
+          disabled={isComputedLocked(row)}
+          data-app-tooltip={isComputedLocked(row) ? computedLockedMessage(row) : undefined}
+          onChange={(event) => {
+            const computed = event.target.value === '' ? 'none' : event.target.value as FrontmatterRowDraft['computed']
+            updateRow(row.id, {
+              computed,
+              computedLocked: Boolean(row.derived && computed !== 'none'),
+              locked: Boolean(row.derived),
+            })
+          }}
+        >
+          <option value="">computed value</option>
+          {computedOptions.map((computed) => (
+            <option key={computed} value={computed}>
+              {computed}
+            </option>
+          ))}
+        </select>
+      )
+    }
+
+    if (row.type === 'fixedList') {
+      const options = normalizeFrontmatterFixedListOptions(row.fixedListOptions)
+      const value = resolveFrontmatterFixedListValue(options, row.value)
+      return (
+        <select
+          className="settings-select-input frontmatter-row-value-input"
+          value={value}
+          aria-label="frontmatter fixed list value"
+          disabled={options.length === 0}
+          onChange={(event) => updateRow(row.id, { value: event.target.value })}
+        >
+          {options.length > 0 ? (
+            options.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))
+          ) : (
+            <option value="">no options</option>
+          )}
+        </select>
+      )
+    }
+
+    if (row.type === 'boolean') {
+      const checked = isFrontmatterBooleanTrue(row.value)
+      return (
+        <label className="frontmatter-boolean-switch form-check form-switch settings-switch frontmatter-row-value-input">
+          <input
+            className="form-check-input"
+            type="checkbox"
+            role="switch"
+            checked={checked}
+            aria-label="frontmatter boolean value"
+            onChange={(event) => updateRow(row.id, { value: event.target.checked ? 'true' : 'false' })}
+          />
+          <span className="frontmatter-boolean-switch-label">{checked ? 'true' : 'false'}</span>
+        </label>
+      )
+    }
+
+    return (
+      <input
+        type={getRowValueInputType(row.type)}
+        className="settings-text-input frontmatter-row-value-input"
+        value={getRowValueInputValue(row)}
+        aria-label="frontmatter value"
+        placeholder={row.type === 'list' ? 'one, two' : 'value'}
+        onChange={(event) => updateRow(row.id, { value: event.target.value })}
+      />
+    )
+  }
+
+  const renderComputedControl = (row: FrontmatterRowDraft) => {
+    const checked = isComputedEnabled(row)
+    return (
+      <label className="frontmatter-computed-switch form-check form-switch settings-switch">
+        <input
+          className="form-check-input"
+          type="checkbox"
+          role="switch"
+          checked={checked}
+          aria-label="frontmatter computed"
+          disabled={Boolean(row.derived || isComputedLocked(row))}
+          data-app-tooltip={row.derived || isComputedLocked(row) ? computedLockedMessage(row) : undefined}
+          onChange={(event) => {
+            updateRow(row.id, {
+              computedEnabled: event.target.checked,
+              computed: event.target.checked ? row.computed : 'none',
+              computedLocked: Boolean(row.derived && event.target.checked && row.computed !== 'none'),
+              locked: Boolean(row.derived),
+            })
+          }}
+        />
+      </label>
+    )
+  }
 
   return (
     <div className="modal-backdrop notebook-modal-backdrop" role="presentation" onMouseDown={onCancel}>
       <section
-        className="modal-card notebook-frontmatter-modal"
+        className="modal-card notebook-frontmatter-modal frontmatter-note-modal"
         role="dialog"
         aria-modal="true"
         aria-label="Frontmatter"
@@ -1130,17 +1494,193 @@ function NotebookFrontmatterModal({
       >
         <header className="modal-card-header">
           <h2>Frontmatter</h2>
+          {modal.isTemplateSuggestionDraft && selectedTemplate ? (
+            <span className="frontmatter-template-suggestion-chip">suggested</span>
+          ) : null}
         </header>
-        <textarea
-          className="notebook-frontmatter-editor"
-          value={yaml}
-          onChange={(event) => {
-            setYaml(event.target.value)
-            setError('')
-          }}
-          spellCheck={false}
-        />
+        <div className="notebook-frontmatter-body">
+          <div className="frontmatter-note-toolbar">
+            {modal.aisles.length > 1 ? (
+              <select
+                className="settings-select-input"
+                value={modal.aisleId}
+                aria-label="frontmatter aisle"
+                onChange={(event) => {
+                  const next = onSelectAisle(modal, event.target.value)
+                  if (typeof next === 'string') {
+                    setError(next)
+                    setWarnings([])
+                    return
+                  }
+                  if (next) updateModal(next)
+                }}
+              >
+                {modal.aisles.map((aisle) => (
+                  <option key={aisle.id} value={aisle.id}>
+                    {aisle.label}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            <select
+              className="settings-select-input"
+              value={modal.selectedTemplateId}
+              aria-label="frontmatter template"
+              onChange={(event) => updateModal(onSelectTemplate(modal, event.target.value))}
+            >
+              <option value="">no template</option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="btn btn-sm settings-action-btn"
+              disabled={!modal.selectedTemplateId}
+              onClick={() => onEditTemplate(modal.selectedTemplateId)}
+            >
+              Edit template
+            </button>
+            <label className="frontmatter-derived-switch">
+              <span>derived</span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={Boolean(modal.selectedTemplateId && modal.templateDerived)}
+                disabled={!modal.selectedTemplateId}
+                aria-label="derive frontmatter from selected template"
+                onChange={(event) => updateModal(onToggleTemplateDerived(modal, event.target.checked))}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn btn-sm settings-action-btn"
+              onClick={() =>
+                updateRows((rows) => [
+                  ...rows,
+                  {
+                    id: createRandomId(),
+                    key: createRowKey(),
+                    type: 'text',
+                    value: '',
+                    computed: 'none',
+                    computedEnabled: false,
+                    computedLocked: false,
+                    locked: false,
+                    derived: false,
+                  },
+                ])
+              }
+            >
+              Add row
+            </button>
+          </div>
+          {modal.isTemplateSuggestionDraft && selectedTemplate ? (
+            <div className="frontmatter-template-suggestion-banner" role="note">
+              Suggested from "{selectedTemplate.name}". These rows are not saved on this aisle yet.
+            </div>
+          ) : null}
+          <div className="frontmatter-row-editor" aria-label="frontmatter rows">
+            <div className="frontmatter-row frontmatter-row-header" aria-hidden="true">
+              <span>key</span>
+              <span>type</span>
+              <span>value</span>
+              <span>computed</span>
+              <span>derived</span>
+              <span>action</span>
+            </div>
+            {modal.rows.length > 0 ? (
+              modal.rows.map((row) => {
+                const derivedTitle = row.derived && selectedTemplate ? selectedTemplate.name : undefined
+                return (
+                  <div key={row.id} className={`frontmatter-row ${row.derived ? 'is-derived' : ''} ${isComputedLocked(row) ? 'is-locked' : ''}`}>
+                    <input
+                      type="text"
+                      className="settings-text-input frontmatter-row-key-input"
+                      value={row.key}
+                      aria-label="frontmatter key"
+                      readOnly={isKeyTypeLocked(row)}
+                      data-app-tooltip={isKeyTypeLocked(row) ? templateLockedMessage : undefined}
+                      onChange={(event) => {
+                        if (isKeyTypeLocked(row)) return
+                        updateRow(row.id, { key: event.target.value })
+                      }}
+                    />
+                    <select
+                      className="settings-select-input frontmatter-row-type-select"
+                      value={row.type}
+                      aria-label="frontmatter type"
+                      disabled={isKeyTypeLocked(row)}
+                      data-app-tooltip={isKeyTypeLocked(row) ? templateLockedMessage : undefined}
+                      onChange={(event) => {
+                        const nextType = event.target.value as FrontmatterRowDraft['type']
+                        const nextComputed = resolveFrontmatterRowComputedForType(row, nextType)
+                        const nextFixedListOptions = nextType === 'fixedList'
+                          ? getEditableFixedListOptions(row.fixedListOptions, row.value)
+                          : undefined
+                        updateRow(row.id, {
+                          type: nextType,
+                          value: nextType === 'boolean'
+                            ? (isFrontmatterBooleanTrue(row.value) ? 'true' : 'false')
+                            : nextType === 'date' || nextType === 'datetime'
+                              ? getFrontmatterDraftValueForType(nextType, row.value)
+                              : nextType === 'fixedList'
+                                ? resolveFrontmatterFixedListValue(nextFixedListOptions, row.value)
+                              : row.value,
+                          computed: nextComputed,
+                          computedEnabled: isComputedEnabled(row) && nextComputed !== 'none',
+                          computedLocked: Boolean(row.derived && nextComputed !== 'none'),
+                          locked: Boolean(row.derived),
+                          fixedListOptions: nextFixedListOptions,
+                        })
+                      }}
+                    >
+                      {getRowFieldTypes(row).map((type) => (
+                        <option key={type} value={type}>
+                          {getFrontmatterTypeLabel(type)}
+                        </option>
+                      ))}
+                    </select>
+                    {renderValueControl(row)}
+                    {renderComputedControl(row)}
+                    <span
+                      className={`frontmatter-derived-indicator ${row.derived ? 'is-derived' : ''}`}
+                      aria-label={derivedTitle ? `derived from ${derivedTitle}` : 'not derived from a template'}
+                      data-app-tooltip={derivedTitle}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={Boolean(row.derived)}
+                        readOnly
+                        tabIndex={-1}
+                        aria-label={derivedTitle ? `derived from ${derivedTitle}` : 'not derived from a template'}
+                      />
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-sm settings-action-btn"
+                      onClick={() => updateRows((rows) => rows.filter((candidate) => candidate.id !== row.id))}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )
+              })
+            ) : (
+              <div className="frontmatter-empty-state">No frontmatter rows</div>
+            )}
+          </div>
+        </div>
         {error ? <p className="notebook-frontmatter-error">{error}</p> : null}
+        {warnings.length > 0 ? (
+          <div className="notebook-frontmatter-warning-list">
+            {warnings.map((warning) => (
+              <p key={warning}>{warning}</p>
+            ))}
+          </div>
+        ) : null}
         <footer className="modal-card-footer">
           <button type="button" className="btn btn-sm settings-action-btn" onClick={onCancel}>
             Cancel
@@ -1149,11 +1689,17 @@ function NotebookFrontmatterModal({
             type="button"
             className="btn btn-sm settings-action-btn"
             onClick={() => {
-              const nextError = onSave(yaml)
-              if (nextError) setError(nextError)
+              const result = onSave(modal)
+              if (typeof result === 'string') {
+                setError(result)
+                setWarnings([])
+              } else if (Array.isArray(result)) {
+                setError('')
+                setWarnings(result)
+              }
             }}
           >
-            Save
+            {modal.isTemplateSuggestionDraft && modal.selectedTemplateId ? 'Add frontmatter' : 'Save'}
           </button>
         </footer>
       </section>
@@ -1419,6 +1965,7 @@ export function NotebookApp() {
   const [editingShortcut, setEditingShortcut] = useState<ShortcutId | null>(null)
   const [shortcutMenuSettingsOpen, setShortcutMenuSettingsOpen] = useState(false)
   const [tableOfContentsPanels, setTableOfContentsPanels] = useState<TableOfContentsPanelsState | null>(null)
+  const [expandedTrashItemId, setExpandedTrashItemId] = useState('')
   const aisleScrollRef = useRef<HTMLDivElement | null>(null)
   const workspaceRootRef = useRef<HTMLElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -1461,10 +2008,34 @@ export function NotebookApp() {
 
   const activeModel = useMemo(() => getActiveNoteModel(state), [state])
   const collapsedFolderIds = useMemo(() => new Set(state.ui.collapsedFolderIds), [state.ui.collapsedFolderIds])
-  const filteredNotes = useMemo(
-    () => filterNoteSearchEntries(listSearchableNoteLocations(state), query, 40),
-    [query, state],
+  const noteFilterSettings = state.ui.noteFilter ?? getDefaultNoteFilterSettings()
+  const sidebarSearchIndexes = useMemo(() => buildSidebarSearchIndexes(state), [state])
+  const parsedSidebarSearch = useMemo(
+    () => parseSidebarSearchInput(query, sidebarSearchIndexes),
+    [query, sidebarSearchIndexes],
   )
+  const sidebarSearchSelectedTokens = useMemo(
+    () => mergeSidebarSearchTokens(
+      getSidebarSearchSelectedTokens(noteFilterSettings, sidebarSearchIndexes),
+      parsedSidebarSearch.tokens,
+    ),
+    [noteFilterSettings, parsedSidebarSearch.tokens, sidebarSearchIndexes],
+  )
+  const sidebarSearchSuggestions = useMemo(
+    () => getSidebarSearchSuggestions(query, sidebarSearchIndexes, sidebarSearchSelectedTokens),
+    [query, sidebarSearchIndexes, sidebarSearchSelectedTokens],
+  )
+  const sidebarSearchResultGroups = useMemo(
+    () =>
+      buildSidebarSearchResultGroups({
+        state,
+        query,
+        filter: noteFilterSettings,
+        indexes: sidebarSearchIndexes,
+      }),
+    [noteFilterSettings, query, sidebarSearchIndexes, state],
+  )
+  const sidebarSearchActive = query.trim().length > 0 || sidebarSearchSelectedTokens.length > 0
   const noteActionEntries = useMemo(() => {
     if (!noteActionPicker) return []
     const activeNoteId = activeModel?.noteId ?? state.notebook.activeNoteId
@@ -1513,6 +2084,19 @@ export function NotebookApp() {
         .map((aisle) => aisle.id),
     )
   }, [activeModel, state])
+  const frontmatterTemplateFilterAisleIds = useMemo(() => {
+    if (!activeModel) return new Set<string>()
+    const templateIds = new Set(state.frontmatter.templates.map((template) => template.id))
+    return new Set(
+      activeModel.resolved.aisles
+        .filter((aisle) => {
+          const body = getAisleBodyById(state, aisle.aisleBodyId)
+          const templateId = body?.frontmatterMeta?.templateId ?? ''
+          return Boolean(templateId && body?.frontmatterMeta?.templateDerived && templateIds.has(templateId))
+        })
+        .map((aisle) => aisle.id),
+    )
+  }, [activeModel, state])
   const rootStyle = useMemo(
     () =>
       ({
@@ -1555,6 +2139,13 @@ export function NotebookApp() {
       setSelectedFolderId('')
     }
   }, [selectedFolderId, state.notebook.items])
+
+  useEffect(() => {
+    if (!expandedTrashItemId) return
+    if (!state.notebook.deletedItems.some((entry) => entry.id === expandedTrashItemId)) {
+      setExpandedTrashItemId('')
+    }
+  }, [expandedTrashItemId, state.notebook.deletedItems])
 
   useEffect(() => {
     if (renamingTreeItemId && !findNotebookItem(state.notebook.items, renamingTreeItemId)) {
@@ -1606,6 +2197,14 @@ export function NotebookApp() {
   const openUtilityView = useCallback((targetViewMode: UtilityViewMode = 'settings') => {
     setViewMode(targetViewMode)
   }, [])
+
+  const handleSidebarSettingsClick = useCallback(() => {
+    if (viewMode === 'settings') {
+      setViewMode('main')
+      return
+    }
+    openUtilityView('settings')
+  }, [openUtilityView, viewMode])
 
   const setSettingsSection = useCallback(
     (section: SettingsSection) => {
@@ -2214,12 +2813,16 @@ export function NotebookApp() {
     syncToolbarFormatState: toolbarState.syncToolbarFormatState,
   })
 
-  const createNote = useCallback(() => {
+  const createNoteAt = useCallback((targetParentFolderId?: string | null, targetIndex?: number) => {
     mutateState((previous) => {
-      const parentFolderId = selectedFolderId && findNotebookFolder(previous.notebook.items, selectedFolderId)
-        ? selectedFolderId
-        : getContainingFolderId(previous.notebook.items, previous.notebook.activeNoteId)
-      const result = createNotebookNoteInState(previous, 'Untitled', parentFolderId)
+      const parentFolderId = targetParentFolderId === undefined
+        ? selectedFolderId && findNotebookFolder(previous.notebook.items, selectedFolderId)
+          ? selectedFolderId
+          : getContainingFolderId(previous.notebook.items, previous.notebook.activeNoteId)
+        : targetParentFolderId && findNotebookFolder(previous.notebook.items, targetParentFolderId)
+          ? targetParentFolderId
+          : null
+      const result = createNotebookNoteInState(previous, 'Untitled', parentFolderId, '', undefined, targetIndex)
       return {
         ...result.state,
         ui: {
@@ -2234,12 +2837,18 @@ export function NotebookApp() {
     setViewMode('main')
   }, [mutateState, selectedFolderId])
 
-  const createFolder = useCallback(() => {
+  const createNote = useCallback(() => createNoteAt(), [createNoteAt])
+
+  const createFolderAt = useCallback((targetParentFolderId?: string | null, targetIndex?: number) => {
     mutateState((previous) => {
-      const parentFolderId = selectedFolderId && findNotebookFolder(previous.notebook.items, selectedFolderId)
-        ? selectedFolderId
-        : getContainingFolderId(previous.notebook.items, previous.notebook.activeNoteId)
-      const result = createNotebookFolderInState(previous, 'Untitled folder', parentFolderId)
+      const parentFolderId = targetParentFolderId === undefined
+        ? selectedFolderId && findNotebookFolder(previous.notebook.items, selectedFolderId)
+          ? selectedFolderId
+          : getContainingFolderId(previous.notebook.items, previous.notebook.activeNoteId)
+        : targetParentFolderId && findNotebookFolder(previous.notebook.items, targetParentFolderId)
+          ? targetParentFolderId
+          : null
+      const result = createNotebookFolderInState(previous, 'Untitled folder', parentFolderId, undefined, targetIndex)
       window.setTimeout(() => setSelectedFolderId(result.folderId), 0)
       return {
         ...result.state,
@@ -2253,6 +2862,8 @@ export function NotebookApp() {
     })
     setViewMode('main')
   }, [mutateState, selectedFolderId])
+
+  const createFolder = useCallback(() => createFolderAt(), [createFolderAt])
 
   const importNotebook = useCallback(() => {
     if (!window.electronAPI?.openNotebookImportSource) {
@@ -2417,6 +3028,34 @@ export function NotebookApp() {
     startTreeRename(treeContextMenu.itemId, entry?.item.title ?? treeContextMenu.itemTitle)
   }, [startTreeRename, stateRef, treeContextMenu])
 
+  const getTreeContextCreateTarget = useCallback((): { parentFolderId: string | null; index: number } | null => {
+    if (!treeContextMenu) return null
+    const entry = findNotebookItem(stateRef.current.notebook.items, treeContextMenu.itemId)
+    if (!entry) return null
+    if (entry.item.type === 'folder') {
+      return {
+        parentFolderId: entry.item.id,
+        index: entry.item.children.length,
+      }
+    }
+    return {
+      parentFolderId: entry.parentFolderId,
+      index: entry.index + 1,
+    }
+  }, [stateRef, treeContextMenu])
+
+  const createTreeContextNote = useCallback(() => {
+    const target = getTreeContextCreateTarget()
+    if (!target) return
+    createNoteAt(target.parentFolderId, target.index)
+  }, [createNoteAt, getTreeContextCreateTarget])
+
+  const createTreeContextFolder = useCallback(() => {
+    const target = getTreeContextCreateTarget()
+    if (!target) return
+    createFolderAt(target.parentFolderId, target.index)
+  }, [createFolderAt, getTreeContextCreateTarget])
+
   const deleteTreeContextItem = useCallback(() => {
     if (!treeContextMenu) return
     deleteItem(treeContextMenu.itemId)
@@ -2448,6 +3087,7 @@ export function NotebookApp() {
 
   const restoreDeletedItem = useCallback(
     (deletedItemId: string) => {
+      setExpandedTrashItemId((previous) => (previous === deletedItemId ? '' : previous))
       mutateState((previous) => restoreDeletedNotebookItemInState(previous, deletedItemId))
       setViewMode('main')
     },
@@ -2459,6 +3099,7 @@ export function NotebookApp() {
       if (!window.confirm('Permanently delete this item? This cannot be undone.')) {
         return
       }
+      setExpandedTrashItemId((previous) => (previous === deletedItemId ? '' : previous))
       mutateState((previous) =>
         pruneUnreferencedBodies({
           ...previous,
@@ -2479,17 +3120,117 @@ export function NotebookApp() {
     [applyNotebookNavigationLocation],
   )
 
+  const activateSidebarSearchKey = useCallback(
+    (kind: SidebarSearchFilterKind, key: string) => {
+      if (!key) return
+      mutateState((previous) => ({
+        ...previous,
+        ui: {
+          ...previous.ui,
+          sidebarCollapsed: false,
+          noteFilter: addSidebarSearchFilterKey(previous.ui.noteFilter, kind, key),
+        },
+      }))
+    },
+    [mutateState],
+  )
+
+  const activateSidebarSearchTokens = useCallback(
+    (tokens: SidebarSearchToken[]) => {
+      if (tokens.length <= 0) return
+      mutateState((previous) => ({
+        ...previous,
+        ui: {
+          ...previous.ui,
+          sidebarCollapsed: false,
+          noteFilter: addSidebarSearchFilterTokens(previous.ui.noteFilter, tokens),
+        },
+      }))
+    },
+    [mutateState],
+  )
+
+  const updateSidebarSearchQuery = useCallback(
+    (nextQuery: string) => {
+      const parsed = parseSidebarSearchInput(nextQuery, sidebarSearchIndexes)
+      if (parsed.tokens.length > 0) {
+        activateSidebarSearchTokens(parsed.tokens)
+        setQuery(parsed.text)
+        return
+      }
+      setQuery(nextQuery)
+    },
+    [activateSidebarSearchTokens, sidebarSearchIndexes],
+  )
+
+  const selectSidebarSearchSuggestion = useCallback(
+    (suggestion: SidebarSearchSuggestion) => {
+      activateSidebarSearchTokens([suggestion])
+      setQuery((current) => clearActiveSidebarSearchPrefix(current))
+      window.setTimeout(() => searchInputRef.current?.focus(), 0)
+    },
+    [activateSidebarSearchTokens],
+  )
+
+  const removeSidebarSearchToken = useCallback(
+    (token: SidebarSearchToken) => {
+      mutateState((previous) => ({
+        ...previous,
+        ui: {
+          ...previous.ui,
+          noteFilter: removeSidebarSearchFilterToken(previous.ui.noteFilter, token),
+        },
+      }))
+    },
+    [mutateState],
+  )
+
+  const clearSidebarSearch = useCallback(() => {
+    setQuery('')
+    mutateState((previous) => {
+      const noteFilter = previous.ui.noteFilter ?? getDefaultNoteFilterSettings()
+      return {
+        ...previous,
+        ui: {
+          ...previous.ui,
+          noteFilter: {
+            ...noteFilter,
+            active: false,
+            tags: { ...noteFilter.tags, selectedKeys: [] },
+            synced: { ...noteFilter.synced, selectedKeys: [] },
+            frontmatter: { ...noteFilter.frontmatter, selectedKeys: [] },
+            media: { ...noteFilter.media, selectedKeys: [] },
+          },
+        },
+      }
+    })
+  }, [mutateState])
+
+  const openSidebarSearchResult = useCallback(
+    (result: SidebarSearchResult) => {
+      applyNotebookNavigationLocation({ noteId: result.noteId, aisleId: result.aisleId })
+    },
+    [applyNotebookNavigationLocation],
+  )
+
   const toggleNotesTrashFromShortcut = useCallback(() => {
     setViewMode((previous) => (previous === 'trash' ? 'main' : 'trash'))
   }, [])
 
   const focusNotesFilterFromShortcut = useCallback(() => {
     setViewMode('main')
+    mutateState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        sidebarCollapsed: false,
+      },
+    }))
     window.setTimeout(() => {
       searchInputRef.current?.focus()
       searchInputRef.current?.select()
     }, 0)
-  }, [])
+  }, [mutateState])
 
   const toggleFolder = useCallback(
     (folderId: string) => {
@@ -2549,41 +3290,6 @@ export function NotebookApp() {
   )
   addAisleFromNewlineRef.current = addAisle
 
-  const deleteAisle = useCallback(
-    (aisleId: string) => {
-      if (!activeModel || activeModel.noteBody.aisles.length <= 1) return
-      mutateState((previous) => {
-        const body = previous.noteBodies.find((candidate) => candidate.id === activeModel.noteBody.id)
-        const aisle = body?.aisles.find((candidate) => candidate.id === aisleId)
-        if (!body || !aisle || body.aisles.length <= 1) return previous
-        const noteBodies = previous.noteBodies.map((candidate) =>
-          candidate.id === body.id
-            ? {
-                ...candidate,
-                updatedAt: new Date().toISOString(),
-                aisles: candidate.aisles.filter((item) => item.id !== aisleId),
-              }
-            : candidate,
-        )
-        const stillReferenced = noteBodies.some((candidate) =>
-          candidate.aisles.some((item) => item.aisleBodyId === aisle.aisleBodyId),
-        )
-        window.setTimeout(() => {
-          const nextAisle = body.aisles.find((candidate) => candidate.id !== aisleId)
-          setActiveAisleId(nextAisle?.id ?? '')
-        }, 0)
-        return {
-          ...previous,
-          noteBodies,
-          noteAisleBodies: stillReferenced
-            ? previous.noteAisleBodies
-            : (previous.noteAisleBodies ?? []).filter((bodyEntry) => bodyEntry.id !== aisle.aisleBodyId),
-        }
-      })
-    },
-    [activeModel, mutateState],
-  )
-
   const cycleActiveAisle = useCallback(
     (direction: -1 | 1) => {
       if (!activeModel || activeModel.resolved.aisles.length === 0) return
@@ -2639,12 +3345,77 @@ export function NotebookApp() {
     mutateState((previous) => decoupleNotebookNoteBodyInState(previous, activeModel.noteId))
   }, [activeModel, mutateState])
 
+  const applySyncedFilter = useCallback(
+    (key: string) => {
+      if (!key) return
+      activateSidebarSearchKey('synced', key)
+      setAisleContextMenu(null)
+      setEditorContextMenu(null)
+      toolbarState.setCopyMenuOpen(false)
+    },
+    [activateSidebarSearchKey, toolbarState],
+  )
+
+  const filterSyncedNote = useCallback(() => {
+    if (!activeModel?.linked) return
+    applySyncedFilter(getSyncedNoteFilterKey(activeModel.noteBody.id))
+  }, [activeModel, applySyncedFilter])
+
+  const filterSyncedAisle = useCallback(
+    (aisleId = renderedActiveAisleId) => {
+      if (!activeModel || !canDecoupleAisleById(aisleId)) return
+      const aisle = activeModel.resolved.aisles.find((candidate) => candidate.id === aisleId)
+      if (!aisle) return
+      applySyncedFilter(getSyncedAisleFilterKey(aisle.aisleBodyId))
+    },
+    [activeModel, applySyncedFilter, canDecoupleAisleById, renderedActiveAisleId],
+  )
+
+  const filterTag = useCallback(
+    (tag: string) => {
+      const key = normalizeTagKey(tag)
+      if (!key) return
+      activateSidebarSearchKey('tags', key)
+    },
+    [activateSidebarSearchKey],
+  )
+
+  const filterAisleFrontmatterTemplate = useCallback(
+    (aisleId = renderedActiveAisleId) => {
+      if (!activeModel || !aisleId) return
+      const aisle = activeModel.resolved.aisles.find((candidate) => candidate.id === aisleId)
+      if (!aisle) return
+      const body = getAisleBodyById(stateRef.current, aisle.aisleBodyId)
+      const templateId = body?.frontmatterMeta?.templateId ?? ''
+      if (!templateId || !body?.frontmatterMeta?.templateDerived) return
+      activateSidebarSearchKey('frontmatter', getFrontmatterTemplateFilterKey(templateId))
+    },
+    [activeModel, activateSidebarSearchKey, renderedActiveAisleId, stateRef],
+  )
+
   const decoupleAisle = useCallback(
     (aisleId: string) => {
-      if (!activeModel) return
-      mutateState((previous) => decoupleNotebookAisleBodyInState(previous, activeModel.noteId, aisleId))
+      if (!activeModel || !canDecoupleAisleById(aisleId)) return
+      const aisle = activeModel.resolved.aisles.find((candidate) => candidate.id === aisleId)
+      if (!aisle) return
+      const currentKey = buildAisleSlotKey(activeModel.noteBody.id, aisleId)
+      let blockedMessage = ''
+      mutateState((previous) => {
+        const keepSlotKeys = new Set(
+          listLinkedAisleSlotsForAisleBody(previous, aisle.aisleBodyId)
+            .map((slot) => slot.key)
+            .filter((key) => key !== currentKey),
+        )
+        const result = decoupleAisleSlotsInState(previous, aisle.aisleBodyId, keepSlotKeys, true)
+        if (result.status === 'blocked') {
+          blockedMessage = result.message
+          return previous
+        }
+        return result.state
+      })
+      if (blockedMessage) window.alert(blockedMessage)
     },
-    [activeModel, mutateState],
+    [activeModel, canDecoupleAisleById, mutateState],
   )
 
   const updateNoteActionPickerQuery = useCallback((nextQuery: string) => {
@@ -2710,8 +3481,9 @@ export function NotebookApp() {
       title: 'Insert note reference',
       query: '',
       actions: ['note-link', 'note-preview'],
+      insertRange: linkPrompt.editRange ?? null,
     })
-  }, [toolbarState])
+  }, [linkPrompt.editRange, toolbarState])
 
   const openWholeNoteCopyPicker = useCallback(() => {
     toolbarState.closeToolbarPopovers()
@@ -2762,6 +3534,8 @@ export function NotebookApp() {
       const currentPicker = noteActionPicker
       if (currentPicker?.source === 'mention' && currentPicker.mentionRange) {
         notebookEditors.replaceActiveEditorRangeWithText(currentPicker.mentionRange.from, currentPicker.mentionRange.to, token)
+      } else if (currentPicker?.insertRange) {
+        notebookEditors.replaceActiveEditorRangeWithText(currentPicker.insertRange.from, currentPicker.insertRange.to, token)
       } else {
         notebookEditors.insertTextAtSelection(token)
       }
@@ -2827,32 +3601,86 @@ export function NotebookApp() {
 
   const openDecoupleNoteDialog = useCallback(() => {
     if (!activeModel?.linked) return
+    const latestState = stateRef.current
+    const currentKey = buildNoteLocationKey({ noteId: activeModel.noteId })
+    const rows = getNotebookNoteDecoupleRows(latestState, activeModel.noteBody.id)
     toolbarState.closeToolbarPopovers()
-    setDecoupleDialog({ kind: 'note' })
-  }, [activeModel?.linked, toolbarState])
+    setDecoupleDialog({
+      kind: 'note',
+      noteBodyId: activeModel.noteBody.id,
+      currentKey,
+      keepKeys: rows.map((row) => row.key),
+      keepData: latestState.ui.decoupledItemsKeepData ?? true,
+    })
+  }, [activeModel, stateRef, toolbarState])
 
   const openDecoupleAisleDialog = useCallback(
     (aisleId: string) => {
-      if (!canDecoupleAisleById(aisleId)) return
+      if (!activeModel || !canDecoupleAisleById(aisleId)) return
+      const aisle = activeModel.resolved.aisles.find((candidate) => candidate.id === aisleId)
+      if (!aisle) return
+      const latestState = stateRef.current
+      const currentKey = buildAisleSlotKey(activeModel.noteBody.id, aisleId)
+      const slots = listLinkedAisleSlotsForAisleBody(latestState, aisle.aisleBodyId)
       toolbarState.closeToolbarPopovers()
-      setDecoupleDialog({ kind: 'aisle', aisleId })
+      setDecoupleDialog({
+        kind: 'aisle',
+        aisleId,
+        aisleBodyId: aisle.aisleBodyId,
+        currentKey,
+        keepKeys: slots.map((slot) => slot.key),
+        keepData: latestState.ui.decoupledItemsKeepData ?? true,
+      })
     },
-    [canDecoupleAisleById, toolbarState],
+    [activeModel, canDecoupleAisleById, stateRef, toolbarState],
   )
 
   const decoupleDialogRows = useMemo(() => {
-    if (!decoupleDialog || !activeModel) return []
-    if (decoupleDialog.kind === 'note') return getNotebookNoteDecoupleRows(state, activeModel.noteBody.id)
-    const aisle = activeModel.noteBody.aisles.find((candidate) => candidate.id === decoupleDialog.aisleId)
-    return aisle ? getNotebookAisleDecoupleRows(state, aisle.aisleBodyId) : []
-  }, [activeModel, decoupleDialog, state])
+    if (!decoupleDialog) return []
+    if (decoupleDialog.kind === 'note') return getNotebookNoteDecoupleRows(state, decoupleDialog.noteBodyId)
+    return getNotebookAisleDecoupleRows(state, decoupleDialog.aisleBodyId)
+  }, [decoupleDialog, state])
+
+  const toggleDecoupleDialogKeepKey = useCallback((key: string) => {
+    setDecoupleDialog((current) => {
+      if (!current) return current
+      const keepKeys = current.keepKeys.includes(key)
+        ? current.keepKeys.filter((candidate) => candidate !== key)
+        : [...current.keepKeys, key]
+      return { ...current, keepKeys, error: undefined }
+    })
+  }, [])
+
+  const updateDecoupleDialogKeepData = useCallback((keepData: boolean) => {
+    setDecoupleDialog((current) => (current ? { ...current, keepData, error: undefined } : current))
+  }, [])
 
   const applyDecoupleDialog = useCallback(() => {
     if (!decoupleDialog) return
-    if (decoupleDialog.kind === 'note') decoupleActiveNote()
-    else decoupleAisle(decoupleDialog.aisleId)
+    let blockedMessage = ''
+    mutateState((previous) => {
+      const keepKeys = new Set(decoupleDialog.keepKeys)
+      const result = decoupleDialog.kind === 'note'
+        ? decoupleNotebookNoteLocationsInState(previous, decoupleDialog.noteBodyId, keepKeys, decoupleDialog.keepData)
+        : decoupleAisleSlotsInState(previous, decoupleDialog.aisleBodyId, keepKeys, decoupleDialog.keepData)
+      if (result.status === 'blocked') {
+        blockedMessage = result.message
+        return previous
+      }
+      return {
+        ...result.state,
+        ui: {
+          ...result.state.ui,
+          decoupledItemsKeepData: decoupleDialog.keepData,
+        },
+      }
+    })
+    if (blockedMessage) {
+      setDecoupleDialog((current) => (current ? { ...current, error: blockedMessage } : current))
+      return
+    }
     setDecoupleDialog(null)
-  }, [decoupleActiveNote, decoupleAisle, decoupleDialog])
+  }, [decoupleDialog, mutateState])
 
   const applyAisleEditDraftToActiveNote = useCallback(
     (
@@ -2909,33 +3737,146 @@ export function NotebookApp() {
     [activeModel, mutateState, notebookEditors],
   )
 
+  const buildFrontmatterModalForAisle = useCallback(
+    (sourceState: AppState, model: ActiveNoteModel, aisleId: string): NotebookFrontmatterModalState | string | null => {
+      const aisle = model.noteBody.aisles.find((candidate) => candidate.id === aisleId)
+      if (!aisle) return null
+      const body = getAisleBodyById(sourceState, aisle.aisleBodyId)
+      if (body?.frontmatterStatus === 'invalid') {
+        return 'Frontmatter YAML is invalid. Fix the markdown block before using the structured frontmatter editor.'
+      }
+      const location: NoteLocation = { noteId: model.noteId }
+      const draft = buildFrontmatterModalDraftForAisle(sourceState, model.noteBody.id, aisle.aisleBodyId, location)
+      return {
+        noteBodyId: model.noteBody.id,
+        aisleId,
+        aisleBodyId: aisle.aisleBodyId,
+        location,
+        aisles: model.noteBody.aisles.map((candidate, index) => ({
+          id: candidate.id,
+          aisleBodyId: candidate.aisleBodyId,
+          label: `aisle ${index + 1}`,
+        })),
+        ...draft,
+      }
+    },
+    [],
+  )
+
   const openFrontmatterModalForAisle = useCallback(
     (aisleId = renderedActiveAisleId) => {
       if (!activeModel || !aisleId) return
-      const aisle = activeModel.resolved.aisles.find((candidate) => candidate.id === aisleId)
-      if (!aisle) return
-      const body = getAisleBodyById(state, aisle.aisleBodyId)
-      setFrontmatterModal({
-        aisleId,
-        aisleBodyId: aisle.aisleBodyId,
-        initialYaml: body?.frontmatterRaw ?? stringifyFrontmatterYaml(body?.frontmatter ?? null),
-      })
+      const modal = buildFrontmatterModalForAisle(state, activeModel, aisleId)
+      if (typeof modal === 'string') {
+        window.alert(modal)
+        return
+      }
+      setFrontmatterModal(modal)
     },
-    [activeModel, renderedActiveAisleId, state],
+    [activeModel, buildFrontmatterModalForAisle, renderedActiveAisleId, state],
+  )
+
+  const selectFrontmatterAisle = useCallback(
+    (modal: NotebookFrontmatterModalState, aisleId: string): NotebookFrontmatterModalState | string | null => {
+      if (!activeModel) return null
+      return buildFrontmatterModalForAisle(state, activeModel, aisleId) ?? modal
+    },
+    [activeModel, buildFrontmatterModalForAisle, state],
+  )
+
+  const selectFrontmatterTemplate = useCallback(
+    (modal: NotebookFrontmatterModalState, templateId: string): NotebookFrontmatterModalState => {
+      const template = state.frontmatter.templates.find((candidate) => candidate.id === templateId) ?? null
+      if (!template) {
+        return {
+          ...modal,
+          selectedTemplateId: '',
+          templateDerived: false,
+          isTemplateSuggestionDraft: false,
+          rows: makeFrontmatterRowsManual(modal.rows),
+        }
+      }
+      return {
+        ...modal,
+        selectedTemplateId: template.id,
+        templateDerived: true,
+        isTemplateSuggestionDraft: modal.isTemplateSuggestionDraft,
+        rows: buildFrontmatterRowsForAisle(state, modal.noteBodyId, modal.aisleBodyId, modal.location, template, {
+          includeExisting: false,
+          derived: true,
+        }),
+      }
+    },
+    [state],
+  )
+
+  const toggleFrontmatterTemplateDerived = useCallback(
+    (modal: NotebookFrontmatterModalState, templateDerived: boolean): NotebookFrontmatterModalState => {
+      const template = state.frontmatter.templates.find((candidate) => candidate.id === modal.selectedTemplateId) ?? null
+      if (!template) return modal
+      if (!templateDerived) {
+        return {
+          ...modal,
+          templateDerived: false,
+          rows: makeFrontmatterRowsManual(modal.rows),
+        }
+      }
+      return {
+        ...modal,
+        templateDerived: true,
+        rows: buildFrontmatterRowsForAisle(state, modal.noteBodyId, modal.aisleBodyId, modal.location, template, {
+          includeExisting: true,
+          derived: true,
+        }),
+      }
+    },
+    [state],
+  )
+
+  const editFrontmatterTemplateFromModal = useCallback(
+    (templateId: string) => {
+      if (!templateId) return
+      setFrontmatterDraft((frontmatter) => ({
+        ...frontmatter,
+        settingsTemplateId: templateId,
+      }))
+      setSettingsSection('frontmatter')
+      openUtilityView('settings')
+      setFrontmatterModal(null)
+    },
+    [openUtilityView, setSettingsSection],
   )
 
   const saveFrontmatter = useCallback(
-    (yaml: string) => {
-      if (!frontmatterModal) return 'Frontmatter editor is not open.'
-      const parsed = parseFrontmatterYaml(yaml)
-      if (!parsed.ok) return parsed.message
+    (modal: NotebookFrontmatterModalState) => {
+      const computedRepair = disableInvalidComputedFrontmatterRows(modal.rows)
+      if (computedRepair.warnings.length > 0) {
+        setFrontmatterModal({
+          ...modal,
+          rows: computedRepair.rows,
+        })
+        return computedRepair.warnings
+      }
+      const result = buildFrontmatterDataFromRows(stateRef.current, modal.noteBodyId, modal.location, computedRepair.rows, {
+        selectedTemplateId: modal.selectedTemplateId,
+        templateDerived: modal.templateDerived,
+        aisleBodyId: modal.aisleBodyId,
+      })
+      if (!result.ok) return result.message
+      if (result.warnings.length > 0) return result.warnings
       mutateState((previous) =>
-        updateAisleBodyFrontmatterInState(previous, frontmatterModal.aisleBodyId, parsed.data, yaml),
+        updateAisleBodyFrontmatterInState(previous, modal.aisleBodyId, result.frontmatter, {
+          templateId: modal.selectedTemplateId || null,
+          templateDerived: modal.templateDerived,
+          templateFieldOrigins: result.templateFieldOrigins,
+          templateRemovedFieldIds: result.templateRemovedFieldIds,
+          computedFields: result.computedFields,
+        }),
       )
       setFrontmatterModal(null)
       return null
     },
-    [frontmatterModal, mutateState],
+    [mutateState, stateRef],
   )
 
   const openTableOfContents = useCallback(() => {
@@ -3071,7 +4012,7 @@ export function NotebookApp() {
   )
 
   const openEditorContextMenuAt = useCallback(
-    (aisleId: string, x: number, y: number) => {
+    (aisleId: string, x: number, y: number, options: { linkPrompt?: LinkPromptState | null } = {}) => {
       if (!activeModel) return
       setActiveAisleId(aisleId)
       notebookEditors.activateAisleEditor(buildAisleEditorKey(activeModel.noteBody.id, aisleId))
@@ -3079,7 +4020,7 @@ export function NotebookApp() {
       setAisleContextMenu(null)
       setTreeContextMenu(null)
       setShortcutMenu(null)
-      setEditorContextMenu({ aisleId, x, y })
+      setEditorContextMenu({ aisleId, x, y, linkPrompt: options.linkPrompt ?? null })
     },
     [activeModel, notebookEditors, toolbarState],
   )
@@ -3096,13 +4037,21 @@ export function NotebookApp() {
 
   const openNotebookEditorContextMenuFromPointer = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
-      const target = event.target instanceof Element ? event.target : null
+      const target = event.target instanceof Element
+        ? event.target
+        : typeof Text !== 'undefined' && event.target instanceof Text
+          ? event.target.parentElement
+          : null
       const aisleId = getNotebookEditorContextMenuAisleIdFromTarget(target)
       if (!aisleId) return
       event.preventDefault()
-      openEditorContextMenuAt(aisleId, event.clientX, event.clientY)
+      const anchor = target?.closest<HTMLAnchorElement>('a[href]')
+      const linkPrompt = anchor?.closest('.ProseMirror[contenteditable="true"]')
+        ? notebookEditors.getLinkPromptAtClientPoint(aisleId, { clientX: event.clientX, clientY: event.clientY })
+        : null
+      openEditorContextMenuAt(aisleId, event.clientX, event.clientY, { linkPrompt })
     },
-    [openEditorContextMenuAt],
+    [notebookEditors, openEditorContextMenuAt],
   )
 
   useEffect(() => {
@@ -3296,7 +4245,24 @@ export function NotebookApp() {
         openWholeNoteCopyPicker()
         toolbarState.setCopyMenuOpen(false)
       }}
-      onOpenDeduplicateModal={() => {
+      syncedItemKind={
+        activeModel.linked
+          ? 'note'
+          : renderedActiveAisleId && canDecoupleAisleById(renderedActiveAisleId)
+            ? 'aisle'
+            : null
+      }
+      onFilterSyncedItem={() => {
+        if (activeModel.linked) filterSyncedNote()
+        else if (renderedActiveAisleId) filterSyncedAisle(renderedActiveAisleId)
+        toolbarState.setCopyMenuOpen(false)
+      }}
+      onQuickDecoupleSyncedItem={() => {
+        if (activeModel.linked) decoupleActiveNote()
+        else if (renderedActiveAisleId) decoupleAisle(renderedActiveAisleId)
+        toolbarState.setCopyMenuOpen(false)
+      }}
+      onShowSyncedItems={() => {
         if (activeModel.linked) openDecoupleNoteDialog()
         else if (renderedActiveAisleId) openDecoupleAisleDialog(renderedActiveAisleId)
         toolbarState.setCopyMenuOpen(false)
@@ -3548,9 +4514,20 @@ export function NotebookApp() {
                   )
                   const nextType = patch.type ?? field.type
                   const requestedComputed = patch.computed ?? field.computed
+                  const requestedDefaultValue = patch.defaultValue ?? field.defaultValue
+                  const hasPatchedOptions = Object.prototype.hasOwnProperty.call(patch, 'options')
+                  const fixedListOptions = nextType === 'fixedList'
+                    ? hasPatchedOptions
+                      ? normalizeFrontmatterFixedListOptions(patch.options)
+                      : field.type === 'fixedList'
+                        ? normalizeFrontmatterFixedListOptions(field.options)
+                        : getEditableFixedListOptions(field.options, requestedDefaultValue)
+                    : undefined
                   const nextDefaultValue = nextType === 'boolean'
-                    ? (isFrontmatterBooleanTrue(patch.defaultValue ?? field.defaultValue) ? 'true' : 'false')
-                    : patch.defaultValue ?? field.defaultValue
+                    ? (isFrontmatterBooleanTrue(requestedDefaultValue) ? 'true' : 'false')
+                    : nextType === 'fixedList'
+                      ? resolveFrontmatterFixedListValue(fixedListOptions, requestedDefaultValue)
+                      : requestedDefaultValue
                   return {
                     ...field,
                     ...patch,
@@ -3560,6 +4537,7 @@ export function NotebookApp() {
                       ? requestedComputed
                       : 'none',
                     key: requestedKey && !duplicateKey ? requestedKey : field.key,
+                    options: fixedListOptions,
                   }
                 }),
               }
@@ -3569,6 +4547,51 @@ export function NotebookApp() {
     }
 
     const renderFrontmatterDefaultControl = (templateId: string, field: FrontmatterTemplateField) => {
+      if (field.type === 'fixedList') {
+        const options = normalizeFrontmatterFixedListOptions(field.options)
+        const selectedValue = resolveFrontmatterFixedListValue(options, field.defaultValue)
+        return (
+          <div className="frontmatter-fixed-list-default">
+            <select
+              className="settings-select-input frontmatter-default-input"
+              value={selectedValue}
+              aria-label="frontmatter fixed list default value"
+              disabled={field.computed !== 'none' || options.length === 0}
+              onChange={(event) =>
+                updateFrontmatterTemplateField(templateId, field.id, {
+                  defaultValue: event.target.value,
+                })
+              }
+            >
+              {options.length > 0 ? (
+                options.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))
+              ) : (
+                <option value="">no options</option>
+              )}
+            </select>
+            <input
+              type="text"
+              className="settings-text-input frontmatter-fixed-list-options-input"
+              value={options.join(', ')}
+              aria-label="frontmatter fixed list values"
+              placeholder="one, two"
+              disabled={field.computed !== 'none'}
+              onChange={(event) => {
+                const nextOptions = normalizeFrontmatterFixedListOptions(event.target.value)
+                updateFrontmatterTemplateField(templateId, field.id, {
+                  options: nextOptions,
+                  defaultValue: resolveFrontmatterFixedListValue(nextOptions, field.defaultValue),
+                })
+              }}
+            />
+          </div>
+        )
+      }
+
       if (field.type === 'boolean') {
         const checked = isFrontmatterBooleanTrue(field.defaultValue)
         return (
@@ -3755,13 +4778,19 @@ export function NotebookApp() {
                     value={field.type}
                     onChange={(event) => {
                       const type = event.target.value as FrontmatterTemplateField['type']
+                      const options = type === 'fixedList'
+                        ? getEditableFixedListOptions(field.options, field.defaultValue)
+                        : undefined
                       updateFrontmatterTemplateField(activeTemplate.id, field.id, {
                         type,
                         defaultValue: type === 'boolean'
                           ? (isFrontmatterBooleanTrue(field.defaultValue) ? 'true' : 'false')
                           : type === 'date' || type === 'datetime'
                             ? getFrontmatterDraftValueForType(type, field.defaultValue)
+                            : type === 'fixedList'
+                              ? resolveFrontmatterFixedListValue(options, field.defaultValue)
                             : field.defaultValue,
+                        options,
                         computed: isFrontmatterComputedValueCompatibleWithFieldType(field.computed, type)
                           ? field.computed
                           : 'none',
@@ -3770,7 +4799,7 @@ export function NotebookApp() {
                   >
                     {FRONTMATTER_FIELD_TYPES.map((type) => (
                       <option key={type} value={type}>
-                        {type}
+                        {getFrontmatterTypeLabel(type)}
                       </option>
                     ))}
                   </select>
@@ -3892,32 +4921,6 @@ export function NotebookApp() {
     return (
       <section className="notebook-settings-section" aria-label="Misc settings">
         <div className="settings-hotkeys-list">
-          <NotebookSettingsSwitch
-            label="Show aisle add buttons"
-            checked={state.ui.showRegularNoteAisleAddButtons ?? true}
-            onChange={(checked) =>
-              mutateState((previous) => ({
-                ...previous,
-                ui: {
-                  ...previous.ui,
-                  showRegularNoteAisleAddButtons: checked,
-                },
-              }))
-            }
-          />
-          <NotebookSettingsSwitch
-            label="Show aisle delete button"
-            checked={state.ui.showRegularNoteAisleDeleteButton ?? true}
-            onChange={(checked) =>
-              mutateState((previous) => ({
-                ...previous,
-                ui: {
-                  ...previous.ui,
-                  showRegularNoteAisleDeleteButton: checked,
-                },
-              }))
-            }
-          />
           {renderSegmentedSetting(
             'Table add target',
             state.ui.tableAddTargetMode,
@@ -4068,16 +5071,59 @@ export function NotebookApp() {
         </div>
       </header>
       {state.notebook.deletedItems.length === 0 ? <p className="notebook-settings-help">No deleted items.</p> : null}
-      <div className="notebook-trash-list">
-        {state.notebook.deletedItems.map((entry) => (
-          <div className="notebook-trash-row" key={entry.id}>
-            <span>{entry.item.title}</span>
-            <small>{entry.item.type}</small>
-            <button type="button" onClick={() => restoreDeletedItem(entry.id)}>Restore</button>
-            <button type="button" onClick={() => permanentlyDeleteDeletedItem(entry.id)}>Delete</button>
+      {state.notebook.deletedItems.length > 0 ? (
+        <div className="notebook-trash-table" aria-label="Deleted notes">
+          <div className="notebook-trash-header">
+            <span>Note name</span>
+            <span>Deleted at</span>
+            <span>Actions</span>
           </div>
-        ))}
-      </div>
+          <div className="notebook-trash-list">
+            {state.notebook.deletedItems.map((entry) => {
+              const title = getNotebookItemDisplayTitle(entry.item)
+              const previewMarkdown = getDeletedNotebookNoteMarkdown(entry, state)
+              const canPreview = entry.item.type === 'note'
+              const expanded = canPreview && expandedTrashItemId === entry.id
+              const previewId = `trash-preview-${entry.id}`
+              return (
+                <div className={`notebook-trash-item ${expanded ? 'is-expanded' : ''}`} key={entry.id}>
+                  <div className="notebook-trash-row">
+                    {canPreview ? (
+                      <button
+                        type="button"
+                        className="notebook-trash-name-button"
+                        onClick={() => setExpandedTrashItemId((previous) => (previous === entry.id ? '' : entry.id))}
+                        aria-expanded={expanded}
+                        aria-controls={previewId}
+                      >
+                        <span>{title}</span>
+                      </button>
+                    ) : (
+                      <span className="notebook-trash-name-text">{title}</span>
+                    )}
+                    <time className="notebook-trash-date" dateTime={getDeletedAtTitle(entry.deletedAt)}>
+                      {formatDeletedAt(entry.deletedAt)}
+                    </time>
+                    <div className="notebook-trash-actions" aria-label={`${title} actions`}>
+                      <button type="button" onClick={() => restoreDeletedItem(entry.id)}>Restore</button>
+                      <button type="button" onClick={() => permanentlyDeleteDeletedItem(entry.id)}>Delete</button>
+                    </div>
+                  </div>
+                  {expanded ? (
+                    <div className="notebook-trash-preview" id={previewId}>
+                      {previewMarkdown.trim() ? (
+                        <TrashMarkdownPreview markdown={previewMarkdown} />
+                      ) : (
+                        <p className="notebook-trash-empty-preview">No note content.</p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 
@@ -4116,86 +5162,103 @@ export function NotebookApp() {
         style={{ width: state.ui.sidebarCollapsed ? 48 : state.ui.sidebarWidth }}
       >
         {!state.ui.sidebarCollapsed ? (
-          <div className="notebook-sidebar-header">
-            <h1>Notebook</h1>
+          <div className="notebook-sidebar-header" aria-label="Notebook actions">
+            <button
+              type="button"
+              className="notebook-icon-button notebook-sidebar-header-action"
+              onClick={createNote}
+              aria-label="New note"
+              title="New note"
+            >
+              <AppIcon iconId="filePlus" className="notebook-sidebar-header-icon" />
+            </button>
+            <button
+              type="button"
+              className="notebook-icon-button notebook-sidebar-header-action"
+              onClick={createFolder}
+              aria-label="New folder"
+              title="New folder"
+            >
+              <AppIcon iconId="folderPlus" className="notebook-sidebar-header-icon" />
+            </button>
           </div>
+        ) : null}
+        <button
+          className={`notebook-icon-button notebook-sidebar-settings ${isUtilityViewMode(viewMode) ? 'is-active' : ''}`}
+          type="button"
+          onClick={handleSidebarSettingsClick}
+          aria-label="Open settings"
+          title="Open settings"
+        >
+          <AppIcon iconId="settings" className="notebook-sidebar-settings-icon" />
+        </button>
+        {state.ui.sidebarCollapsed ? (
+          <button
+            className="notebook-icon-button notebook-sidebar-search-toggle"
+            type="button"
+            onClick={focusNotesFilterFromShortcut}
+            aria-label="Search notes"
+            title="Search notes"
+          >
+            <AppIcon iconId="search" className="notebook-sidebar-search-toggle-icon" />
+          </button>
         ) : null}
         {!state.ui.sidebarCollapsed ? (
           <>
-            <div className="notebook-sidebar-actions">
-              <button type="button" onClick={createNote}>New note</button>
-              <button type="button" onClick={createFolder}>New folder</button>
-            </div>
-            <input
-              ref={searchInputRef}
-              className="notebook-search-input"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search notes"
+            <SidebarSearchPanel
+              inputRef={searchInputRef}
+              query={query}
+              active={sidebarSearchActive}
+              selectedTokens={sidebarSearchSelectedTokens}
+              suggestions={sidebarSearchSuggestions}
+              resultGroups={sidebarSearchResultGroups}
+              onQueryChange={updateSidebarSearchQuery}
+              onSelectSuggestion={selectSidebarSearchSuggestion}
+              onRemoveToken={removeSidebarSearchToken}
+              onClear={clearSidebarSearch}
+              onOpenResult={openSidebarSearchResult}
             />
-            <nav className="notebook-utility-nav">
-              <button type="button" className={viewMode === 'main' ? 'is-active' : ''} onClick={() => setViewMode('main')}>
-                Notes
-              </button>
-              <button type="button" className={isUtilityViewMode(viewMode) ? 'is-active' : ''} onClick={() => openUtilityView('settings')}>
-                Settings
-              </button>
-            </nav>
-            <div className="notebook-tree" role="tree">
-              {query
-                ? filteredNotes.map((entry) => (
-                    <button
-                      key={buildNoteLocationKey(entry)}
-                      className={`notebook-search-result ${entry.noteId === state.notebook.activeNoteId ? 'is-active' : ''}`}
-                      type="button"
-                      onClick={() => setActiveNote(entry.noteId)}
-                    >
-                      <span>{entry.noteName}</span>
-                      {entry.folderPath ? <small>{entry.folderPath}</small> : null}
-                    </button>
-                  ))
-                : (
-                    <>
-                      {state.notebook.items.map((item, itemIndex) => (
-                        <TreeItemRow
-                          key={item.id}
-                          item={item}
-                          depth={0}
-                          parentFolderId={null}
-                          index={itemIndex}
-                          activeNoteId={state.notebook.activeNoteId}
-                          renamingItemId={renamingTreeItemId}
-                          renameDraft={treeRenameDraft}
-                          draggingItemId={draggingTreeItemId}
-                          dropTarget={treeDropTarget}
-                          collapsedFolderIds={collapsedFolderIds}
-                          query={query}
-                          onSelectNote={setActiveNote}
-                          onSelectFolder={setSelectedFolderId}
-                          onToggleFolder={toggleFolder}
-                          onStartRename={startTreeRename}
-                          onRenameDraftChange={setTreeRenameDraft}
-                          onCommitRename={commitTreeRename}
-                          onCancelRename={cancelTreeRename}
-                          onOpenContextMenu={openTreeContextMenu}
-                          onDragItemStart={startTreeDrag}
-                          onDragItemEnd={finishTreeDrag}
-                          onUpdateDropTarget={updateTreeDropTarget}
-                          onDropItem={dropTreeItem}
-                        />
-                      ))}
-                      <div
-                        className={`notebook-tree-root-drop-zone ${treeDropTarget?.position === 'root' ? 'is-drop-root' : ''}`}
-                        onDragOver={handleRootTreeDragOver}
-                        onDrop={handleRootTreeDrop}
-                        onDragLeave={() => {
-                          if (treeDropTarget?.position === 'root') updateTreeDropTarget(null)
-                        }}
-                        aria-hidden="true"
-                      />
-                    </>
-                  )}
-            </div>
+            {!sidebarSearchActive ? (
+              <div className="notebook-tree" role="tree">
+                {state.notebook.items.map((item, itemIndex) => (
+                  <TreeItemRow
+                    key={item.id}
+                    item={item}
+                    depth={0}
+                    parentFolderId={null}
+                    index={itemIndex}
+                    activeNoteId={state.notebook.activeNoteId}
+                    renamingItemId={renamingTreeItemId}
+                    renameDraft={treeRenameDraft}
+                    draggingItemId={draggingTreeItemId}
+                    dropTarget={treeDropTarget}
+                    collapsedFolderIds={collapsedFolderIds}
+                    query={query}
+                    onSelectNote={setActiveNote}
+                    onSelectFolder={setSelectedFolderId}
+                    onToggleFolder={toggleFolder}
+                    onStartRename={startTreeRename}
+                    onRenameDraftChange={setTreeRenameDraft}
+                    onCommitRename={commitTreeRename}
+                    onCancelRename={cancelTreeRename}
+                    onOpenContextMenu={openTreeContextMenu}
+                    onDragItemStart={startTreeDrag}
+                    onDragItemEnd={finishTreeDrag}
+                    onUpdateDropTarget={updateTreeDropTarget}
+                    onDropItem={dropTreeItem}
+                  />
+                ))}
+                <div
+                  className={`notebook-tree-root-drop-zone ${treeDropTarget?.position === 'root' ? 'is-drop-root' : ''}`}
+                  onDragOver={handleRootTreeDragOver}
+                  onDrop={handleRootTreeDrop}
+                  onDragLeave={() => {
+                    if (treeDropTarget?.position === 'root') updateTreeDropTarget(null)
+                  }}
+                  aria-hidden="true"
+                />
+              </div>
+            ) : null}
           </>
         ) : null}
         {!state.ui.sidebarCollapsed ? (
@@ -4209,17 +5272,6 @@ export function NotebookApp() {
             onPointerUp={finishSidebarResize}
             onPointerCancel={finishSidebarResize}
           />
-        ) : null}
-        {state.ui.sidebarCollapsed ? (
-          <button
-            className={`notebook-icon-button notebook-sidebar-settings ${isUtilityViewMode(viewMode) ? 'is-active' : ''}`}
-            type="button"
-            onClick={() => openUtilityView('settings')}
-            aria-label="Open settings"
-            title="Open settings"
-          >
-            <AppIcon iconId="settings" className="notebook-sidebar-settings-icon" />
-          </button>
         ) : null}
         <button
           className="notebook-icon-button notebook-sidebar-toggle"
@@ -4258,6 +5310,7 @@ export function NotebookApp() {
                 linkedAisleIds={linkedAisleIds}
                 wholeNoteLinked={activeModel.linked}
                 frontmatterAisleIds={frontmatterAisleIds}
+                frontmatterTemplateFilterAisleIds={frontmatterTemplateFilterAisleIds}
                 aisleScrollRef={aisleScrollRef}
                 toolbar={toolbar}
                 headingPopover={toolbarPopovers}
@@ -4338,17 +5391,12 @@ export function NotebookApp() {
                 onSelectTableOfContentsLink={() => undefined}
                 onOpenTableOfContentsLink={openTableOfContentsLink}
                 onOpenAisleFrontmatter={openFrontmatterModalForAisle}
+                onFilterAisleFrontmatterTemplate={filterAisleFrontmatterTemplate}
                 onOpenAisleLink={openAisleActionMenu}
                 appState={state}
                 onOpenNoteReference={openNoteReferenceFromEditor}
+                onOpenTagFilter={filterTag}
                 onSelectEditableAsset={selectEditableAssetFromWorkspace}
-                regularNoteAisleControls={{
-                  showAddButtons: state.ui.showRegularNoteAisleAddButtons ?? true,
-                  showDeleteButton: (state.ui.showRegularNoteAisleDeleteButton ?? true) && activeModel.resolved.aisles.length > 1,
-                  onAddAisleLeft: () => addAisle('left', renderedActiveAisleId),
-                  onAddAisleRight: () => addAisle('right', renderedActiveAisleId),
-                  onDeleteActiveAisle: () => deleteAisle(renderedActiveAisleId),
-                }}
                 aisleWidths={activeAisleWidths}
                 onRegisterAislePaneRoot={notebookEditors.registerAislePaneRoot}
                 onRegisterAisleEditorRoot={notebookEditors.registerAisleEditorRoot}
@@ -4358,8 +5406,12 @@ export function NotebookApp() {
                 canDecoupleNote={activeModel.linked}
                 canDecoupleAisle={canDecoupleAisleById(aisleContextMenu?.aisleId ?? '')}
                 onClose={() => setAisleContextMenu(null)}
-                onDecoupleNote={openDecoupleNoteDialog}
-                onDecoupleAisle={() => openDecoupleAisleDialog(aisleContextMenu?.aisleId ?? renderedActiveAisleId)}
+                onFilterSyncedNote={filterSyncedNote}
+                onFilterSyncedAisle={() => filterSyncedAisle(aisleContextMenu?.aisleId ?? renderedActiveAisleId)}
+                onQuickDecoupleNote={decoupleActiveNote}
+                onQuickDecoupleAisle={() => decoupleAisle(aisleContextMenu?.aisleId ?? renderedActiveAisleId)}
+                onShowSyncedNote={openDecoupleNoteDialog}
+                onShowSyncedAisle={() => openDecoupleAisleDialog(aisleContextMenu?.aisleId ?? renderedActiveAisleId)}
               />
               <NotebookEditorContextMenu
                 menu={editorContextMenu}
@@ -4371,14 +5423,19 @@ export function NotebookApp() {
                 onClipboard={runEditorContextClipboardAction}
                 onCommand={notebookEditors.runCommand}
                 onInsertUrlLink={openToolbarLinkPicker}
+                onEditLink={openUrlLinkPrompt}
                 onInsertNoteLink={() => openContextNoteReferencePicker('note-link')}
                 onInsertNotePreview={() => openContextNoteReferencePicker('note-preview')}
                 onInsertAisle={insertEditorContextAisle}
                 onInsertAttachment={notebookEditors.insertAttachmentFile}
                 onCopyAs={copyNotebookStructureAs}
                 onCreateSyncedCopy={openWholeNoteCopyPicker}
-                onDecoupleNote={openDecoupleNoteDialog}
-                onDecoupleAisle={openDecoupleAisleDialog}
+                onFilterSyncedNote={filterSyncedNote}
+                onFilterSyncedAisle={filterSyncedAisle}
+                onDecoupleNote={decoupleActiveNote}
+                onDecoupleAisle={decoupleAisle}
+                onShowSyncedNote={openDecoupleNoteDialog}
+                onShowSyncedAisle={openDecoupleAisleDialog}
                 onRevealLocation={revealEditorContextLocation}
               />
               {shortcutMenu ? (
@@ -4439,11 +5496,22 @@ export function NotebookApp() {
           title={decoupleDialog.kind === 'note' ? 'De-couple note' : 'De-couple aisle'}
           description={
             decoupleDialog.kind === 'note'
-              ? 'This note currently shares a note body with the locations below.'
-              : 'This aisle currently shares content with the locations below.'
+              ? 'Choose which synced notes keep sharing this note body.'
+              : 'Choose which synced aisles keep sharing this aisle body.'
           }
           rows={decoupleDialogRows}
+          keepKeys={decoupleDialog.keepKeys}
+          currentKey={decoupleDialog.currentKey}
+          keepData={decoupleDialog.keepData}
+          keepDataLabel={
+            decoupleDialog.kind === 'note'
+              ? 'keep text in de-coupled notes?'
+              : 'keep text in de-coupled aisles?'
+          }
+          error={decoupleDialog.error}
           onCancel={() => setDecoupleDialog(null)}
+          onToggleKeepKey={toggleDecoupleDialogKeepKey}
+          onKeepDataChange={updateDecoupleDialogKeepData}
           onApply={applyDecoupleDialog}
         />
       ) : null}
@@ -4452,14 +5520,22 @@ export function NotebookApp() {
         revealLabel={sidebarRevealLabel}
         canReveal={typeof window !== 'undefined' && typeof window.electronAPI?.revealNotebookItemLocation === 'function'}
         onClose={() => setTreeContextMenu(null)}
+        onCreateNote={createTreeContextNote}
+        onCreateFolder={createTreeContextFolder}
         onReveal={revealTreeContextItem}
         onRename={renameTreeContextItem}
         onDelete={deleteTreeContextItem}
       />
       <NotebookFrontmatterModal
         modal={frontmatterModal}
+        templates={state.frontmatter.templates}
         onCancel={() => setFrontmatterModal(null)}
+        onChange={setFrontmatterModal}
         onSave={saveFrontmatter}
+        onSelectAisle={selectFrontmatterAisle}
+        onSelectTemplate={selectFrontmatterTemplate}
+        onToggleTemplateDerived={toggleFrontmatterTemplateDerived}
+        onEditTemplate={editFrontmatterTemplateFromModal}
       />
       <AisleEditModal
         open={aisleEditModalOpen && Boolean(activeModel)}

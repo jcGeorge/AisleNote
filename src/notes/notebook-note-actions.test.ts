@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { AppState, NoteBody } from '../types/app'
 import {
   buildNotebookNoteReferenceInsertionText,
+  decoupleNotebookNoteLocationsInState,
   getNotePreviewRenderMarkdown,
   getNotebookAisleDecoupleRows,
   getNotebookNoteDecoupleRows,
@@ -221,7 +222,15 @@ describe('notebook note actions', () => {
         ...createState().notebook,
         items: [
           { type: 'note' as const, id: 'note-active', title: 'Active', noteBodyId: 'body-active' },
-          { type: 'note' as const, id: 'note-linked', title: 'Linked', noteBodyId: 'body-active' },
+          {
+            type: 'folder' as const,
+            id: 'folder-work',
+            title: 'Work',
+            children: [
+              { type: 'note' as const, id: 'note-linked', title: 'Linked', noteBodyId: 'body-active' },
+              { type: 'note' as const, id: 'note-other', title: 'Other', noteBodyId: 'body-other' },
+            ],
+          },
         ],
       },
       noteBodies: [
@@ -236,10 +245,90 @@ describe('notebook note actions', () => {
       ],
     } satisfies AppState
 
-    expect(getNotebookNoteDecoupleRows(state, 'body-active').map((row) => row.label)).toEqual(['Active', 'Linked'])
+    expect(getNotebookNoteDecoupleRows(state, 'body-active').map((row) => row.label)).toEqual(['Active', 'Work/Linked'])
+    expect(getNotebookNoteDecoupleRows(state, 'body-active').map((row) => [row.primaryLabel, row.secondaryLabel])).toEqual([
+      ['Notebook', 'Active'],
+      ['Work', 'Linked'],
+    ])
     expect(getNotebookAisleDecoupleRows(state, 'shared-aisle-body').map((row) => row.label)).toEqual([
       'Active / aisle 1',
-      'Linked / aisle 1',
+      'Work > Other',
     ])
+    expect(getNotebookAisleDecoupleRows(state, 'shared-aisle-body').map((row) => [row.primaryLabel, row.secondaryLabel])).toEqual([
+      ['Notebook', 'Active / aisle 1'],
+      ['Work', 'Other / aisle 1'],
+    ])
+  })
+
+  it('de-couples selected note locations while preserving text when keep text is enabled', () => {
+    const state = {
+      ...createState(),
+      notebook: {
+        ...createState().notebook,
+        items: [
+          { type: 'note' as const, id: 'note-active', title: 'Active', noteBodyId: 'body-active' },
+          { type: 'note' as const, id: 'note-linked', title: 'Linked', noteBodyId: 'body-active' },
+        ],
+      },
+    } satisfies AppState
+
+    const result = decoupleNotebookNoteLocationsInState(
+      state,
+      'body-active',
+      new Set(['note-active']),
+      true,
+      idSequence(['cloned-aisle-body-1', 'cloned-aisle-1', 'cloned-aisle-body-2', 'cloned-aisle-2', 'cloned-body']),
+    )
+
+    expect(result.status).toBe('applied')
+    if (result.status !== 'applied') throw new Error('expected note locations to de-couple')
+    expect(findNotebookNote(result.state.notebook.items, 'note-active')?.note.noteBodyId).toBe('body-active')
+    expect(findNotebookNote(result.state.notebook.items, 'note-linked')?.note.noteBodyId).toBe('cloned-body')
+    expect(result.state.noteAisleBodies?.find((body) => body.id === 'cloned-aisle-body-1')?.markdown).toBe('active one')
+    expect(result.state.noteAisleBodies?.find((body) => body.id === 'cloned-aisle-body-2')?.markdown).toBe('active two')
+  })
+
+  it('de-couples note locations with empty text when keep text is disabled', () => {
+    const state = {
+      ...createState(),
+      notebook: {
+        ...createState().notebook,
+        items: [
+          { type: 'note' as const, id: 'note-active', title: 'Active', noteBodyId: 'body-active' },
+          { type: 'note' as const, id: 'note-linked', title: 'Linked', noteBodyId: 'body-active' },
+        ],
+      },
+    } satisfies AppState
+
+    const result = decoupleNotebookNoteLocationsInState(
+      state,
+      'body-active',
+      new Set(['note-active']),
+      false,
+      idSequence(['empty-body', 'empty-aisle-body', 'empty-aisle']),
+    )
+
+    expect(result.status).toBe('applied')
+    if (result.status !== 'applied') throw new Error('expected note locations to de-couple')
+    expect(findNotebookNote(result.state.notebook.items, 'note-linked')?.note.noteBodyId).toBe('empty-body')
+    expect(result.state.noteAisleBodies?.find((body) => body.id === 'empty-aisle-body')?.markdown).toBe('')
+  })
+
+  it('blocks note location de-couple when no synced note is retained', () => {
+    const state = {
+      ...createState(),
+      notebook: {
+        ...createState().notebook,
+        items: [
+          { type: 'note' as const, id: 'note-active', title: 'Active', noteBodyId: 'body-active' },
+          { type: 'note' as const, id: 'note-linked', title: 'Linked', noteBodyId: 'body-active' },
+        ],
+      },
+    } satisfies AppState
+
+    expect(decoupleNotebookNoteLocationsInState(state, 'body-active', new Set(), true)).toMatchObject({
+      status: 'blocked',
+      message: 'Select at least one note to retain the information.',
+    })
   })
 })

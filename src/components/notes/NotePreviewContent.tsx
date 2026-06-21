@@ -47,6 +47,7 @@ export function NotePreviewContent({
   depth = 0,
   onOpenNote,
   onDelete,
+  onConvertToLink,
   label,
   aisleIds = [],
   onRenameLabel,
@@ -57,6 +58,7 @@ export function NotePreviewContent({
   depth?: number
   onOpenNote?: (target: NoteLocation) => void
   onDelete?: () => void
+  onConvertToLink?: () => void
   label?: string
   aisleIds?: string[]
   onRenameLabel?: (label: string) => void
@@ -77,6 +79,8 @@ export function NotePreviewContent({
   const [previewMode, setPreviewMode] = React.useState<NotePreviewMode>('normal')
   const [renamingLabel, setRenamingLabel] = React.useState(false)
   const [labelDraft, setLabelDraft] = React.useState('')
+  const [actionMenuOpen, setActionMenuOpen] = React.useState(false)
+  const actionMenuRootRef = React.useRef<HTMLDivElement | null>(null)
   const longPressRef = React.useRef<{
     pointerId: number
     startX: number
@@ -92,6 +96,7 @@ export function NotePreviewContent({
   const canShrink = previewMode !== 'collapsed'
   const canGrow = previewMode !== 'expanded'
   const renderedMarkdown = getAislePreviewMarkdown(preview.markdown)
+  const hasActionMenu = Boolean(onConvertToLink || onDelete)
 
   const clearLabelLongPress = React.useCallback(() => {
     if (!longPressRef.current) return
@@ -100,6 +105,24 @@ export function NotePreviewContent({
   }, [])
 
   React.useEffect(() => clearLabelLongPress, [clearLabelLongPress])
+
+  React.useEffect(() => {
+    if (!actionMenuOpen) return
+    const closeActionMenu = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null
+      if (target && actionMenuRootRef.current?.contains(target)) return
+      setActionMenuOpen(false)
+    }
+    const closeActionMenuOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setActionMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', closeActionMenu)
+    document.addEventListener('keydown', closeActionMenuOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeActionMenu)
+      document.removeEventListener('keydown', closeActionMenuOnEscape)
+    }
+  }, [actionMenuOpen])
 
   React.useEffect(() => {
     if (!renamingLabel) setLabelDraft(displayTitle)
@@ -166,7 +189,7 @@ export function NotePreviewContent({
 
   return (
     <article
-      className={`note-context-widget note-preview-widget is-size-${previewSize} ${collapsed ? 'is-collapsed' : ''} ${statusClass}`.trim()}
+      className={`note-context-widget note-preview-widget is-size-${previewSize} ${collapsed ? 'is-collapsed' : ''} ${actionMenuOpen ? 'is-action-menu-open' : ''} ${statusClass}`.trim()}
       data-note-preview-note-id={target.noteId}
       data-note-preview-size={previewSize}
       contentEditable={false}
@@ -254,21 +277,62 @@ export function NotePreviewContent({
           >
             <AppIcon iconId="maximize" className="context-bar-size-icon" />
           </button>
-          {onDelete ? (
-            <button
-              type="button"
-              className="context-bar-icon-btn context-bar-delete-btn context-preview-delete-btn"
-              aria-label="Delete note preview"
-              title="Delete note preview"
-              onMouseDown={stopEditorMouseDown}
-              onClick={(event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                onDelete()
-              }}
-            >
-              <AppIcon iconId="trash" className="context-bar-delete-icon" />
-            </button>
+          {hasActionMenu ? (
+            <div ref={actionMenuRootRef} className="context-preview-action-menu-wrap">
+              <button
+                type="button"
+                className="context-bar-icon-btn context-preview-menu-btn"
+                aria-label="Open note preview menu"
+                aria-haspopup="menu"
+                aria-expanded={actionMenuOpen}
+                title="Note preview menu"
+                onMouseDown={stopEditorMouseDown}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setActionMenuOpen((open) => !open)
+                }}
+              >
+                <AppIcon iconId="ellipsisVertical" className="context-bar-menu-icon" />
+              </button>
+              <div
+                className="context-preview-action-menu"
+                role="menu"
+                hidden={!actionMenuOpen}
+                onMouseDown={stopEditorMouseDown}
+              >
+                {onConvertToLink ? (
+                  <button
+                    type="button"
+                    className="context-preview-action-menu-item"
+                    role="menuitem"
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setActionMenuOpen(false)
+                      onConvertToLink()
+                    }}
+                  >
+                    convert to link
+                  </button>
+                ) : null}
+                {onDelete ? (
+                  <button
+                    type="button"
+                    className="context-preview-action-menu-item context-preview-action-menu-delete"
+                    role="menuitem"
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setActionMenuOpen(false)
+                      onDelete()
+                    }}
+                  >
+                    delete
+                  </button>
+                ) : null}
+              </div>
+            </div>
           ) : null}
         </div>
       </div>

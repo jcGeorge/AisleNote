@@ -9,6 +9,7 @@ import {
 } from 'react'
 import type { NoteSearchEntry } from '../../notes/note-locations'
 import type { NotebookNoteCopyMode, NotebookNoteReferenceActionKind } from '../../notes/notebook-note-actions'
+import { AppIcon } from '../icons/AppIcon'
 
 void React
 
@@ -314,8 +315,13 @@ export function NotebookNoteActionPicker({
         {showHeader ? (
           <header className="notebook-note-action-header">
             <h2>{title}</h2>
-            <button type="button" className="notebook-note-action-close" aria-label="Close note actions" onClick={onClose}>
-              x
+            <button
+              type="button"
+              className="notebook-note-action-close app-close-button"
+              aria-label="Close note actions"
+              onClick={onClose}
+            >
+              <AppIcon iconId="x" className="app-close-button-icon" />
             </button>
           </header>
         ) : null}

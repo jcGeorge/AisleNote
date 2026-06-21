@@ -30,6 +30,10 @@ const SYNC_STATE_FILE = '.tabs/sync-state.json'
 const ASSETS_DIR = 'assets'
 const MANIFEST_FILE = 'manifest.json'
 const MARKDOWN_EXTENSION_RE = /\.md$/i
+const VISIBLE_NAME_HASH_LENGTH = 8
+const VISIBLE_NAME_HASH_MAX_LENGTH = 16
+const VISIBLE_PATH_SEGMENT_MAX_LENGTH = 96
+const VISIBLE_PATH_SEGMENT_MAX_BYTES = 180
 
 const revisionByRoot = new Map()
 
@@ -111,19 +115,83 @@ function normalizeAssetExtension(value) {
   return normalized || 'bin'
 }
 
-function sanitizePathTitle(value, fallback) {
-  const title = normalizeTitle(value, fallback)
-    .normalize('NFKD')
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-  return title || fallback
+function utf8ByteLength(value) {
+  return Buffer.byteLength(String(value ?? ''), 'utf8')
 }
 
-function makeVisibleName(title, id, extension = '') {
+function splitGraphemes(value) {
+  if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+    return Array.from(segmenter.segment(value), (entry) => entry.segment)
+  }
+  return Array.from(value)
+}
+
+function trimPathSegmentEdges(value) {
+  return String(value ?? '').replace(/^\.+|\.+$/g, '').trim()
+}
+
+function sanitizePathTitle(value, fallback) {
+  const title = String(value ?? '')
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+  const cleaned = trimPathSegmentEdges(title)
+  return cleaned || trimPathSegmentEdges(fallback) || 'Untitled'
+}
+
+function truncateVisibleTitle(value, terminalSuffix) {
+  const maxLength = Math.max(1, VISIBLE_PATH_SEGMENT_MAX_LENGTH - splitGraphemes(terminalSuffix).length)
+  const maxBytes = Math.max(1, VISIBLE_PATH_SEGMENT_MAX_BYTES - utf8ByteLength(terminalSuffix))
+  let nextValue = ''
+  let nextLength = 0
+  for (const grapheme of splitGraphemes(value)) {
+    const candidate = `${nextValue}${grapheme}`
+    if (nextLength + 1 > maxLength) break
+    if (utf8ByteLength(candidate) > maxBytes) break
+    nextValue = candidate
+    nextLength += 1
+  }
+  return trimPathSegmentEdges(nextValue)
+}
+
+function getVisibleNameHash(id, length = VISIBLE_NAME_HASH_LENGTH) {
+  const source = normalizeId(id) || String(id ?? '')
+  return contentHash(source).slice(0, length)
+}
+
+function makeVisibleName(title, id, extension = '', options = {}) {
+  const hashLength = Number.isInteger(options.hashLength)
+    ? Math.max(VISIBLE_NAME_HASH_LENGTH, Math.min(options.hashLength, VISIBLE_NAME_HASH_MAX_LENGTH))
+    : VISIBLE_NAME_HASH_LENGTH
+  const collisionSuffix = typeof options.collisionSuffix === 'string' ? options.collisionSuffix : ''
+  const terminalSuffix = `--${getVisibleNameHash(id, hashLength)}${collisionSuffix}${extension}`
   const cleanTitle = sanitizePathTitle(title, 'Untitled')
-  const cleanId = normalizeId(id).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 36) || contentHash(id).slice(0, 10)
-  return `${cleanTitle}--${cleanId}${extension}`
+  const readableTitle = truncateVisibleTitle(cleanTitle, terminalSuffix) || truncateVisibleTitle('Untitled', terminalSuffix)
+  return `${readableTitle}${terminalSuffix}`
+}
+
+function createVisibleNameAllocator() {
+  const usedNames = new Set()
+  return (title, id, extension = '') => {
+    let hashLength = VISIBLE_NAME_HASH_LENGTH
+    let collisionIndex = 0
+    while (true) {
+      const candidate = makeVisibleName(title, id, extension, {
+        hashLength,
+        collisionSuffix: collisionIndex > 0 ? `-${collisionIndex + 1}` : '',
+      })
+      const collisionKey = candidate.toLowerCase()
+      if (!usedNames.has(collisionKey)) {
+        usedNames.add(collisionKey)
+        return candidate
+      }
+      if (hashLength < VISIBLE_NAME_HASH_MAX_LENGTH) {
+        hashLength = Math.min(VISIBLE_NAME_HASH_MAX_LENGTH, hashLength + 2)
+      } else {
+        collisionIndex += 1
+      }
+    }
+  }
 }
 
 function parseVisibleId(fileName) {
@@ -274,13 +342,14 @@ function splitMarkdownFile(contents) {
 
 function buildNotebookIndexItems(items, appState, parentPath = '', noteFileRecords = []) {
   const noteBodies = getNoteBodyMap(appState)
+  const allocateVisibleName = createVisibleNameAllocator()
   return ensureArray(items).flatMap((item) => {
     if (!isRecord(item)) return []
     const id = normalizeId(item.id)
     const title = normalizeTitle(item.title, item.type === 'folder' ? 'Untitled folder' : 'Untitled')
     if (!id) return []
     if (item.type === 'folder') {
-      const folderName = makeVisibleName(title, id)
+      const folderName = allocateVisibleName(title, id)
       const folderPath = parentPath ? path.posix.join(parentPath, folderName) : folderName
       const children = buildNotebookIndexItems(item.children, appState, folderPath, noteFileRecords)
       return [{
@@ -297,12 +366,13 @@ function buildNotebookIndexItems(items, appState, parentPath = '', noteFileRecor
     const noteBody = noteBodies.get(noteBodyId)
     const aisles = ensureArray(noteBody?.aisles)
     if (aisles.length > 1) {
-      const folderName = makeVisibleName(title, id)
+      const folderName = allocateVisibleName(title, id)
       const notePath = parentPath ? path.posix.join(parentPath, folderName) : folderName
+      const allocateAisleFileName = createVisibleNameAllocator()
       const aisleFiles = aisles.map((aisle, index) => ({
         aisleId: aisle.id,
         aisleBodyId: aisle.aisleBodyId,
-        file: path.posix.join(notePath, makeVisibleName(`aisle ${index + 1}`, aisle.id, '.md')),
+        file: path.posix.join(notePath, allocateAisleFileName(`aisle ${index + 1}`, aisle.id, '.md')),
       }))
       noteFileRecords.push({ noteId: id, noteBodyId, type: 'folder', path: notePath, aisleFiles })
       return [{
@@ -314,7 +384,8 @@ function buildNotebookIndexItems(items, appState, parentPath = '', noteFileRecor
         aisleFiles,
       }]
     }
-    const file = parentPath ? path.posix.join(parentPath, makeVisibleName(title, id, '.md')) : makeVisibleName(title, id, '.md')
+    const fileName = allocateVisibleName(title, id, '.md')
+    const file = parentPath ? path.posix.join(parentPath, fileName) : fileName
     const aisle = aisles[0] ?? { id: `${id}-aisle`, aisleBodyId: `${noteBodyId}-body` }
     noteFileRecords.push({
       noteId: id,
@@ -634,19 +705,6 @@ function getFirstNoteId(items) {
   return ''
 }
 
-function mapNotebookItems(items, mapper) {
-  return ensureArray(items).map((item) => {
-    const mapped = mapper(item)
-    if (mapped?.type === 'folder') {
-      return {
-        ...mapped,
-        children: mapNotebookItems(mapped.children, mapper),
-      }
-    }
-    return mapped
-  })
-}
-
 function readAisleFile(rootPath, file) {
   const normalizedFile = normalizePosixPath(file)
   if (!normalizedFile || !fileExists(rootPath, normalizedFile)) return null
@@ -659,152 +717,85 @@ function readAisleFile(rootPath, file) {
   }
 }
 
+function compareAisleMirrorSnapshotWinners(left, right) {
+  const leftMtime = Number.isFinite(left.content?.mtimeMs) ? left.content.mtimeMs : Number.NEGATIVE_INFINITY
+  const rightMtime = Number.isFinite(right.content?.mtimeMs) ? right.content.mtimeMs : Number.NEGATIVE_INFINITY
+  if (leftMtime !== rightMtime) return rightMtime - leftMtime
+  return String(left.content?.file ?? left.file ?? '').localeCompare(String(right.content?.file ?? right.file ?? ''))
+}
+
+function selectAisleMirrorSnapshot(snapshots, registryBody) {
+  const expectedHash = registryBody?.storage?.contentHash ?? ''
+  const readableSnapshots = snapshots.filter((snapshot) => snapshot.content)
+  const changedSnapshots = readableSnapshots.filter((snapshot) => snapshot.content.fullHash !== expectedHash)
+  if (changedSnapshots.length > 0) {
+    return [...changedSnapshots].sort(compareAisleMirrorSnapshotWinners)[0]
+  }
+  return [...readableSnapshots].sort(compareAisleMirrorSnapshotWinners)[0] ?? null
+}
+
+function buildLoadedAisleBodyFromMirror(aisleBodyId, registryBody, mirrorSnapshot, timestamp) {
+  const content = mirrorSnapshot?.content ?? null
+  const changed = Boolean(content && content.fullHash !== (registryBody?.storage?.contentHash ?? ''))
+  return {
+    id: aisleBodyId,
+    createdAt: registryBody?.createdAt,
+    updatedAt: changed ? timestamp : registryBody?.updatedAt,
+    markdown: content?.markdown ?? registryBody?.storage?.markdown ?? '',
+    tags: registryBody?.tags ?? [],
+    frontmatter: content ? content.frontmatter : registryBody?.frontmatter ?? null,
+    frontmatterStatus: content ? content.frontmatterStatus : registryBody?.frontmatterStatus ?? 'none',
+    frontmatterRaw: content?.frontmatterRaw,
+    frontmatterParseError: content?.frontmatterParseError,
+    frontmatterMeta: registryBody?.frontmatterMeta,
+  }
+}
+
 function resolveLinkedMirrorContents({ items, noteBodies, noteAisleBodies, noteFileRecords }) {
   const noteBodyMap = new Map(noteBodies.map((body) => [body.id, body]))
   const registryAisleBodyMap = new Map(noteAisleBodies.map((body) => [body.id, body]))
-  const noteRecordsByBody = new Map()
+  const snapshotsByAisleBodyId = new Map()
+
   for (const record of noteFileRecords) {
-    const records = noteRecordsByBody.get(record.noteBodyId) ?? []
-    records.push(record)
-    noteRecordsByBody.set(record.noteBodyId, records)
-  }
-  const nextNoteBodies = [...noteBodies]
-  const nextAisleBodies = []
-  const noteBodyOverrideByNoteId = new Map()
-  const messages = []
-
-  for (const [noteBodyId, records] of noteRecordsByBody) {
-    const noteBody = noteBodyMap.get(noteBodyId)
+    const noteBody = noteBodyMap.get(record.noteBodyId)
     if (!noteBody) continue
-    const noteSnapshots = records.map((record) => {
-      const aisleContents = noteBody.aisles.map((aisle, index) => {
-        const aisleFile = record.aisleFiles.find((candidate) => candidate.aisleBodyId === aisle.aisleBodyId) ?? record.aisleFiles[index]
-        const fileContent = readAisleFile(resolveLinkedMirrorContents.rootPath, aisleFile?.file)
-        const registryBody = registryAisleBodyMap.get(aisle.aisleBodyId)
-        return {
-          aisle,
-          file: aisleFile?.file,
-          content: fileContent,
-          registryBody,
-          signature: contentHash(fileContent?.markdown ?? ''),
-          fullHash: fileContent?.fullHash ?? registryBody?.storage?.contentHash ?? '',
-        }
-      })
-      return {
+    noteBody.aisles.forEach((aisle, index) => {
+      const aisleFile = record.aisleFiles.find((candidate) => candidate.aisleBodyId === aisle.aisleBodyId) ?? record.aisleFiles[index]
+      const fileContent = readAisleFile(resolveLinkedMirrorContents.rootPath, aisleFile?.file)
+      const snapshots = snapshotsByAisleBodyId.get(aisle.aisleBodyId) ?? []
+      snapshots.push({
+        aisle,
         record,
-        aisleContents,
-        signature: aisleContents.map((entry) => entry.signature).join('|'),
-        fullSignature: aisleContents.map((entry) => entry.fullHash).join('|'),
-      }
-    })
-    if (noteSnapshots.length === 0) continue
-    const expectedSignature = noteBody.aisles
-      .map((aisle) => registryAisleBodyMap.get(aisle.aisleBodyId)?.storage?.markdownHash ?? '')
-      .join('|')
-    const uniqueSignatures = new Map()
-    for (const snapshot of noteSnapshots) {
-      const group = uniqueSignatures.get(snapshot.signature) ?? []
-      group.push(snapshot)
-      uniqueSignatures.set(snapshot.signature, group)
-    }
-
-    let sharedSnapshot = noteSnapshots[0]
-    const changedSnapshots = noteSnapshots.filter((snapshot) => snapshot.signature !== expectedSignature)
-    const changedSignatureCount = new Set(changedSnapshots.map((snapshot) => snapshot.signature)).size
-    if (changedSignatureCount <= 1 && changedSnapshots.length > 0) {
-      sharedSnapshot = changedSnapshots[0]
-    } else if (uniqueSignatures.size > 1) {
-      sharedSnapshot =
-        noteSnapshots.find((snapshot) => snapshot.signature === expectedSignature) ??
-        Array.from(uniqueSignatures.values()).sort((left, right) => right.length - left.length)[0][0]
-      for (const [signature, group] of uniqueSignatures) {
-        if (signature === sharedSnapshot.signature) continue
-        for (const snapshot of group) {
-          const clonedBodyId = `decoupled-${snapshot.record.noteId}-${noteBodyId}`
-          const clonedAisles = noteBody.aisles.map((aisle) => ({
-            id: `decoupled-${snapshot.record.noteId}-${aisle.id}`,
-            aisleBodyId: `decoupled-${snapshot.record.noteId}-${aisle.aisleBodyId}`,
-          }))
-          nextNoteBodies.push({
-            ...noteBody,
-            id: clonedBodyId,
-            aisles: clonedAisles,
-          })
-          snapshot.aisleContents.forEach((entry, index) => {
-            const originalBody = entry.registryBody
-            const clonedAisleBodyId = clonedAisles[index].aisleBodyId
-            nextAisleBodies.push({
-              id: clonedAisleBodyId,
-              createdAt: originalBody?.createdAt,
-              updatedAt: new Date().toISOString(),
-              markdown: entry.content?.markdown ?? originalBody?.storage?.markdown ?? '',
-              tags: originalBody?.tags ?? [],
-              frontmatter: entry.content?.frontmatter ?? originalBody?.frontmatter ?? null,
-              frontmatterStatus: entry.content?.frontmatterStatus ?? originalBody?.frontmatterStatus ?? 'none',
-              frontmatterRaw: entry.content?.frontmatterRaw,
-              frontmatterParseError: entry.content?.frontmatterParseError,
-              frontmatterMeta: originalBody?.frontmatterMeta,
-            })
-          })
-          noteBodyOverrideByNoteId.set(snapshot.record.noteId, clonedBodyId)
-        }
-      }
-      messages.push({
-        id: `storage-conflict-${Date.now()}-${noteBodyId}`,
-        type: 'duplicate-auto-decoupled',
-        status: 'unread',
-        createdAt: new Date().toISOString(),
-        signature: `duplicate-auto-decoupled:${noteBodyId}:${Date.now()}`,
-        title: 'Synced note mirrors were decoupled',
-        body: 'Multiple changed versions of a synced note were found on disk, so conflicting mirrors were split into independent notes.',
-        affectedLocations: records.map((record) => ({
-          label: record.noteId,
-          noteBodyId,
-          location: { noteId: record.noteId },
-        })),
+        file: aisleFile?.file,
+        content: fileContent,
       })
-    }
-
-    sharedSnapshot.aisleContents.forEach((entry) => {
-      const originalBody = entry.registryBody
-      nextAisleBodies.push({
-        id: entry.aisle.aisleBodyId,
-        createdAt: originalBody?.createdAt,
-        updatedAt: new Date().toISOString(),
-        markdown: entry.content?.markdown ?? originalBody?.storage?.markdown ?? '',
-        tags: originalBody?.tags ?? [],
-        frontmatter: entry.content?.frontmatter ?? originalBody?.frontmatter ?? null,
-        frontmatterStatus: entry.content?.frontmatterStatus ?? originalBody?.frontmatterStatus ?? 'none',
-        frontmatterRaw: entry.content?.frontmatterRaw,
-        frontmatterParseError: entry.content?.frontmatterParseError,
-        frontmatterMeta: originalBody?.frontmatterMeta,
-      })
+      snapshotsByAisleBodyId.set(aisle.aisleBodyId, snapshots)
     })
   }
 
+  const timestamp = new Date().toISOString()
+  const nextAisleBodyMap = new Map()
   for (const body of noteAisleBodies) {
-    if (nextAisleBodies.some((candidate) => candidate.id === body.id)) continue
-    nextAisleBodies.push({
-      id: body.id,
-      createdAt: body.createdAt,
-      updatedAt: body.updatedAt,
-      markdown: body.storage?.markdown ?? '',
-      tags: body.tags ?? [],
-      frontmatter: body.frontmatter ?? null,
-      frontmatterStatus: body.frontmatterStatus ?? 'none',
-      frontmatterMeta: body.frontmatterMeta,
-    })
+    nextAisleBodyMap.set(body.id, buildLoadedAisleBodyFromMirror(body.id, body, null, timestamp))
+  }
+  for (const [aisleBodyId, snapshots] of snapshotsByAisleBodyId) {
+    const registryBody = registryAisleBodyMap.get(aisleBodyId)
+    nextAisleBodyMap.set(
+      aisleBodyId,
+      buildLoadedAisleBodyFromMirror(
+        aisleBodyId,
+        registryBody,
+        selectAisleMirrorSnapshot(snapshots, registryBody),
+        timestamp,
+      ),
+    )
   }
 
   return {
-    items: mapNotebookItems(items, (item) =>
-      item.type === 'note' && noteBodyOverrideByNoteId.has(item.id)
-        ? { ...item, noteBodyId: noteBodyOverrideByNoteId.get(item.id) }
-        : item,
-    ),
-    noteBodies: nextNoteBodies,
-    noteAisleBodies: nextAisleBodies,
-    messages,
+    items,
+    noteBodies,
+    noteAisleBodies: Array.from(nextAisleBodyMap.values()),
+    messages: [],
   }
 }
 

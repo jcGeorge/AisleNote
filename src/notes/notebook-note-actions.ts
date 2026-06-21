@@ -3,13 +3,14 @@ import { MAX_NOTE_AISLES } from '../editor/aisle-edit-draft'
 import { createReservedIdAllocator, type IdGenerator } from '../state/navigation-ids'
 import {
   collectNotebookIds,
+  createNoteBodyWithAisle,
   findNotebookNote,
-  listNotebookNotes,
   replaceNotebookNoteBodyId,
 } from '../state/notebook'
 import { buildInternalNoteLinkToken, buildMarkdownNoteReferenceToken, buildPreviewToken, parseMarkdownNoteReferenceToken } from './note-references'
 import { getNotebookNotePathLabel } from '../state/notebook'
-import { getLocationInfo, listNoteLocationsForBody } from './note-locations'
+import { buildNoteLocationKey, getLocationInfo, listNoteLocationsForBody } from './note-locations'
+import { listLinkedAisleSlotsForAisleBody } from './aisle-links'
 
 export type NotebookNoteReferenceActionKind = 'note-link' | 'note-preview'
 export type NotebookNoteCopyMode = 'independent' | 'synced'
@@ -25,9 +26,15 @@ export type NotebookNoteActionResult =
       message: string
     }
 
+export type DecoupleNotebookNoteLocationsResult =
+  | { status: 'applied'; state: AppState; changedCount: number }
+  | { status: 'blocked'; state: AppState; message: string }
+
 export type NotebookDecoupleRow = {
   key: string
   label: string
+  primaryLabel: string
+  secondaryLabel: string
   noteId: string
   noteBodyId: string
   aisleId?: string
@@ -37,6 +44,7 @@ export type NotebookDecoupleRow = {
 const TARGET_NOTE_MISSING_MESSAGE = 'Choose a notebook note that still exists.'
 const ACTIVE_NOTE_MISSING_MESSAGE = 'Open a note before using note actions.'
 const MAX_AISLE_COPY_MESSAGE = `That copy would exceed the ${MAX_NOTE_AISLES} aisle limit for a note.`
+const ROOT_NOTEBOOK_LABEL = 'Notebook'
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -44,6 +52,12 @@ function nowIso(): string {
 
 function getNoteBody(state: AppState, noteBodyId: string): NoteBody | null {
   return state.noteBodies.find((body) => body.id === noteBodyId) ?? null
+}
+
+function formatNotebookFolderLabel(folderPath: string): string {
+  return folderPath
+    ? folderPath.split('/').filter(Boolean).join(' > ')
+    : ROOT_NOTEBOOK_LABEL
 }
 
 function cloneAisleBody(source: NoteAisleBody | undefined, id: string, timestamp: string): NoteAisleBody {
@@ -229,33 +243,80 @@ export function replaceActiveNoteBodyFromTargetNote(
 }
 
 export function getNotebookNoteDecoupleRows(state: AppState, noteBodyId: string): NotebookDecoupleRow[] {
-  return listNoteLocationsForBody(state, noteBodyId).map((location) => ({
-    key: location.noteId,
-    label: location.label || location.title,
-    noteId: location.noteId,
-    noteBodyId,
-  }))
+  return listNoteLocationsForBody(state, noteBodyId).map((location) => {
+    const info = getLocationInfo(state, location)
+    return {
+      key: buildNoteLocationKey(location),
+      label: location.label || location.title,
+      primaryLabel: formatNotebookFolderLabel(info.folderPath),
+      secondaryLabel: info.title,
+      noteId: location.noteId,
+      noteBodyId,
+    }
+  })
+}
+
+export function decoupleNotebookNoteLocationsInState(
+  state: AppState,
+  noteBodyId: string,
+  keepLocationKeys: Set<string>,
+  keepData: boolean,
+  idGenerator: IdGenerator = createReservedIdAllocator(collectNotebookIds(state)),
+): DecoupleNotebookNoteLocationsResult {
+  const locations = listNoteLocationsForBody(state, noteBodyId)
+  if (locations.length <= 0) {
+    return { status: 'blocked', state, message: 'Synced note no longer exists.' }
+  }
+  if (!locations.some((location) => keepLocationKeys.has(buildNoteLocationKey(location)))) {
+    return { status: 'blocked', state, message: 'Select at least one note to retain the information.' }
+  }
+
+  const locationsToDecouple = locations.filter((location) => !keepLocationKeys.has(buildNoteLocationKey(location)))
+  if (locationsToDecouple.length <= 0) return { status: 'applied', state, changedCount: 0 }
+
+  const sourceBody = getNoteBody(state, noteBodyId)
+  let notebook = state.notebook
+  const noteBodies: NoteBody[] = []
+  const aisleBodies: NoteAisleBody[] = []
+
+  for (const location of locationsToDecouple) {
+    const cloned = keepData && sourceBody
+      ? buildClonedNoteBody(state, sourceBody, idGenerator)
+      : (() => {
+          const created = createNoteBodyWithAisle('', idGenerator)
+          return {
+            noteBody: created.noteBody,
+            aisleBodies: [created.aisleBody],
+          }
+        })()
+    noteBodies.push(cloned.noteBody)
+    aisleBodies.push(...cloned.aisleBodies)
+    notebook = replaceNotebookNoteBodyId(notebook, location.noteId, cloned.noteBody.id)
+  }
+
+  return {
+    status: 'applied',
+    changedCount: locationsToDecouple.length,
+    state: {
+      ...state,
+      notebook,
+      noteBodies: [...state.noteBodies, ...noteBodies],
+      noteAisleBodies: [...(state.noteAisleBodies ?? []), ...aisleBodies],
+    },
+  }
 }
 
 export function getNotebookAisleDecoupleRows(state: AppState, aisleBodyId: string): NotebookDecoupleRow[] {
-  const rows: NotebookDecoupleRow[] = []
-  for (const { note } of listNotebookNotes(state.notebook.items)) {
-    const noteBody = getNoteBody(state, note.noteBodyId)
-    if (!noteBody) continue
-    noteBody.aisles.forEach((aisle, index) => {
-      if (aisle.aisleBodyId !== aisleBodyId) return
-      const noteLabel = getNotebookNotePathLabel(state.notebook.items, note.id) || note.title
-      rows.push({
-        key: `${note.id}:${aisle.id}`,
-        label: noteBody.aisles.length > 1 ? `${noteLabel} / aisle ${index + 1}` : noteLabel,
-        noteId: note.id,
-        noteBodyId: noteBody.id,
-        aisleId: aisle.id,
-        aisleBodyId,
-      })
-    })
-  }
-  return rows
+  return listLinkedAisleSlotsForAisleBody(state, aisleBodyId).map((slot) => ({
+    key: slot.key,
+    label: slot.label,
+    primaryLabel: formatNotebookFolderLabel(slot.parentName),
+    secondaryLabel: `${slot.noteName} / aisle ${slot.aisleIndex + 1}`,
+    noteId: slot.locationKey,
+    noteBodyId: slot.noteBodyId,
+    aisleId: slot.aisleId,
+    aisleBodyId,
+  }))
 }
 
 export function getNotePreviewRenderMarkdown(

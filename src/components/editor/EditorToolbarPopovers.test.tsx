@@ -1,3 +1,4 @@
+import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { CopyToolbarMenu, EditorToolbarPopovers } from './EditorToolbarPopovers'
@@ -16,7 +17,9 @@ describe('EditorToolbarPopovers', () => {
         }}
         onExecuteToolbarCommand={() => undefined}
         onOpenCopyModal={() => undefined}
-        onOpenDeduplicateModal={() => undefined}
+        onFilterSyncedItem={() => undefined}
+        onQuickDecoupleSyncedItem={() => undefined}
+        onShowSyncedItems={() => undefined}
       />,
     )
 
@@ -35,7 +38,9 @@ describe('EditorToolbarPopovers', () => {
         }}
         onExecuteToolbarCommand={() => undefined}
         onOpenCopyModal={() => undefined}
-        onOpenDeduplicateModal={() => undefined}
+        onFilterSyncedItem={() => undefined}
+        onQuickDecoupleSyncedItem={() => undefined}
+        onShowSyncedItems={() => undefined}
       />,
     )
 
@@ -46,15 +51,52 @@ describe('EditorToolbarPopovers', () => {
 })
 
 describe('CopyToolbarMenu', () => {
-  it('renders make this a copy of and de-couple choices', () => {
+  it('renders make this a copy of without synced choices when nothing is synced', () => {
     const html = renderToStaticMarkup(
       <CopyToolbarMenu
         onOpenCopyModal={() => undefined}
-        onOpenDeduplicateModal={() => undefined}
+        onFilterSyncedItem={() => undefined}
+        onQuickDecoupleSyncedItem={() => undefined}
+        onShowSyncedItems={() => undefined}
       />,
     )
 
     expect(html).toContain('make this a copy of')
-    expect(html).toContain('de-couple')
+    expect(html).not.toContain('filter synced')
+    expect(html).not.toContain('de-couple')
+    expect(html).not.toContain('show synced')
+  })
+
+  it('renders synced note choices when a synced note is active', () => {
+    const html = renderToStaticMarkup(
+      <CopyToolbarMenu
+        syncedItemKind="note"
+        onOpenCopyModal={() => undefined}
+        onFilterSyncedItem={() => undefined}
+        onQuickDecoupleSyncedItem={() => undefined}
+        onShowSyncedItems={() => undefined}
+      />,
+    )
+
+    expect(html).toContain('make this a copy of')
+    expect(html).toContain('filter synced note')
+    expect(html).toContain('de-couple note')
+    expect(html).toContain('show synced notes')
+  })
+
+  it('renders synced aisle choices when a synced aisle is active', () => {
+    const html = renderToStaticMarkup(
+      <CopyToolbarMenu
+        syncedItemKind="aisle"
+        onOpenCopyModal={() => undefined}
+        onFilterSyncedItem={() => undefined}
+        onQuickDecoupleSyncedItem={() => undefined}
+        onShowSyncedItems={() => undefined}
+      />,
+    )
+
+    expect(html).toContain('filter synced aisle')
+    expect(html).toContain('de-couple aisle')
+    expect(html).toContain('show synced aisles')
   })
 })

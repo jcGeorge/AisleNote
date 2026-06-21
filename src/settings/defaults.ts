@@ -79,8 +79,6 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   sidebarCollapsed: false,
   sidebarWidth: 280,
   collapsedFolderIds: [],
-  showRegularNoteAisleAddButtons: false,
-  showRegularNoteAisleDeleteButton: false,
   noteFilter: {
     active: false,
     kind: 'tags',
@@ -272,14 +270,6 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
   const obj = raw as Record<string, unknown>
   const registeredSettings = normalizeRegisteredSyncedUiSettings(obj)
   const themePalettes = normalizeThemePalettes(obj.themePalettes)
-  const showRegularNoteAisleAddButtons =
-    typeof obj.showRegularNoteAisleAddButtons === 'boolean'
-      ? obj.showRegularNoteAisleAddButtons
-      : DEFAULT_UI_SETTINGS.showRegularNoteAisleAddButtons
-  const showRegularNoteAisleDeleteButton =
-    typeof obj.showRegularNoteAisleDeleteButton === 'boolean'
-      ? obj.showRegularNoteAisleDeleteButton
-      : DEFAULT_UI_SETTINGS.showRegularNoteAisleDeleteButton
   return {
     ...registeredSettings,
     sidebarCollapsed:
@@ -293,8 +283,6 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
     collapsedFolderIds: Array.isArray(obj.collapsedFolderIds)
       ? obj.collapsedFolderIds.filter((item): item is string => typeof item === 'string')
       : DEFAULT_UI_SETTINGS.collapsedFolderIds,
-    showRegularNoteAisleAddButtons,
-    showRegularNoteAisleDeleteButton,
     noteFontScale:
       typeof obj.noteFontScale === 'number'
         ? clampNoteFontScale(obj.noteFontScale)

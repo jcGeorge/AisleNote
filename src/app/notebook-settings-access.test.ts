@@ -10,11 +10,21 @@ const settingsCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.ur
 
 describe('notebook settings access', () => {
   it('renders explicit settings entry points for expanded and collapsed sidebars', () => {
-    expect(notebookAppSource).toContain("onClick={() => openUtilityView('settings')}")
+    expect(notebookAppSource).toContain('const handleSidebarSettingsClick = useCallback(() => {')
+    expect(notebookAppSource).toContain("if (viewMode === 'settings') {")
+    expect(notebookAppSource).toContain("setViewMode('main')")
+    expect(notebookAppSource).toContain("openUtilityView('settings')")
+    expect(notebookAppSource).toContain('onClick={handleSidebarSettingsClick}')
     expect(notebookAppSource).toContain('Settings')
     expect(notebookAppSource).toContain('aria-label="Open settings"')
     expect(notebookAppSource).toContain('title="Open settings"')
     expect(notebookAppSource).toContain('iconId="settings"')
+    expect(appCssSource).toContain('.notebook-sidebar .notebook-icon-button:active')
+    expect(appCssSource).toContain('.notebook-sidebar .notebook-icon-button:focus-visible')
+    expect(appCssSource).toContain('border-color: transparent;')
+    expect(appCssSource).toContain('background: transparent;')
+    expect(appCssSource).toContain('outline: 2px solid var(--notebook-sidebar-accent);')
+    expect(appCssSource).toContain('background: var(--notebook-sidebar-active-bg);')
     expect(notebookAppSource).not.toContain('Utility\\n')
   })
 

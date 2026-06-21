@@ -97,8 +97,6 @@ const SHORTCUT_MENU_ELIGIBLE_OPERATION_IDS = new Set([
 
 const DEFAULT_SYNCED_UI_SETTINGS = {
   ...DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
-  showRegularNoteAisleAddButtons: false,
-  showRegularNoteAisleDeleteButton: false,
   noteFilter: {
     active: false,
     kind: 'tags',
@@ -140,10 +138,6 @@ const THEME_PALETTE_IDS = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custo
 const CUSTOM_THEME_IDS = ['custom1', 'custom2', 'custom3']
 const DATA_SETTINGS_SECTIONS = ['transfer', 'storage', 'trash']
 const CURRENT_APP_SETTING_THEME_IDS = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
-
-function optionalBoolean(value, fallback) {
-  return typeof value === 'boolean' ? value : fallback
-}
 
 function optionalString(value, fallback) {
   return typeof value === 'string' ? value : fallback
@@ -463,20 +457,10 @@ function normalizeThemePalettes(value) {
 export function extractSyncedUiSettings(rawUi) {
   const ui = isRecord(rawUi) ? rawUi : {}
   const registeredUi = normalizeRegisteredSyncedUiSettings(ui)
-  const showRegularNoteAisleAddButtons = optionalBoolean(
-    ui.showRegularNoteAisleAddButtons,
-    DEFAULT_SYNCED_UI_SETTINGS.showRegularNoteAisleAddButtons,
-  )
-  const showRegularNoteAisleDeleteButton = optionalBoolean(
-    ui.showRegularNoteAisleDeleteButton,
-    DEFAULT_SYNCED_UI_SETTINGS.showRegularNoteAisleDeleteButton,
-  )
   const themePalettes = normalizeThemePalettes(ui.themePalettes)
 
   return {
     ...registeredUi,
-    showRegularNoteAisleAddButtons,
-    showRegularNoteAisleDeleteButton,
     noteFilter: normalizeNoteFilterSettings(ui.noteFilter),
     dataSettingsSection: optionalDataSettingsSection(ui.dataSettingsSection, DEFAULT_SYNCED_UI_SETTINGS.dataSettingsSection),
     selectedCustomTheme: normalizeSelectedCustomTheme(ui.selectedCustomTheme),
@@ -534,8 +518,6 @@ export function extractUiPreferences(appState) {
   const syncedUi = extractSyncedUiSettings(ui)
   return {
     ...pickRegisteredSyncedUiSettings(syncedUi),
-    showRegularNoteAisleAddButtons: syncedUi.showRegularNoteAisleAddButtons,
-    showRegularNoteAisleDeleteButton: syncedUi.showRegularNoteAisleDeleteButton,
     noteFilter: syncedUi.noteFilter,
     dataSettingsSection: syncedUi.dataSettingsSection,
     settingsSection: optionalString(ui.settingsSection, DEFAULT_SYNCED_UI_SETTINGS.settingsSection),

@@ -38,7 +38,7 @@ export type MarkdownFrontmatterSplit = {
 }
 
 export function getFrontmatterFieldTypes(): FrontmatterFieldType[] {
-  return ['text', 'number', 'boolean', 'date', 'datetime', 'list']
+  return ['text', 'number', 'boolean', 'date', 'datetime', 'list', 'fixedList']
 }
 
 export function getFrontmatterComputedValues(): FrontmatterComputedValue[] {
@@ -344,12 +344,43 @@ function parseList(value: unknown): string[] {
     .filter(Boolean)
 }
 
+export function normalizeFrontmatterFixedListOptions(value: unknown): string[] {
+  const rawOptions = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/\r?\n|,/)
+      : []
+  const seen = new Set<string>()
+  const options: string[] = []
+  for (const rawOption of rawOptions) {
+    const option = coerceFrontmatterString(rawOption).trim()
+    if (!option || seen.has(option)) continue
+    seen.add(option)
+    options.push(option)
+  }
+  return options
+}
+
+export function resolveFrontmatterFixedListValue(
+  options: readonly string[] | undefined,
+  value: unknown,
+  fallback?: unknown,
+): string {
+  const normalizedOptions = normalizeFrontmatterFixedListOptions(options)
+  const rawValue = coerceFrontmatterString(value).trim()
+  if (rawValue && normalizedOptions.includes(rawValue)) return rawValue
+  const rawFallback = coerceFrontmatterString(fallback).trim()
+  if (rawFallback && normalizedOptions.includes(rawFallback)) return rawFallback
+  return normalizedOptions[0] ?? ''
+}
+
 function isCompatibleValue(type: FrontmatterFieldType, value: unknown): boolean {
   if (value == null || value === '') return false
   if (type === 'text' || type === 'date' || type === 'datetime') return typeof value === 'string' || value instanceof Date
   if (type === 'number') return typeof value === 'number' && Number.isFinite(value)
   if (type === 'boolean') return typeof value === 'boolean'
   if (type === 'list') return Array.isArray(value)
+  if (type === 'fixedList') return typeof value === 'string'
   return false
 }
 
@@ -396,6 +427,7 @@ export function coerceFrontmatterFieldValue(type: FrontmatterFieldType, value: u
     return Number.isNaN(date.getTime()) ? coerceFrontmatterString(value) : date.toISOString()
   }
   if (type === 'list') return parseList(value)
+  if (type === 'fixedList') return coerceFrontmatterString(value)
   return value
 }
 
@@ -413,6 +445,9 @@ function resolveFieldValue(
   const computedValue = getComputedValue(field.computed, context)
   if (computedValue !== undefined) {
     return isFrontmatterReferenceComputedValue(field.computed) ? computedValue : coerceFrontmatterFieldValue(field.type, computedValue)
+  }
+  if (field.type === 'fixedList') {
+    return resolveFrontmatterFixedListValue(field.options, currentValue, field.defaultValue)
   }
   if (isCompatibleValue(field.type, currentValue)) return coerceFrontmatterFieldValue(field.type, currentValue)
   return coerceFrontmatterFieldValue(field.type, field.defaultValue)
@@ -454,12 +489,22 @@ function normalizeField(raw: unknown, index: number): FrontmatterTemplateField |
     ? (raw.computed as FrontmatterComputedValue)
     : 'none'
   const normalizedComputed = isFrontmatterComputedValueCompatibleWithFieldType(computed, type) ? computed : 'none'
+  const rawDefaultValue = typeof raw.defaultValue === 'string' ? raw.defaultValue : coerceFrontmatterString(raw.defaultValue)
+  const rawFixedListOptions = normalizeFrontmatterFixedListOptions(raw.options)
+  const fixedListOptions = type === 'fixedList'
+    ? rawFixedListOptions.length > 0
+      ? rawFixedListOptions
+      : normalizeFrontmatterFixedListOptions(rawDefaultValue)
+    : undefined
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : stableId('fm-field', key, index),
     key,
     type,
-    defaultValue: typeof raw.defaultValue === 'string' ? raw.defaultValue : coerceFrontmatterString(raw.defaultValue),
+    defaultValue: type === 'fixedList'
+      ? resolveFrontmatterFixedListValue(fixedListOptions, rawDefaultValue)
+      : rawDefaultValue,
     computed: normalizedComputed,
+    ...(type === 'fixedList' ? { options: fixedListOptions ?? [] } : {}),
   }
 }
 

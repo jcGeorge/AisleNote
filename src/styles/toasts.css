@@ -90,6 +90,10 @@
 }
 
 .app-tip-dismiss {
+  --app-close-button-size: 1.55rem;
+  --app-close-icon-size: 1rem;
+  --app-close-button-hover-bg: color-mix(in srgb, var(--toast-text) 10%, transparent);
+  --app-close-button-hover-text: inherit;
   position: absolute;
   top: 0.38rem;
   right: 0.42rem;

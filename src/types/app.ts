@@ -51,7 +51,7 @@ export type ResolvedNoteAisle = NoteAisle & {
 export type FrontmatterValue = unknown
 export type FrontmatterData = Record<string, FrontmatterValue>
 export type FrontmatterParseStatus = 'none' | 'valid' | 'invalid'
-export type FrontmatterFieldType = 'text' | 'number' | 'boolean' | 'date' | 'datetime' | 'list'
+export type FrontmatterFieldType = 'text' | 'number' | 'boolean' | 'date' | 'datetime' | 'list' | 'fixedList'
 export type FrontmatterComputedValue =
   | 'none'
   | 'createdAt'
@@ -68,6 +68,7 @@ export type FrontmatterTemplateField = {
   type: FrontmatterFieldType
   defaultValue: string
   computed: FrontmatterComputedValue
+  options?: string[]
 }
 
 export type FrontmatterTemplate = {
@@ -388,8 +389,6 @@ export type AppState = {
     sidebarCollapsed: boolean
     sidebarWidth: number
     collapsedFolderIds: string[]
-    showRegularNoteAisleAddButtons?: boolean
-    showRegularNoteAisleDeleteButton?: boolean
     lastLinkInsertMode?: LinkInsertMode
     lastNoteCopyMode?: NoteCopyMode
     findCaseSensitive?: boolean
@@ -399,7 +398,6 @@ export type AppState = {
     findReplaceScope?: FindReplaceScope
     removeNoteReferencesOnTrash?: boolean
     noteMentionCopyRequiresConfirmation?: boolean
-    deleteActiveAisleShortcutEnabled?: boolean
     scratchpadAisleLimit?: number
     scratchpadNewAisleSide?: ScratchpadNewAisleSide
     decoupledItemsKeepData?: boolean
@@ -615,6 +613,7 @@ export type LinkPromptState = {
   url: string
   text: string
   urlEditable?: boolean
+  centered?: boolean
   editRange?: {
     from: number
     to: number

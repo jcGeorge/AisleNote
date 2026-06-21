@@ -34,11 +34,14 @@ import { withDefaultInsertedImageDisplayWidth } from './image-insertion'
 import { buildAisleEditorKey, getAisleIdFromAisleEditorKey } from './aisle-editor'
 import {
   getElementFromEventTarget,
+  getExternalLinkRangeAtDocPosition,
   getNoteMentionQueryAtSelection,
   getWysiwygView,
   createLinkMark,
   placeEditorCaretAtClientPoint,
+  runWysiwygHistory,
   type NoteMentionQuery,
+  type WysiwygHistoryDirection,
 } from './prosemirror-utils'
 import {
   finishEditorOperation,
@@ -65,6 +68,7 @@ import { applyEditorNewlineOperation } from './newline-operations'
 import { applyListToolbarCommand, type ToolbarListCommand } from './list-marker-commands'
 import { getNewlineShortcutIdForEvent, normalizeHotkeySettings } from '../hotkeys/shortcuts'
 import { openExternalWebUrl } from '../notes/external-links'
+import { getEditorKeyboardHistoryDirection } from './editor-input-intents'
 import {
   buildSelectionBlockIndentOperationPlan,
   buildSelectionRemoveBlockIndentOperationPlan,
@@ -99,7 +103,7 @@ type NotebookAisleEditorMeta = {
 export type NotebookAisleEditorActivationOptions = {
   focus?: boolean
   flushPrevious?: boolean
-  focusAtClientPoint?: { clientX: number; clientY: number }
+  focusAtClientPoint?: { clientX: number; clientY: number; mode: 'coordinate' | 'focus-only' }
   allowDuringPendingRename?: boolean
   source?: AisleActivationSource
 }
@@ -211,25 +215,11 @@ function getShortcutMenuAnchor(editor: Editor, root: HTMLElement): { top: number
   }
 }
 
-function getEditorSelectionAnchor(editor: Editor, root: HTMLElement): { top: number; left: number } {
-  const view = getWysiwygView(editor)
-  const position = view?.state?.selection?.to
-  if (typeof position === 'number' && typeof view?.coordsAtPos === 'function') {
-    try {
-      const rect = view.coordsAtPos(position)
-      return {
-        top: rect.bottom + 6,
-        left: rect.left,
-      }
-    } catch {
-      // Fall through to the editor root anchor.
-    }
-  }
-
-  const rootRect = root.getBoundingClientRect()
+function getCenteredLinkPromptAnchor(): { top: number; left: number } {
+  if (typeof window === 'undefined') return { top: 96, left: 96 }
   return {
-    top: rootRect.top + 48,
-    left: rootRect.left + 24,
+    top: Math.max(72, Math.min(160, window.innerHeight * 0.16)),
+    left: window.innerWidth / 2,
   }
 }
 
@@ -237,6 +227,29 @@ function isUrlLinkShortcutEvent(event: KeyboardEvent, isMac: boolean): boolean {
   if (event.key.toLowerCase() !== 'k') return false
   if (event.shiftKey || event.altKey) return false
   return isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+}
+
+function getEditorBeforeInputHistoryDirection(event: InputEvent): WysiwygHistoryDirection | null {
+  if (event.inputType === 'historyUndo') return 'undo'
+  if (event.inputType === 'historyRedo') return 'redo'
+  return null
+}
+
+function consumeEditorHistoryEvent(event: Event): void {
+  event.preventDefault()
+  event.stopPropagation()
+  event.stopImmediatePropagation()
+}
+
+function focusEditorWithoutScrolling(editor: Editor | null): boolean {
+  const dom = getWysiwygView(editor)?.dom as { focus?: (options?: FocusOptions) => void } | undefined
+  if (typeof dom?.focus !== 'function') return false
+  try {
+    dom.focus({ preventScroll: true })
+    return true
+  } catch {
+    return false
+  }
 }
 
 export function useNotebookAisleEditors({
@@ -467,6 +480,24 @@ export function useNotebookAisleEditors({
     [commitActiveEditorMarkdownNow, editorRef, pushToast, replaceActiveEditorMarkdown, scheduleToolbarFormatStateSync],
   )
 
+  const runGuardedEditorHistory = useCallback(
+    (editor: Editor | null, direction: WysiwygHistoryDirection) => {
+      if (!editor) return false
+      const result = runWysiwygHistory(editor, direction)
+      if (result === 'applied') {
+        finishEditorOperation(editorOperationRuntime, editor, {
+          commitMode: 'deferred',
+          focus: 'none',
+          syncToolbar: true,
+        })
+      } else {
+        scheduleToolbarFormatStateSync()
+      }
+      return true
+    },
+    [editorOperationRuntime, scheduleToolbarFormatStateSync],
+  )
+
   const destroyEditor = useCallback((editorKey: string, captureContent = false) => {
     const meta = editorMetaRef.current.get(editorKey)
     if (!meta) return
@@ -627,6 +658,14 @@ export function useNotebookAisleEditors({
         if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return
         if (!getElementFromEventTarget(event.target)?.closest('.ProseMirror[contenteditable="true"]')) return
 
+        const historyDirection = getEditorKeyboardHistoryDirection(event, isMacPlatformRef.current)
+        if (historyDirection) {
+          consumeEditorHistoryEvent(event)
+          setActiveEditor(aisle.id)
+          runGuardedEditorHistory(editor, historyDirection)
+          return
+        }
+
         if (isUrlLinkShortcutEvent(event, isMacPlatformRef.current)) {
           event.preventDefault()
           event.stopPropagation()
@@ -661,6 +700,17 @@ export function useNotebookAisleEditors({
 
         if (editor) runNewlineOperationForEditorRef.current?.(editor, aisle.id, operation)
       }
+      const handleBeforeInput = (event: InputEvent) => {
+        if (event.defaultPrevented || event.isComposing) return
+        if (!getElementFromEventTarget(event.target)?.closest('.ProseMirror[contenteditable="true"]')) return
+
+        const historyDirection = getEditorBeforeInputHistoryDirection(event)
+        if (!historyDirection) return
+
+        consumeEditorHistoryEvent(event)
+        setActiveEditor(aisle.id)
+        runGuardedEditorHistory(editor, historyDirection)
+      }
       const handleLinkClick = (event: MouseEvent) => {
         if (event.defaultPrevented || event.button !== 0) return
         const target = getElementFromEventTarget(event.target)
@@ -676,6 +726,7 @@ export function useNotebookAisleEditors({
       root.addEventListener('pointerdown', handlePointerDown, true)
       root.addEventListener('paste', handlePaste, true)
       root.addEventListener('keydown', handleKeyDown, true)
+      root.addEventListener('beforeinput', handleBeforeInput, true)
       root.addEventListener('click', handleLinkClick, true)
       root.addEventListener('keyup', handleMentionProbe)
       root.addEventListener('mouseup', handleMentionProbe)
@@ -685,6 +736,7 @@ export function useNotebookAisleEditors({
         () => root.removeEventListener('pointerdown', handlePointerDown, true),
         () => root.removeEventListener('paste', handlePaste, true),
         () => root.removeEventListener('keydown', handleKeyDown, true),
+        () => root.removeEventListener('beforeinput', handleBeforeInput, true),
         () => root.removeEventListener('click', handleLinkClick, true),
         () => root.removeEventListener('keyup', handleMentionProbe),
         () => root.removeEventListener('mouseup', handleMentionProbe),
@@ -787,6 +839,7 @@ export function useNotebookAisleEditors({
     noteBodyId,
     onNotebookStructurePaste,
     restoreEditorDisplayWhenReady,
+    runGuardedEditorHistory,
     setActiveEditor,
     viewMode,
   ])
@@ -812,6 +865,10 @@ export function useNotebookAisleEditors({
       const aisleId = getAisleIdFromAisleEditorKey(editorKey)
       if (!setActiveEditor(aisleId)) return false
       const editor = getEditorMetaForAisle(aisleId)?.editor
+      if (options.focusAtClientPoint?.mode === 'focus-only') {
+        focusEditorWithoutScrolling(editor ?? null)
+        return true
+      }
       if (options.focusAtClientPoint && placeEditorCaretAtClientPoint(editor ?? null, options.focusAtClientPoint)) {
         return true
       }
@@ -830,10 +887,7 @@ export function useNotebookAisleEditors({
       }
 
       if (command === 'undo' || command === 'redo') {
-        return runEditorCommandOperation(editorOperationRuntime, command, undefined, {
-          commitMode: 'deferred',
-          syncToolbar: true,
-        }).handled
+        return runGuardedEditorHistory(editor, command)
       }
 
       if (command === 'bold' || command === 'italic' || command === 'strike' || command === 'highlight') {
@@ -1203,7 +1257,6 @@ export function useNotebookAisleEditors({
       pushToast('Open a note before inserting a link.', 'warning')
       return null
     }
-    const meta = Array.from(editorMetaRef.current.values()).find((candidate) => candidate.editor === editor)
     const view = getWysiwygView(editor)
     const selection = view?.state?.selection
     const doc = view?.state?.doc
@@ -1211,7 +1264,7 @@ export function useNotebookAisleEditors({
     const to = typeof selection?.to === 'number' ? selection.to : from
     const selectedText = doc && to > from ? String(doc.textBetween(from, to, '', '') ?? '') : ''
     const promptDraft = getUrlLinkPromptDraftFromSelection(selectedText)
-    const anchor = meta ? getEditorSelectionAnchor(editor, meta.root) : { top: 96, left: 96 }
+    const anchor = getCenteredLinkPromptAnchor()
     return {
       open: true,
       top: anchor.top,
@@ -1219,9 +1272,45 @@ export function useNotebookAisleEditors({
       url: promptDraft.url,
       text: promptDraft.text,
       urlEditable: true,
+      centered: true,
       editRange: { from, to, href: '' },
     }
   }, [editorRef, pushToast])
+
+  const getLinkPromptAtClientPoint = useCallback(
+    (aisleId: string, point: { clientX: number; clientY: number }): LinkPromptState | null => {
+      const meta = getEditorMetaForAisle(aisleId)
+      const view = getWysiwygView(meta?.editor ?? null)
+      if (!view?.state?.doc || typeof view.posAtCoords !== 'function') return null
+
+      let position: number | null = null
+      try {
+        const result = view.posAtCoords({ left: point.clientX, top: point.clientY })
+        position = typeof result?.pos === 'number' && Number.isFinite(result.pos) ? result.pos : null
+      } catch {
+        return null
+      }
+      if (position === null) return null
+
+      const range =
+        getExternalLinkRangeAtDocPosition(view.state.doc, position) ??
+        getExternalLinkRangeAtDocPosition(view.state.doc, position - 1)
+      if (!range) return null
+
+      const anchor = getCenteredLinkPromptAnchor()
+      return {
+        open: true,
+        top: anchor.top,
+        left: anchor.left,
+        url: range.href,
+        text: String(view.state.doc.textBetween(range.from, range.to, '', '') ?? ''),
+        urlEditable: true,
+        centered: true,
+        editRange: range,
+      }
+    },
+    [getEditorMetaForAisle],
+  )
 
   const openUrlLinkPrompt = useCallback(() => {
     const prompt = getUrlLinkPromptState()
@@ -1322,6 +1411,7 @@ export function useNotebookAisleEditors({
     insertImageFile,
     insertAttachmentFile,
     openUrlLinkPrompt,
+    getLinkPromptAtClientPoint,
     insertNamedUrlLink,
     insertUrlLink,
     insertTextAtSelection: insertTextFromContextMenu,

@@ -13,7 +13,12 @@ vi.mock('react-dom/client', () => ({
   })),
 }))
 
-import { collectNotePreviewRanges, createNotePreviewPlugin, renameNotePreviewRangeLabelFromView } from './note-preview-plugin'
+import {
+  collectNotePreviewRanges,
+  convertNotePreviewRangeToLinkFromView,
+  createNotePreviewPlugin,
+  renameNotePreviewRangeLabelFromView,
+} from './note-preview-plugin'
 
 const pmSchema = new Schema({
   nodes: {
@@ -311,6 +316,40 @@ describe('note preview plugin', () => {
     expect(view.focus).toHaveBeenCalled()
   })
 
+  it('wires preview conversion to a normal note link token', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, { id: 'preview:beta', target: { noteId: 'note-b' } })
+    const context = createPluginContext()
+    const plugin = createNotePreviewPlugin({
+      getAppState: () => state,
+      getCurrentNoteBodyId: () => 'body-a',
+      onOpenNote: vi.fn(),
+    })(context).wysiwygPlugins[0]()
+    const decorations = plugin.props.decorations({ doc: createDoc(token) })
+    const widget = decorations.find((decoration: any) => decoration.type === 'widget')
+    const transaction: any = {
+      insertText: vi.fn(() => transaction),
+      scrollIntoView: vi.fn(() => transaction),
+    }
+    const view = {
+      state: {
+        doc: { content: { size: 1 + token.length } },
+        tr: transaction,
+      },
+      dispatch: vi.fn(),
+      focus: vi.fn(),
+    }
+
+    widget.factory(view)
+    const renderedPreview = renderRoot.mock.calls.at(-1)?.[0]
+    renderedPreview.props.onConvertToLink()
+
+    expect(transaction.insertText).toHaveBeenCalledWith(expect.stringMatching(/^\[Beta\]\(Beta--[0-9a-f]{6}\)$/), 1, 1 + token.length)
+    expect(transaction.scrollIntoView).toHaveBeenCalled()
+    expect(view.dispatch).toHaveBeenCalledWith(transaction)
+    expect(view.focus).toHaveBeenCalled()
+  })
+
   it('renames preview labels with a direct transaction helper', () => {
     const state = createState()
     const token = buildPreviewToken(state, {
@@ -337,5 +376,31 @@ describe('note preview plugin', () => {
       0,
       token.length,
     )
+  })
+
+  it('converts preview labels with a direct transaction helper', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, {
+      id: 'preview:beta:aisle-b',
+      target: { noteId: 'note-b' },
+      aisleIds: ['aisle-b'],
+    })
+    const transaction: any = {
+      insertText: vi.fn(() => transaction),
+      scrollIntoView: vi.fn(() => transaction),
+    }
+    const view = {
+      state: {
+        doc: { content: { size: token.length } },
+        tr: transaction,
+      },
+      dispatch: vi.fn(),
+      focus: vi.fn(),
+    }
+
+    expect(convertNotePreviewRangeToLinkFromView(view, { from: 0, to: token.length, token })).toBe(true)
+    expect(transaction.insertText).toHaveBeenCalledWith(expect.stringMatching(/^\[aisle 1\]\(<Beta--[0-9a-f]{6}#aisle 1--[0-9a-f]{6}>\)$/), 0, token.length)
+    expect(view.dispatch).toHaveBeenCalledWith(transaction)
+    expect(view.focus).toHaveBeenCalled()
   })
 })

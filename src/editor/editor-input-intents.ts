@@ -8,6 +8,7 @@ import type {
 import type { TableBoundaryDirection, TableCellNavigationDirection } from './table-editing'
 
 export type EditorArrowDirection = 'left' | 'right' | 'up' | 'down'
+export type EditorHistoryDirection = 'undo' | 'redo'
 
 export type EditorNavigationIntent =
   | { type: 'none' }
@@ -36,7 +37,7 @@ export type EditorNavigationIntentInput = {
 export type EditorInputIntent =
   | { type: 'none' }
   | { type: 'toolbar-format'; format: ToolbarFormatKey }
-  | { type: 'history'; direction: 'undo' | 'redo' }
+  | { type: 'history'; direction: EditorHistoryDirection }
   | { type: 'newline-operation'; operation: NewlineOperationId }
   | { type: 'open-operations-menu' }
   | { type: 'delete-active-image' }
@@ -65,7 +66,7 @@ export type EditorKeyDownIntentInput = {
   hasActiveTableCell: boolean
   hasMultiLineEdit: boolean
   toolbarFormatShortcut: ToolbarFormatKey | null
-  editorHistoryDirection: 'undo' | 'redo' | null
+  editorHistoryDirection: EditorHistoryDirection | null
   newlineOperation: NewlineOperationId | null
   navigationIntent: EditorNavigationIntent
   tableBoundaryDirection: TableBoundaryDirection | null
@@ -77,6 +78,15 @@ export type EditorBeforeInputIntentInput = {
   data?: string | null
   isComposing?: boolean
   hasMultiLineEdit: boolean
+}
+
+export type EditorKeyboardHistoryDirectionInput = {
+  key?: string
+  code?: string
+  altKey?: boolean
+  ctrlKey?: boolean
+  metaKey?: boolean
+  shiftKey?: boolean
 }
 
 function hasCommandModifier(input: { altKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) {
@@ -92,6 +102,27 @@ function getPlainArrowDirection(input: { key?: string; code?: string }): EditorA
   if (hasKey(input, 'ArrowRight', 'Right')) return 'right'
   if (hasKey(input, 'ArrowUp', 'Up')) return 'up'
   if (hasKey(input, 'ArrowDown', 'Down')) return 'down'
+  return null
+}
+
+export function getEditorKeyboardHistoryDirection(
+  input: EditorKeyboardHistoryDirectionInput,
+  isMacPlatform: boolean,
+): EditorHistoryDirection | null {
+  if (input.altKey) return null
+  const key = String(input.key ?? '').toLowerCase()
+  const code = String(input.code ?? '').toLowerCase()
+  const isZ = key === 'z' || code === 'keyz'
+  const isY = key === 'y' || code === 'keyy'
+
+  if (isMacPlatform) {
+    if (!input.metaKey || input.ctrlKey) return null
+    return isZ ? (input.shiftKey ? 'redo' : 'undo') : null
+  }
+
+  if (!input.ctrlKey || input.metaKey) return null
+  if (isZ) return input.shiftKey ? 'redo' : 'undo'
+  if (isY && !input.shiftKey) return 'redo'
   return null
 }
 

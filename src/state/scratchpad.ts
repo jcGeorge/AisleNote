@@ -1,11 +1,11 @@
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { extractMarkdownTags } from '../tags/tags.js'
 import {
-  getAisleBodyId,
   resolveNoteBody,
   syncNoteBodyAislesInState,
   syncNoteBodyAisleStructureInState,
 } from '../notes/aisle-body-state'
+import { getAisleBodyId } from '../notes/note-markdown'
 import type { AppState, NoteAisle, NoteAisleBody, NoteBody, ResolvedNoteAisle, ScratchpadState } from '../types/app'
 import { createId, createNoteBodyContent, createTimestamp } from '../notes/note-content'
 export {

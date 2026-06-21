@@ -11,3 +11,27 @@ describe('NotebookApp editable asset tools', () => {
     )
   })
 })
+
+describe('NotebookApp frontmatter modal routing', () => {
+  it('blocks structured frontmatter editing when stored YAML is invalid', () => {
+    expect(source).toContain("body?.frontmatterStatus === 'invalid'")
+    expect(source).toContain('Frontmatter YAML is invalid. Fix the markdown block before using the structured frontmatter editor.')
+  })
+
+  it('includes fixed list controls for template settings and note rows', () => {
+    expect(source).toContain('aria-label="frontmatter fixed list values"')
+    expect(source).toContain('aria-label="frontmatter fixed list value"')
+  })
+})
+
+describe('NotebookApp sidebar search wiring', () => {
+  it('routes metadata filter actions into the sidebar search panel', () => {
+    expect(source).toContain('SidebarSearchPanel')
+    expect(source).toContain("activateSidebarSearchKey('synced', key)")
+    expect(source).toContain("activateSidebarSearchKey('tags', key)")
+    expect(source).toContain("activateSidebarSearchKey('frontmatter', getFrontmatterTemplateFilterKey(templateId))")
+    expect(source).toContain('onOpenTagFilter={filterTag}')
+    expect(source).toContain('frontmatterTemplateFilterAisleIds={frontmatterTemplateFilterAisleIds}')
+    expect(source).toContain('onFilterAisleFrontmatterTemplate={filterAisleFrontmatterTemplate}')
+  })
+})

@@ -580,10 +580,11 @@ export function createNotebookNoteInState(
   parentFolderId: string | null = getContainingFolderId(state.notebook.items, state.notebook.activeNoteId),
   markdown = '',
   idGenerator: IdGenerator = createReservedIdAllocator(collectNotebookIds(state)),
+  index?: number,
 ): CreatedNotebookNote {
   const { noteBody, aisleBody, aisleId, aisleBodyId } = createNoteBodyWithAisle(markdown, idGenerator)
   const note = createNotebookNote(title, noteBody.id, idGenerator)
-  const notebook = insertNotebookItem(state.notebook, note, parentFolderId)
+  const notebook = insertNotebookItem(state.notebook, note, parentFolderId, index)
   return {
     state: {
       ...state,
@@ -606,12 +607,13 @@ export function createNotebookFolderInState(
   title: string,
   parentFolderId: string | null = getContainingFolderId(state.notebook.items, state.notebook.activeNoteId),
   idGenerator: IdGenerator = createReservedIdAllocator(collectNotebookIds(state)),
+  index?: number,
 ): CreatedNotebookFolder {
   const folder = createNotebookFolder(title, [], idGenerator)
   return {
     state: {
       ...state,
-      notebook: insertNotebookItem(state.notebook, folder, parentFolderId),
+      notebook: insertNotebookItem(state.notebook, folder, parentFolderId, index),
     },
     folderId: folder.id,
   }

@@ -9,7 +9,12 @@ export const GENERAL_ICON_IDS = [
   'minimize',
   'maximize',
   'settings',
+  'filePlus',
+  'folderPlus',
+  'ellipsisVertical',
+  'search',
   'filter',
+  'x',
   'minus',
   'plus',
   'trash',
@@ -98,9 +103,36 @@ export const APP_ICON_DEFINITIONS = {
   },
   settings: {
     shapes: [
-      { tag: 'path', d: 'M9.67 4.13 10.4 2h3.2l.73 2.13a8.2 8.2 0 0 1 1.34.78l2.21-.47 1.6 2.77-1.48 1.66c.08.38.13.76.13 1.13s-.05.75-.13 1.13l1.48 1.66-1.6 2.77-2.21-.47a8.2 8.2 0 0 1-1.34.78L13.6 18h-3.2l-.73-2.13a8.2 8.2 0 0 1-1.34-.78l-2.21.47-1.6-2.77L6 11.13A5.6 5.6 0 0 1 5.87 10c0-.37.05-.75.13-1.13L4.52 7.21l1.6-2.77 2.21.47a8.2 8.2 0 0 1 1.34-.78' },
-      { tag: 'circle', cx: '12', cy: '10', r: '3' },
-      { tag: 'path', d: 'M4 22h16' },
+      { tag: 'path', d: 'M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915' },
+      { tag: 'circle', cx: '12', cy: '12', r: '3' },
+    ],
+  },
+  filePlus: {
+    shapes: [
+      { tag: 'path', d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z' },
+      { tag: 'path', d: 'M14 2v5a1 1 0 0 0 1 1h5' },
+      { tag: 'path', d: 'M9 15h6' },
+      { tag: 'path', d: 'M12 18v-6' },
+    ],
+  },
+  folderPlus: {
+    shapes: [
+      { tag: 'path', d: 'M12 10v6' },
+      { tag: 'path', d: 'M9 13h6' },
+      { tag: 'path', d: 'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z' },
+    ],
+  },
+  ellipsisVertical: {
+    shapes: [
+      { tag: 'circle', cx: '12', cy: '12', r: '1' },
+      { tag: 'circle', cx: '12', cy: '5', r: '1' },
+      { tag: 'circle', cx: '12', cy: '19', r: '1' },
+    ],
+  },
+  search: {
+    shapes: [
+      { tag: 'path', d: 'm21 21-4.34-4.34' },
+      { tag: 'circle', cx: '11', cy: '11', r: '8' },
     ],
   },
   filter: {
@@ -110,6 +142,12 @@ export const APP_ICON_DEFINITIONS = {
       { tag: 'path', d: 'M11 4h10' },
       { tag: 'path', d: 'M11 8h7' },
       { tag: 'path', d: 'M11 12h4' },
+    ],
+  },
+  x: {
+    shapes: [
+      { tag: 'path', d: 'M18 6 6 18' },
+      { tag: 'path', d: 'm6 6 12 12' },
     ],
   },
   minus: {

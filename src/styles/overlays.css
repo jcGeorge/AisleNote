@@ -28,7 +28,7 @@
   text-align: left;
   padding: 0.15rem 0.42rem;
   border-radius: 0.28rem;
-  font-size: 0.85em;
+  font-size: 1em;
   line-height: 1.1;
 }
 
@@ -134,7 +134,7 @@
   gap: 0.5rem;
   align-items: flex-start;
   margin: 0 0 0.8rem;
-  font-size: 0.86em;
+  font-size: 1em;
   color: var(--modal-muted-text);
 }
 
@@ -151,7 +151,7 @@
 }
 
 .delete-modal-actions .btn {
-  font-size: 0.875em;
+  font-size: 1em;
 }
 
 .modal-cancel-btn {
@@ -214,6 +214,8 @@
 }
 
 .modal-close-x-btn {
+  --app-close-button-size: 1.6rem;
+  --app-close-icon-size: 1rem;
   position: absolute;
   top: 0.55rem;
   right: 0.6rem;
@@ -231,7 +233,8 @@
 }
 
 .modal-close-x-btn:hover {
-  background: var(--settings-control-bg);
+  background: var(--app-close-button-hover-bg, var(--notebook-control-hover-bg, color-mix(in srgb, currentColor 10%, transparent)));
+  color: var(--app-close-button-hover-text, var(--app-text-bright, currentColor));
 }
 
 .sort-modal-options {
@@ -248,7 +251,7 @@
   color: var(--settings-control-text);
   padding: 0.48rem 0.58rem;
   text-align: left;
-  font-size: 0.9em;
+  font-size: 1em;
 }
 
 .sort-modal-option-btn:hover {
@@ -265,7 +268,7 @@
   gap: 0.35rem;
   margin: 0 0 0.85rem;
   color: var(--modal-muted-text);
-  font-size: 0.86em;
+  font-size: 1em;
 }
 
 .settings-select-input {
@@ -275,7 +278,7 @@
   background: var(--settings-control-bg);
   color: var(--settings-control-text);
   padding: 0.42rem 0.48rem;
-  font-size: 0.9em;
+  font-size: 1em;
 }
 
 .settings-select-input:focus {
@@ -302,7 +305,7 @@
   gap: 0.35rem;
   margin: 0;
   color: var(--modal-text);
-  font-size: 0.82em;
+  font-size: 1em;
   white-space: nowrap;
 }
 
@@ -472,7 +475,7 @@
   --rail-control-max-width: 12.5rem;
   --rail-control-height: 1.85rem;
   --rail-control-padding: 0.24rem 0.55rem;
-  --rail-control-font-size: 0.84em;
+  --rail-control-font-size: 1em;
   --rail-control-line-height: 1.2;
 }
 
@@ -497,7 +500,7 @@
   background: var(--action-chip-bg);
   color: var(--action-chip-text);
   padding: 0.25rem 0.5rem;
-  font-size: 0.8em;
+  font-size: 1em;
 }
 
 .note-picker-aisle-choice.is-active {
@@ -713,7 +716,7 @@
 
 .note-reference-heading-label {
   color: var(--modal-muted-text);
-  font-size: 0.78em;
+  font-size: 1em;
   font-weight: 600;
   text-transform: lowercase;
   white-space: nowrap;
@@ -745,7 +748,7 @@
   background: var(--action-chip-bg);
   color: var(--action-chip-text);
   padding: 0.28rem 0.5rem 0.28rem calc(0.5rem + var(--note-reference-heading-indent, 0rem));
-  font-size: 0.8em;
+  font-size: 1em;
   text-align: left;
 }
 
@@ -764,7 +767,7 @@
 
 .note-copy-behavior-label {
   color: var(--modal-muted-text);
-  font-size: 0.78em;
+  font-size: 1em;
   font-weight: 600;
   text-transform: lowercase;
 }
@@ -812,7 +815,7 @@
   color: var(--action-chip-text);
   padding: 0.24rem 0.55rem;
   font: inherit;
-  font-size: 0.84em;
+  font-size: 1em;
   line-height: 1.2;
   white-space: nowrap;
   box-sizing: border-box;
@@ -898,7 +901,7 @@
   color: var(--action-chip-text);
   padding: 0.32rem 0.5rem;
   font: inherit;
-  font-size: 0.86em;
+  font-size: 1em;
   text-align: left;
   cursor: grab;
   user-select: none;

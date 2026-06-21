@@ -146,6 +146,30 @@ export function renameNotePreviewRangeLabelFromView(
   return true
 }
 
+export function convertNotePreviewRangeToLinkFromView(
+  view: any,
+  range: Pick<NotePreviewRange, 'from' | 'to' | 'token'>,
+): boolean {
+  if (!view?.state?.tr || typeof view.dispatch !== 'function') return false
+  const parsed = parseMarkdownNoteReferenceToken(range.token)
+  if (!parsed?.embed || typeof view.state.tr.insertText !== 'function') return false
+  const nextToken = buildMarkdownNoteReferenceToken({
+    embed: false,
+    target: parsed.target,
+    label: parsed.label,
+  })
+  if (!nextToken) return false
+  const docSize = view.state.doc?.content?.size ?? range.to
+  const from = Math.max(0, Math.min(docSize, Math.floor(Math.min(range.from, range.to))))
+  const to = Math.max(from, Math.min(docSize, Math.floor(Math.max(range.from, range.to))))
+  if (to <= from) return false
+  let transaction = view.state.tr.insertText(nextToken, from, to)
+  if (typeof transaction?.scrollIntoView === 'function') transaction = transaction.scrollIntoView()
+  view.dispatch(transaction)
+  if (typeof view.focus === 'function') view.focus()
+  return true
+}
+
 export function createNotePreviewPlugin({
   getAppState,
   getCurrentNoteBodyId,
@@ -197,6 +221,7 @@ export function createNotePreviewPlugin({
                                 aisleIds={range.payload.aisleIds}
                                 onOpenNote={onOpenNote}
                                 onDelete={() => deleteNotePreviewRangeFromView(view, range)}
+                                onConvertToLink={() => convertNotePreviewRangeToLinkFromView(view, range)}
                                 onRenameLabel={(label) => renameNotePreviewRangeLabelFromView(view, range, label)}
                               />,
                             )

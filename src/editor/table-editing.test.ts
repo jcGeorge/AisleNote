@@ -15,10 +15,7 @@ import {
   getTableRowReorderMarkerStyle,
   getTableReorderDragDecision,
   getTableSelectionCellClassNames,
-  isBlankTableSideSelectionTarget,
   isEditorRootFocused,
-  isPointInTableAfterSelectionZone,
-  isPointInTableRightSelectionZone,
   isTableRangeMoveNoop,
   isSelectedTableNode,
   moveTableCellSelectionByTab,
@@ -627,25 +624,6 @@ describe('table editing controls', () => {
     expect(placeTableCaretAtCoords(view, { left: 120, top: 80 })).toBe(false)
   })
 
-  it('detects right-side table clicks inside the table vertical band', () => {
-    const tableRect = { top: 80, left: 120, width: 220, height: 72 }
-
-    expect(isPointInTableRightSelectionZone(tableRect, { left: 344, top: 96 })).toBe(true)
-    expect(isPointInTableRightSelectionZone(tableRect, { left: 340, top: 96 })).toBe(false)
-    expect(isPointInTableRightSelectionZone(tableRect, { left: 344, top: 70 })).toBe(false)
-    expect(isPointInTableRightSelectionZone(tableRect, { left: 344, top: 153 })).toBe(false)
-  })
-
-  it('detects bottom-line table clicks across the table width', () => {
-    const tableRect = { top: 80, left: 120, width: 220, height: 72 }
-
-    expect(isPointInTableAfterSelectionZone(tableRect, { left: 180, top: 152 })).toBe(true)
-    expect(isPointInTableAfterSelectionZone(tableRect, { left: 180, top: 158 })).toBe(true)
-    expect(isPointInTableAfterSelectionZone(tableRect, { left: 180, top: 144 })).toBe(false)
-    expect(isPointInTableAfterSelectionZone(tableRect, { left: 100, top: 152 })).toBe(false)
-    expect(isPointInTableAfterSelectionZone(tableRect, { left: 360, top: 152 })).toBe(false)
-  })
-
   it('requires browser focus inside the editor root before showing table controls', () => {
     const activeElement = { id: 'cell' }
     const root = {
@@ -658,27 +636,7 @@ describe('table editing controls', () => {
     expect(isEditorRootFocused(null, activeElement)).toBe(false)
   })
 
-  it('limits table side selection to non-interactive editor targets', () => {
-    const editorSurface = {} as Element
-    const paragraphTarget = {
-      closest: () => null,
-    } as unknown as Element
-    const imageTarget = {
-      closest: (selector: string) => (selector.includes('img') ? imageTarget : null),
-    } as unknown as Element
-    const view = {
-      dom: {
-        contains: (target: Element) => target === paragraphTarget || target === imageTarget,
-      },
-    }
-
-    expect(isBlankTableSideSelectionTarget({ dom: editorSurface }, editorSurface)).toBe(true)
-    expect(isBlankTableSideSelectionTarget(view, paragraphTarget)).toBe(true)
-    expect(isBlankTableSideSelectionTarget(view, imageTarget)).toBe(false)
-    expect(isBlankTableSideSelectionTarget(view, null)).toBe(false)
-  })
-
-  it('selects the whole table node for right-side table clicks', () => {
+  it('selects the whole table node for explicit table actions', () => {
     const view = createView(buildDoc(), 1, 0)
 
     expect(selectTableNodeAtPosition(view, 0)).toBe(true)

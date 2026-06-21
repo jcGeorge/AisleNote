@@ -8,7 +8,6 @@ export const SYNCED_UI_SIMPLE_SETTING_DEFINITIONS = Object.freeze([
   { key: 'findReplaceScope', kind: 'enum', defaultValue: 'note', values: ['note', 'folder', 'notebook'] },
   { key: 'removeNoteReferencesOnTrash', kind: 'boolean', defaultValue: true },
   { key: 'noteMentionCopyRequiresConfirmation', kind: 'boolean', defaultValue: true },
-  { key: 'deleteActiveAisleShortcutEnabled', kind: 'boolean', defaultValue: false },
   { key: 'scratchpadNewAisleSide', kind: 'enum', defaultValue: 'left', values: ['left', 'right'] },
   {
     key: 'tabRenameEnterBehavior',
@@ -48,11 +47,6 @@ export const MISC_SYNCED_UI_BOOLEAN_SETTINGS = Object.freeze([
     key: 'noteMentionCopyRequiresConfirmation',
     label: '@ menu requires confirmation for replacing aisle with synced or independent copy',
     ariaLabel: '@ menu requires confirmation for replacing aisle with synced or independent copy',
-  },
-  {
-    key: 'deleteActiveAisleShortcutEnabled',
-    label: 'primary+w deletes active aisle',
-    ariaLabel: 'primary+w deletes active aisle',
   },
 ])
 

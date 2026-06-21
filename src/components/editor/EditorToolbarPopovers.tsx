@@ -1,5 +1,8 @@
+import React from 'react'
 import { createPortal } from 'react-dom'
 import type { ToolbarHeadingLevel } from './toolbar-state'
+
+void React
 
 type ToolbarPopoverPosition = {
   top: number
@@ -17,13 +20,23 @@ type EditorToolbarPopoversProps = {
   }
   onExecuteToolbarCommand: (command: string, payload?: Record<string, unknown>) => void
   onOpenCopyModal: () => void
-  onOpenDeduplicateModal: () => void
+  syncedItemKind?: 'note' | 'aisle' | null
+  onFilterSyncedItem: () => void
+  onQuickDecoupleSyncedItem: () => void
+  onShowSyncedItems: () => void
 }
 
 export function CopyToolbarMenu({
   onOpenCopyModal,
-  onOpenDeduplicateModal,
-}: Pick<EditorToolbarPopoversProps, 'onOpenCopyModal' | 'onOpenDeduplicateModal'>) {
+  syncedItemKind = null,
+  onFilterSyncedItem,
+  onQuickDecoupleSyncedItem,
+  onShowSyncedItems,
+}: Pick<
+  EditorToolbarPopoversProps,
+  'onOpenCopyModal' | 'syncedItemKind' | 'onFilterSyncedItem' | 'onQuickDecoupleSyncedItem' | 'onShowSyncedItems'
+>) {
+  const syncedLabel = syncedItemKind ?? ''
   return (
     <>
       <button
@@ -38,18 +51,46 @@ export function CopyToolbarMenu({
       >
         make this a copy of
       </button>
-      <button
-        type="button"
-        className="note-tools-item"
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={(event) => {
-          event.preventDefault()
-          event.stopPropagation()
-          onOpenDeduplicateModal()
-        }}
-      >
-        de-couple
-      </button>
+      {syncedItemKind ? (
+        <>
+          <button
+            type="button"
+            className="note-tools-item"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onFilterSyncedItem()
+            }}
+          >
+            filter synced {syncedLabel}
+          </button>
+          <button
+            type="button"
+            className="note-tools-item"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onQuickDecoupleSyncedItem()
+            }}
+          >
+            de-couple {syncedLabel}
+          </button>
+          <button
+            type="button"
+            className="note-tools-item"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onShowSyncedItems()
+            }}
+          >
+            show synced {syncedLabel}s
+          </button>
+        </>
+      ) : null}
     </>
   )
 }
@@ -62,7 +103,10 @@ export function EditorToolbarPopovers({
   toolbarPopoverPosition,
   onExecuteToolbarCommand,
   onOpenCopyModal,
-  onOpenDeduplicateModal,
+  syncedItemKind,
+  onFilterSyncedItem,
+  onQuickDecoupleSyncedItem,
+  onShowSyncedItems,
 }: EditorToolbarPopoversProps) {
   if (typeof document === 'undefined') return null
   if (disabled) return null
@@ -135,7 +179,10 @@ export function EditorToolbarPopovers({
           >
             <CopyToolbarMenu
               onOpenCopyModal={onOpenCopyModal}
-              onOpenDeduplicateModal={onOpenDeduplicateModal}
+              syncedItemKind={syncedItemKind}
+              onFilterSyncedItem={onFilterSyncedItem}
+              onQuickDecoupleSyncedItem={onQuickDecoupleSyncedItem}
+              onShowSyncedItems={onShowSyncedItems}
             />
           </div>,
           portalRoot,

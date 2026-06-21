@@ -107,7 +107,7 @@ User frontmatter values live inside the aisle Markdown file as a top YAML block.
 
 Tags are authored as visible Obsidian-style hashtags in aisle Markdown, such as `#tag`, `#multi-word`, and `#nested/tag`. The app derives aisle tags from visible Markdown text and note tags from the union of that note's aisle tags. Hashtags inside inline code and fenced code blocks are ignored. If valid YAML frontmatter already contains `tags`, the loader migrates those tags into a visible hashtag line in the Markdown body and then treats YAML `tags` as a computed projection of the visible tags. Ordinary notes with only inline hashtags do not get forced YAML frontmatter.
 
-Linked note and aisle mirrors can produce more than one visible Markdown file for the same `aisleBodyId`. On load, schema 1 readers use stored `contentHash` values to detect closed-app edits to any mirror. If one unique changed content exists, that file becomes the shared body. If multiple unique changed contents exist, the newest locally modified content stays linked and the other changed mirrors are de-coupled into independent notes or aisles. `messages.json` stores durable user-facing records for those automatic de-couplings.
+Linked note and aisle mirrors can produce more than one visible Markdown file for the same `aisleBodyId`. On load, schema readers use stored `contentHash` values to detect closed-app edits to any mirror. The newest locally modified changed mirror becomes the shared body, even when multiple mirrors changed differently. The linked notes or aisles stay linked, and the next save writes the winning content back to every mirror.
 
 Example aisle file:
 

@@ -145,7 +145,7 @@ function normalizeNotebookRecord(userDataPath, record) {
     updatedAt: typeof record?.updatedAt === 'string' ? record.updatedAt : nowIso(),
     syncStatus: typeof record?.syncStatus === 'string' ? record.syncStatus : (syncTargetPath ? 'synced' : 'local-only'),
     syncPending: Boolean(record?.syncPending),
-    syncFiles: Array.isArray(record?.syncFiles) ? record.syncFiles : [],
+    syncFiles: normalizeNotebookSyncFiles(record?.syncFiles),
     lastSyncedAt: typeof record?.lastSyncedAt === 'string' ? record.lastSyncedAt : undefined,
     lastSyncError: typeof record?.lastSyncError === 'string' ? record.lastSyncError : undefined,
     isLocalOnlyMigration:
@@ -220,7 +220,7 @@ function buildNotebookRecordFromFolder(userDataPath, notebookRootPath, options =
     updatedAt: timestamp,
     syncStatus: syncTargetPath ? 'synced' : 'local-only',
     syncPending: false,
-    syncFiles: [],
+    syncFiles: syncTargetPath ? normalizeNotebookSyncFiles(loadResult.storageFiles) : [],
     lastSyncedAt: syncTargetPath ? timestamp : undefined,
     isLocalOnlyMigration: rootPath === defaultRoot,
   }
@@ -309,7 +309,7 @@ export function createNotebookRecord(userDataPath, { name, syncTargetPath, seria
     notebookId,
     syncMetadata: createSyncMetadata('notebook-created'),
   })
-  saveAppState(syncTargetPath, serializedState, {
+  const syncSaveResult = saveAppState(syncTargetPath, serializedState, {
     userDataPath,
     userSettingsRoot: userDataPath,
     notebookId,
@@ -325,7 +325,7 @@ export function createNotebookRecord(userDataPath, { name, syncTargetPath, seria
     updatedAt: timestamp,
     syncStatus: 'synced',
     syncPending: false,
-    syncFiles: [],
+    syncFiles: normalizeNotebookSyncFiles(syncSaveResult?.storageFiles),
     lastSyncedAt: timestamp,
   }
 }
@@ -403,6 +403,36 @@ function createSyncFiles(entries) {
       contentHash: entry.contentHash,
       byteLength: entry.byteLength,
     }))
+    .sort((left, right) => left.path.localeCompare(right.path))
+}
+
+export function normalizeNotebookSyncFiles(value) {
+  const entries = Array.isArray(value)
+    ? value
+    : Array.isArray(value?.entries)
+      ? value.entries
+      : []
+  return entries
+    .flatMap((entry) => {
+      const filePath = typeof entry?.path === 'string'
+        ? entry.path
+        : typeof entry?.relativePath === 'string'
+          ? entry.relativePath
+          : ''
+      const contentHash = typeof entry?.contentHash === 'string'
+        ? entry.contentHash
+        : typeof entry?.hash === 'string'
+          ? entry.hash
+          : ''
+      const byteLength = Number.isFinite(entry?.byteLength)
+        ? entry.byteLength
+        : Number.isFinite(entry?.size)
+          ? entry.size
+          : null
+      return filePath && contentHash && byteLength !== null
+        ? [{ path: filePath, contentHash, byteLength }]
+        : []
+    })
     .sort((left, right) => left.path.localeCompare(right.path))
 }
 

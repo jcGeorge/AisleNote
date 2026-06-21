@@ -423,6 +423,7 @@
 .note-preview-widget {
   --note-preview-editor-height: 21.5rem;
   box-sizing: border-box;
+  position: relative;
   width: 100%;
   max-width: 100%;
   margin: 0.7rem 0;
@@ -435,8 +436,17 @@
   cursor: default;
 }
 
+.tabs-note-preview-widget-host:has(.note-preview-widget.is-action-menu-open) {
+  z-index: 40;
+}
+
 .tabs-note-preview-widget-host .note-preview-widget {
   margin: 0;
+}
+
+.note-preview-widget.is-action-menu-open {
+  z-index: 40;
+  overflow: visible;
 }
 
 .note-preview-widget.is-size-compact {
@@ -463,12 +473,17 @@
 }
 
 .note-context-widget .context-bar-top {
+  position: relative;
+  z-index: 3;
   min-height: 0;
   padding: 0.16rem 0.5rem;
   border-bottom: 1px solid var(--app-border);
+  overflow: visible;
 }
 
 .note-context-widget .context-bar-lower {
+  position: relative;
+  z-index: 1;
   border-bottom: 1px solid var(--app-border);
 }
 
@@ -763,6 +778,69 @@
   height: 1rem;
 }
 
+.context-bar-menu-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.context-preview-action-menu-wrap {
+  position: static;
+  flex: 0 0 auto;
+}
+
+.context-preview-action-menu {
+  position: absolute;
+  top: calc(100% + 0.22rem);
+  right: 0.5rem;
+  z-index: 60;
+  display: grid;
+  min-width: 9.75rem;
+  gap: 0.1rem;
+  padding: 0.18rem;
+  border: 1px solid var(--context-menu-border);
+  border-radius: 0.4rem;
+  background: var(--context-menu-bg);
+  color: var(--context-menu-item-text);
+  box-shadow: var(--context-menu-shadow);
+  font-size: var(--ui-font-body);
+}
+
+.context-preview-action-menu[hidden] {
+  display: none;
+}
+
+.context-preview-action-menu-item {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 1.55rem;
+  padding: 0.15rem 0.42rem;
+  border: 0;
+  border-radius: 0.28rem;
+  background: transparent;
+  color: var(--context-menu-item-text);
+  font: inherit;
+  font-size: 1em;
+  line-height: 1.1;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.context-preview-action-menu-item:hover,
+.context-preview-action-menu-item:focus-visible {
+  background: var(--context-menu-item-hover-bg);
+}
+
+.context-preview-action-menu-delete {
+  color: var(--context-menu-danger-text);
+}
+
+.context-preview-action-menu-delete:hover,
+.context-preview-action-menu-delete:focus-visible {
+  background: var(--context-menu-danger-hover-bg);
+}
+
 .context-bar-delete-btn {
   border-color: var(--action-chip-border);
   border-radius: 0.25rem;
@@ -962,7 +1040,7 @@
   color: var(--context-menu-item-text);
   padding: 0.38rem 0.45rem;
   font: inherit;
-  font-size: 0.86em;
+  font-size: 1em;
   text-align: left;
 }
 
@@ -1003,17 +1081,17 @@
 }
 
 .note-heading-choice-level-5 {
-  font-size: 0.92em;
+  font-size: 1em;
   font-weight: 700;
 }
 
 .note-heading-choice-level-6 {
-  font-size: 0.86em;
+  font-size: 1em;
   font-weight: 700;
 }
 
 .note-heading-choice-paragraph {
-  font-size: 0.86em;
+  font-size: 1em;
   font-weight: 400;
 }
 
@@ -1286,84 +1364,6 @@
   pointer-events: auto;
 }
 
-.note-scratchpad-aisle-controls {
-  --note-scratchpad-aisle-control-size: 3.225rem;
-  --note-scratchpad-aisle-add-icon-size: 1.77rem;
-  --note-scratchpad-aisle-delete-icon-scale: 1.5;
-  position: absolute;
-  right: 0.9rem;
-  bottom: 0.85rem;
-  left: 0.9rem;
-  z-index: 36;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  pointer-events: none;
-}
-
-.note-scratchpad-aisle-control-btn {
-  width: var(--note-scratchpad-aisle-control-size);
-  height: var(--note-scratchpad-aisle-control-size);
-  min-width: var(--note-scratchpad-aisle-control-size);
-  min-height: var(--note-scratchpad-aisle-control-size);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid var(--action-chip-border);
-  border-radius: 999px;
-  background: var(--action-chip-bg);
-  color: var(--action-chip-text);
-  box-shadow: 0 0.18rem 0.55rem color-mix(in srgb, var(--app-bg) 28%, transparent);
-  pointer-events: auto;
-}
-
-.note-scratchpad-aisle-add-left-btn {
-  grid-column: 1;
-  justify-self: start;
-}
-
-.note-scratchpad-aisle-delete-btn {
-  grid-column: 2;
-  justify-self: center;
-  border-color: var(--app-danger-border);
-  background: var(--app-danger-bg);
-  color: var(--app-danger-text);
-}
-
-.note-scratchpad-aisle-add-right-btn {
-  grid-column: 3;
-  justify-self: end;
-}
-
-.note-scratchpad-aisle-control-btn:hover,
-.note-scratchpad-aisle-control-btn:focus-visible,
-.note-scratchpad-aisle-control-btn:active {
-  border-color: var(--action-chip-selected-border);
-  background: var(--action-chip-selected-bg);
-  color: var(--action-chip-selected-text);
-}
-
-.note-scratchpad-aisle-delete-btn:hover,
-.note-scratchpad-aisle-delete-btn:focus-visible,
-.note-scratchpad-aisle-delete-btn:active {
-  border-color: var(--app-danger-hover-border);
-  background: var(--app-danger-hover-bg);
-  color: var(--app-danger-hover-text);
-}
-
-.note-scratchpad-aisle-add-icon {
-  width: var(--note-scratchpad-aisle-add-icon-size);
-  height: var(--note-scratchpad-aisle-add-icon-size);
-}
-
-.note-scratchpad-aisle-delete-icon {
-  width: 1.16rem;
-  height: 1.16rem;
-  transform: scale(var(--note-scratchpad-aisle-delete-icon-scale));
-  transform-origin: center;
-}
-
 .note-aisle-frontmatter-icon {
   width: 1rem;
   height: 1.12rem;
@@ -1375,6 +1375,12 @@
   width: 1.25rem;
   height: 1.25rem;
   margin: 0 !important;
+}
+
+.note-aisle-frontmatter-filter-icon {
+  display: block;
+  width: 1.1rem;
+  height: 1.1rem;
 }
 
 .aisle-toc-panel-layer {
@@ -1447,7 +1453,7 @@
   color: var(--context-menu-item-text);
   padding: 0.34rem 0.42rem 0.34rem calc(0.42rem + var(--toc-heading-indent, 0rem));
   font: inherit;
-  font-size: 0.88em;
+  font-size: 1em;
   line-height: 1.25;
   text-align: left;
   overflow-wrap: anywhere;
@@ -1645,7 +1651,7 @@
 }
 
 .aisle-edit-modal .btn {
-  font-size: 0.875em;
+  font-size: 1em;
 }
 
 .aisle-edit-modal-primary-actions {
@@ -1890,7 +1896,7 @@
   color: var(--context-menu-item-text);
   padding: 0.32rem 0.42rem;
   font: inherit;
-  font-size: 0.88em;
+  font-size: 1em;
   text-align: left;
 }
 
@@ -1953,7 +1959,7 @@
   color: var(--context-menu-item-text);
   padding: 0.32rem 0.42rem;
   font: inherit;
-  font-size: 0.9em;
+  font-size: 1em;
   text-align: left;
 }
 
@@ -2018,6 +2024,8 @@
 }
 
 .find-replace-icon-btn {
+  --app-close-button-size: 1.75rem;
+  --app-close-icon-size: 1rem;
   border: 0;
   background: transparent;
   color: inherit;
@@ -2047,7 +2055,7 @@
 .find-replace-scope-title,
 .find-replace-error {
   color: var(--app-text-subtle);
-  font-size: 0.78em;
+  font-size: 1em;
   font-weight: 700;
 }
 
@@ -2083,7 +2091,7 @@
   color: var(--action-chip-text);
   padding: 0.24rem 0.48rem;
   font: inherit;
-  font-size: 0.78em;
+  font-size: 1em;
   font-weight: 700;
 }
 
@@ -2111,7 +2119,7 @@
   color: var(--action-chip-text);
   padding: 0.26rem 0.48rem;
   font: inherit;
-  font-size: 0.82em;
+  font-size: 1em;
 }
 
 .find-replace-actions button:disabled {
@@ -2464,7 +2472,7 @@
   color: var(--image-tool-btn-text);
   box-shadow: var(--table-tool-btn-shadow);
   font: inherit;
-  font-size: 0.95em;
+  font-size: 1em;
   font-weight: 700;
   line-height: 1;
   padding: 0;
@@ -2644,6 +2652,10 @@
   width: min(30rem, calc(100vw - 1.5rem));
 }
 
+.link-prompt.is-centered {
+  transform: translateX(-50%);
+}
+
 .link-prompt-header,
 .link-prompt-actions {
   display: flex;
@@ -2658,7 +2670,7 @@
 .link-prompt-title {
   min-width: 0;
   color: var(--link-prompt-input-text);
-  font-size: 1rem;
+  font-size: 1em;
   line-height: 1.25;
 }
 
@@ -2667,13 +2679,17 @@
   gap: 0.35rem;
   min-width: 0;
   color: var(--link-prompt-input-text);
-  font-size: 0.85rem;
+  font-size: 1em;
   font-weight: 600;
 }
 
 .link-prompt-actions {
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+.link-prompt-note-btn {
+  margin-right: auto;
 }
 
 .link-prompt-input {
@@ -2684,7 +2700,7 @@
   color: var(--link-prompt-input-text);
   border-radius: 0.38rem;
   padding: 0.55rem 0.65rem;
-  font-size: 0.95rem;
+  font-size: 1em;
   line-height: 1.25;
 }
 
@@ -2702,13 +2718,15 @@
   background: var(--link-prompt-btn-bg);
   color: var(--link-prompt-btn-text);
   border-radius: 0.38rem;
-  font-size: 0.9rem;
+  font-size: 1em;
   line-height: 1.2;
   min-height: 2.1rem;
   padding: 0.4rem 0.8rem;
 }
 
 .link-prompt-close-btn {
+  --app-close-button-size: 2.1rem;
+  --app-close-icon-size: 1rem;
   min-width: 2.1rem;
   padding-inline: 0.55rem;
 }

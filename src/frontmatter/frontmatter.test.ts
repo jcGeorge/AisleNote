@@ -5,6 +5,7 @@ import {
   extractMarkdownFrontmatter,
   getFrontmatterDatetimePickerValue,
   getFrontmatterDraftValueForType,
+  normalizeFrontmatterFixedListOptions,
   parseFrontmatterYaml,
   prependMarkdownFrontmatter,
   normalizeFrontmatterSettings,
@@ -132,6 +133,57 @@ describe('frontmatter templates', () => {
       'none',
       'tags',
     ])
+  })
+
+  it('normalizes fixed list options and clamps invalid defaults', () => {
+    const normalized = normalizeFrontmatterSettings({
+      templates: [
+        {
+          id: 'fixed-template',
+          name: 'Fixed',
+          fields: [
+            {
+              id: 'status',
+              key: 'status',
+              type: 'fixedList',
+              defaultValue: 'archived',
+              computed: 'tags',
+              options: ['draft', 'published', 'draft', ' '],
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(normalizeFrontmatterFixedListOptions('draft, published\ndraft')).toEqual(['draft', 'published'])
+    expect(normalized.templates[0]?.fields[0]).toMatchObject({
+      type: 'fixedList',
+      defaultValue: 'draft',
+      computed: 'none',
+      options: ['draft', 'published'],
+    })
+  })
+
+  it('applies fixed list templates as a single allowed string value', () => {
+    const fixedTemplate: FrontmatterTemplate = {
+      id: 'fixed-template',
+      name: 'Fixed',
+      fields: [
+        {
+          id: 'status',
+          key: 'status',
+          type: 'fixedList',
+          defaultValue: 'draft',
+          computed: 'none',
+          options: ['draft', 'published'],
+        },
+      ],
+    }
+
+    expect(applyFrontmatterTemplate(null, fixedTemplate, context)).toEqual({ status: 'draft' })
+    expect(applyFrontmatterTemplate({ status: 'published' }, fixedTemplate, context)).toEqual({ status: 'published' })
+    expect(applyFrontmatterTemplate({ status: 'archived' }, fixedTemplate, context)).toEqual({ status: 'draft' })
+    expect(coerceFrontmatterFieldValue('fixedList', 'published')).toBe('published')
   })
 
   it('applies computed tags to list fields', () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  getEditorKeyboardHistoryDirection,
   resolveEditorNavigationIntent,
   resolveEditorBeforeInputIntent,
   resolveEditorKeyDownIntent,
@@ -37,6 +38,18 @@ describe('editor input intent resolution', () => {
         hasMultiLineEdit: true,
       })),
     ).toEqual({ type: 'history', direction: 'undo' })
+  })
+
+  it('maps primary modifier undo and redo shortcuts by platform', () => {
+    expect(getEditorKeyboardHistoryDirection({ key: 'z', ctrlKey: true }, false)).toBe('undo')
+    expect(getEditorKeyboardHistoryDirection({ key: 'z', code: 'KeyZ', ctrlKey: true, shiftKey: true }, false)).toBe(
+      'redo',
+    )
+    expect(getEditorKeyboardHistoryDirection({ key: 'y', ctrlKey: true }, false)).toBe('redo')
+    expect(getEditorKeyboardHistoryDirection({ key: 'z', metaKey: true }, true)).toBe('undo')
+    expect(getEditorKeyboardHistoryDirection({ key: 'z', metaKey: true, shiftKey: true }, true)).toBe('redo')
+    expect(getEditorKeyboardHistoryDirection({ key: 'z', ctrlKey: true }, true)).toBeNull()
+    expect(getEditorKeyboardHistoryDirection({ key: 'z', ctrlKey: true, altKey: true }, false)).toBeNull()
   })
 
   it('blocks newline shortcuts from text inputs', () => {

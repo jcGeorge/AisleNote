@@ -14,6 +14,7 @@ import {
 import {
   getAisleActivationPointerFromNoteWorkspaceEvent,
   getAisleEditorKeyFromNoteWorkspacePointerTarget,
+  getRightSideBlockGutterTarget,
   shouldActivateAisleFromNoteWorkspacePointer,
   shouldExitArrangeModeFromNoteWorkspacePointer,
 } from './note-workspace-events'
@@ -22,6 +23,7 @@ import { buildInternalNoteLinkToken, buildPreviewToken } from '../../notes/note-
 
 const noteWorkspaceSource = readFileSync(fileURLToPath(new URL('./NoteWorkspace.tsx', import.meta.url)), 'utf8')
 const notebookAppSource = readFileSync(fileURLToPath(new URL('../../app/NotebookApp.tsx', import.meta.url)), 'utf8')
+const editorShellCss = readFileSync(fileURLToPath(new URL('../../styles/editor-shell.css', import.meta.url)), 'utf8')
 
 const aisles: ResolvedNoteAisle[] = [
   { id: 'a', aisleBodyId: 'a', markdown: 'active' },
@@ -73,6 +75,7 @@ function renderWorkspace(
     activeAisleId?: string
     aisles?: ResolvedNoteAisle[]
     frontmatterAisleIds?: Set<string>
+    frontmatterTemplateFilterAisleIds?: Set<string>
     linkedAisleIds?: Set<string>
     wholeNoteLinked?: boolean
     aisleWidths?: Record<string, number>
@@ -81,20 +84,6 @@ function renderWorkspace(
     deferInactivePreviewFallbacks?: boolean
     appState?: AppState | null
     onOpenNoteReference?: (target: NoteLocation) => void
-    scratchpadAisleControls?: {
-      showAddButtons?: boolean
-      showDeleteButton?: boolean
-      onAddAisleLeft: () => void
-      onAddAisleRight: () => void
-      onDeleteActiveAisle: () => void
-    }
-    regularNoteAisleControls?: {
-      showAddButtons?: boolean
-      showDeleteButton?: boolean
-      onAddAisleLeft: () => void
-      onAddAisleRight: () => void
-      onDeleteActiveAisle: () => void
-    }
   } = {},
 ) {
   return renderToStaticMarkup(
@@ -105,11 +94,10 @@ function renderWorkspace(
       editorReadOnly={false}
       arrangeModeActive={options.arrangeModeActive}
       frontmatterAisleIds={options.frontmatterAisleIds}
+      frontmatterTemplateFilterAisleIds={options.frontmatterTemplateFilterAisleIds}
       linkedAisleIds={options.linkedAisleIds}
       wholeNoteLinked={options.wholeNoteLinked}
       aisleWidths={options.aisleWidths}
-      scratchpadAisleControls={options.scratchpadAisleControls}
-      regularNoteAisleControls={options.regularNoteAisleControls}
       aisleScrollRef={{ current: null }}
       toolbar={null}
       headingPopover={null}
@@ -126,16 +114,10 @@ function renderWorkspace(
       onRegisterAisleEditorRoot={() => undefined}
       appState={options.appState}
       onOpenNoteReference={options.onOpenNoteReference}
+      onFilterAisleFrontmatterTemplate={() => undefined}
     />,
   )
 }
-
-const scratchpadAisleControls = (showDeleteButton: boolean) => ({
-  showDeleteButton,
-  onAddAisleLeft: () => undefined,
-  onAddAisleRight: () => undefined,
-  onDeleteActiveAisle: () => undefined,
-})
 
 describe('NoteWorkspace aisle mounting', () => {
   it('wires editable image and video selection through the notebook workspace', () => {
@@ -440,6 +422,18 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html.match(/note-aisle-resize-capsule/g) ?? []).toHaveLength(3)
   })
 
+  it('renders a separate derived frontmatter template filter action', () => {
+    const html = renderWorkspace(new Set(['a']), {
+      frontmatterAisleIds: new Set(['a']),
+      frontmatterTemplateFilterAisleIds: new Set(['a']),
+    })
+
+    expect(html).toContain('Open frontmatter for aisle 1')
+    expect(html).toContain('Filter by frontmatter template for aisle 1')
+    expect(html).toContain('note-aisle-frontmatter-btn')
+    expect(html).toContain('note-aisle-frontmatter-filter-btn')
+  })
+
   it('applies persisted custom aisle widths to split panes', () => {
     const html = renderWorkspace(new Set(['a']), { aisleWidths: { b: 700 } })
 
@@ -631,85 +625,23 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).not.toContain('note-aisle-link-btn')
     expect(html).not.toContain('note-aisle-frontmatter-btn')
     expect(html).not.toContain('note-scratchpad-aisle-controls')
+    expect(html).not.toContain('has-bottom-aisle-controls')
   })
 
-  it('renders scratchpad controls only for the active aisle', () => {
-    const html = renderWorkspace(new Set(['b']), {
-      activeAisleId: 'b',
-      scratchpadAisleControls: scratchpadAisleControls(true),
-    })
+  it('does not expose retired bottom aisle controls', () => {
+    const html = renderWorkspace(new Set(['b']), { activeAisleId: 'b' })
 
-    expect(html.match(/note-scratchpad-aisle-controls/g) ?? []).toHaveLength(1)
-    expect(html).toContain('Scratchpad aisle 2 controls')
-    expect(html).not.toContain('Scratchpad aisle 1 controls')
-    expect(html).not.toContain('Scratchpad aisle 3 controls')
-    expect(html).toContain('Add aisle to left of aisle 2')
-    expect(html).toContain('Add aisle to right of aisle 2')
-    expect(html.match(/note-scratchpad-aisle-add-icon/g) ?? []).toHaveLength(2)
-    expect(html).toContain('data-app-icon="aisleRight"')
-    expect(html).toContain('transform="translate(24 0) scale(-1 1)"')
-    expect(html).not.toContain('note-scratchpad-aisle-plus-icon')
-    expect(html).toContain('Delete aisle 2')
-    expect(html).toContain('aisle-edit-delete-icon note-scratchpad-aisle-delete-icon')
-  })
-
-  it('hides scratchpad delete when only one aisle remains', () => {
-    const singleAisle: ResolvedNoteAisle[] = [{ id: 'solo', aisleBodyId: 'solo', markdown: 'single' }]
-    const html = renderWorkspace(new Set(['solo']), {
-      aisles: singleAisle,
-      activeAisleId: 'solo',
-      scratchpadAisleControls: scratchpadAisleControls(false),
-    })
-
-    expect(html).toContain('Scratchpad aisle 1 controls')
-    expect(html.match(/note-scratchpad-aisle-add-btn/g) ?? []).toHaveLength(2)
-    expect(html).toContain('Add aisle to left of aisle 1')
-    expect(html).toContain('Add aisle to right of aisle 1')
-    expect(html.match(/note-scratchpad-aisle-add-icon/g) ?? []).toHaveLength(2)
-    expect(html).not.toContain('Delete aisle 1')
-    expect(html).not.toContain('note-scratchpad-aisle-delete-btn')
-    expect(html).not.toContain('aisle-edit-delete-icon note-scratchpad-aisle-delete-icon')
-  })
-
-  it('renders regular note add controls only for the active aisle', () => {
-    const html = renderWorkspace(new Set(['b']), {
-      activeAisleId: 'b',
-      regularNoteAisleControls: {
-        showAddButtons: true,
-        showDeleteButton: false,
-        onAddAisleLeft: () => undefined,
-        onAddAisleRight: () => undefined,
-        onDeleteActiveAisle: () => undefined,
-      },
-    })
-
-    expect(html.match(/note-scratchpad-aisle-controls/g) ?? []).toHaveLength(1)
-    expect(html).toContain('Aisle 2 controls')
-    expect(html).not.toContain('Aisle 1 controls')
-    expect(html).toContain('Add aisle to left of aisle 2')
-    expect(html).toContain('Add aisle to right of aisle 2')
-    expect(html.match(/note-scratchpad-aisle-add-btn/g) ?? []).toHaveLength(2)
-    expect(html).not.toContain('Delete aisle 2')
-  })
-
-  it('renders the regular note delete control without add buttons', () => {
-    const singleAisle: ResolvedNoteAisle[] = [{ id: 'solo', aisleBodyId: 'solo', markdown: 'single' }]
-    const html = renderWorkspace(new Set(['solo']), {
-      aisles: singleAisle,
-      activeAisleId: 'solo',
-      regularNoteAisleControls: {
-        showAddButtons: false,
-        showDeleteButton: true,
-        onAddAisleLeft: () => undefined,
-        onAddAisleRight: () => undefined,
-        onDeleteActiveAisle: () => undefined,
-      },
-    })
-
-    expect(html).toContain('Aisle 1 controls')
-    expect(html).toContain('Delete aisle 1')
-    expect(html).toContain('note-scratchpad-aisle-delete-btn')
+    expect(html).not.toContain('note-scratchpad-aisle-controls')
     expect(html).not.toContain('note-scratchpad-aisle-add-btn')
+    expect(html).not.toContain('note-scratchpad-aisle-delete-btn')
+    expect(html).not.toContain('has-bottom-aisle-controls')
+    expect(noteWorkspaceSource).not.toContain('scratchpadAisleControls')
+    expect(noteWorkspaceSource).not.toContain('regularNoteAisleControls')
+    expect(noteWorkspaceSource).not.toContain('onAddAisleLeft')
+    expect(noteWorkspaceSource).not.toContain('onDeleteActiveAisle')
+    expect(editorShellCss).not.toContain('note-scratchpad-aisle-controls')
+    expect(editorShellCss).not.toContain('note-bottom-aisle')
+    expect(editorShellCss).not.toContain('has-bottom-aisle-controls')
   })
 
   it('renders fm only for aisles with valid frontmatter', () => {
@@ -855,12 +787,121 @@ describe('NoteWorkspace aisle mounting', () => {
       button: 0,
       clientX: 24,
       clientY: 48,
-    } as PointerEvent)).toEqual({ clientX: 24, clientY: 48 })
+    } as PointerEvent)).toEqual({ clientX: 24, clientY: 48, mode: 'coordinate' })
     expect(getAisleActivationPointerFromNoteWorkspaceEvent({
       button: 2,
       clientX: 24,
       clientY: 48,
     } as PointerEvent)).toBeUndefined()
+  })
+
+  it('detects blank gutter clicks to the right of a table', () => {
+    const table = {
+      matches: (selector: string) => selector === 'table',
+      getBoundingClientRect: () => ({ top: 80, left: 120, right: 340, bottom: 220, width: 220, height: 140 }),
+    }
+    const root = {
+      dataset: { aisleEditorKey: 'body-1::b' },
+      closest: (selector: string) => (selector === '[data-aisle-editor-key]' ? root : null),
+      contains: (target: unknown) => target === table,
+      querySelectorAll: (selector: string) => (selector === 'table, img' ? [table] : []),
+    } as unknown as EventTarget
+
+    expect(getRightSideBlockGutterTarget(root, { clientX: 360, clientY: 120 })).toBe('table')
+    expect(getRightSideBlockGutterTarget(root, { clientX: 330, clientY: 120 })).toBeNull()
+    expect(getRightSideBlockGutterTarget(root, { clientX: 360, clientY: 70 })).toBeNull()
+    expect(getRightSideBlockGutterTarget(root, { clientX: 360, clientY: 240 })).toBeNull()
+    expect(noteWorkspaceSource).toContain("mode: 'focus-only'")
+    expect(noteWorkspaceSource).toContain('onMouseDownCapture')
+    expect(noteWorkspaceSource).toContain('event.nativeEvent.stopImmediatePropagation()')
+  })
+
+  it('detects blank gutter clicks to the right of an image-only paragraph', () => {
+    const paragraph = {
+      textContent: '\u200b',
+    }
+    const image = {
+      matches: (selector: string) => selector === 'img',
+      closest: (selector: string) => (selector === 'p' ? paragraph : null),
+      getBoundingClientRect: () => ({ top: 80, left: 120, right: 340, bottom: 360, width: 220, height: 280 }),
+    }
+    const root = {
+      dataset: { aisleEditorKey: 'body-1::b' },
+      closest: (selector: string) => (selector === '[data-aisle-editor-key]' ? root : null),
+      contains: () => true,
+      querySelectorAll: (selector: string) => (selector === 'table, img' ? [image] : []),
+    }
+    const target = {
+      closest: (selector: string) => {
+        if (selector === '[data-aisle-editor-key]') return root
+        if (selector.startsWith('p,')) return paragraph
+        return null
+      },
+    } as unknown as EventTarget
+
+    expect(getRightSideBlockGutterTarget(target, { clientX: 360, clientY: 120 })).toBe('image')
+    expect(getRightSideBlockGutterTarget(target, { clientX: 330, clientY: 120 })).toBeNull()
+    expect(getRightSideBlockGutterTarget(target, { clientX: 360, clientY: 70 })).toBeNull()
+    expect(getRightSideBlockGutterTarget(target, { clientX: 360, clientY: 380 })).toBeNull()
+  })
+
+  it('does not treat content, controls, or captioned image rows as block gutters', () => {
+    const paragraph = {
+      textContent: 'caption',
+    }
+    const image = {
+      matches: (selector: string) => selector === 'img',
+      closest: (selector: string) => (selector === 'p' ? paragraph : null),
+      getBoundingClientRect: () => ({ top: 80, left: 120, right: 340, bottom: 360, width: 220, height: 280 }),
+    }
+    const root = {
+      dataset: { aisleEditorKey: 'body-1::b' },
+      closest: (selector: string) => (selector === '[data-aisle-editor-key]' ? root : null),
+      contains: () => true,
+      querySelectorAll: (selector: string) => (selector === 'table, img' ? [image] : []),
+    }
+    const captionTarget = {
+      closest: (selector: string) => {
+        if (selector === '[data-aisle-editor-key]') return root
+        if (selector.startsWith('p,')) return paragraph
+        return null
+      },
+    } as unknown as EventTarget
+    const imageTarget = {
+      closest: (selector: string) => {
+        if (selector === '[data-aisle-editor-key]') return root
+        if (selector.includes('img')) return imageTarget
+        return null
+      },
+      matches: (selector: string) => selector === 'img',
+    } as unknown as EventTarget
+    const tableCellTarget = {
+      closest: (selector: string) => {
+        if (selector === '[data-aisle-editor-key]') return root
+        if (selector === 'table') return tableCellTarget
+        return null
+      },
+    } as unknown as EventTarget
+    const controlTarget = {
+      closest: (selector: string) => {
+        if (selector === '[data-aisle-editor-key]') return root
+        if (selector.includes('button')) return controlTarget
+        return null
+      },
+    } as unknown as EventTarget
+    const linkTarget = {
+      closest: (selector: string) => {
+        if (selector === '[data-aisle-editor-key]') return root
+        if (selector.includes('a')) return linkTarget
+        return null
+      },
+    } as unknown as EventTarget
+
+    expect(getRightSideBlockGutterTarget(captionTarget, { clientX: 360, clientY: 120 })).toBeNull()
+    expect(getRightSideBlockGutterTarget(imageTarget, { clientX: 360, clientY: 120 })).toBeNull()
+    expect(getRightSideBlockGutterTarget(tableCellTarget, { clientX: 360, clientY: 120 })).toBeNull()
+    expect(getRightSideBlockGutterTarget(controlTarget, { clientX: 360, clientY: 120 })).toBeNull()
+    expect(getRightSideBlockGutterTarget(linkTarget, { clientX: 360, clientY: 120 })).toBeNull()
   })
 
   it('resolves aisle activation from nested editor content before bubbling handlers can stop propagation', () => {

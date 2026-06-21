@@ -1,4 +1,5 @@
 import React, { type ReactNode } from 'react'
+import type { LinkPromptState } from '../../types/app'
 import {
   clampContextMenuPosition,
   getSubmenuPosition,
@@ -12,6 +13,7 @@ export type NotebookEditorContextMenuState = {
   x: number
   y: number
   aisleId: string
+  linkPrompt?: LinkPromptState | null
 }
 
 export type NotebookEditorClipboardAction = 'cut' | 'copy' | 'paste' | 'pastePlainText'
@@ -147,14 +149,19 @@ export function NotebookEditorContextMenu({
   onClipboard,
   onCommand,
   onInsertUrlLink,
+  onEditLink,
   onInsertNoteLink,
   onInsertNotePreview,
   onInsertAisle,
   onInsertAttachment,
   onCopyAs,
   onCreateSyncedCopy,
+  onFilterSyncedNote,
+  onFilterSyncedAisle,
   onDecoupleNote,
   onDecoupleAisle,
+  onShowSyncedNote,
+  onShowSyncedAisle,
   onRevealLocation,
 }: {
   menu: NotebookEditorContextMenuState | null
@@ -170,14 +177,19 @@ export function NotebookEditorContextMenu({
   ) => void
   onCommand: (command: string, payload?: Record<string, unknown>) => void
   onInsertUrlLink: () => void
+  onEditLink: (prompt: LinkPromptState) => void
   onInsertNoteLink: () => void
   onInsertNotePreview: () => void
   onInsertAisle: (side: NotebookEditorAisleInsertSide, aisleId: string) => void
   onInsertAttachment: () => void
   onCopyAs: (kind: NotebookEditorCopyAsKind, mode: NotebookEditorCopyAsMode, aisleId: string) => void
   onCreateSyncedCopy: () => void
+  onFilterSyncedNote: () => void
+  onFilterSyncedAisle: (aisleId: string) => void
   onDecoupleNote: () => void
   onDecoupleAisle: (aisleId: string) => void
+  onShowSyncedNote: () => void
+  onShowSyncedAisle: (aisleId: string) => void
   onRevealLocation: (aisleId: string) => void
 }) {
   const rootRef = React.useRef<HTMLDivElement | null>(null)
@@ -220,6 +232,13 @@ export function NotebookEditorContextMenu({
   const runCopyAs = (kind: NotebookEditorCopyAsKind, mode: NotebookEditorCopyAsMode) => {
     runAction(() => onCopyAs(kind, mode, menu.aisleId))
   }
+  const runAisleAction = (action: (aisleId: string) => void) => {
+    runAction(() => action(menu.aisleId))
+  }
+  const runEditLink = () => {
+    const prompt = menu.linkPrompt
+    if (prompt) runAction(() => onEditLink(prompt))
+  }
 
   const renderPasteSubmenu = (
     action: Extract<NotebookEditorClipboardAction, 'paste' | 'pastePlainText'>,
@@ -241,6 +260,12 @@ export function NotebookEditorContextMenu({
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
     >
+      {menu.linkPrompt ? (
+        <>
+          <MenuButton onClick={runEditLink}>edit link</MenuButton>
+          <MenuSeparator />
+        </>
+      ) : null}
       <MenuButton onClick={() => runClipboard('cut')}>cut</MenuButton>
       <MenuButton onClick={() => runClipboard('copy')}>copy</MenuButton>
       {renderPasteSubmenu('paste', 'paste')}
@@ -255,9 +280,19 @@ export function NotebookEditorContextMenu({
       </SubMenu>
       <MenuSeparator />
       <MenuButton onClick={() => runAction(onCreateSyncedCopy)}>make this a copy of</MenuButton>
-      {canDecoupleNote && <MenuButton onClick={() => runAction(onDecoupleNote)}>de-couple note</MenuButton>}
+      {canDecoupleNote && (
+        <>
+          <MenuButton onClick={() => runAction(onFilterSyncedNote)}>filter synced note</MenuButton>
+          <MenuButton onClick={() => runAction(onDecoupleNote)}>de-couple note</MenuButton>
+          <MenuButton onClick={() => runAction(onShowSyncedNote)}>show synced notes</MenuButton>
+        </>
+      )}
       {!canDecoupleNote && canDecoupleAisle && (
-        <MenuButton onClick={() => runAction(() => onDecoupleAisle(menu.aisleId))}>de-couple aisle</MenuButton>
+        <>
+          <MenuButton onClick={() => runAisleAction(onFilterSyncedAisle)}>filter synced aisle</MenuButton>
+          <MenuButton onClick={() => runAisleAction(onDecoupleAisle)}>de-couple aisle</MenuButton>
+          <MenuButton onClick={() => runAisleAction(onShowSyncedAisle)}>show synced aisles</MenuButton>
+        </>
       )}
       <MenuSeparator />
       <SubMenu label="format">

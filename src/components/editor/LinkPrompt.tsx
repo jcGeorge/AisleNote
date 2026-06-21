@@ -1,6 +1,7 @@
 import * as React from 'react'
 import type { RefObject } from 'react'
 import type { LinkPromptState } from '../../types/app'
+import { AppIcon } from '../icons/AppIcon'
 
 void React
 
@@ -26,10 +27,15 @@ export function LinkPrompt({
   onOpenNoteLink,
 }: LinkPromptProps) {
   if (!linkPrompt.open) return null
+  const className = [
+    'link-prompt',
+    linkPrompt.urlEditable ? 'is-url-editable' : '',
+    linkPrompt.centered ? 'is-centered' : '',
+  ].filter(Boolean).join(' ')
 
   return (
     <div
-      className={linkPrompt.urlEditable ? 'link-prompt is-url-editable' : 'link-prompt'}
+      className={className}
       role="dialog"
       aria-label={linkPrompt.urlEditable ? 'Insert link' : 'Link'}
       style={{ top: `${linkPrompt.top}px`, left: `${linkPrompt.left}px` }}
@@ -40,11 +46,11 @@ export function LinkPrompt({
           <strong className="link-prompt-title">Insert link</strong>
           <button
             type="button"
-            className="link-prompt-btn link-prompt-close-btn"
+            className="link-prompt-btn link-prompt-close-btn app-close-button"
             aria-label="Close link prompt"
             onClick={onCloseLinkPrompt}
           >
-            x
+            <AppIcon iconId="x" className="app-close-button-icon" />
           </button>
         </div>
       )}
@@ -95,7 +101,7 @@ export function LinkPrompt({
           </button>
         )}
         {linkPrompt.urlEditable && onOpenNoteLink ? (
-          <button type="button" className="link-prompt-btn" onClick={onOpenNoteLink}>
+          <button type="button" className="link-prompt-btn link-prompt-note-btn" onClick={onOpenNoteLink}>
             note
           </button>
         ) : null}

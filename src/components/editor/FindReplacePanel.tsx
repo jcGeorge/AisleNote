@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import type { FindReplaceMatch, FindReplaceScope } from '../../notes/find-replace'
+import { AppIcon } from '../icons/AppIcon'
 
 type FindReplacePanelProps = {
   replaceMode: boolean
@@ -217,12 +218,12 @@ export function FindReplacePanel({
         </label>
         <button
           type="button"
-          className="find-replace-icon-btn"
+          className="find-replace-icon-btn app-close-button"
           aria-label="Close find"
           data-app-tooltip="Close find"
           onClick={onClose}
         >
-          ×
+          <AppIcon iconId="x" className="app-close-button-icon" />
         </button>
       </div>
       <div className={`find-replace-fields ${replaceMode ? 'has-replace' : 'is-find-only'}`}>

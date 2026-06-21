@@ -30,14 +30,19 @@ function renderMenu(options: {
       onClipboard={vi.fn()}
       onCommand={vi.fn()}
       onInsertUrlLink={vi.fn()}
+      onEditLink={vi.fn()}
       onInsertNoteLink={vi.fn()}
       onInsertNotePreview={vi.fn()}
       onInsertAisle={vi.fn()}
       onInsertAttachment={vi.fn()}
       onCopyAs={vi.fn()}
       onCreateSyncedCopy={vi.fn()}
+      onFilterSyncedNote={vi.fn()}
+      onFilterSyncedAisle={vi.fn()}
       onDecoupleNote={vi.fn()}
       onDecoupleAisle={vi.fn()}
+      onShowSyncedNote={vi.fn()}
+      onShowSyncedAisle={vi.fn()}
       onRevealLocation={vi.fn()}
     />,
   )
@@ -108,14 +113,42 @@ describe('NotebookEditorContextMenu', () => {
   it('shows de-couple actions only when they are available', () => {
     expect(renderMenu()).not.toContain('de-couple note')
     expect(renderMenu()).not.toContain('de-couple aisle')
+    expect(renderMenu()).not.toContain('filter synced note')
+    expect(renderMenu()).not.toContain('show synced aisles')
 
     const linkedNoteHtml = renderMenu({ canDecoupleNote: true, canDecoupleAisle: true })
+    expect(linkedNoteHtml).toContain('filter synced note')
     expect(linkedNoteHtml).toContain('de-couple note')
+    expect(linkedNoteHtml).toContain('show synced notes')
+    expect(linkedNoteHtml).not.toContain('filter synced aisle')
     expect(linkedNoteHtml).not.toContain('de-couple aisle')
 
     const linkedAisleHtml = renderMenu({ canDecoupleAisle: true })
+    expect(linkedAisleHtml).toContain('filter synced aisle')
     expect(linkedAisleHtml).toContain('de-couple aisle')
+    expect(linkedAisleHtml).toContain('show synced aisles')
     expect(linkedAisleHtml).not.toContain('de-couple note')
+  })
+
+  it('shows edit link only when the right-click target is a link', () => {
+    expect(renderMenu()).not.toContain('edit link')
+    expect(renderMenu({
+      menu: {
+        x: 10,
+        y: 20,
+        aisleId: 'aisle-1',
+        linkPrompt: {
+          open: true,
+          top: 72,
+          left: 320,
+          url: 'https://example.com',
+          text: 'Example',
+          urlEditable: true,
+          centered: true,
+          editRange: { from: 1, to: 8, href: 'https://example.com' },
+        },
+      },
+    })).toContain('edit link')
   })
 
   it('routes ordinary aisle/editor targets and ignores toolbar or menu targets', () => {
@@ -130,7 +163,7 @@ describe('notebook editor context menu wiring', () => {
   it('routes note right-clicks to the editor menu instead of the synced-item menu', () => {
     expect(notebookAppSource).toContain('onContextMenu={openNotebookEditorContextMenuFromPointer}')
     expect(notebookAppSource).toContain('getNotebookEditorContextMenuAisleIdFromTarget(target)')
-    expect(notebookAppSource).toContain('setEditorContextMenu({ aisleId, x, y })')
+    expect(notebookAppSource).toContain('setEditorContextMenu({ aisleId, x, y, linkPrompt: options.linkPrompt ?? null })')
     expect(notebookAppSource).toContain("if (!menu || (!canDecoupleNote && !canDecoupleAisle)) return null")
     expect(notebookAppSource).not.toContain('openAisleContextMenuFromPointer')
     expect(notebookAppSource).not.toContain('No synced item')
@@ -144,6 +177,7 @@ describe('notebook editor context menu wiring', () => {
     expect(notebookAppSource).toContain('buildNotebookStructureClipboardPayload(currentState')
     expect(notebookAppSource).toContain('writeNotebookStructureClipboardPayload(result.payload, result.markdown)')
     expect(notebookAppSource).toContain('onCommand={notebookEditors.runCommand}')
+    expect(notebookAppSource).toContain('onEditLink={openUrlLinkPrompt}')
     expect(notebookAppSource).toContain('onInsertAttachment={notebookEditors.insertAttachmentFile}')
     expect(notebookAppSource).toContain('onCopyAs={copyNotebookStructureAs}')
     expect(notebookAppSource).toContain('onRevealLocation={revealEditorContextLocation}')

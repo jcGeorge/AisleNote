@@ -87,6 +87,21 @@ describe('notebook tree helpers', () => {
     expect(noteResult.state.noteAisleBodies?.find((body) => body.id === noteResult.aisleBodyId)?.markdown).toBe('markdown')
   })
 
+  it('creates notes and folders at requested sibling indexes', () => {
+    const folderResult = createNotebookFolderInState(createState(), 'Projects', null, idSequence(['folder-1']), 0)
+    expect(folderResult.state.notebook.items.map((item) => item.id)).toEqual(['folder-1', 'note-1'])
+
+    const noteResult = createNotebookNoteInState(
+      folderResult.state,
+      'Plan',
+      null,
+      '',
+      idSequence(['body-2', 'aisle-body-2', 'aisle-2', 'note-2']),
+      1,
+    )
+    expect(noteResult.state.notebook.items.map((item) => item.id)).toEqual(['folder-1', 'note-2', 'note-1'])
+  })
+
   it('renames items without changing ids or note body links', () => {
     const state = createState()
     const renamed = renameNotebookItem(state.notebook, 'note-1', 'Daily')

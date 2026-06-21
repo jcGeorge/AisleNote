@@ -68,6 +68,7 @@ describe('NotePreviewContent', () => {
         currentNoteBodyId="body-a"
         onOpenNote={vi.fn()}
         onDelete={vi.fn()}
+        onConvertToLink={vi.fn()}
       />,
     )
 
@@ -75,10 +76,14 @@ describe('NotePreviewContent', () => {
     expect(html).toContain('data-note-preview-size="normal"')
     expect(html).toContain('aria-label="Make note preview smaller"')
     expect(html).toContain('aria-label="Make note preview larger"')
-    expect(html).toContain('aria-label="Delete note preview"')
+    expect(html).toContain('aria-label="Open note preview menu"')
+    expect(html).toContain('convert to link')
+    expect(html).toContain('>delete</button>')
     expect(html).toContain('data-app-icon="minimize"')
     expect(html).toContain('data-app-icon="maximize"')
-    expect(html).toContain('data-app-icon="trash"')
+    expect(html).toContain('data-app-icon="ellipsisVertical"')
+    expect(html).not.toContain('data-app-icon="trash"')
+    expect(html).not.toContain('context-preview-action-menu-delete-icon')
     expect(html).not.toContain('data-app-icon="minus"')
     expect(html).not.toContain('data-app-icon="plus"')
     expect(html).toContain('preview content')
@@ -126,6 +131,15 @@ describe('NotePreviewContent', () => {
     expect(editorShellCss).toContain('.tabs-note-preview-widget-host')
     expect(editorShellCss).toContain('.note-preview-widget.is-size-compact')
     expect(editorShellCss).toContain('.note-preview-widget.is-size-expanded')
+    expect(editorShellCss).toContain('.tabs-note-preview-widget-host:has(.note-preview-widget.is-action-menu-open)')
+    expect(editorShellCss).toContain('.note-preview-widget.is-action-menu-open')
+    expect(editorShellCss).toContain('right: 0.5rem;')
+    expect(editorShellCss).toContain('z-index: 60;')
+    expect(editorShellCss).toContain('.context-preview-action-menu')
+    expect(editorShellCss).toContain('font-size: var(--ui-font-body);')
+    expect(editorShellCss).toContain('.context-preview-action-menu-item')
+    expect(editorShellCss).toContain('font-size: 1em;')
+    expect(editorShellCss).not.toContain('.context-preview-action-menu-delete-icon')
     expect(editorShellCss).toContain('box-sizing: border-box;')
     expect(editorShellCss).toContain('overflow-y: auto;')
     expect(editorShellCss).toContain('.context-preview-editor-host .toastui-editor-contents')

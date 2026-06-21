@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import type { NoteFilterKind, NoteFilterTagSortMode } from '../../types/app'
 import type { NoteFilterOption } from '../../filters/note-filter'
+
+void React
 
 type NoteFilterControlProps = {
   open: boolean

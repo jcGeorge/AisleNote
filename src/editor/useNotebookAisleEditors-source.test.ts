@@ -19,7 +19,9 @@ describe('notebook aisle editor task checkbox wiring', () => {
 
   it('places the caret from pointer activation coordinates instead of restoring the old selection', () => {
     expect(source).toContain('placeEditorCaretAtClientPoint')
-    expect(source).toContain('focusAtClientPoint?: { clientX: number; clientY: number }')
+    expect(source).toContain("focusAtClientPoint?: { clientX: number; clientY: number; mode: 'coordinate' | 'focus-only' }")
+    expect(source).toContain("focusAtClientPoint?.mode === 'focus-only'")
+    expect(source).toContain('focusEditorWithoutScrolling(editor ?? null)')
     expect(source).toContain('placeEditorCaretAtClientPoint(editor ?? null, options.focusAtClientPoint)')
   })
 
@@ -42,5 +44,33 @@ describe('notebook aisle editor task checkbox wiring', () => {
     expect(snapshotBody).toContain(
       'const markdown = meta.displayRestoreReady ? getEditorMarkdownForPersistence(meta.editor) : meta.markdown',
     )
+  })
+
+  it('replaces mounted editor content when external state reloads change aisle markdown', () => {
+    expect(source).toContain('const cachedMarkdown = lastMarkdownByAisleBodyRef.current.get(aisle.aisleBodyId) ?? aisle.markdown')
+    expect(source).toContain('if (cachedMarkdown !== aisle.markdown && existing.markdown !== aisle.markdown) {')
+    expect(source).toContain('existing.markdown = aisle.markdown')
+    expect(source).toContain('existing.displayRestoreReady = false')
+    expect(source).toContain('lastMarkdownByAisleBodyRef.current.set(aisle.aisleBodyId, aisle.markdown)')
+    expect(source).toContain('setEditorMarkdownForDisplay(existing.editor, aisle.markdown, false)')
+    expect(source).toContain('restoreEditorDisplayWhenReady(editorKey, existing, aisle.markdown)')
+  })
+
+  it('routes toolbar and native editor history through guarded ProseMirror history', () => {
+    expect(source).toContain('runWysiwygHistory,')
+    expect(source).toContain('const runGuardedEditorHistory = useCallback')
+    expect(source).toContain('const historyDirection = getEditorKeyboardHistoryDirection(event, isMacPlatformRef.current)')
+    expect(source).toContain('const historyDirection = getEditorBeforeInputHistoryDirection(event)')
+    expect(source).toContain("root.addEventListener('beforeinput', handleBeforeInput, true)")
+    expect(source).toContain("root.removeEventListener('beforeinput', handleBeforeInput, true)")
+
+    const undoBranchStart = source.indexOf("if (command === 'undo' || command === 'redo') {")
+    const undoBranchEnd = source.indexOf("if (command === 'bold'", undoBranchStart)
+    const undoBranch = source.slice(undoBranchStart, undoBranchEnd)
+
+    expect(undoBranchStart).toBeGreaterThan(-1)
+    expect(undoBranchEnd).toBeGreaterThan(undoBranchStart)
+    expect(undoBranch).toContain('return runGuardedEditorHistory(editor, command)')
+    expect(undoBranch).not.toContain('runEditorCommandOperation')
   })
 })

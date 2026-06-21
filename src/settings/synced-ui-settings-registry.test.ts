@@ -20,7 +20,6 @@ describe('synced UI settings registry', () => {
       findReplaceScope: 'note',
       removeNoteReferencesOnTrash: true,
       noteMentionCopyRequiresConfirmation: true,
-      deleteActiveAisleShortcutEnabled: false,
       tabRenameEnterBehavior: 'goes-to-note',
       decoupledItemsKeepData: true,
       trashDeleteForRealRequiresConfirmation: true,
@@ -47,7 +46,6 @@ describe('synced UI settings registry', () => {
       tabRenameEnterBehavior: 'creates-another-tab',
       newAislePlacement: 'left-of-focus',
       removeNoteReferencesOnTrash: 'false',
-      deleteActiveAisleShortcutEnabled: true,
       trashDeleteForRealRequiresConfirmation: false,
     })
 
@@ -62,7 +60,6 @@ describe('synced UI settings registry', () => {
       tableOfContentsScope: 'focused-aisle',
       tabRenameEnterBehavior: 'creates-another-tab',
       removeNoteReferencesOnTrash: true,
-      deleteActiveAisleShortcutEnabled: true,
       trashDeleteForRealRequiresConfirmation: false,
     })
     expect(normalized).not.toHaveProperty('toggleTabsTarget')
@@ -91,7 +88,6 @@ describe('synced UI settings registry', () => {
     expect(getSyncedUiBooleanSettings({ noteMentionCopyRequiresConfirmation: false })).toMatchObject({
       noteMentionCopyRequiresConfirmation: false,
       removeNoteReferencesOnTrash: true,
-      deleteActiveAisleShortcutEnabled: false,
       trashDeleteForRealRequiresConfirmation: true,
     })
   })
@@ -100,7 +96,6 @@ describe('synced UI settings registry', () => {
     expect(MISC_SYNCED_UI_BOOLEAN_SETTINGS.map((setting) => setting.key)).toEqual([
       'removeNoteReferencesOnTrash',
       'noteMentionCopyRequiresConfirmation',
-      'deleteActiveAisleShortcutEnabled',
     ])
   })
 })

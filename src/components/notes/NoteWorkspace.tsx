@@ -43,6 +43,7 @@ import {
 import {
   getAisleActivationPointerFromNoteWorkspaceEvent,
   getAisleEditorKeyFromNoteWorkspacePointerTarget,
+  getRightSideBlockGutterTarget,
   scheduleNoteWorkspaceArrangeExit,
   shouldActivateAisleFromNoteWorkspacePointer,
   shouldExitArrangeModeFromNoteWorkspacePointer,
@@ -148,17 +149,10 @@ function assignRef<T>(ref: Ref<T>, value: T | null) {
   }
 }
 
-type NoteAisleControls = {
-  showAddButtons?: boolean
-  showDeleteButton?: boolean
-  onAddAisleLeft: () => void
-  onAddAisleRight: () => void
-  onDeleteActiveAisle: () => void
-}
-
 type AisleActivationPointer = {
   clientX: number
   clientY: number
+  mode: 'coordinate' | 'focus-only'
 }
 
 type NoteWorkspaceProps = {
@@ -168,6 +162,7 @@ type NoteWorkspaceProps = {
   editorReadOnly: boolean
   arrangeModeActive?: boolean
   frontmatterAisleIds?: Set<string>
+  frontmatterTemplateFilterAisleIds?: Set<string>
   linkedAisleIds?: Set<string>
   wholeNoteLinked?: boolean
   aisleScrollRef: Ref<HTMLDivElement>
@@ -197,13 +192,12 @@ type NoteWorkspaceProps = {
   onSelectTableOfContentsLink?: (aisleId: string, linkKey: string) => void
   onOpenTableOfContentsLink?: (aisleId: string, link: TableOfContentsLinkItem) => void
   onOpenAisleFrontmatter?: (aisleId: string) => void
+  onFilterAisleFrontmatterTemplate?: (aisleId: string) => void
   onOpenAisleLink?: (aisleId: string) => void
   appState?: AppState | null
   onOpenNoteReference?: (target: NoteLocation) => void
   onOpenTagFilter?: (tag: string) => void
   onSelectEditableAsset?: (target: Element) => void
-  scratchpadAisleControls?: NoteAisleControls
-  regularNoteAisleControls?: NoteAisleControls
   onRegisterAislePaneRoot: (aisleId: string, node: HTMLElement | null) => void
   onRegisterAisleEditorRoot: (editorKey: string, node: HTMLElement | null) => void
 }
@@ -320,6 +314,7 @@ export function NoteWorkspace({
   editorReadOnly,
   arrangeModeActive = false,
   frontmatterAisleIds = new Set(),
+  frontmatterTemplateFilterAisleIds = new Set(),
   linkedAisleIds = new Set(),
   wholeNoteLinked = false,
   aisleScrollRef,
@@ -349,13 +344,12 @@ export function NoteWorkspace({
   onSelectTableOfContentsLink = () => undefined,
   onOpenTableOfContentsLink = () => undefined,
   onOpenAisleFrontmatter = () => undefined,
+  onFilterAisleFrontmatterTemplate = () => undefined,
   onOpenAisleLink = () => undefined,
   appState = null,
   onOpenNoteReference,
   onOpenTagFilter = () => undefined,
   onSelectEditableAsset = () => undefined,
-  scratchpadAisleControls,
-  regularNoteAisleControls,
   onRegisterAislePaneRoot,
   onRegisterAisleEditorRoot,
 }: NoteWorkspaceProps) {
@@ -509,8 +503,31 @@ export function NoteWorkspace({
           if (shouldActivateAisle) {
             const editorKey = getAisleEditorKeyFromNoteWorkspacePointerTarget(event.target)
             if (editorKey) {
-              onActivateAisle(editorKey, getAisleActivationPointerFromNoteWorkspaceEvent(event.nativeEvent))
+              const pointer = getAisleActivationPointerFromNoteWorkspaceEvent(event.nativeEvent)
+              const gutterTarget = pointer ? getRightSideBlockGutterTarget(event.target, pointer) : null
+              onActivateAisle(
+                editorKey,
+                pointer && gutterTarget
+                  ? { ...pointer, mode: 'focus-only' }
+                  : pointer,
+              )
+              if (gutterTarget) {
+                event.preventDefault()
+              }
             }
+          }
+        }}
+        onMouseDownCapture={(event) => {
+          if (
+            shouldActivateAisleFromNoteWorkspacePointer(event.button) &&
+            getRightSideBlockGutterTarget(event.target, {
+              clientX: event.clientX,
+              clientY: event.clientY,
+            })
+          ) {
+            event.preventDefault()
+            event.stopPropagation()
+            event.nativeEvent.stopImmediatePropagation()
           }
         }}
         onClickCapture={(event) => {
@@ -557,25 +574,22 @@ export function NoteWorkspace({
             (tableOfContentsHeadings.length > 0 || tableOfContentsLinks.length > 0)
           const showLinkButton = wholeNoteLinked || linkedAisleIds.has(aisle.id)
           const showFrontmatterButton = frontmatterAisleIds.has(aisle.id)
-          const aisleControls = scratchpadAisleControls ?? regularNoteAisleControls
-          const showAisleAddButtons = aisleControls?.showAddButtons ?? true
-          const showAisleDeleteButton = aisleControls?.showDeleteButton ?? false
-          const showAisleControls = Boolean(
-            aisleControls && aisle.id === activeAisleId && (showAisleAddButtons || showAisleDeleteButton),
-          )
-          const aisleControlsLabel = scratchpadAisleControls ? 'Scratchpad aisle' : 'Aisle'
+          const showFrontmatterTemplateFilterButton = frontmatterTemplateFilterAisleIds.has(aisle.id)
           const customAisleWidth = isSplitWorkspace ? aisleWidths[aisle.id] : undefined
           const aislePaneStyle =
             typeof customAisleWidth === 'number'
               ? ({ '--note-aisle-width': `${customAisleWidth}px` } as CSSProperties)
               : undefined
+          const aislePaneClassName = [
+            'note-aisle-pane',
+            aisle.id === activeAisleId ? 'is-active' : '',
+            customAisleWidth ? 'has-custom-width' : '',
+          ].filter(Boolean).join(' ')
           return (
             <section
               key={aisle.id}
               ref={(node) => onRegisterAislePaneRoot(aisle.id, node)}
-              className={`note-aisle-pane ${aisle.id === activeAisleId ? 'is-active' : ''} ${
-                customAisleWidth ? 'has-custom-width' : ''
-              }`}
+              className={aislePaneClassName}
               style={aislePaneStyle}
               aria-label={`Aisle ${index + 1}`}
               data-aisle-id={aisle.id}
@@ -601,7 +615,7 @@ export function NoteWorkspace({
                   <span className="note-aisle-resize-capsule" aria-hidden="true" />
                 </button>
               )}
-              {(showLinkButton || showFrontmatterButton) && (
+              {(showLinkButton || showFrontmatterButton || showFrontmatterTemplateFilterButton) && (
                 <div className="note-aisle-action-layer" aria-label={`Aisle ${index + 1} actions`}>
                   {showLinkButton && (
                     <div className="note-aisle-action-wrap">
@@ -645,6 +659,27 @@ export function NoteWorkspace({
                       </button>
                     </div>
                   )}
+                  {showFrontmatterTemplateFilterButton && (
+                    <div className="note-aisle-action-wrap">
+                      <button
+                        type="button"
+                        className="note-aisle-action-btn note-aisle-frontmatter-filter-btn"
+                        aria-label={`Filter by frontmatter template for aisle ${index + 1}`}
+                        data-app-tooltip="Filter frontmatter template"
+                        data-note-workspace-skip-aisle-activation="true"
+                        onPointerDown={(event) => {
+                          event.stopPropagation()
+                        }}
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          onFilterAisleFrontmatterTemplate(aisle.id)
+                        }}
+                      >
+                        <AppIcon iconId="filter" className="note-aisle-frontmatter-filter-icon" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               <section className={`editor-shell note-aisle-editor-shell ${editorReadOnly ? 'editor-readonly' : ''}`}>
@@ -683,70 +718,6 @@ export function NoteWorkspace({
                   </div>
                 )}
               </section>
-              {showAisleControls && aisleControls && (
-                <div
-                  className="note-scratchpad-aisle-controls"
-                  aria-label={`${aisleControlsLabel} ${index + 1} controls`}
-                >
-                  {showAisleAddButtons && (
-                    <button
-                      type="button"
-                      className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-add-btn note-scratchpad-aisle-add-left-btn"
-                      aria-label={`Add aisle to left of aisle ${index + 1}`}
-                      data-app-tooltip="Add aisle left"
-                      data-note-workspace-skip-aisle-activation="true"
-                      onPointerDown={(event) => {
-                        event.stopPropagation()
-                      }}
-                      onClick={(event) => {
-                        event.preventDefault()
-                        event.stopPropagation()
-                        aisleControls.onAddAisleLeft()
-                      }}
-                    >
-                      <AppIcon iconId="aisleRight" className="note-scratchpad-aisle-add-icon" flipHorizontal />
-                    </button>
-                  )}
-                  {showAisleDeleteButton && (
-                    <button
-                      type="button"
-                      className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-delete-btn"
-                      aria-label={`Delete aisle ${index + 1}`}
-                      data-app-tooltip="Delete aisle"
-                      data-note-workspace-skip-aisle-activation="true"
-                      onPointerDown={(event) => {
-                        event.stopPropagation()
-                      }}
-                      onClick={(event) => {
-                        event.preventDefault()
-                        event.stopPropagation()
-                        aisleControls.onDeleteActiveAisle()
-                      }}
-                    >
-                      <AppIcon iconId="trash" className="aisle-edit-delete-icon note-scratchpad-aisle-delete-icon" />
-                    </button>
-                  )}
-                  {showAisleAddButtons && (
-                    <button
-                      type="button"
-                      className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-add-btn note-scratchpad-aisle-add-right-btn"
-                      aria-label={`Add aisle to right of aisle ${index + 1}`}
-                      data-app-tooltip="Add aisle right"
-                      data-note-workspace-skip-aisle-activation="true"
-                      onPointerDown={(event) => {
-                        event.stopPropagation()
-                      }}
-                      onClick={(event) => {
-                        event.preventDefault()
-                        event.stopPropagation()
-                        aisleControls.onAddAisleRight()
-                      }}
-                    >
-                      <AppIcon iconId="aisleRight" className="note-scratchpad-aisle-add-icon" />
-                    </button>
-                  )}
-                </div>
-              )}
               {tableOfContentsOpen && (
                 <AisleTableOfContentsPanel
                   aisleId={aisle.id}

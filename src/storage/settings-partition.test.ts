@@ -51,8 +51,6 @@ describe('portable app settings parsing', () => {
       ui: {
         settingsSection: 'hotkeys',
         dataSettingsSection: 'transfer',
-        showRegularNoteAisleAddButtons: false,
-        showRegularNoteAisleDeleteButton: false,
         tabRenameEnterBehavior: 'goes-to-note',
         noteFilter: {
           active: false,

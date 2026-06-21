@@ -119,7 +119,7 @@ type UsePendingNoteCursorRestoreParams = {
     options?: {
       focus?: boolean
       flushPrevious?: boolean
-      focusAtClientPoint?: { clientX: number; clientY: number }
+      focusAtClientPoint?: { clientX: number; clientY: number; mode: 'coordinate' | 'focus-only' }
       allowDuringPendingRename?: boolean
       source?: AisleActivationSource
     },
