@@ -24,6 +24,7 @@ import { buildInternalNoteLinkToken, buildPreviewToken } from '../../notes/note-
 const noteWorkspaceSource = readFileSync(fileURLToPath(new URL('./NoteWorkspace.tsx', import.meta.url)), 'utf8')
 const notebookAppSource = readFileSync(fileURLToPath(new URL('../../app/NotebookApp.tsx', import.meta.url)), 'utf8')
 const editorShellCss = readFileSync(fileURLToPath(new URL('../../styles/editor-shell.css', import.meta.url)), 'utf8')
+const responsiveCss = readFileSync(fileURLToPath(new URL('../../styles/responsive.css', import.meta.url)), 'utf8')
 
 const aisles: ResolvedNoteAisle[] = [
   { id: 'a', aisleBodyId: 'a', markdown: 'active' },
@@ -75,7 +76,6 @@ function renderWorkspace(
     activeAisleId?: string
     aisles?: ResolvedNoteAisle[]
     frontmatterAisleIds?: Set<string>
-    frontmatterTemplateFilterAisleIds?: Set<string>
     linkedAisleIds?: Set<string>
     wholeNoteLinked?: boolean
     aisleWidths?: Record<string, number>
@@ -94,7 +94,6 @@ function renderWorkspace(
       editorReadOnly={false}
       arrangeModeActive={options.arrangeModeActive}
       frontmatterAisleIds={options.frontmatterAisleIds}
-      frontmatterTemplateFilterAisleIds={options.frontmatterTemplateFilterAisleIds}
       linkedAisleIds={options.linkedAisleIds}
       wholeNoteLinked={options.wholeNoteLinked}
       aisleWidths={options.aisleWidths}
@@ -114,7 +113,6 @@ function renderWorkspace(
       onRegisterAisleEditorRoot={() => undefined}
       appState={options.appState}
       onOpenNoteReference={options.onOpenNoteReference}
-      onFilterAisleFrontmatterTemplate={() => undefined}
     />,
   )
 }
@@ -412,6 +410,13 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('aria-label="Scroll aisles horizontally"')
   })
 
+  it('reserves a leading gutter for split aisle table selectors', () => {
+    expect(editorShellCss).toContain('--note-aisle-leading-gutter: 1.5rem;')
+    expect(editorShellCss).toContain('.note-aisles-shell.is-split .note-aisle-scroll')
+    expect(editorShellCss).toContain('padding-inline-start: var(--note-aisle-leading-gutter);')
+    expect(responsiveCss).toContain('padding-inline-start: 0 !important;')
+  })
+
   it('renders resize handles for split aisles', () => {
     const html = renderWorkspace(new Set(['a']))
 
@@ -422,16 +427,15 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html.match(/note-aisle-resize-capsule/g) ?? []).toHaveLength(3)
   })
 
-  it('renders a separate derived frontmatter template filter action', () => {
+  it('does not render a separate derived frontmatter template filter action', () => {
     const html = renderWorkspace(new Set(['a']), {
       frontmatterAisleIds: new Set(['a']),
-      frontmatterTemplateFilterAisleIds: new Set(['a']),
     })
 
     expect(html).toContain('Open frontmatter for aisle 1')
-    expect(html).toContain('Filter by frontmatter template for aisle 1')
     expect(html).toContain('note-aisle-frontmatter-btn')
-    expect(html).toContain('note-aisle-frontmatter-filter-btn')
+    expect(html).not.toContain('Filter by frontmatter template for aisle 1')
+    expect(html).not.toContain('note-aisle-frontmatter-filter-btn')
   })
 
   it('applies persisted custom aisle widths to split panes', () => {
@@ -607,7 +611,7 @@ describe('NoteWorkspace aisle mounting', () => {
 
     expect(html).toContain('Child note')
     expect(html).toContain('child')
-    expect(html).toContain('preview content')
+    expect(html).toContain('data-note-preview-readonly-viewer="true"')
     expect(html).toContain('regular text')
     expect(html).not.toContain(token)
   })
@@ -761,6 +765,7 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('class="aisle-toc-panel"')
     expect(html).toContain('>links</div>')
     expect(html).toContain('Example')
+    expect(html).toContain('aisle-toc-link-strip')
     expect(html).toContain('aisle-toc-link-open-btn')
     expect(html).not.toContain('>table of contents</div>')
     expect(html).not.toContain('--toc-heading-indent')

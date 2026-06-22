@@ -28,7 +28,6 @@ function getTokenKindLabel(token: SidebarSearchToken): string {
   if (token.optionType === 'tag') return 'tag'
   if (token.optionType === 'frontmatter-template') return 'fm'
   if (token.optionType === 'frontmatter-property') return 'prop'
-  if (token.optionType === 'synced-note') return token.prefix === 'duplicate' ? 'duplicate note' : 'synced note'
   if (token.optionType === 'synced-aisle') return token.prefix === 'duplicate' ? 'duplicate aisle' : 'synced aisle'
   return token.kind
 }

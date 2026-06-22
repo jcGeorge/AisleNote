@@ -20,7 +20,9 @@ describe('NotebookApp frontmatter modal routing', () => {
 
   it('includes fixed list controls for template settings and note rows', () => {
     expect(source).toContain('aria-label="frontmatter fixed list values"')
-    expect(source).toContain('aria-label="frontmatter fixed list value"')
+    expect(source).toContain('aria-label="frontmatter fixed list default values"')
+    expect(source).toContain('frontmatter-fixed-list-choice')
+    expect(source).not.toContain('<option value="">no options</option>')
   })
 })
 
@@ -31,7 +33,8 @@ describe('NotebookApp sidebar search wiring', () => {
     expect(source).toContain("activateSidebarSearchKey('tags', key)")
     expect(source).toContain("activateSidebarSearchKey('frontmatter', getFrontmatterTemplateFilterKey(templateId))")
     expect(source).toContain('onOpenTagFilter={filterTag}')
-    expect(source).toContain('frontmatterTemplateFilterAisleIds={frontmatterTemplateFilterAisleIds}')
-    expect(source).toContain('onFilterAisleFrontmatterTemplate={filterAisleFrontmatterTemplate}')
+    expect(source).toContain('onFilterTemplate={filterFrontmatterTemplateFromModal}')
+    expect(source).not.toContain('frontmatterTemplateFilterAisleIds={frontmatterTemplateFilterAisleIds}')
+    expect(source).not.toContain('onFilterAisleFrontmatterTemplate={filterAisleFrontmatterTemplate}')
   })
 })

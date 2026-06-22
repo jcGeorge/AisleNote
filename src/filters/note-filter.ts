@@ -18,7 +18,6 @@ import {
 
 export type NoteFilterOptionType =
   | 'tag'
-  | 'synced-note'
   | 'synced-aisle'
   | 'frontmatter-template'
   | 'frontmatter-property'
@@ -69,15 +68,10 @@ export type NoteFilterIndex = {
 
 type NormalLocation = ReturnType<typeof listSearchableNoteLocations>[number]
 
-const SYNCED_NOTE_PREFIX = 'synced-note:'
 const SYNCED_AISLE_PREFIX = 'synced-aisle:'
 const FRONTMATTER_TEMPLATE_PREFIX = 'fm-template:'
 const FRONTMATTER_PROPERTY_PREFIX = 'fm-property:'
 const MEDIA_FILTER_PREFIX = 'media:'
-
-export function getSyncedNoteFilterKey(noteBodyId: string): string {
-  return `${SYNCED_NOTE_PREFIX}${noteBodyId}`
-}
 
 export function getSyncedAisleFilterKey(aisleBodyId: string): string {
   return `${SYNCED_AISLE_PREFIX}${aisleBodyId}`
@@ -240,40 +234,10 @@ function getNoteLocationFromEntry(entry: NormalLocation): NoteLocation {
   }
 }
 
-function buildSyncedNoteFilterIndex(state: AppState, selectedKeys: string[]): NoteFilterIndex {
+function buildSyncedFilterIndex(state: AppState, selectedKeys: string[]): NoteFilterIndex {
   const locations = listSearchableNoteLocations(state)
-  const locationsByBodyId = new Map<string, NormalLocation[]>()
-  locations.forEach((location) => {
-    locationsByBodyId.set(location.noteBodyId, [...(locationsByBodyId.get(location.noteBodyId) ?? []), location])
-  })
-
   const options: NoteFilterOption[] = []
   const occurrences: NoteFilterOccurrence[] = []
-  locationsByBodyId.forEach((bodyLocations, noteBodyId) => {
-    if (bodyLocations.length <= 1) return
-    const key = getSyncedNoteFilterKey(noteBodyId)
-    options.push({
-      key,
-      label: buildOptionLabel(bodyLocations, 'synced note'),
-      count: bodyLocations.length,
-      type: 'synced-note',
-    })
-    bodyLocations.forEach((location) => {
-      const firstAisle = getBodyAisles(state, noteBodyId)[0]
-      if (!firstAisle) return
-      occurrences.push({
-        kind: 'synced',
-        key,
-        label: buildOptionLabel(bodyLocations, 'synced note'),
-        optionType: 'synced-note',
-        location,
-        noteBodyId,
-        aisleId: firstAisle.id,
-        aisleBodyId: getAisleBodyId(firstAisle),
-      })
-    })
-  })
-
   const aisleSlotsByBodyId = new Map<string, {
     key: string
     location: NormalLocation
@@ -285,7 +249,7 @@ function buildSyncedNoteFilterIndex(state: AppState, selectedKeys: string[]): No
     getBodyAisles(state, location.noteBodyId).forEach((aisle) => {
       const aisleBodyId = getAisleBodyId(aisle)
       if (!aisleBodyId) return
-      const slotKey = `${location.noteBodyId}::${aisle.id}`
+      const slotKey = `${location.noteId}::${location.noteBodyId}::${aisle.id}`
       const current = aisleSlotsByBodyId.get(aisleBodyId) ?? []
       if (current.some((slot) => slot.key === slotKey)) return
       aisleSlotsByBodyId.set(aisleBodyId, [
@@ -296,8 +260,7 @@ function buildSyncedNoteFilterIndex(state: AppState, selectedKeys: string[]): No
   })
 
   aisleSlotsByBodyId.forEach((slots, aisleBodyId) => {
-    const noteBodyIds = new Set(slots.map((slot) => slot.noteBodyId))
-    if (noteBodyIds.size <= 1) return
+    if (slots.length <= 1) return
     const key = getSyncedAisleFilterKey(aisleBodyId)
     const label = buildOptionLabel(slots.map((slot) => slot.location), 'synced aisle')
     options.push({
@@ -549,7 +512,7 @@ export function buildNoteFilterIndex(
   selectedKeys: string[] = [],
 ): NoteFilterIndex {
   if (kind === 'tags') return buildTagNoteFilterIndex(state, selectedKeys)
-  if (kind === 'synced') return buildSyncedNoteFilterIndex(state, selectedKeys)
+  if (kind === 'synced') return buildSyncedFilterIndex(state, selectedKeys)
   if (kind === 'frontmatter') return buildFrontmatterNoteFilterIndex(state, selectedKeys)
   return buildMediaNoteFilterIndex(state, selectedKeys)
 }

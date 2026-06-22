@@ -18,11 +18,11 @@ import remarkGfm from 'remark-gfm'
 import { buildAisleEditorKey } from '../../editor/aisle-editor'
 import { clampAisleWidth } from '../../notes/aisle-widths'
 import { RENDERED_MARKDOWN_SURFACE_CLASS } from '../../editor/rendered-markdown-surface'
+import type { TableOfContentsLinkItem } from '../../editor/table-of-contents'
 import { recordDiagnosticEvent } from '../../diagnostics/diagnostic-logger'
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import type { AppState, NoteLocation, ResolvedNoteAisle } from '../../types/app'
 import { ToolbarToolIcon } from '../editor/ToolbarToolIcon'
-import { AppIcon } from '../icons/AppIcon'
 import { getAislePreviewSegments } from './aisle-markdown-preview-segments'
 import { NotePreviewContent } from './NotePreviewContent'
 import { AisleHorizontalScrollbar } from './AisleHorizontalScrollbar'
@@ -60,12 +60,6 @@ type HeadingOutlineItem = {
   key: string
   level: number
   text: string
-}
-
-type TableOfContentsLinkItem = {
-  key: string
-  label: string
-  href?: string
 }
 
 const transformAislePreviewUrl = (url: string, key: string) => {
@@ -162,7 +156,6 @@ type NoteWorkspaceProps = {
   editorReadOnly: boolean
   arrangeModeActive?: boolean
   frontmatterAisleIds?: Set<string>
-  frontmatterTemplateFilterAisleIds?: Set<string>
   linkedAisleIds?: Set<string>
   wholeNoteLinked?: boolean
   aisleScrollRef: Ref<HTMLDivElement>
@@ -192,7 +185,6 @@ type NoteWorkspaceProps = {
   onSelectTableOfContentsLink?: (aisleId: string, linkKey: string) => void
   onOpenTableOfContentsLink?: (aisleId: string, link: TableOfContentsLinkItem) => void
   onOpenAisleFrontmatter?: (aisleId: string) => void
-  onFilterAisleFrontmatterTemplate?: (aisleId: string) => void
   onOpenAisleLink?: (aisleId: string) => void
   appState?: AppState | null
   onOpenNoteReference?: (target: NoteLocation) => void
@@ -245,9 +237,9 @@ function AisleTableOfContentsPanel({
       >
         <div className="aisle-toc-sections">
           {hasHeadings && (
-            <section className="aisle-toc-section" aria-label="Table of contents headings">
+            <section className="aisle-toc-section aisle-toc-heading-section" aria-label="Table of contents headings">
               <div className="aisle-toc-panel-title">table of contents</div>
-              <div className="aisle-toc-list">
+              <div className="aisle-toc-list aisle-toc-heading-list">
                 {headings.map((heading) => (
                   <button
                     key={heading.key}
@@ -267,9 +259,9 @@ function AisleTableOfContentsPanel({
             </section>
           )}
           {hasLinks && (
-            <section className="aisle-toc-section" aria-label="Table of contents links">
-              <div className="aisle-toc-panel-title">links</div>
-              <div className="aisle-toc-list">
+            <section className="aisle-toc-section aisle-toc-links-section" aria-label="Table of contents links">
+              <div className="aisle-toc-panel-title aisle-toc-links-title">links</div>
+              <div className="aisle-toc-link-strip">
                 {links.map((link) => (
                   <div key={link.key} className="aisle-toc-link-row">
                     <button
@@ -314,7 +306,6 @@ export function NoteWorkspace({
   editorReadOnly,
   arrangeModeActive = false,
   frontmatterAisleIds = new Set(),
-  frontmatterTemplateFilterAisleIds = new Set(),
   linkedAisleIds = new Set(),
   wholeNoteLinked = false,
   aisleScrollRef,
@@ -344,7 +335,6 @@ export function NoteWorkspace({
   onSelectTableOfContentsLink = () => undefined,
   onOpenTableOfContentsLink = () => undefined,
   onOpenAisleFrontmatter = () => undefined,
-  onFilterAisleFrontmatterTemplate = () => undefined,
   onOpenAisleLink = () => undefined,
   appState = null,
   onOpenNoteReference,
@@ -574,7 +564,6 @@ export function NoteWorkspace({
             (tableOfContentsHeadings.length > 0 || tableOfContentsLinks.length > 0)
           const showLinkButton = wholeNoteLinked || linkedAisleIds.has(aisle.id)
           const showFrontmatterButton = frontmatterAisleIds.has(aisle.id)
-          const showFrontmatterTemplateFilterButton = frontmatterTemplateFilterAisleIds.has(aisle.id)
           const customAisleWidth = isSplitWorkspace ? aisleWidths[aisle.id] : undefined
           const aislePaneStyle =
             typeof customAisleWidth === 'number'
@@ -615,7 +604,7 @@ export function NoteWorkspace({
                   <span className="note-aisle-resize-capsule" aria-hidden="true" />
                 </button>
               )}
-              {(showLinkButton || showFrontmatterButton || showFrontmatterTemplateFilterButton) && (
+              {(showLinkButton || showFrontmatterButton) && (
                 <div className="note-aisle-action-layer" aria-label={`Aisle ${index + 1} actions`}>
                   {showLinkButton && (
                     <div className="note-aisle-action-wrap">
@@ -656,27 +645,6 @@ export function NoteWorkspace({
                         }}
                       >
                         <span className="frontmatter-toolbar-icon note-aisle-frontmatter-icon" aria-hidden="true">fm</span>
-                      </button>
-                    </div>
-                  )}
-                  {showFrontmatterTemplateFilterButton && (
-                    <div className="note-aisle-action-wrap">
-                      <button
-                        type="button"
-                        className="note-aisle-action-btn note-aisle-frontmatter-filter-btn"
-                        aria-label={`Filter by frontmatter template for aisle ${index + 1}`}
-                        data-app-tooltip="Filter frontmatter template"
-                        data-note-workspace-skip-aisle-activation="true"
-                        onPointerDown={(event) => {
-                          event.stopPropagation()
-                        }}
-                        onClick={(event) => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          onFilterAisleFrontmatterTemplate(aisle.id)
-                        }}
-                      >
-                        <AppIcon iconId="filter" className="note-aisle-frontmatter-filter-icon" />
                       </button>
                     </div>
                   )}

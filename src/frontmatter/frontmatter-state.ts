@@ -25,7 +25,7 @@ import {
   isFrontmatterComputedValueCompatibleWithFieldType,
   isFrontmatterReferenceComputedValue,
   normalizeFrontmatterFixedListOptions,
-  resolveFrontmatterFixedListValue,
+  resolveFrontmatterFixedListValues,
   resolveFrontmatterTemplateFieldValue,
 } from './frontmatter'
 
@@ -115,7 +115,7 @@ function formatFrontmatterRowValue(field: FrontmatterTemplateField, value: unkno
     return coerceFrontmatterString(value.title ?? value.name ?? value.id)
   }
   if (field.type === 'fixedList') {
-    return resolveFrontmatterFixedListValue(field.options, value, field.defaultValue)
+    return resolveFrontmatterFixedListValues(field.options, value, field.defaultValue).join(', ')
   }
   return formatFrontmatterFieldValue(field.type, value)
 }
@@ -226,7 +226,7 @@ function buildManualRow(
     ...(field?.type === 'fixedList' ? { options: fixedListOptions ?? [] } : {}),
   }
   const fieldValue = type === 'fixedList'
-    ? resolveFrontmatterFixedListValue(fixedListOptions, value, field?.defaultValue)
+    ? resolveFrontmatterFixedListValues(fixedListOptions, value, field?.defaultValue)
     : value
   return {
     id: `existing:${index}:${rowKey}`,
@@ -494,7 +494,7 @@ export function buildFrontmatterDataFromRows(
       computedFields[key] = computedValue
     } else {
       frontmatter[key] = row.type === 'fixedList'
-        ? resolveFrontmatterFixedListValue(row.fixedListOptions, row.value)
+        ? resolveFrontmatterFixedListValues(row.fixedListOptions, row.value)
         : coerceFrontmatterFieldValue(row.type, row.value)
     }
 

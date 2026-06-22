@@ -141,6 +141,10 @@
     overflow-x: hidden !important;
   }
 
+  .note-aisles-shell.is-split .note-aisle-scroll {
+    padding-inline-start: 0 !important;
+  }
+
   .note-aisle-resize-btn {
     display: none !important;
   }

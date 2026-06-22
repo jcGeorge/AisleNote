@@ -78,9 +78,14 @@ import {
   getHeadingOutlineFromMarkdown,
   type HeadingOutlineItem,
 } from './heading-outline'
+import {
+  getTableOfContentsLinksFromDoc,
+  getTableOfContentsLinksFromMarkdown,
+} from './table-of-contents-links'
 import { getUrlLinkPromptDraftFromSelection } from './url-link-prompt'
 import { recordDiagnosticEvent } from '../diagnostics/diagnostic-logger'
 import { installCompletedTaskCheckboxBehavior } from './task-behavior'
+import { resolveMarkdownNoteReferenceToken } from '../notes/note-references'
 import type { NotebookEditorMarkdownSnapshot } from '../app/notebook-editor-persistence'
 import type { AisleActivationSource } from './aisle-activation'
 import type { AppState, LinkPromptState, NewlineOperationId, NoteLocation, ResolvedNoteAisle, ToastTone, ViewMode } from '../types/app'
@@ -186,6 +191,21 @@ function scrollToHeading(editor: Editor, heading: HeadingOutlineItem): boolean {
     const from = Math.max(0, Math.min(view.state.doc.content.size, heading.start))
     const to = Math.max(from, Math.min(view.state.doc.content.size, heading.end ?? from))
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)).scrollIntoView())
+    editor.focus()
+    return true
+  } catch {
+    return false
+  }
+}
+
+function scrollToRange(editor: Editor, from: number, to: number): boolean {
+  const view = getWysiwygView(editor)
+  if (!view?.state?.doc || typeof view.dispatch !== 'function') return false
+  try {
+    const docSize = view.state.doc.content.size
+    const selectionFrom = Math.max(0, Math.min(docSize, from))
+    const selectionTo = Math.max(selectionFrom, Math.min(docSize, to))
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, selectionFrom, selectionTo)).scrollIntoView())
     editor.focus()
     return true
   } catch {
@@ -1390,6 +1410,17 @@ export function useNotebookAisleEditors({
       : getHeadingOutlineFromMarkdown(aisle.id, getPreviewMarkdownForAisle(aisle))
   }, [getEditorMetaForAisle, getPreviewMarkdownForAisle])
 
+  const getTableOfContentsLinksForAisle = useCallback((aisle: ResolvedNoteAisle) => {
+    const appState = getAppState?.()
+    const resolveMarkdownNoteReference = (token: string) =>
+      appState ? resolveMarkdownNoteReferenceToken(appState, token) : null
+    const meta = getEditorMetaForAisle(aisle.id)
+    const view = meta ? getWysiwygView(meta.editor) : null
+    return view?.state?.doc
+      ? getTableOfContentsLinksFromDoc(aisle.id, view.state.doc, resolveMarkdownNoteReference)
+      : getTableOfContentsLinksFromMarkdown(aisle.id, getPreviewMarkdownForAisle(aisle), resolveMarkdownNoteReference)
+  }, [getAppState, getEditorMetaForAisle, getPreviewMarkdownForAisle])
+
   const scrollToAisleHeading = useCallback((aisleId: string, headingKey: string) => {
     const aisle = getAisleById(aisleId)
     const meta = getEditorMetaForAisle(aisleId)
@@ -1397,6 +1428,15 @@ export function useNotebookAisleEditors({
     const heading = getHeadingOutlineForAisle(aisle).find((candidate) => candidate.key === headingKey)
     return heading ? scrollToHeading(meta.editor, heading) : false
   }, [getAisleById, getEditorMetaForAisle, getHeadingOutlineForAisle])
+
+  const scrollToAisleTableOfContentsLink = useCallback((aisleId: string, linkKey: string) => {
+    const aisle = getAisleById(aisleId)
+    const meta = getEditorMetaForAisle(aisleId)
+    if (!aisle || !meta) return false
+    const link = getTableOfContentsLinksForAisle(aisle).find((candidate) => candidate.key === linkKey)
+    if (typeof link?.from !== 'number' || typeof link.to !== 'number') return false
+    return scrollToRange(meta.editor, link.from, link.to)
+  }, [getAisleById, getEditorMetaForAisle, getTableOfContentsLinksForAisle])
 
   return {
     activeEditorAisleIdRef,
@@ -1421,6 +1461,8 @@ export function useNotebookAisleEditors({
     getMountedEditorMarkdownSnapshots,
     getPreviewMarkdownForAisle,
     getHeadingOutlineForAisle,
+    getTableOfContentsLinksForAisle,
     scrollToAisleHeading,
+    scrollToAisleTableOfContentsLink,
   }
 }

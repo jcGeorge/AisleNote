@@ -113,10 +113,7 @@ function getOptionsForPrefix(indexes: SidebarSearchIndexes, prefix: SidebarSearc
   if (prefix === 'prop') {
     return indexes.frontmatter.availableOptions.filter((option) => option.type === 'frontmatter-property')
   }
-  return [...indexes.synced.availableOptions].sort((left, right) => {
-    if (left.type === right.type) return 0
-    return left.type === 'synced-note' ? -1 : 1
-  })
+  return indexes.synced.availableOptions
 }
 
 function createTokenFromOption(
@@ -263,7 +260,6 @@ function occurrenceMatchesCandidate(
   candidate: SidebarSearchCandidate,
 ): boolean {
   if (occurrence.key !== token.key || occurrence.location.noteId !== candidate.location.noteId) return false
-  if (token.optionType === 'synced-note') return true
   return occurrence.aisleId === candidate.aisle.id && occurrence.aisleBodyId === candidate.aisleBodyId
 }
 

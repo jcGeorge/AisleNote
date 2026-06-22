@@ -16,13 +16,11 @@ const notebookEditorsSource = readFileSync(join(sourceDir, '../../editor/useNote
 
 function renderMenu(options: {
   menu?: NotebookEditorContextMenuState | null
-  canDecoupleNote?: boolean
   canDecoupleAisle?: boolean
 } = {}) {
   return renderToStaticMarkup(
     <NotebookEditorContextMenu
       menu={options.menu ?? { x: 10, y: 20, aisleId: 'aisle-1' }}
-      canDecoupleNote={options.canDecoupleNote ?? false}
       canDecoupleAisle={options.canDecoupleAisle ?? false}
       revealLabel="Reveal in Finder"
       canReveal
@@ -37,11 +35,8 @@ function renderMenu(options: {
       onInsertAttachment={vi.fn()}
       onCopyAs={vi.fn()}
       onCreateSyncedCopy={vi.fn()}
-      onFilterSyncedNote={vi.fn()}
       onFilterSyncedAisle={vi.fn()}
-      onDecoupleNote={vi.fn()}
       onDecoupleAisle={vi.fn()}
-      onShowSyncedNote={vi.fn()}
       onShowSyncedAisle={vi.fn()}
       onRevealLocation={vi.fn()}
     />,
@@ -112,21 +107,15 @@ describe('NotebookEditorContextMenu', () => {
 
   it('shows de-couple actions only when they are available', () => {
     expect(renderMenu()).not.toContain('de-couple note')
-    expect(renderMenu()).not.toContain('de-couple aisle')
+    expect(renderMenu()).not.toContain('decouple aisle')
     expect(renderMenu()).not.toContain('filter synced note')
     expect(renderMenu()).not.toContain('show synced aisles')
 
-    const linkedNoteHtml = renderMenu({ canDecoupleNote: true, canDecoupleAisle: true })
-    expect(linkedNoteHtml).toContain('filter synced note')
-    expect(linkedNoteHtml).toContain('de-couple note')
-    expect(linkedNoteHtml).toContain('show synced notes')
-    expect(linkedNoteHtml).not.toContain('filter synced aisle')
-    expect(linkedNoteHtml).not.toContain('de-couple aisle')
-
     const linkedAisleHtml = renderMenu({ canDecoupleAisle: true })
     expect(linkedAisleHtml).toContain('filter synced aisle')
-    expect(linkedAisleHtml).toContain('de-couple aisle')
+    expect(linkedAisleHtml).toContain('decouple aisle')
     expect(linkedAisleHtml).toContain('show synced aisles')
+    expect(linkedAisleHtml).not.toContain('filter synced note')
     expect(linkedAisleHtml).not.toContain('de-couple note')
   })
 
@@ -164,7 +153,7 @@ describe('notebook editor context menu wiring', () => {
     expect(notebookAppSource).toContain('onContextMenu={openNotebookEditorContextMenuFromPointer}')
     expect(notebookAppSource).toContain('getNotebookEditorContextMenuAisleIdFromTarget(target)')
     expect(notebookAppSource).toContain('setEditorContextMenu({ aisleId, x, y, linkPrompt: options.linkPrompt ?? null })')
-    expect(notebookAppSource).toContain("if (!menu || (!canDecoupleNote && !canDecoupleAisle)) return null")
+    expect(notebookAppSource).toContain('if (!menu || !canDecoupleAisle) return null')
     expect(notebookAppSource).not.toContain('openAisleContextMenuFromPointer')
     expect(notebookAppSource).not.toContain('No synced item')
   })

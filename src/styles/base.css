@@ -91,7 +91,7 @@
   --settings-section-tab-active-text: #ffffff;
   --settings-divider-bg: var(--app-border);
   --settings-hotkey-label-text: #dbe8ff;
-  --settings-range-value-text: var(--app-primary);
+  --settings-range-value-text: var(--app-text-heading);
   --settings-range-track-bg: color-mix(in srgb, var(--settings-control-border) 72%, var(--settings-control-bg));
   --settings-range-thumb-bg: var(--app-primary);
   --settings-switch-bg: var(--app-surface);
@@ -375,7 +375,7 @@
   --settings-section-tab-active-text: var(--app-text-bright);
   --settings-divider-bg: var(--app-border);
   --settings-hotkey-label-text: var(--app-text-heading);
-  --settings-range-value-text: var(--custom-palette-primary);
+  --settings-range-value-text: var(--app-text-heading);
   --settings-switch-bg: var(--app-surface);
   --settings-switch-border: color-mix(in srgb, var(--custom-palette-border) 62%, var(--custom-palette-text));
   --settings-switch-focus-border: var(--custom-palette-primary);

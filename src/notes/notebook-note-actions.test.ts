@@ -156,11 +156,12 @@ describe('notebook note actions', () => {
     expect(result.state.noteAisleBodies?.find((body) => body.id === 'copy-body-1')?.tags).toEqual(['target'])
   })
 
-  it('replaces the active note body with a synced target body while preserving active note metadata', () => {
+  it('replaces the active note body with synced target aisles while preserving active note metadata', () => {
     const result = replaceActiveNoteBodyFromTargetNote(createState(), {
       activeNoteId: 'note-active',
       targetNoteId: 'note-target',
       mode: 'synced',
+      idGenerator: idSequence(['synced-aisle-1', 'synced-aisle-2', 'synced-note-body']),
     })
 
     expect(result.status).toBe('ok')
@@ -168,8 +169,13 @@ describe('notebook note actions', () => {
     expect(findNotebookNote(result.state.notebook.items, 'note-active')?.note).toMatchObject({
       id: 'note-active',
       title: 'Active',
-      noteBodyId: 'body-target',
+      noteBodyId: 'synced-note-body',
     })
+    expect(noteBody(result.state, 'synced-note-body').aisles).toEqual([
+      { id: 'synced-aisle-1', aisleBodyId: 'target-aisle-body-1' },
+      { id: 'synced-aisle-2', aisleBodyId: 'target-aisle-body-2' },
+    ])
+    expect(findNotebookNote(result.state.notebook.items, 'note-target')?.note.noteBodyId).toBe('body-target')
   })
 
   it('replaces the active note body with an independent cloned body', () => {

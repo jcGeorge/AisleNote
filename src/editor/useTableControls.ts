@@ -450,8 +450,13 @@ export function useTableControls({
       const tableStart = next?.tableStart ?? previous?.tableStart
       const table = typeof tableStart === 'number' ? getTableDomContextForTableStart(view, tableStart)?.table ?? null : null
       applyTableSelectionClasses(editorEventRootRef.current, table, next)
+      updateTableSelectionOverlay(
+        table && typeof tableStart === 'number'
+          ? createSelectionOverlayState(table, tableStart, next)
+          : CLOSED_TABLE_SELECTION_OVERLAY_STATE,
+      )
     },
-    [editorEventRootRef, editorRef],
+    [editorEventRootRef, editorRef, updateTableSelectionOverlay],
   )
 
   const close = useCallback(() => {

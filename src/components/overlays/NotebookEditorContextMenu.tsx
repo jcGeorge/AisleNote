@@ -141,7 +141,6 @@ function SubMenu({
 
 export function NotebookEditorContextMenu({
   menu,
-  canDecoupleNote,
   canDecoupleAisle,
   revealLabel,
   canReveal,
@@ -156,16 +155,12 @@ export function NotebookEditorContextMenu({
   onInsertAttachment,
   onCopyAs,
   onCreateSyncedCopy,
-  onFilterSyncedNote,
   onFilterSyncedAisle,
-  onDecoupleNote,
   onDecoupleAisle,
-  onShowSyncedNote,
   onShowSyncedAisle,
   onRevealLocation,
 }: {
   menu: NotebookEditorContextMenuState | null
-  canDecoupleNote: boolean
   canDecoupleAisle: boolean
   revealLabel: string
   canReveal: boolean
@@ -184,11 +179,8 @@ export function NotebookEditorContextMenu({
   onInsertAttachment: () => void
   onCopyAs: (kind: NotebookEditorCopyAsKind, mode: NotebookEditorCopyAsMode, aisleId: string) => void
   onCreateSyncedCopy: () => void
-  onFilterSyncedNote: () => void
   onFilterSyncedAisle: (aisleId: string) => void
-  onDecoupleNote: () => void
   onDecoupleAisle: (aisleId: string) => void
-  onShowSyncedNote: () => void
   onShowSyncedAisle: (aisleId: string) => void
   onRevealLocation: (aisleId: string) => void
 }) {
@@ -280,17 +272,10 @@ export function NotebookEditorContextMenu({
       </SubMenu>
       <MenuSeparator />
       <MenuButton onClick={() => runAction(onCreateSyncedCopy)}>make this a copy of</MenuButton>
-      {canDecoupleNote && (
-        <>
-          <MenuButton onClick={() => runAction(onFilterSyncedNote)}>filter synced note</MenuButton>
-          <MenuButton onClick={() => runAction(onDecoupleNote)}>de-couple note</MenuButton>
-          <MenuButton onClick={() => runAction(onShowSyncedNote)}>show synced notes</MenuButton>
-        </>
-      )}
-      {!canDecoupleNote && canDecoupleAisle && (
+      {canDecoupleAisle && (
         <>
           <MenuButton onClick={() => runAisleAction(onFilterSyncedAisle)}>filter synced aisle</MenuButton>
-          <MenuButton onClick={() => runAisleAction(onDecoupleAisle)}>de-couple aisle</MenuButton>
+          <MenuButton onClick={() => runAisleAction(onDecoupleAisle)}>decouple aisle</MenuButton>
           <MenuButton onClick={() => runAisleAction(onShowSyncedAisle)}>show synced aisles</MenuButton>
         </>
       )}

@@ -20,7 +20,7 @@ type EditorToolbarPopoversProps = {
   }
   onExecuteToolbarCommand: (command: string, payload?: Record<string, unknown>) => void
   onOpenCopyModal: () => void
-  syncedItemKind?: 'note' | 'aisle' | null
+  syncedItemKind?: 'aisle' | null
   onFilterSyncedItem: () => void
   onQuickDecoupleSyncedItem: () => void
   onShowSyncedItems: () => void
@@ -75,7 +75,7 @@ export function CopyToolbarMenu({
               onQuickDecoupleSyncedItem()
             }}
           >
-            de-couple {syncedLabel}
+            decouple {syncedLabel}
           </button>
           <button
             type="button"

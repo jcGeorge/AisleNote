@@ -218,13 +218,24 @@ export function replaceActiveNoteBodyFromTargetNote(
   if (!targetBody) return { status: 'blocked', message: TARGET_NOTE_MISSING_MESSAGE }
 
   if (options.mode === 'synced') {
+    const idGenerator = options.idGenerator ?? createReservedIdAllocator(collectNotebookIds(state))
+    const replacement = buildReplacementAisles(state, targetBody, 'synced', idGenerator)
+    const timestamp = nowIso()
+    const noteBody: NoteBody = {
+      ...targetBody,
+      id: idGenerator(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      aisles: replacement.aisles,
+    }
     return {
       status: 'ok',
       state: {
         ...state,
-        notebook: replaceNotebookNoteBodyId(state.notebook, activePath.note.id, targetBody.id),
+        notebook: replaceNotebookNoteBodyId(state.notebook, activePath.note.id, noteBody.id),
+        noteBodies: [...state.noteBodies, noteBody],
       },
-      activeAisleId: targetBody.aisles[0]?.id,
+      activeAisleId: noteBody.aisles[0]?.id,
     }
   }
 

@@ -18,6 +18,7 @@ export const GENERAL_ICON_IDS = [
   'minus',
   'plus',
   'trash',
+  'lock',
   'folder',
   'folderOpen',
   'cornerRightDown',
@@ -164,6 +165,13 @@ export const APP_ICON_DEFINITIONS = {
       { tag: 'path', d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6' },
       { tag: 'path', d: 'M3 6h18' },
       { tag: 'path', d: 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' },
+    ],
+  },
+  lock: {
+    shapes: [
+      { tag: 'circle', cx: '12', cy: '16', r: '1' },
+      { tag: 'rect', x: '3', y: '10', width: '18', height: '12', rx: '2' },
+      { tag: 'path', d: 'M7 10V7a5 5 0 0 1 10 0v3' },
     ],
   },
   folder: {

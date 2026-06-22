@@ -11,6 +11,7 @@ import {
   getFolderNotesRecursive,
   getNotebookNotePathLabel,
   listNotebookNotes,
+  materializeSyncedNoteBodiesInState,
   moveNotebookItem,
   renameNotebookItem,
   replaceNotebookNoteBodyId,
@@ -187,6 +188,40 @@ describe('notebook tree helpers', () => {
     const replaced = replaceNotebookNoteBodyId(linked, 'note-2', 'body-2')
     expect(findNotebookNote(replaced.items, 'note-1')?.note.noteBodyId).toBe('body-1')
     expect(findNotebookNote(replaced.items, 'note-2')?.note.noteBodyId).toBe('body-2')
+  })
+
+  it('materializes synced note bodies as separate notes with synced aisles', () => {
+    const state: AppState = {
+      ...createState(),
+      notebook: {
+        ...createState().notebook,
+        items: [
+          { type: 'note', id: 'note-1', title: 'Original', noteBodyId: 'body-1' },
+          { type: 'note', id: 'note-2', title: 'Linked', noteBodyId: 'body-1' },
+        ],
+      },
+      noteBodies: [
+        {
+          id: 'body-1',
+          aisles: [
+            { id: 'aisle-1', aisleBodyId: 'shared-aisle-body-1' },
+            { id: 'aisle-2', aisleBodyId: 'shared-aisle-body-2' },
+          ],
+        },
+      ],
+    }
+
+    const materialized = materializeSyncedNoteBodiesInState(
+      state,
+      idSequence(['body-2', 'aisle-3', 'aisle-4']),
+    )
+
+    expect(findNotebookNote(materialized.notebook.items, 'note-1')?.note.noteBodyId).toBe('body-1')
+    expect(findNotebookNote(materialized.notebook.items, 'note-2')?.note.noteBodyId).toBe('body-2')
+    expect(materialized.noteBodies.find((body) => body.id === 'body-2')?.aisles).toEqual([
+      { id: 'aisle-3', aisleBodyId: 'shared-aisle-body-1' },
+      { id: 'aisle-4', aisleBodyId: 'shared-aisle-body-2' },
+    ])
   })
 
   it('traverses folders recursively for folder-scoped operations', () => {

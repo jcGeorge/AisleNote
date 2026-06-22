@@ -49,6 +49,8 @@ describe('table controls interaction wiring', () => {
     expect(source).toContain('const beginTableSelectorGesture = useCallback(')
     expect(source).toContain('getSelectedAxisRangeForGesture(')
     expect(source).toContain('setCurrentTableSelection(sourceSelection)')
+    expect(source).toContain('updateTableSelectionOverlay(')
+    expect(source).toContain('createSelectionOverlayState(table, tableStart, next)')
     expect(source).toContain('createAxisSelection(interactionState.context.tableStart, interactionState.axis, interactionState.index, interactionState.index)')
     expect(source).toContain("interactionState.kind === 'selector-gesture'")
   })

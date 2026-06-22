@@ -60,7 +60,7 @@ import {
   getFrontmatterDraftValueForType,
   isFrontmatterComputedValueCompatibleWithFieldType,
   normalizeFrontmatterFixedListOptions,
-  resolveFrontmatterFixedListValue,
+  resolveFrontmatterFixedListValues,
   stringifyFrontmatterYaml,
 } from '../frontmatter/frontmatter'
 import {
@@ -158,6 +158,7 @@ import { getTipDefinition } from '../tips/tips'
 import {
   buildTableOfContentsPanels,
   TABLE_OF_CONTENTS_EMPTY_MESSAGE,
+  type TableOfContentsLinkItem,
   type TableOfContentsPanelsState,
 } from '../editor/table-of-contents'
 import { MAX_AISLE_WARNING_MESSAGE, MAX_NOTE_AISLES } from '../editor/aisle-edit-draft'
@@ -192,7 +193,6 @@ import {
   createNoteBodyWithAisle,
   createNotebookFolderInState,
   createNotebookNoteInState,
-  decoupleNotebookNoteBodyInState,
   deleteNotebookItemInState,
   findNotebookFolder,
   findNotebookItem,
@@ -217,9 +217,7 @@ import {
 import { NotebookDecoupleDialog } from '../components/overlays/NotebookDecoupleDialog'
 import {
   buildNotebookNoteReferenceInsertionText,
-  decoupleNotebookNoteLocationsInState,
   getNotebookAisleDecoupleRows,
-  getNotebookNoteDecoupleRows,
   replaceActiveNoteBodyFromTargetNote,
   replaceFocusedAisleFromTargetNote,
 } from '../notes/notebook-note-actions'
@@ -231,7 +229,6 @@ import {
 import {
   getFrontmatterTemplateFilterKey,
   getSyncedAisleFilterKey,
-  getSyncedNoteFilterKey,
 } from '../filters/note-filter'
 import {
   buildSidebarSearchIndexes,
@@ -454,7 +451,7 @@ function getEditableFixedListOptions(options: unknown, fallbackValue?: unknown):
   const normalizedOptions = normalizeFrontmatterFixedListOptions(options)
   if (normalizedOptions.length > 0) return normalizedOptions
   const fallbackOptions = normalizeFrontmatterFixedListOptions(fallbackValue)
-  return fallbackOptions.length > 0 ? fallbackOptions : ['option']
+  return fallbackOptions
 }
 
 function formatDeletedAt(timestamp: number): string {
@@ -533,24 +530,15 @@ type NoteActionPickerState = {
   urlEnabled?: boolean
 }
 
-type DecoupleDialogState =
-  | {
-      kind: 'note'
-      noteBodyId: string
-      currentKey: string
-      keepKeys: string[]
-      keepData: boolean
-      error?: string
-    }
-  | {
-      kind: 'aisle'
-      aisleId: string
-      aisleBodyId: string
-      currentKey: string
-      keepKeys: string[]
-      keepData: boolean
-      error?: string
-    }
+type DecoupleDialogState = {
+  kind: 'aisle'
+  aisleId: string
+  aisleBodyId: string
+  currentKey: string
+  keepKeys: string[]
+  keepData: boolean
+  error?: string
+}
 
 function getActiveNoteModel(state: AppState): ActiveNoteModel | null {
   const notePath = findNotebookNote(state.notebook.items, state.notebook.activeNoteId)
@@ -1238,33 +1226,24 @@ function TreeItemRow({
 
 function NotebookAisleContextMenu({
   menu,
-  canDecoupleNote,
   canDecoupleAisle,
   onClose,
-  onFilterSyncedNote,
   onFilterSyncedAisle,
-  onQuickDecoupleNote,
   onQuickDecoupleAisle,
-  onShowSyncedNote,
   onShowSyncedAisle,
 }: {
   menu: NotebookAisleContextMenuState | null
-  canDecoupleNote: boolean
   canDecoupleAisle: boolean
   onClose: () => void
-  onFilterSyncedNote: () => void
   onFilterSyncedAisle: () => void
-  onQuickDecoupleNote: () => void
   onQuickDecoupleAisle: () => void
-  onShowSyncedNote: () => void
   onShowSyncedAisle: () => void
 }) {
-  if (!menu || (!canDecoupleNote && !canDecoupleAisle)) return null
+  if (!menu || !canDecoupleAisle) return null
   const runAction = (action: () => void) => {
     action()
     onClose()
   }
-  const itemLabel = canDecoupleNote ? 'note' : 'aisle'
   return (
     <div
       className="tab-context-menu"
@@ -1276,23 +1255,23 @@ function NotebookAisleContextMenu({
       <button
         type="button"
         className="tab-context-delete"
-        onClick={() => runAction(canDecoupleNote ? onFilterSyncedNote : onFilterSyncedAisle)}
+        onClick={() => runAction(onFilterSyncedAisle)}
       >
-        filter synced {itemLabel}
+        filter synced aisle
       </button>
       <button
         type="button"
         className="tab-context-delete"
-        onClick={() => runAction(canDecoupleNote ? onQuickDecoupleNote : onQuickDecoupleAisle)}
+        onClick={() => runAction(onQuickDecoupleAisle)}
       >
-        de-couple {itemLabel}
+        decouple aisle
       </button>
       <button
         type="button"
         className="tab-context-delete"
-        onClick={() => runAction(canDecoupleNote ? onShowSyncedNote : onShowSyncedAisle)}
+        onClick={() => runAction(onShowSyncedAisle)}
       >
-        show synced {itemLabel}s
+        show synced aisles
       </button>
     </div>
   )
@@ -1308,6 +1287,7 @@ export function NotebookFrontmatterModal({
   onSelectTemplate,
   onToggleTemplateDerived,
   onEditTemplate,
+  onFilterTemplate,
 }: {
   modal: NotebookFrontmatterModalState | null
   templates: FrontmatterTemplate[]
@@ -1318,6 +1298,7 @@ export function NotebookFrontmatterModal({
   onSelectTemplate: (modal: NotebookFrontmatterModalState, templateId: string) => NotebookFrontmatterModalState
   onToggleTemplateDerived: (modal: NotebookFrontmatterModalState, templateDerived: boolean) => NotebookFrontmatterModalState
   onEditTemplate: (templateId: string) => void
+  onFilterTemplate: (modal: NotebookFrontmatterModalState) => void
 }) {
   const [error, setError] = useState('')
   const [warnings, setWarnings] = useState<string[]>([])
@@ -1407,25 +1388,47 @@ export function NotebookFrontmatterModal({
 
     if (row.type === 'fixedList') {
       const options = normalizeFrontmatterFixedListOptions(row.fixedListOptions)
-      const value = resolveFrontmatterFixedListValue(options, row.value)
+      const selectedValues = resolveFrontmatterFixedListValues(options, row.value)
+      const selectedValueSet = new Set(selectedValues)
+      const selectedSummary = selectedValues.length > 0 ? selectedValues.join(', ') : 'select from drop-down'
       return (
-        <select
-          className="settings-select-input frontmatter-row-value-input"
-          value={value}
-          aria-label="frontmatter fixed list value"
-          disabled={options.length === 0}
-          onChange={(event) => updateRow(row.id, { value: event.target.value })}
-        >
-          {options.length > 0 ? (
-            options.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))
-          ) : (
-            <option value="">no options</option>
-          )}
-        </select>
+        <details className="frontmatter-fixed-list-dropdown frontmatter-row-value-input">
+          <summary
+            className="settings-select-input frontmatter-fixed-list-trigger"
+            aria-label="frontmatter fixed list values"
+            title={selectedSummary}
+          >
+            <span className="frontmatter-fixed-list-trigger-label">{selectedSummary}</span>
+          </summary>
+          <div className="frontmatter-fixed-list-menu" role="group" aria-label="frontmatter fixed list options">
+            {options.length > 0 ? (
+              options.map((option) => {
+                const checked = selectedValueSet.has(option)
+                return (
+                  <label key={option} className="frontmatter-fixed-list-choice">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) => {
+                        const nextValueSet = new Set(selectedValues)
+                        if (event.target.checked) {
+                          nextValueSet.add(option)
+                        } else {
+                          nextValueSet.delete(option)
+                        }
+                        const nextValues = options.filter((candidate) => nextValueSet.has(candidate))
+                        updateRow(row.id, { value: nextValues.join(', ') })
+                      }}
+                    />
+                    <span>{option}</span>
+                  </label>
+                )
+              })
+            ) : (
+              <span className="frontmatter-fixed-list-empty">No fixed-list options</span>
+            )}
+          </div>
+        </details>
       )
     }
 
@@ -1494,9 +1497,17 @@ export function NotebookFrontmatterModal({
       >
         <header className="modal-card-header">
           <h2>Frontmatter</h2>
-          {modal.isTemplateSuggestionDraft && selectedTemplate ? (
-            <span className="frontmatter-template-suggestion-chip">suggested</span>
-          ) : null}
+          <div className="frontmatter-modal-header-actions">
+            {selectedTemplate && modal.templateDerived && !modal.isTemplateSuggestionDraft ? (
+              <button
+                type="button"
+                className="btn btn-sm settings-action-btn frontmatter-filter-template-btn"
+                onClick={() => onFilterTemplate(modal)}
+              >
+                Filter on template
+              </button>
+            ) : null}
+          </div>
         </header>
         <div className="notebook-frontmatter-body">
           <div className="frontmatter-note-toolbar">
@@ -1627,7 +1638,7 @@ export function NotebookFrontmatterModal({
                             : nextType === 'date' || nextType === 'datetime'
                               ? getFrontmatterDraftValueForType(nextType, row.value)
                               : nextType === 'fixedList'
-                                ? resolveFrontmatterFixedListValue(nextFixedListOptions, row.value)
+                                ? resolveFrontmatterFixedListValues(nextFixedListOptions, row.value).join(', ')
                               : row.value,
                           computed: nextComputed,
                           computedEnabled: isComputedEnabled(row) && nextComputed !== 'none',
@@ -1660,10 +1671,12 @@ export function NotebookFrontmatterModal({
                     </span>
                     <button
                       type="button"
-                      className="btn btn-sm settings-action-btn"
+                      className="btn btn-sm settings-action-btn frontmatter-row-remove-btn"
+                      aria-label={`Remove ${row.key || 'frontmatter row'}`}
+                      data-app-tooltip="Remove row"
                       onClick={() => updateRows((rows) => rows.filter((candidate) => candidate.id !== row.id))}
                     >
-                      Remove
+                      <AppIcon iconId="trash" className="frontmatter-row-remove-icon" />
                     </button>
                   </div>
                 )
@@ -1743,6 +1756,19 @@ function NotebookSettingsSwitch({
 
 function formatScalePercent(value: number): string {
   return `${Math.round(value * 100)}%`
+}
+
+function formatRangeProgress(value: number, min: number, max: number): string {
+  const range = max - min
+  if (range <= 0) return '0%'
+  const progress = Math.min(100, Math.max(0, ((value - min) / range) * 100))
+  return `${Number(progress.toFixed(4))}%`
+}
+
+function getRangeProgressStyle(value: number, min: number, max: number): CSSProperties {
+  return {
+    '--settings-range-progress': formatRangeProgress(value, min, max),
+  } as CSSProperties
 }
 
 function NotebookThemeSettings({
@@ -1866,6 +1892,7 @@ function NotebookThemeSettings({
               max={MAX_NOTE_FONT_SCALE}
               step={NOTE_FONT_SCALE_STEP}
               value={noteFontScale}
+              style={getRangeProgressStyle(noteFontScale, MIN_NOTE_FONT_SCALE, MAX_NOTE_FONT_SCALE)}
               aria-describedby="note-font-scale-value"
               onChange={(event) => updateUiScale('noteFontScale', Number(event.target.value))}
             />
@@ -1885,6 +1912,7 @@ function NotebookThemeSettings({
               max={MAX_TOOLBAR_BUTTON_SCALE}
               step={TOOLBAR_BUTTON_SCALE_STEP}
               value={toolbarButtonScale}
+              style={getRangeProgressStyle(toolbarButtonScale, MIN_TOOLBAR_BUTTON_SCALE, MAX_TOOLBAR_BUTTON_SCALE)}
               aria-describedby="toolbar-button-scale-value"
               onChange={(event) => updateUiScale('toolbarButtonScale', Number(event.target.value))}
             />
@@ -1962,6 +1990,7 @@ export function NotebookApp() {
   const [aisleEditModalOpen, setAisleEditModalOpen] = useState(false)
   const [frontmatterModal, setFrontmatterModal] = useState<NotebookFrontmatterModalState | null>(null)
   const [frontmatterDraft, setFrontmatterDraft] = useState<AppState['frontmatter']>(() => state.frontmatter)
+  const [frontmatterFixedListOptionDrafts, setFrontmatterFixedListOptionDrafts] = useState<Record<string, string>>({})
   const [editingShortcut, setEditingShortcut] = useState<ShortcutId | null>(null)
   const [shortcutMenuSettingsOpen, setShortcutMenuSettingsOpen] = useState(false)
   const [tableOfContentsPanels, setTableOfContentsPanels] = useState<TableOfContentsPanelsState | null>(null)
@@ -2084,19 +2113,6 @@ export function NotebookApp() {
         .map((aisle) => aisle.id),
     )
   }, [activeModel, state])
-  const frontmatterTemplateFilterAisleIds = useMemo(() => {
-    if (!activeModel) return new Set<string>()
-    const templateIds = new Set(state.frontmatter.templates.map((template) => template.id))
-    return new Set(
-      activeModel.resolved.aisles
-        .filter((aisle) => {
-          const body = getAisleBodyById(state, aisle.aisleBodyId)
-          const templateId = body?.frontmatterMeta?.templateId ?? ''
-          return Boolean(templateId && body?.frontmatterMeta?.templateDerived && templateIds.has(templateId))
-        })
-        .map((aisle) => aisle.id),
-    )
-  }, [activeModel, state])
   const rootStyle = useMemo(
     () =>
       ({
@@ -2117,7 +2133,7 @@ export function NotebookApp() {
   const canDecoupleAisleById = useCallback(
     (aisleId: string) => {
       const aisle = activeModel?.resolved.aisles.find((candidate) => candidate.id === aisleId)
-      return Boolean(aisle && !activeModel?.linked && (aisleBodyReferenceCounts.get(aisle.aisleBodyId) ?? 0) > 1)
+      return Boolean(aisle && (aisleBodyReferenceCounts.get(aisle.aisleBodyId) ?? 0) > 1)
     },
     [activeModel, aisleBodyReferenceCounts],
   )
@@ -2190,6 +2206,7 @@ export function NotebookApp() {
   useEffect(() => {
     if (JSON.stringify(frontmatterDraft) === JSON.stringify(frontmatterStateSnapshotRef.current)) {
       setFrontmatterDraft(state.frontmatter)
+      setFrontmatterFixedListOptionDrafts({})
     }
     frontmatterStateSnapshotRef.current = state.frontmatter
   }, [frontmatterDraft, state.frontmatter])
@@ -3340,11 +3357,6 @@ export function NotebookApp() {
     },
   })
 
-  const decoupleActiveNote = useCallback(() => {
-    if (!activeModel || !activeModel.linked) return
-    mutateState((previous) => decoupleNotebookNoteBodyInState(previous, activeModel.noteId))
-  }, [activeModel, mutateState])
-
   const applySyncedFilter = useCallback(
     (key: string) => {
       if (!key) return
@@ -3355,11 +3367,6 @@ export function NotebookApp() {
     },
     [activateSidebarSearchKey, toolbarState],
   )
-
-  const filterSyncedNote = useCallback(() => {
-    if (!activeModel?.linked) return
-    applySyncedFilter(getSyncedNoteFilterKey(activeModel.noteBody.id))
-  }, [activeModel, applySyncedFilter])
 
   const filterSyncedAisle = useCallback(
     (aisleId = renderedActiveAisleId) => {
@@ -3599,21 +3606,6 @@ export function NotebookApp() {
     [closeNoteActionPicker, notebookEditors],
   )
 
-  const openDecoupleNoteDialog = useCallback(() => {
-    if (!activeModel?.linked) return
-    const latestState = stateRef.current
-    const currentKey = buildNoteLocationKey({ noteId: activeModel.noteId })
-    const rows = getNotebookNoteDecoupleRows(latestState, activeModel.noteBody.id)
-    toolbarState.closeToolbarPopovers()
-    setDecoupleDialog({
-      kind: 'note',
-      noteBodyId: activeModel.noteBody.id,
-      currentKey,
-      keepKeys: rows.map((row) => row.key),
-      keepData: latestState.ui.decoupledItemsKeepData ?? true,
-    })
-  }, [activeModel, stateRef, toolbarState])
-
   const openDecoupleAisleDialog = useCallback(
     (aisleId: string) => {
       if (!activeModel || !canDecoupleAisleById(aisleId)) return
@@ -3637,7 +3629,6 @@ export function NotebookApp() {
 
   const decoupleDialogRows = useMemo(() => {
     if (!decoupleDialog) return []
-    if (decoupleDialog.kind === 'note') return getNotebookNoteDecoupleRows(state, decoupleDialog.noteBodyId)
     return getNotebookAisleDecoupleRows(state, decoupleDialog.aisleBodyId)
   }, [decoupleDialog, state])
 
@@ -3660,9 +3651,7 @@ export function NotebookApp() {
     let blockedMessage = ''
     mutateState((previous) => {
       const keepKeys = new Set(decoupleDialog.keepKeys)
-      const result = decoupleDialog.kind === 'note'
-        ? decoupleNotebookNoteLocationsInState(previous, decoupleDialog.noteBodyId, keepKeys, decoupleDialog.keepData)
-        : decoupleAisleSlotsInState(previous, decoupleDialog.aisleBodyId, keepKeys, decoupleDialog.keepData)
+      const result = decoupleAisleSlotsInState(previous, decoupleDialog.aisleBodyId, keepKeys, decoupleDialog.keepData)
       if (result.status === 'blocked') {
         blockedMessage = result.message
         return previous
@@ -3847,6 +3836,14 @@ export function NotebookApp() {
     [openUtilityView, setSettingsSection],
   )
 
+  const filterFrontmatterTemplateFromModal = useCallback(
+    (modal: NotebookFrontmatterModalState) => {
+      setFrontmatterModal(null)
+      filterAisleFrontmatterTemplate(modal.aisleId)
+    },
+    [filterAisleFrontmatterTemplate],
+  )
+
   const saveFrontmatter = useCallback(
     (modal: NotebookFrontmatterModalState) => {
       const computedRepair = disableInvalidComputedFrontmatterRows(modal.rows)
@@ -3888,6 +3885,7 @@ export function NotebookApp() {
       {
         scope: state.ui.tableOfContentsScope ?? 'all-aisles',
         focusedAisleId: renderedActiveAisleId,
+        getLinksForAisle: notebookEditors.getTableOfContentsLinksForAisle,
       },
     )
     if (!panels) {
@@ -3916,9 +3914,23 @@ export function NotebookApp() {
     [notebookEditors],
   )
 
-  const openTableOfContentsLink = useCallback((_aisleId: string, link: { href?: string }) => {
-    if (link.href) window.open(link.href, '_blank', 'noopener,noreferrer')
-  }, [])
+  const selectTableOfContentsLink = useCallback(
+    (aisleId: string, linkKey: string) => {
+      setActiveAisleId(aisleId)
+      window.setTimeout(() => {
+        notebookEditors.scrollToAisleTableOfContentsLink(aisleId, linkKey)
+      }, 80)
+    },
+    [notebookEditors],
+  )
+
+  const openTableOfContentsLink = useCallback((_aisleId: string, link: Pick<TableOfContentsLinkItem, 'href' | 'target'>) => {
+    if (link.href) {
+      window.open(link.href, '_blank', 'noopener,noreferrer')
+      return
+    }
+    if (link.target) openNoteReferenceFromEditor(link.target)
+  }, [openNoteReferenceFromEditor])
 
   const editorToolOverlaysVisible = viewMode === 'main' && !aisleEditModalOpen
 
@@ -3993,7 +4005,7 @@ export function NotebookApp() {
 
   const openAisleContextMenuAt = useCallback(
     (aisleId: string, x: number, y: number) => {
-      if (!activeModel?.linked && !canDecoupleAisleById(aisleId)) {
+      if (!canDecoupleAisleById(aisleId)) {
         setAisleContextMenu(null)
         setEditorContextMenu(null)
         setTreeContextMenu(null)
@@ -4008,7 +4020,7 @@ export function NotebookApp() {
       setShortcutMenu(null)
       setAisleContextMenu({ aisleId, x, y })
     },
-    [activeModel?.linked, canDecoupleAisleById, toolbarState],
+    [canDecoupleAisleById, toolbarState],
   )
 
   const openEditorContextMenuAt = useCallback(
@@ -4246,25 +4258,20 @@ export function NotebookApp() {
         toolbarState.setCopyMenuOpen(false)
       }}
       syncedItemKind={
-        activeModel.linked
-          ? 'note'
-          : renderedActiveAisleId && canDecoupleAisleById(renderedActiveAisleId)
-            ? 'aisle'
-            : null
+        renderedActiveAisleId && canDecoupleAisleById(renderedActiveAisleId)
+          ? 'aisle'
+          : null
       }
       onFilterSyncedItem={() => {
-        if (activeModel.linked) filterSyncedNote()
-        else if (renderedActiveAisleId) filterSyncedAisle(renderedActiveAisleId)
+        if (renderedActiveAisleId) filterSyncedAisle(renderedActiveAisleId)
         toolbarState.setCopyMenuOpen(false)
       }}
       onQuickDecoupleSyncedItem={() => {
-        if (activeModel.linked) decoupleActiveNote()
-        else if (renderedActiveAisleId) decoupleAisle(renderedActiveAisleId)
+        if (renderedActiveAisleId) decoupleAisle(renderedActiveAisleId)
         toolbarState.setCopyMenuOpen(false)
       }}
       onShowSyncedItems={() => {
-        if (activeModel.linked) openDecoupleNoteDialog()
-        else if (renderedActiveAisleId) openDecoupleAisleDialog(renderedActiveAisleId)
+        if (renderedActiveAisleId) openDecoupleAisleDialog(renderedActiveAisleId)
         toolbarState.setCopyMenuOpen(false)
       }}
     />
@@ -4526,7 +4533,7 @@ export function NotebookApp() {
                   const nextDefaultValue = nextType === 'boolean'
                     ? (isFrontmatterBooleanTrue(requestedDefaultValue) ? 'true' : 'false')
                     : nextType === 'fixedList'
-                      ? resolveFrontmatterFixedListValue(fixedListOptions, requestedDefaultValue)
+                      ? resolveFrontmatterFixedListValues(fixedListOptions, requestedDefaultValue).join(', ')
                       : requestedDefaultValue
                   return {
                     ...field,
@@ -4546,48 +4553,81 @@ export function NotebookApp() {
       }))
     }
 
+    const getFixedListOptionDraftKey = (templateId: string, fieldId: string) => `${templateId}:${fieldId}`
+    const getFixedListOptionDraftValue = (templateId: string, field: FrontmatterTemplateField) => {
+      const draftKey = getFixedListOptionDraftKey(templateId, field.id)
+      return frontmatterFixedListOptionDrafts[draftKey] ?? normalizeFrontmatterFixedListOptions(field.options).join(', ')
+    }
+
     const renderFrontmatterDefaultControl = (templateId: string, field: FrontmatterTemplateField) => {
       if (field.type === 'fixedList') {
         const options = normalizeFrontmatterFixedListOptions(field.options)
-        const selectedValue = resolveFrontmatterFixedListValue(options, field.defaultValue)
+        const selectedDefaults = resolveFrontmatterFixedListValues(options, field.defaultValue)
+        const selectedDefaultSet = new Set(selectedDefaults)
+        const selectedDefaultSummary = selectedDefaults.length > 0 ? selectedDefaults.join(', ') : 'default selection'
+        const optionDraftKey = getFixedListOptionDraftKey(templateId, field.id)
         return (
           <div className="frontmatter-fixed-list-default">
-            <select
-              className="settings-select-input frontmatter-default-input"
-              value={selectedValue}
-              aria-label="frontmatter fixed list default value"
-              disabled={field.computed !== 'none' || options.length === 0}
-              onChange={(event) =>
-                updateFrontmatterTemplateField(templateId, field.id, {
-                  defaultValue: event.target.value,
-                })
-              }
-            >
-              {options.length > 0 ? (
-                options.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))
-              ) : (
-                <option value="">no options</option>
-              )}
-            </select>
             <input
               type="text"
               className="settings-text-input frontmatter-fixed-list-options-input"
-              value={options.join(', ')}
+              value={getFixedListOptionDraftValue(templateId, field)}
               aria-label="frontmatter fixed list values"
               placeholder="one, two"
               disabled={field.computed !== 'none'}
               onChange={(event) => {
-                const nextOptions = normalizeFrontmatterFixedListOptions(event.target.value)
+                const rawOptions = event.target.value
+                const nextOptions = normalizeFrontmatterFixedListOptions(rawOptions)
+                setFrontmatterFixedListOptionDrafts((drafts) => ({
+                  ...drafts,
+                  [optionDraftKey]: rawOptions,
+                }))
                 updateFrontmatterTemplateField(templateId, field.id, {
                   options: nextOptions,
-                  defaultValue: resolveFrontmatterFixedListValue(nextOptions, field.defaultValue),
+                  defaultValue: resolveFrontmatterFixedListValues(nextOptions, field.defaultValue).join(', '),
                 })
               }}
             />
+            <details className="frontmatter-fixed-list-dropdown frontmatter-default-input">
+              <summary
+                className="settings-select-input frontmatter-fixed-list-trigger"
+                aria-label="frontmatter fixed list default values"
+                title={selectedDefaultSummary}
+              >
+                <span className="frontmatter-fixed-list-trigger-label">{selectedDefaultSummary}</span>
+              </summary>
+              <div className="frontmatter-fixed-list-menu" role="group" aria-label="frontmatter fixed list default options">
+                {options.length > 0 ? (
+                  options.map((option) => {
+                    const checked = selectedDefaultSet.has(option)
+                    return (
+                      <label key={option} className="frontmatter-fixed-list-choice">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={field.computed !== 'none'}
+                          onChange={(event) => {
+                            const nextDefaultSet = new Set(selectedDefaults)
+                            if (event.target.checked) {
+                              nextDefaultSet.add(option)
+                            } else {
+                              nextDefaultSet.delete(option)
+                            }
+                            const nextDefaults = options.filter((candidate) => nextDefaultSet.has(candidate))
+                            updateFrontmatterTemplateField(templateId, field.id, {
+                              defaultValue: nextDefaults.join(', '),
+                            })
+                          }}
+                        />
+                        <span>{option}</span>
+                      </label>
+                    )
+                  })
+                ) : (
+                  <span className="frontmatter-fixed-list-empty">No fixed-list options</span>
+                )}
+              </div>
+            </details>
           </div>
         )
       }
@@ -4653,6 +4693,7 @@ export function NotebookApp() {
     const saveFrontmatterTemplates = () => {
       const nextFrontmatter = frontmatterDraft
       frontmatterStateSnapshotRef.current = nextFrontmatter
+      setFrontmatterFixedListOptionDrafts({})
       mutateState((previous) => ({
         ...previous,
         frontmatter: nextFrontmatter,
@@ -4727,7 +4768,10 @@ export function NotebookApp() {
             type="button"
             className="notebook-settings-action"
             disabled={!frontmatterDraftDirty}
-            onClick={() => setFrontmatterDraft(stateRef.current.frontmatter)}
+            onClick={() => {
+              setFrontmatterFixedListOptionDrafts({})
+              setFrontmatterDraft(stateRef.current.frontmatter)
+            }}
           >
             Discard changes
           </button>
@@ -4757,7 +4801,7 @@ export function NotebookApp() {
                 <span>key</span>
                 <span>type</span>
                 <span>computed</span>
-                <span>default</span>
+                <span>default value</span>
                 <span>lock</span>
                 <span>action</span>
               </div>
@@ -4788,7 +4832,7 @@ export function NotebookApp() {
                           : type === 'date' || type === 'datetime'
                             ? getFrontmatterDraftValueForType(type, field.defaultValue)
                             : type === 'fixedList'
-                              ? resolveFrontmatterFixedListValue(options, field.defaultValue)
+                              ? resolveFrontmatterFixedListValues(options, field.defaultValue).join(', ')
                             : field.defaultValue,
                         options,
                         computed: isFrontmatterComputedValueCompatibleWithFieldType(field.computed, type)
@@ -4825,11 +4869,13 @@ export function NotebookApp() {
                     aria-label={field.computed !== 'none' ? 'Computed values cannot be manually changed.' : undefined}
                     data-app-tooltip={field.computed !== 'none' ? 'Computed values cannot be manually changed.' : undefined}
                   >
-                    {field.computed !== 'none' ? 'lock' : ''}
+                    {field.computed !== 'none' ? <AppIcon iconId="lock" className="frontmatter-template-lock-icon" /> : null}
                   </span>
                   <button
                     type="button"
-                    className="notebook-settings-action"
+                    className="notebook-settings-action frontmatter-template-remove-btn"
+                    aria-label={`Remove ${field.key || 'frontmatter field'}`}
+                    data-app-tooltip="Remove field"
                     onClick={() =>
                       updateFrontmatterDraft((frontmatter) => ({
                         ...frontmatter,
@@ -4844,7 +4890,7 @@ export function NotebookApp() {
                       }))
                     }
                   >
-                    Remove
+                    <AppIcon iconId="trash" className="frontmatter-template-remove-icon" />
                   </button>
                 </div>
               ))}
@@ -5310,7 +5356,6 @@ export function NotebookApp() {
                 linkedAisleIds={linkedAisleIds}
                 wholeNoteLinked={activeModel.linked}
                 frontmatterAisleIds={frontmatterAisleIds}
-                frontmatterTemplateFilterAisleIds={frontmatterTemplateFilterAisleIds}
                 aisleScrollRef={aisleScrollRef}
                 toolbar={toolbar}
                 headingPopover={toolbarPopovers}
@@ -5388,10 +5433,9 @@ export function NotebookApp() {
                 getPreviewMarkdownForAisle={notebookEditors.getPreviewMarkdownForAisle}
                 onCloseTableOfContentsAisle={closeTableOfContentsAisle}
                 onSelectTableOfContentsHeading={selectTableOfContentsHeading}
-                onSelectTableOfContentsLink={() => undefined}
+                onSelectTableOfContentsLink={selectTableOfContentsLink}
                 onOpenTableOfContentsLink={openTableOfContentsLink}
                 onOpenAisleFrontmatter={openFrontmatterModalForAisle}
-                onFilterAisleFrontmatterTemplate={filterAisleFrontmatterTemplate}
                 onOpenAisleLink={openAisleActionMenu}
                 appState={state}
                 onOpenNoteReference={openNoteReferenceFromEditor}
@@ -5403,19 +5447,14 @@ export function NotebookApp() {
               />
               <NotebookAisleContextMenu
                 menu={aisleContextMenu}
-                canDecoupleNote={activeModel.linked}
                 canDecoupleAisle={canDecoupleAisleById(aisleContextMenu?.aisleId ?? '')}
                 onClose={() => setAisleContextMenu(null)}
-                onFilterSyncedNote={filterSyncedNote}
                 onFilterSyncedAisle={() => filterSyncedAisle(aisleContextMenu?.aisleId ?? renderedActiveAisleId)}
-                onQuickDecoupleNote={decoupleActiveNote}
                 onQuickDecoupleAisle={() => decoupleAisle(aisleContextMenu?.aisleId ?? renderedActiveAisleId)}
-                onShowSyncedNote={openDecoupleNoteDialog}
                 onShowSyncedAisle={() => openDecoupleAisleDialog(aisleContextMenu?.aisleId ?? renderedActiveAisleId)}
               />
               <NotebookEditorContextMenu
                 menu={editorContextMenu}
-                canDecoupleNote={activeModel.linked}
                 canDecoupleAisle={canDecoupleAisleById(editorContextMenu?.aisleId ?? '')}
                 revealLabel={sidebarRevealLabel}
                 canReveal={typeof window !== 'undefined' && typeof window.electronAPI?.revealNoteLocation === 'function'}
@@ -5430,11 +5469,8 @@ export function NotebookApp() {
                 onInsertAttachment={notebookEditors.insertAttachmentFile}
                 onCopyAs={copyNotebookStructureAs}
                 onCreateSyncedCopy={openWholeNoteCopyPicker}
-                onFilterSyncedNote={filterSyncedNote}
                 onFilterSyncedAisle={filterSyncedAisle}
-                onDecoupleNote={decoupleActiveNote}
                 onDecoupleAisle={decoupleAisle}
-                onShowSyncedNote={openDecoupleNoteDialog}
                 onShowSyncedAisle={openDecoupleAisleDialog}
                 onRevealLocation={revealEditorContextLocation}
               />
@@ -5493,21 +5529,13 @@ export function NotebookApp() {
       />
       {decoupleDialog ? (
         <NotebookDecoupleDialog
-          title={decoupleDialog.kind === 'note' ? 'De-couple note' : 'De-couple aisle'}
-          description={
-            decoupleDialog.kind === 'note'
-              ? 'Choose which synced notes keep sharing this note body.'
-              : 'Choose which synced aisles keep sharing this aisle body.'
-          }
+          title="Decouple aisle"
+          description="Choose which synced aisles keep sharing this aisle body."
           rows={decoupleDialogRows}
           keepKeys={decoupleDialog.keepKeys}
           currentKey={decoupleDialog.currentKey}
           keepData={decoupleDialog.keepData}
-          keepDataLabel={
-            decoupleDialog.kind === 'note'
-              ? 'keep text in de-coupled notes?'
-              : 'keep text in de-coupled aisles?'
-          }
+          keepDataLabel="keep text in decoupled aisles?"
           error={decoupleDialog.error}
           onCancel={() => setDecoupleDialog(null)}
           onToggleKeepKey={toggleDecoupleDialogKeepKey}
@@ -5536,6 +5564,7 @@ export function NotebookApp() {
         onSelectTemplate={selectFrontmatterTemplate}
         onToggleTemplateDerived={toggleFrontmatterTemplateDerived}
         onEditTemplate={editFrontmatterTemplateFromModal}
+        onFilterTemplate={filterFrontmatterTemplateFromModal}
       />
       <AisleEditModal
         open={aisleEditModalOpen && Boolean(activeModel)}

@@ -9,6 +9,7 @@ import {
   parseFrontmatterYaml,
   prependMarkdownFrontmatter,
   normalizeFrontmatterSettings,
+  resolveFrontmatterFixedListValues,
   stringifyFrontmatterYaml,
 } from './frontmatter'
 import type { FrontmatterTemplate } from '../types/app'
@@ -135,7 +136,7 @@ describe('frontmatter templates', () => {
     ])
   })
 
-  it('normalizes fixed list options and clamps invalid defaults', () => {
+  it('normalizes fixed list options and drops invalid defaults', () => {
     const normalized = normalizeFrontmatterSettings({
       templates: [
         {
@@ -158,13 +159,23 @@ describe('frontmatter templates', () => {
     expect(normalizeFrontmatterFixedListOptions('draft, published\ndraft')).toEqual(['draft', 'published'])
     expect(normalized.templates[0]?.fields[0]).toMatchObject({
       type: 'fixedList',
-      defaultValue: 'draft',
+      defaultValue: '',
       computed: 'none',
       options: ['draft', 'published'],
     })
   })
 
-  it('applies fixed list templates as a single allowed string value', () => {
+  it('resolves fixed list values as ordered allowed selections', () => {
+    const options = ['draft', 'published', 'archived']
+
+    expect(resolveFrontmatterFixedListValues(options, 'published')).toEqual(['published'])
+    expect(resolveFrontmatterFixedListValues(options, ['archived', 'draft', 'draft'])).toEqual(['draft', 'archived'])
+    expect(resolveFrontmatterFixedListValues(options, 'archived, missing, draft')).toEqual(['draft', 'archived'])
+    expect(resolveFrontmatterFixedListValues(options, 'missing', 'published')).toEqual(['published'])
+    expect(resolveFrontmatterFixedListValues(options, [])).toEqual([])
+  })
+
+  it('applies fixed list templates as allowed value arrays', () => {
     const fixedTemplate: FrontmatterTemplate = {
       id: 'fixed-template',
       name: 'Fixed',
@@ -180,10 +191,14 @@ describe('frontmatter templates', () => {
       ],
     }
 
-    expect(applyFrontmatterTemplate(null, fixedTemplate, context)).toEqual({ status: 'draft' })
-    expect(applyFrontmatterTemplate({ status: 'published' }, fixedTemplate, context)).toEqual({ status: 'published' })
-    expect(applyFrontmatterTemplate({ status: 'archived' }, fixedTemplate, context)).toEqual({ status: 'draft' })
-    expect(coerceFrontmatterFieldValue('fixedList', 'published')).toBe('published')
+    expect(applyFrontmatterTemplate(null, fixedTemplate, context)).toEqual({ status: ['draft'] })
+    expect(applyFrontmatterTemplate({ status: 'published' }, fixedTemplate, context)).toEqual({ status: ['published'] })
+    expect(applyFrontmatterTemplate({ status: ['published', 'draft'] }, fixedTemplate, context)).toEqual({
+      status: ['draft', 'published'],
+    })
+    expect(applyFrontmatterTemplate({ status: 'archived' }, fixedTemplate, context)).toEqual({ status: ['draft'] })
+    expect(applyFrontmatterTemplate({ status: [] }, fixedTemplate, context)).toEqual({ status: [] })
+    expect(coerceFrontmatterFieldValue('fixedList', 'published')).toEqual(['published'])
   })
 
   it('applies computed tags to list fields', () => {

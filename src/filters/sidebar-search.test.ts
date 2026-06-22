@@ -90,7 +90,7 @@ describe('sidebar search parsing and suggestions', () => {
       ['tags', 'tag', 'Calvin'],
       ['frontmatter', 'frontmatter-template', 'Sermon'],
       ['frontmatter', 'frontmatter-property', 'speaker'],
-      ['synced', 'synced-note', 'Calvin sermon'],
+      ['synced', 'synced-aisle', 'Calvin sermon'],
     ])
   })
 
@@ -108,7 +108,7 @@ describe('sidebar search parsing and suggestions', () => {
     )
     expect(getSidebarSearchSuggestions('duplicate:Cal', indexes)[0]).toMatchObject({
       kind: 'synced',
-      optionType: 'synced-note',
+      optionType: 'synced-aisle',
       prefix: 'duplicate',
     })
   })
@@ -153,7 +153,7 @@ describe('sidebar search result filtering', () => {
       },
     })
 
-    expect(resultGroups.map((group) => group.noteId)).toEqual(['note-a', 'note-c'])
+    expect(resultGroups.map((group) => group.noteId)).toEqual(['note-a', 'note-b', 'note-c'])
   })
 
   it('excludes aisles that do not satisfy every selected filter', () => {

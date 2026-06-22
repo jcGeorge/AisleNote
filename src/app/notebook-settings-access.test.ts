@@ -7,6 +7,8 @@ const notebookAppSource = readFileSync(join(dirname(fileURLToPath(import.meta.ur
 const appCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../App.css'), 'utf8')
 const baseCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../styles/base.css'), 'utf8')
 const settingsCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../styles/settings.css'), 'utf8')
+const lightCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../styles/themes/light.css'), 'utf8')
+const dawnCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../styles/themes/dawn.css'), 'utf8')
 
 describe('notebook settings access', () => {
   it('renders explicit settings entry points for expanded and collapsed sidebars', () => {
@@ -76,9 +78,11 @@ describe('notebook settings access', () => {
     expect(settingsCssSource).toContain('border-radius: 999px;')
   })
 
-  it('shows percent readouts for visual scale sliders and uses accent range text', () => {
+  it('shows percent readouts for visual scale sliders with standard text and matching active tracks', () => {
     expect(notebookAppSource).toContain('formatScalePercent(noteFontScale)')
     expect(notebookAppSource).toContain('formatScalePercent(toolbarButtonScale)')
+    expect(notebookAppSource).toContain('getRangeProgressStyle(noteFontScale, MIN_NOTE_FONT_SCALE, MAX_NOTE_FONT_SCALE)')
+    expect(notebookAppSource).toContain('getRangeProgressStyle(toolbarButtonScale, MIN_TOOLBAR_BUTTON_SCALE, MAX_TOOLBAR_BUTTON_SCALE)')
     expect(notebookAppSource).toContain('id="note-font-scale-value"')
     expect(notebookAppSource).toContain('id="toolbar-button-scale-value"')
     expect(notebookAppSource).toContain('MIN_NOTE_FONT_SCALE')
@@ -87,7 +91,12 @@ describe('notebook settings access', () => {
     expect(notebookAppSource).toContain('MAX_TOOLBAR_BUTTON_SCALE')
     expect(settingsCssSource).toContain('min-width: 3.4rem;')
     expect(settingsCssSource).toContain('font-variant-numeric: tabular-nums;')
-    expect(baseCssSource).toContain('--settings-range-value-text: var(--custom-palette-primary);')
-    expect(baseCssSource).not.toContain('--settings-range-value-text: var(--app-text-muted);')
+    expect(settingsCssSource).toContain('--settings-range-progress: 0%;')
+    expect(settingsCssSource).toContain('var(--settings-range-thumb-bg) var(--settings-range-progress)')
+    expect(baseCssSource).toContain('--settings-range-value-text: var(--app-text-heading);')
+    expect(lightCssSource).toContain('--settings-range-value-text: var(--app-text-heading);')
+    expect(dawnCssSource).toContain('--settings-range-value-text: var(--app-text-heading);')
+    expect(baseCssSource).not.toContain('--settings-range-value-text: var(--custom-palette-primary);')
+    expect(baseCssSource).not.toContain('--settings-range-value-text: var(--app-primary);')
   })
 })

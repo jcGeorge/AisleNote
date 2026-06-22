@@ -489,6 +489,120 @@ export function replaceNotebookNoteBodyId(notebook: NotebookState, noteId: strin
   return changed ? { ...notebook, items } : notebook
 }
 
+type NoteBodyLocation = {
+  noteId: string
+  noteBodyId: string
+}
+
+function collectNoteBodyLocations(items: NotebookTreeItem[], locations: NoteBodyLocation[] = []): NoteBodyLocation[] {
+  items.forEach((item) => {
+    if (item.type === 'note') {
+      locations.push({ noteId: item.id, noteBodyId: item.noteBodyId })
+      return
+    }
+    collectNoteBodyLocations(item.children, locations)
+  })
+  return locations
+}
+
+function replaceNotebookItemNoteBodyIds(
+  items: NotebookTreeItem[],
+  replacements: Map<string, string>,
+): { items: NotebookTreeItem[]; changed: boolean } {
+  let changed = false
+  const nextItems = items.map((item): NotebookTreeItem => {
+    if (item.type === 'note') {
+      const noteBodyId = replacements.get(item.id)
+      if (!noteBodyId || noteBodyId === item.noteBodyId) return item
+      changed = true
+      return { ...item, noteBodyId }
+    }
+
+    const childResult = replaceNotebookItemNoteBodyIds(item.children, replacements)
+    if (!childResult.changed) return item
+    changed = true
+    return { ...item, children: childResult.items }
+  })
+  return { items: nextItems, changed }
+}
+
+function replaceDeletedNotebookItemNoteBodyIds(
+  item: NotebookTreeItem,
+  replacements: Map<string, string>,
+): { item: NotebookTreeItem; changed: boolean } {
+  if (item.type === 'note') {
+    const noteBodyId = replacements.get(item.id)
+    return noteBodyId && noteBodyId !== item.noteBodyId
+      ? { item: { ...item, noteBodyId }, changed: true }
+      : { item, changed: false }
+  }
+
+  const childResult = replaceNotebookItemNoteBodyIds(item.children, replacements)
+  return childResult.changed
+    ? { item: { ...item, children: childResult.items }, changed: true }
+    : { item, changed: false }
+}
+
+export function materializeSyncedNoteBodiesInState(
+  state: AppState,
+  idGenerator: IdGenerator = createReservedIdAllocator(collectNotebookIds(state)),
+): AppState {
+  const locations = collectNoteBodyLocations(state.notebook.items)
+  state.notebook.deletedItems.forEach((entry) => collectNoteBodyLocations([entry.item], locations))
+
+  const locationsByBodyId = new Map<string, NoteBodyLocation[]>()
+  locations.forEach((location) => {
+    locationsByBodyId.set(location.noteBodyId, [...(locationsByBodyId.get(location.noteBodyId) ?? []), location])
+  })
+
+  const bodiesById = new Map(state.noteBodies.map((body) => [body.id, body]))
+  const replacements = new Map<string, string>()
+  const noteBodies: NoteBody[] = []
+  const timestamp = nowIso()
+
+  locationsByBodyId.forEach((bodyLocations, noteBodyId) => {
+    if (bodyLocations.length <= 1) return
+    const sourceBody = bodiesById.get(noteBodyId)
+    if (!sourceBody) return
+
+    bodyLocations.slice(1).forEach((location) => {
+      const nextBodyId = idGenerator()
+      replacements.set(location.noteId, nextBodyId)
+      noteBodies.push({
+        ...sourceBody,
+        id: nextBodyId,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        aisles: sourceBody.aisles.map((aisle) => ({
+          id: idGenerator(),
+          aisleBodyId: aisle.aisleBodyId,
+        })),
+      })
+    })
+  })
+
+  if (replacements.size === 0) return state
+
+  const notebookItemsResult = replaceNotebookItemNoteBodyIds(state.notebook.items, replacements)
+  let deletedItemsChanged = false
+  const deletedItems = state.notebook.deletedItems.map((entry) => {
+    const itemResult = replaceDeletedNotebookItemNoteBodyIds(entry.item, replacements)
+    if (!itemResult.changed) return entry
+    deletedItemsChanged = true
+    return { ...entry, item: itemResult.item }
+  })
+
+  return {
+    ...state,
+    notebook: {
+      ...state.notebook,
+      items: notebookItemsResult.items,
+      deletedItems: deletedItemsChanged ? deletedItems : state.notebook.deletedItems,
+    },
+    noteBodies: [...state.noteBodies, ...noteBodies],
+  }
+}
+
 export function replaceNotebookNoteBody(state: AppState, noteId: string, noteBody: NoteBody, aisleBodies: NoteAisleBody[]): AppState {
   return {
     ...state,

@@ -63,25 +63,8 @@ describe('CopyToolbarMenu', () => {
 
     expect(html).toContain('make this a copy of')
     expect(html).not.toContain('filter synced')
-    expect(html).not.toContain('de-couple')
+    expect(html).not.toContain('decouple')
     expect(html).not.toContain('show synced')
-  })
-
-  it('renders synced note choices when a synced note is active', () => {
-    const html = renderToStaticMarkup(
-      <CopyToolbarMenu
-        syncedItemKind="note"
-        onOpenCopyModal={() => undefined}
-        onFilterSyncedItem={() => undefined}
-        onQuickDecoupleSyncedItem={() => undefined}
-        onShowSyncedItems={() => undefined}
-      />,
-    )
-
-    expect(html).toContain('make this a copy of')
-    expect(html).toContain('filter synced note')
-    expect(html).toContain('de-couple note')
-    expect(html).toContain('show synced notes')
   })
 
   it('renders synced aisle choices when a synced aisle is active', () => {
@@ -96,7 +79,8 @@ describe('CopyToolbarMenu', () => {
     )
 
     expect(html).toContain('filter synced aisle')
-    expect(html).toContain('de-couple aisle')
+    expect(html).toContain('decouple aisle')
     expect(html).toContain('show synced aisles')
+    expect(html).not.toContain('filter synced note')
   })
 })

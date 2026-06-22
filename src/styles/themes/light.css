@@ -62,7 +62,7 @@
   --settings-section-tab-active-text: #ffffff;
   --settings-divider-bg: #c7d3e5;
   --settings-hotkey-label-text: #1f3960;
-  --settings-range-value-text: #2f67de;
+  --settings-range-value-text: var(--app-text-heading);
   --settings-switch-bg: #ffffff;
   --settings-switch-border: #a5b7d4;
   --settings-switch-focus-border: #a5b7d4;

@@ -66,6 +66,7 @@ function renderModal(state = modal(), templateList: FrontmatterTemplate[] = [tem
       onSelectTemplate={vi.fn((current) => current)}
       onToggleTemplateDerived={vi.fn((current) => current)}
       onEditTemplate={vi.fn()}
+      onFilterTemplate={vi.fn()}
     />,
   )
 }
@@ -131,9 +132,28 @@ describe('NotebookFrontmatterModal', () => {
 
     expect(html).toContain('Suggested from')
     expect(html).toContain('>Add frontmatter</button>')
+    expect(html).not.toContain('Filter on template')
+    expect(html).not.toContain('frontmatter-template-suggestion-chip')
+    expect(html).not.toContain('>suggested</span>')
   })
 
-  it('renders fixed list template values as a dropdown', () => {
+  it('offers template filtering from saved derived frontmatter', () => {
+    const html = renderModal()
+
+    expect(html).toContain('Filter on template')
+    expect(html).toContain('frontmatter-filter-template-btn')
+  })
+
+  it('renders row actions as trash icon buttons', () => {
+    const html = renderModal()
+
+    expect(html).toContain('frontmatter-row-remove-btn')
+    expect(html).toContain('data-app-icon="trash"')
+    expect(html).toContain('aria-label="Remove status"')
+    expect(html).not.toContain('>Remove</button>')
+  })
+
+  it('renders fixed list template values as a checkbox dropdown', () => {
     const fixedTemplate: FrontmatterTemplate = {
       id: 'fixed-template',
       name: 'fixed',
@@ -169,8 +189,38 @@ describe('NotebookFrontmatterModal', () => {
       [fixedTemplate],
     )
 
-    expect(html).toContain('aria-label="frontmatter fixed list value"')
-    expect(html).toContain('<option value="draft">draft</option>')
-    expect(html).toContain('<option value="published" selected="">published</option>')
+    expect(html).toContain('frontmatter-fixed-list-dropdown')
+    expect(html).toContain('frontmatter-fixed-list-trigger')
+    expect(html).toContain('aria-label="frontmatter fixed list values"')
+    expect(html).toContain('aria-label="frontmatter fixed list options"')
+    expect(html).toContain('<span class="frontmatter-fixed-list-trigger-label">published</span>')
+    expect(html).toContain('frontmatter-fixed-list-choice')
+    expect(html).toContain('<span>draft</span>')
+    expect(html).toContain('<span>published</span>')
+    expect(html).not.toContain('aria-label="frontmatter fixed list value"')
+    expect(html).not.toContain('<option value="">no options</option>')
+  })
+
+  it('prompts empty fixed list values to select from the dropdown', () => {
+    const html = renderModal(
+      modal({
+        rows: [
+          {
+            id: 'template:status',
+            key: 'status',
+            type: 'fixedList',
+            value: '',
+            computed: 'none',
+            computedEnabled: false,
+            locked: true,
+            templateFieldId: 'status',
+            derived: true,
+            fixedListOptions: ['draft', 'published'],
+          },
+        ],
+      }),
+    )
+
+    expect(html).toContain('<span class="frontmatter-fixed-list-trigger-label">select from drop-down</span>')
   })
 })

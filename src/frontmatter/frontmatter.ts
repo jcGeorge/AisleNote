@@ -366,12 +366,33 @@ export function resolveFrontmatterFixedListValue(
   value: unknown,
   fallback?: unknown,
 ): string {
+  return resolveFrontmatterFixedListValues(options, value, fallback)[0] ?? ''
+}
+
+function hasExplicitFixedListValue(value: unknown): boolean {
+  if (Array.isArray(value)) return true
+  return value != null && coerceFrontmatterString(value).trim() !== ''
+}
+
+export function resolveFrontmatterFixedListValues(
+  options: readonly string[] | undefined,
+  value: unknown,
+  fallback?: unknown,
+): string[] {
   const normalizedOptions = normalizeFrontmatterFixedListOptions(options)
-  const rawValue = coerceFrontmatterString(value).trim()
-  if (rawValue && normalizedOptions.includes(rawValue)) return rawValue
-  const rawFallback = coerceFrontmatterString(fallback).trim()
-  if (rawFallback && normalizedOptions.includes(rawFallback)) return rawFallback
-  return normalizedOptions[0] ?? ''
+  if (normalizedOptions.length === 0) return []
+
+  const selectedValues = new Set(normalizeFrontmatterFixedListOptions(value))
+  const selectedOptions = normalizedOptions.filter((option) => selectedValues.has(option))
+  if (selectedOptions.length > 0) return selectedOptions
+
+  const shouldUseFallback =
+    fallback !== undefined &&
+    (!hasExplicitFixedListValue(value) || selectedValues.size > 0)
+  if (!shouldUseFallback) return []
+
+  const fallbackValues = new Set(normalizeFrontmatterFixedListOptions(fallback))
+  return normalizedOptions.filter((option) => fallbackValues.has(option))
 }
 
 function isCompatibleValue(type: FrontmatterFieldType, value: unknown): boolean {
@@ -380,7 +401,7 @@ function isCompatibleValue(type: FrontmatterFieldType, value: unknown): boolean 
   if (type === 'number') return typeof value === 'number' && Number.isFinite(value)
   if (type === 'boolean') return typeof value === 'boolean'
   if (type === 'list') return Array.isArray(value)
-  if (type === 'fixedList') return typeof value === 'string'
+  if (type === 'fixedList') return typeof value === 'string' || Array.isArray(value)
   return false
 }
 
@@ -427,7 +448,7 @@ export function coerceFrontmatterFieldValue(type: FrontmatterFieldType, value: u
     return Number.isNaN(date.getTime()) ? coerceFrontmatterString(value) : date.toISOString()
   }
   if (type === 'list') return parseList(value)
-  if (type === 'fixedList') return coerceFrontmatterString(value)
+  if (type === 'fixedList') return normalizeFrontmatterFixedListOptions(value)
   return value
 }
 
@@ -447,7 +468,7 @@ function resolveFieldValue(
     return isFrontmatterReferenceComputedValue(field.computed) ? computedValue : coerceFrontmatterFieldValue(field.type, computedValue)
   }
   if (field.type === 'fixedList') {
-    return resolveFrontmatterFixedListValue(field.options, currentValue, field.defaultValue)
+    return resolveFrontmatterFixedListValues(field.options, currentValue, field.defaultValue)
   }
   if (isCompatibleValue(field.type, currentValue)) return coerceFrontmatterFieldValue(field.type, currentValue)
   return coerceFrontmatterFieldValue(field.type, field.defaultValue)
@@ -501,7 +522,7 @@ function normalizeField(raw: unknown, index: number): FrontmatterTemplateField |
     key,
     type,
     defaultValue: type === 'fixedList'
-      ? resolveFrontmatterFixedListValue(fixedListOptions, rawDefaultValue)
+      ? resolveFrontmatterFixedListValues(fixedListOptions, rawDefaultValue).join(', ')
       : rawDefaultValue,
     computed: normalizedComputed,
     ...(type === 'fixedList' ? { options: fixedListOptions ?? [] } : {}),

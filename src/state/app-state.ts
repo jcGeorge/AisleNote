@@ -23,7 +23,12 @@ import {
   createDefaultAppState,
   DEFAULT_SHORTCUTS as DEFAULT_APP_SHORTCUTS,
 } from './default-app-state.js'
-import { createNoteBodyWithAisle, ensureValidActiveNote, purgeOldDeletedNotebookItems } from './notebook'
+import {
+  createNoteBodyWithAisle,
+  ensureValidActiveNote,
+  materializeSyncedNoteBodiesInState,
+  purgeOldDeletedNotebookItems,
+} from './notebook'
 import { CUSTOM_THEME_IDS, normalizeThemePaletteOverrides } from '../theme/notebook-themes'
 import {
   MAX_NOTE_FONT_SCALE,
@@ -369,7 +374,7 @@ export function normalizeAppState(raw: unknown): AppState {
     typeof ui.selectedCustomTheme === 'string' && CUSTOM_THEME_IDS.includes(ui.selectedCustomTheme as CustomThemeId)
       ? (ui.selectedCustomTheme as CustomThemeId)
       : fallback.ui.selectedCustomTheme
-  return ensureNotebookBodies({
+  return materializeSyncedNoteBodiesInState(ensureNotebookBodies({
     theme: APP_THEMES.includes(raw.theme as AppTheme) ? (raw.theme as AppTheme) : fallback.theme,
     notebook,
     scratchpad: isRecord(raw.scratchpad)
@@ -416,7 +421,7 @@ export function normalizeAppState(raw: unknown): AppState {
       toolbarLayouts: normalizeToolbarLayouts(ui.toolbarLayouts),
       toolbarEditorShowNames: typeof ui.toolbarEditorShowNames === 'boolean' ? ui.toolbarEditorShowNames : fallback.ui.toolbarEditorShowNames,
     },
-  })
+  }))
 }
 
 export function parseSavedState(serializedState: string | null | undefined): AppState {

@@ -335,7 +335,7 @@ describe('frontmatter structured row state', () => {
     })
   })
 
-  it('opens fixed list template rows with allowed options and saves a selected string', () => {
+  it('opens fixed list template rows with allowed options and saves selected arrays', () => {
     const fixedTemplate: FrontmatterTemplate = {
       id: 'fixed-template',
       name: 'fixed',
@@ -384,8 +384,22 @@ describe('frontmatter structured row state', () => {
       locked: true,
     })
 
+    const arrayState: AppState = {
+      ...fixedState,
+      noteAisleBodies: fixedState.noteAisleBodies.map((body) => ({
+        ...body,
+        frontmatter: { status: ['draft', 'published'] },
+      })),
+    }
+    expect(buildFrontmatterModalDraftForAisle(arrayState, 'body-1', 'aisle-body-1', location).rows[0]).toMatchObject({
+      key: 'status',
+      type: 'fixedList',
+      value: 'draft, published',
+      fixedListOptions: ['draft', 'published'],
+    })
+
     const result = buildFrontmatterDataFromRows(fixedState, 'body-1', location, [
-      { ...row, value: 'draft' } as FrontmatterRowDraft,
+      { ...row, value: 'draft, published' } as FrontmatterRowDraft,
     ], {
       aisleBodyId: 'aisle-body-1',
       selectedTemplateId: fixedTemplate.id,
@@ -394,7 +408,20 @@ describe('frontmatter structured row state', () => {
 
     expect(result).toMatchObject({
       ok: true,
-      frontmatter: { status: 'draft' },
+      frontmatter: { status: ['draft', 'published'] },
+    })
+
+    const emptyResult = buildFrontmatterDataFromRows(fixedState, 'body-1', location, [
+      { ...row, value: '' } as FrontmatterRowDraft,
+    ], {
+      aisleBodyId: 'aisle-body-1',
+      selectedTemplateId: fixedTemplate.id,
+      templateDerived: true,
+    })
+
+    expect(emptyResult).toMatchObject({
+      ok: true,
+      frontmatter: { status: [] },
     })
   })
 
