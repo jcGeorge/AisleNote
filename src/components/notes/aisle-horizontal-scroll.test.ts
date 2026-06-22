@@ -92,6 +92,34 @@ describe('horizontal aisle reveal geometry', () => {
       }),
     ).toBe(720)
   })
+
+  it('keeps the leading gutter visible when scrolling back to a left-side pane', () => {
+    expect(
+      getScrollLeftToRevealHorizontalPane({
+        currentScrollLeft: 40,
+        viewportWidth: 900,
+        scrollWidth: 1024,
+        paneLeft: 24,
+        paneRight: 504,
+        alignmentMargin: 24,
+        alignWhenVisible: true,
+      }),
+    ).toBe(0)
+  })
+
+  it('moves a visible right-side pane to its padded focused alignment', () => {
+    expect(
+      getScrollLeftToRevealHorizontalPane({
+        currentScrollLeft: 0,
+        viewportWidth: 900,
+        scrollWidth: 1008,
+        paneLeft: 504,
+        paneRight: 984,
+        alignmentMargin: 24,
+        alignWhenVisible: true,
+      }),
+    ).toBe(108)
+  })
 })
 
 describe('horizontal aisle pane scroll reveal', () => {
@@ -132,6 +160,32 @@ describe('horizontal aisle pane scroll reveal', () => {
     expect(scrollAislePaneIntoHorizontalView(scrollNode, 'target')).toBe(true)
 
     expect(scrollNode.scrollLeft).toBe(100)
+  })
+
+  it('scrolls a left aisle back far enough to include its leading gutter', () => {
+    const scrollNode = createHorizontalScrollFixture({
+      scrollLeft: 40,
+      viewportWidth: 900,
+      paneLeftInViewport: -16,
+      paneWidth: 480,
+    })
+
+    expect(scrollAislePaneIntoHorizontalView(scrollNode, 'target', { alignmentMargin: 24 })).toBe(true)
+
+    expect(scrollNode.scrollLeft).toBe(0)
+  })
+
+  it('scrolls a visible right aisle to its padded focused alignment', () => {
+    const scrollNode = createHorizontalScrollFixture({
+      scrollLeft: 0,
+      viewportWidth: 900,
+      paneLeftInViewport: 504,
+      paneWidth: 480,
+    })
+
+    expect(scrollAislePaneIntoHorizontalView(scrollNode, 'target', { alignmentMargin: 24 })).toBe(true)
+
+    expect(scrollNode.scrollLeft).toBe(108)
   })
 
   it('aligns oversized aisles to their left edge because they cannot fully fit', () => {

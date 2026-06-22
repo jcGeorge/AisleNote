@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { parseSavedState } from './app-state'
 import { createDefaultAppState } from './default-app-state.js'
 
 describe('default app state', () => {
@@ -21,6 +22,21 @@ describe('default app state', () => {
       'horizontalLine',
       'codeBlock',
       'inlineCode',
+      'blockQuote',
+      'strikethrough',
+    ])
+  })
+
+  it('hydrates persisted newline shortcut choices from saved app state', () => {
+    const state = createDefaultAppState()
+    state.hotkeys.newlineShortcuts.shortcuts.controlEnter = 'tableOfContents'
+    state.hotkeys.newlineShortcuts.menuOperations = ['tableOfContents', 'blockQuote']
+
+    const parsed = parseSavedState(JSON.stringify(state))
+
+    expect(parsed.hotkeys.newlineShortcuts.shortcuts.controlEnter).toBe('tableOfContents')
+    expect(parsed.hotkeys.newlineShortcuts.menuOperations).toEqual([
+      'tableOfContents',
       'blockQuote',
       'strikethrough',
     ])

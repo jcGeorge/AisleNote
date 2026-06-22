@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 import type { AppState } from '../types/app'
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from './shortcuts'
 import {
+  createNotebookMouseHistoryNavigationRecord,
   getNotebookHistoryNavigationDirection,
   getNotebookHotkeyIntent,
   getNotebookMouseHistoryNavigationDirection,
+  shouldSuppressNotebookMouseHistoryFollowup,
   shouldIgnoreNotebookHotkeyEvent,
+  updateNotebookMouseHistoryNavigationRecordForFollowup,
 } from './useNotebookHotkeys'
 
 const defaultHotkeys: AppState['hotkeys'] = {
@@ -169,5 +172,25 @@ describe('notebook hotkey intents', () => {
     expect(getNotebookMouseHistoryNavigationDirection({ button: 3 })).toBe(-1)
     expect(getNotebookMouseHistoryNavigationDirection({ button: 4 })).toBe(1)
     expect(getNotebookMouseHistoryNavigationDirection({ button: 0 })).toBeNull()
+    expect(getNotebookMouseHistoryNavigationDirection({ button: 3, defaultPrevented: true })).toBeNull()
+  })
+
+  it('creates early mouse history records for side buttons only', () => {
+    expect(createNotebookMouseHistoryNavigationRecord({ button: 3 })).toEqual({ button: 3, released: false })
+    expect(createNotebookMouseHistoryNavigationRecord({ button: 4 })).toEqual({ button: 4, released: false })
+    expect(createNotebookMouseHistoryNavigationRecord({ button: 0 })).toBeNull()
+  })
+
+  it('dedupes later mouse events from the same side-button navigation', () => {
+    const record = createNotebookMouseHistoryNavigationRecord({ button: 3 })
+
+    expect(shouldSuppressNotebookMouseHistoryFollowup({ button: 3 }, record, 'press')).toBe(true)
+    expect(shouldSuppressNotebookMouseHistoryFollowup({ button: 4 }, record, 'press')).toBe(false)
+
+    const released = updateNotebookMouseHistoryNavigationRecordForFollowup(record, 'release')
+    expect(released).toEqual({ button: 3, released: true })
+    expect(shouldSuppressNotebookMouseHistoryFollowup({ button: 3 }, released, 'press')).toBe(false)
+    expect(shouldSuppressNotebookMouseHistoryFollowup({ button: 3 }, released, 'auxclick')).toBe(true)
+    expect(updateNotebookMouseHistoryNavigationRecordForFollowup(released, 'auxclick')).toBeNull()
   })
 })

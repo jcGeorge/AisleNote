@@ -7,12 +7,14 @@ import {
   decoupleNotebookAisleBodyInState,
   decoupleNotebookNoteBodyInState,
   deleteNotebookItemInState,
+  findNotebookFolder,
   findNotebookNote,
   getFolderNotesRecursive,
   getNotebookNotePathLabel,
   listNotebookNotes,
   materializeSyncedNoteBodiesInState,
   moveNotebookItem,
+  moveNotebookItems,
   renameNotebookItem,
   replaceNotebookNoteBodyId,
   restoreDeletedNotebookItemInState,
@@ -143,6 +145,56 @@ describe('notebook tree helpers', () => {
     const rooted = moveNotebookItem(nested, 'note-3', null, nested.items.length)
     expect(getNotebookNotePathLabel(rooted.items, 'note-3')).toBe('Third')
     expect(rooted.items.map((item) => item.id)).toEqual(['note-1', 'folder-1', 'note-2', 'note-3'])
+  })
+
+  it('moves multiple notes as a note-only batch while preserving tree order', () => {
+    let state = createState()
+    state = createNotebookFolderInState(state, 'Projects', null, idSequence(['folder-1'])).state
+    state = createNotebookNoteInState(
+      state,
+      'Second',
+      null,
+      '',
+      idSequence(['body-2', 'aisle-body-2', 'aisle-2', 'note-2']),
+    ).state
+    state = createNotebookNoteInState(
+      state,
+      'Third',
+      null,
+      '',
+      idSequence(['body-3', 'aisle-body-3', 'aisle-3', 'note-3']),
+    ).state
+    state = createNotebookNoteInState(
+      state,
+      'Nested',
+      'folder-1',
+      '',
+      idSequence(['body-4', 'aisle-body-4', 'aisle-4', 'note-4']),
+    ).state
+
+    const nested = moveNotebookItems(state.notebook, ['note-3', 'note-2'], 'folder-1', 0)
+    expect(findNotebookFolder(nested.items, 'folder-1')?.folder.children.map((item) => item.id)).toEqual([
+      'note-2',
+      'note-3',
+      'note-4',
+    ])
+    expect(getNotebookNotePathLabel(nested.items, 'note-2')).toBe('Projects/Second')
+    expect(getNotebookNotePathLabel(nested.items, 'note-3')).toBe('Projects/Third')
+
+    const reordered = moveNotebookItems(nested, ['note-2', 'note-3'], 'folder-1', 3)
+    expect(findNotebookFolder(reordered.items, 'folder-1')?.folder.children.map((item) => item.id)).toEqual([
+      'note-4',
+      'note-2',
+      'note-3',
+    ])
+  })
+
+  it('does not batch-move folders with note selections', () => {
+    const folderResult = createNotebookFolderInState(createState(), 'Projects', null, idSequence(['folder-1']))
+
+    const moved = moveNotebookItems(folderResult.state.notebook, ['note-1', 'folder-1'], null, 0)
+
+    expect(moved).toBe(folderResult.state.notebook)
   })
 
   it('does not move a folder into itself or its descendant', () => {

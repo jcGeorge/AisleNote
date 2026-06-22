@@ -38,3 +38,18 @@ describe('NotebookApp sidebar search wiring', () => {
     expect(source).not.toContain('onFilterAisleFrontmatterTemplate={filterAisleFrontmatterTemplate}')
   })
 })
+
+describe('NotebookApp aisle insertion focus', () => {
+  it('routes shortcut and context-menu aisle creation through pending editor focus', () => {
+    expect(source).toContain('addAisleFromNewlineRef.current = addAisle')
+    expect(source).toContain('const insertEditorContextAisle = useCallback(')
+    expect(source).toContain('addAisle(side, aisleId)')
+    expect(source).toContain('pendingFocusToAisleIdRef.current = createdAisleId')
+    expect(source).toContain('pendingScrollToAisleIdRef.current = createdAisleId')
+    expect(source).toContain('pendingCursorRestoreRef.current = {')
+    expect(source).toContain('aisleId: createdAisleId')
+    expect(source).toContain("focusIntent: 'aisle-activation'")
+    expect(source).toContain('setActiveAisleId(createdAisleId)')
+    expect(source).not.toContain('window.setTimeout(() => setActiveAisleId(aisle.id), 0)')
+  })
+})

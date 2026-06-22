@@ -40,6 +40,59 @@ function getResultCount(resultGroups: SidebarSearchResultGroup[]): number {
   return resultGroups.reduce((count, group) => count + group.results.length, 0)
 }
 
+type SidebarSearchFolderSection = {
+  key: string
+  folderPath: string
+  groups: SidebarSearchResultGroup[]
+}
+
+function getFolderSectionLabel(folderPath: string): string {
+  return folderPath.trim() || 'Local notebook'
+}
+
+function getFolderResultSections(resultGroups: SidebarSearchResultGroup[]): SidebarSearchFolderSection[] {
+  const sections: SidebarSearchFolderSection[] = []
+  const sectionsByFolderPath = new Map<string, SidebarSearchFolderSection>()
+  resultGroups.forEach((group) => {
+    const folderPath = group.folderPath.trim()
+    const key = folderPath || '__root__'
+    const section = sectionsByFolderPath.get(key) ?? {
+      key,
+      folderPath,
+      groups: [],
+    }
+    if (!sectionsByFolderPath.has(key)) {
+      sectionsByFolderPath.set(key, section)
+      sections.push(section)
+    }
+    section.groups.push(group)
+  })
+  return sections
+}
+
+function SearchResultButton({
+  group,
+  result,
+  onOpenResult,
+}: {
+  group: SidebarSearchResultGroup
+  result: SidebarSearchResult
+  onOpenResult: (result: SidebarSearchResult) => void
+}) {
+  return (
+    <button
+      type="button"
+      className="notebook-sidebar-search-result"
+      onClick={() => onOpenResult(result)}
+    >
+      <span className="notebook-sidebar-search-result-meta">
+        {result.aisleCount > 1 ? `${result.aisleNumber})` : 'Note'}
+      </span>
+      <span className="notebook-sidebar-search-result-snippet">{result.snippet || group.noteName}</span>
+    </button>
+  )
+}
+
 export function SidebarSearchPanel({
   inputRef,
   query,
@@ -55,6 +108,8 @@ export function SidebarSearchPanel({
 }: SidebarSearchPanelProps) {
   const resultCount = getResultCount(resultGroups)
   const canClear = query.trim().length > 0 || selectedTokens.length > 0
+  const textOnlySearchActive = query.trim().length > 0 && selectedTokens.length === 0
+  const folderSections = textOnlySearchActive ? getFolderResultSections(resultGroups) : []
 
   return (
     <section className={`notebook-sidebar-search ${active ? 'is-active' : ''}`} aria-label="Notebook search">
@@ -123,7 +178,30 @@ export function SidebarSearchPanel({
           <div className="notebook-sidebar-search-summary">
             {resultCount === 1 ? '1 result' : `${resultCount} results`}
           </div>
-          {resultGroups.length > 0 ? (
+          {resultGroups.length > 0 && textOnlySearchActive ? (
+            folderSections.map((section) => (
+              <section key={section.key} className="notebook-sidebar-search-folder-section">
+                <div className="notebook-sidebar-search-folder-heading">
+                  {getFolderSectionLabel(section.folderPath)}
+                </div>
+                {section.groups.map((group) => (
+                  <section key={group.key} className="notebook-sidebar-search-result-group">
+                    <div className="notebook-sidebar-search-result-heading">
+                      <span>{group.noteName}</span>
+                    </div>
+                    {group.results.map((result) => (
+                      <SearchResultButton
+                        key={result.key}
+                        group={group}
+                        result={result}
+                        onOpenResult={onOpenResult}
+                      />
+                    ))}
+                  </section>
+                ))}
+              </section>
+            ))
+          ) : resultGroups.length > 0 ? (
             resultGroups.map((group) => (
               <section key={group.key} className="notebook-sidebar-search-result-group">
                 <div className="notebook-sidebar-search-result-heading">
@@ -131,17 +209,12 @@ export function SidebarSearchPanel({
                   {group.folderPath ? <small>{group.folderPath}</small> : null}
                 </div>
                 {group.results.map((result) => (
-                  <button
+                  <SearchResultButton
                     key={result.key}
-                    type="button"
-                    className="notebook-sidebar-search-result"
-                    onClick={() => onOpenResult(result)}
-                  >
-                    <span className="notebook-sidebar-search-result-meta">
-                      {result.aisleCount > 1 ? `Aisle ${result.aisleNumber}` : 'Note'}
-                    </span>
-                    <span className="notebook-sidebar-search-result-snippet">{result.snippet || group.noteName}</span>
-                  </button>
+                    group={group}
+                    result={result}
+                    onOpenResult={onOpenResult}
+                  />
                 ))}
               </section>
             ))

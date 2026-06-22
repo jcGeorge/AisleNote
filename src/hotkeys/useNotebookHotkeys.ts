@@ -36,6 +36,16 @@ const MAIN_ONLY_INTENTS = new Set<NotebookHotkeyIntent>([
   'formatStrikethrough',
 ])
 
+export type NotebookMouseHistoryNavigationPhase = 'press' | 'release' | 'auxclick'
+
+export type NotebookMouseHistoryNavigationRecord = {
+  button: number
+  released: boolean
+}
+
+type NotebookMouseHistoryNavigationEvent = Pick<MouseEvent, 'button'> &
+  Partial<Pick<MouseEvent, 'defaultPrevented'>>
+
 function hasShortcutModifier(event: KeyboardEvent): boolean {
   return event.ctrlKey || event.metaKey || event.altKey
 }
@@ -74,10 +84,39 @@ export function getNotebookHistoryNavigationDirection(event: KeyboardEvent, isMa
   return null
 }
 
-export function getNotebookMouseHistoryNavigationDirection(event: Pick<MouseEvent, 'button'>): -1 | 1 | null {
+export function getNotebookMouseHistoryNavigationDirection(event: NotebookMouseHistoryNavigationEvent): -1 | 1 | null {
+  if (event.defaultPrevented) return null
   if (event.button === 3) return -1
   if (event.button === 4) return 1
   return null
+}
+
+export function createNotebookMouseHistoryNavigationRecord(
+  event: NotebookMouseHistoryNavigationEvent,
+): NotebookMouseHistoryNavigationRecord | null {
+  return getNotebookMouseHistoryNavigationDirection(event)
+    ? { button: event.button, released: false }
+    : null
+}
+
+export function shouldSuppressNotebookMouseHistoryFollowup(
+  event: NotebookMouseHistoryNavigationEvent,
+  record: NotebookMouseHistoryNavigationRecord | null,
+  phase: NotebookMouseHistoryNavigationPhase,
+): boolean {
+  if (!record || getNotebookMouseHistoryNavigationDirection(event) === null) return false
+  if (event.button !== record.button) return false
+  return phase === 'press' ? !record.released : true
+}
+
+export function updateNotebookMouseHistoryNavigationRecordForFollowup(
+  record: NotebookMouseHistoryNavigationRecord | null,
+  phase: NotebookMouseHistoryNavigationPhase,
+): NotebookMouseHistoryNavigationRecord | null {
+  if (!record) return null
+  if (phase === 'auxclick') return null
+  if (phase === 'release') return { ...record, released: true }
+  return record
 }
 
 export function getNotebookHotkeyIntent({
@@ -114,16 +153,49 @@ export function useNotebookHotkeys({
   actions: NotebookHotkeyActions
 }) {
   const actionsRef = useRef(actions)
+  const mouseHistoryNavigationRef = useRef<NotebookMouseHistoryNavigationRecord | null>(null)
   actionsRef.current = actions
 
   useEffect(() => {
+    const runHistoryNavigation = (direction: -1 | 1) => {
+      if (direction < 0) actionsRef.current.navigateHistoryBack()
+      else actionsRef.current.navigateHistoryForward()
+    }
+
+    const consumeMouseHistoryEvent = (event: MouseEvent | PointerEvent) => {
+      event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation()
+    }
+
+    const startMouseHistoryNavigation = (event: MouseEvent | PointerEvent) => {
+      const historyDirection = getNotebookMouseHistoryNavigationDirection(event)
+      if (!historyDirection) return false
+      consumeMouseHistoryEvent(event)
+      mouseHistoryNavigationRef.current = createNotebookMouseHistoryNavigationRecord(event)
+      runHistoryNavigation(historyDirection)
+      return true
+    }
+
+    const suppressMouseHistoryFollowup = (
+      event: MouseEvent | PointerEvent,
+      phase: NotebookMouseHistoryNavigationPhase,
+    ) => {
+      if (!shouldSuppressNotebookMouseHistoryFollowup(event, mouseHistoryNavigationRef.current, phase)) return false
+      consumeMouseHistoryEvent(event)
+      mouseHistoryNavigationRef.current = updateNotebookMouseHistoryNavigationRecordForFollowup(
+        mouseHistoryNavigationRef.current,
+        phase,
+      )
+      return true
+    }
+
     const handleKeydown = (event: KeyboardEvent) => {
       const historyDirection = getNotebookHistoryNavigationDirection(event, isMacPlatform)
       if (historyDirection) {
         event.preventDefault()
         event.stopPropagation()
-        if (historyDirection < 0) actionsRef.current.navigateHistoryBack()
-        else actionsRef.current.navigateHistoryForward()
+        runHistoryNavigation(historyDirection)
         return
       }
 
@@ -137,20 +209,43 @@ export function useNotebookHotkeys({
       actionsRef.current[intent]()
     }
 
+    const handlePointerdown = (event: PointerEvent) => {
+      startMouseHistoryNavigation(event)
+    }
+
+    const handleMousedown = (event: MouseEvent) => {
+      if (suppressMouseHistoryFollowup(event, 'press')) return
+      startMouseHistoryNavigation(event)
+    }
+
     const handleMouseup = (event: MouseEvent) => {
-      const historyDirection = getNotebookMouseHistoryNavigationDirection(event)
-      if (!historyDirection) return
-      event.preventDefault()
-      event.stopPropagation()
-      if (historyDirection < 0) actionsRef.current.navigateHistoryBack()
-      else actionsRef.current.navigateHistoryForward()
+      if (suppressMouseHistoryFollowup(event, 'release')) return
+      if (startMouseHistoryNavigation(event)) {
+        mouseHistoryNavigationRef.current = updateNotebookMouseHistoryNavigationRecordForFollowup(
+          mouseHistoryNavigationRef.current,
+          'release',
+        )
+      }
+    }
+
+    const handleAuxclick = (event: MouseEvent) => {
+      if (suppressMouseHistoryFollowup(event, 'auxclick')) return
+      if (startMouseHistoryNavigation(event)) {
+        mouseHistoryNavigationRef.current = null
+      }
     }
 
     window.addEventListener('keydown', handleKeydown, true)
+    window.addEventListener('pointerdown', handlePointerdown, true)
+    window.addEventListener('mousedown', handleMousedown, true)
     window.addEventListener('mouseup', handleMouseup, true)
+    window.addEventListener('auxclick', handleAuxclick, true)
     return () => {
       window.removeEventListener('keydown', handleKeydown, true)
+      window.removeEventListener('pointerdown', handlePointerdown, true)
+      window.removeEventListener('mousedown', handleMousedown, true)
       window.removeEventListener('mouseup', handleMouseup, true)
+      window.removeEventListener('auxclick', handleAuxclick, true)
     }
   }, [hotkeys, isMacPlatform, viewMode])
 }

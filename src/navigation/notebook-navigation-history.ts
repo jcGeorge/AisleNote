@@ -6,11 +6,20 @@ export const MAX_NOTEBOOK_NAVIGATION_HISTORY_ENTRIES = 100
 
 export type NotebookNavigationLocation = {
   noteId: string
+  aisleId?: string
+}
+
+export type ResolvedNotebookNavigationLocation = {
+  noteId: string
   aisleId: string
 }
 
+export type NotebookNavigationHistoryEntry = {
+  noteId: string
+}
+
 export type NotebookNavigationHistoryState = {
-  entries: NotebookNavigationLocation[]
+  entries: NotebookNavigationHistoryEntry[]
   index: number
 }
 
@@ -30,13 +39,12 @@ export function areNotebookNavigationLocationsEqual(
   left: NotebookNavigationLocation,
   right: NotebookNavigationLocation,
 ): boolean {
-  return left.noteId === right.noteId && left.aisleId === right.aisleId
+  return left.noteId.trim() === right.noteId.trim()
 }
 
-function normalizeNotebookNavigationLocation(location: NotebookNavigationLocation): NotebookNavigationLocation {
+function normalizeNotebookNavigationHistoryEntry(location: NotebookNavigationLocation): NotebookNavigationHistoryEntry {
   return {
     noteId: location.noteId.trim(),
-    aisleId: location.aisleId.trim(),
   }
 }
 
@@ -45,8 +53,8 @@ export function pushNotebookNavigationLocation(
   nextLocation: NotebookNavigationLocation,
   maxEntries = MAX_NOTEBOOK_NAVIGATION_HISTORY_ENTRIES,
 ): NotebookNavigationHistoryState {
-  const location = normalizeNotebookNavigationLocation(nextLocation)
-  if (!location.noteId || !location.aisleId) return state
+  const location = normalizeNotebookNavigationHistoryEntry(nextLocation)
+  if (!location.noteId) return state
 
   const activeEntries = state.entries.slice(0, state.index + 1)
   const current = activeEntries.at(-1)
@@ -78,7 +86,7 @@ export function navigateNotebookNavigationHistoryBy(
   while (targetIndex >= 0 && targetIndex < entries.length) {
     const resolvedLocation = resolveLocation(entries[targetIndex])
     if (resolvedLocation) {
-      entries[targetIndex] = normalizeNotebookNavigationLocation(resolvedLocation)
+      entries[targetIndex] = normalizeNotebookNavigationHistoryEntry(resolvedLocation)
       return {
         state: {
           entries,
@@ -112,14 +120,14 @@ export function navigateNotebookNavigationHistoryBy(
 export function resolveNotebookNavigationLocation(
   state: AppState,
   location: NotebookNavigationLocation,
-): NotebookNavigationLocation | null {
+): ResolvedNotebookNavigationLocation | null {
   const notePath = findNotebookNote(state.notebook.items, location.noteId)
   if (!notePath) return null
 
   const noteBody = state.noteBodies.find((candidate) => candidate.id === notePath.note.noteBodyId) ?? null
   if (!noteBody || noteBody.aisles.length === 0) return null
 
-  const requestedAisleId = location.aisleId.trim()
+  const requestedAisleId = location.aisleId?.trim() ?? ''
   const requestedAisle = noteBody.aisles.find((aisle) => aisle.id === requestedAisleId)
   if (requestedAisle) return { noteId: notePath.note.id, aisleId: requestedAisle.id }
 
@@ -134,13 +142,11 @@ export function resolveNotebookNavigationLocation(
 export function useNotebookNavigationHistory({
   viewMode,
   activeNoteId,
-  activeAisleId,
   resolveLocation,
   onApplyLocation,
 }: {
   viewMode: ViewMode
   activeNoteId: string
-  activeAisleId: string
   resolveLocation: (location: NotebookNavigationLocation) => NotebookNavigationLocation | null
   onApplyLocation: (location: NotebookNavigationLocation) => void
 }) {
@@ -153,10 +159,9 @@ export function useNotebookNavigationHistory({
 
   useEffect(() => {
     if (viewMode !== 'main') return
-    if (!activeNoteId || !activeAisleId) return
+    if (!activeNoteId) return
     const snapshot = {
       noteId: activeNoteId,
-      aisleId: activeAisleId,
     }
     const applyingLocation = applyingHistoryLocationRef.current
     if (applyingLocation) {
@@ -165,7 +170,7 @@ export function useNotebookNavigationHistory({
     }
 
     historyRef.current = pushNotebookNavigationLocation(historyRef.current, snapshot)
-  }, [activeAisleId, activeNoteId, viewMode])
+  }, [activeNoteId, viewMode])
 
   const navigateNotebookHistoryBy = useCallback((delta: number) => {
     const result = navigateNotebookNavigationHistoryBy(historyRef.current, delta, (location) =>

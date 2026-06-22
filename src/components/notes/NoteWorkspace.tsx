@@ -184,7 +184,6 @@ type NoteWorkspaceProps = {
   onCloseTableOfContentsAisle?: (aisleId: string) => void
   onSelectTableOfContentsHeading?: (aisleId: string, headingKey: string) => void
   onSelectTableOfContentsLink?: (aisleId: string, linkKey: string) => void
-  onOpenTableOfContentsLink?: (aisleId: string, link: TableOfContentsLinkItem) => void
   onOpenAisleFrontmatter?: (aisleId: string) => void
   onOpenAisleLink?: (aisleId: string) => void
   appState?: AppState | null
@@ -202,7 +201,6 @@ type AisleTableOfContentsPanelProps = {
   onClose: (aisleId: string) => void
   onSelectHeading: (aisleId: string, headingKey: string) => void
   onSelectLink: (aisleId: string, linkKey: string) => void
-  onOpenLink: (aisleId: string, link: TableOfContentsLinkItem) => void
 }
 
 function AisleTableOfContentsPanel({
@@ -212,13 +210,17 @@ function AisleTableOfContentsPanel({
   onClose,
   onSelectHeading,
   onSelectLink,
-  onOpenLink,
 }: AisleTableOfContentsPanelProps) {
   const hasHeadings = headings.length > 0
   const hasLinks = links.length > 0
-  const itemCount = headings.length + links.length * 2
+  const itemCount = headings.length + links.length
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([])
   const [activeIndex, setActiveIndex] = useState(0)
+  const panelClassName = [
+    'aisle-toc-panel',
+    hasHeadings ? 'has-headings' : '',
+    hasLinks ? 'has-links' : '',
+  ].filter(Boolean).join(' ')
 
   const setItemRef = useCallback((index: number, node: HTMLButtonElement | null) => {
     itemRefs.current[index] = node
@@ -259,7 +261,7 @@ function AisleTableOfContentsPanel({
       }}
     >
       <section
-        className="aisle-toc-panel"
+        className={panelClassName}
         role="dialog"
         aria-label="Table of contents"
         onKeyDown={(event) => {
@@ -284,7 +286,7 @@ function AisleTableOfContentsPanel({
         <div className="aisle-toc-sections">
           {hasHeadings && (
             <section className="aisle-toc-section aisle-toc-heading-section" aria-label="Table of contents headings">
-              <div className="aisle-toc-panel-title">table of contents</div>
+              <h4 className="aisle-toc-panel-title">Headers</h4>
               <div className="aisle-toc-list aisle-toc-heading-list">
                 {headings.map((heading) => {
                   const itemIndex = keyboardItemIndex
@@ -313,46 +315,27 @@ function AisleTableOfContentsPanel({
           )}
           {hasLinks && (
             <section className="aisle-toc-section aisle-toc-links-section" aria-label="Table of contents links">
-              <div className="aisle-toc-panel-title aisle-toc-links-title">links</div>
-              <div className="aisle-toc-link-strip">
+              <h4 className="aisle-toc-panel-title">Links</h4>
+              <div className="aisle-toc-list aisle-toc-link-list">
                 {links.map((link) => {
-                  const openIndex = keyboardItemIndex
-                  keyboardItemIndex += 1
-                  const selectIndex = keyboardItemIndex
+                  const itemIndex = keyboardItemIndex
                   keyboardItemIndex += 1
                   return (
-                    <div key={link.key} className="aisle-toc-link-row">
-                      <button
-                        ref={(node) => setItemRef(openIndex, node)}
-                        type="button"
-                        className={`aisle-toc-link-open-btn${openIndex === activeIndex ? ' is-active' : ''}`}
-                        aria-current={openIndex === activeIndex ? 'true' : undefined}
-                        aria-label={`Open ${link.label}`}
-                        data-app-tooltip="Open"
-                        onFocus={() => setActiveIndex(openIndex)}
-                        onClick={(event) => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          onOpenLink(aisleId, link)
-                        }}
-                      >
-                        <span className="aisle-toc-link-open-icon" aria-hidden="true" />
-                      </button>
-                      <button
-                        ref={(node) => setItemRef(selectIndex, node)}
-                        type="button"
-                        className={`aisle-toc-heading-btn aisle-toc-link-btn${selectIndex === activeIndex ? ' is-active' : ''}`}
-                        aria-current={selectIndex === activeIndex ? 'true' : undefined}
-                        onFocus={() => setActiveIndex(selectIndex)}
-                        onClick={(event) => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          onSelectLink(aisleId, link.key)
-                        }}
-                      >
-                        {link.label}
-                      </button>
-                    </div>
+                    <button
+                      key={link.key}
+                      ref={(node) => setItemRef(itemIndex, node)}
+                      type="button"
+                      className={`aisle-toc-heading-btn aisle-toc-link-btn${itemIndex === activeIndex ? ' is-active' : ''}`}
+                      aria-current={itemIndex === activeIndex ? 'true' : undefined}
+                      onFocus={() => setActiveIndex(itemIndex)}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        onSelectLink(aisleId, link.key)
+                      }}
+                    >
+                      {link.label}
+                    </button>
                   )
                 })}
               </div>
@@ -398,7 +381,6 @@ export function NoteWorkspace({
   onCloseTableOfContentsAisle = () => undefined,
   onSelectTableOfContentsHeading = () => undefined,
   onSelectTableOfContentsLink = () => undefined,
-  onOpenTableOfContentsLink = () => undefined,
   onOpenAisleFrontmatter = () => undefined,
   onOpenAisleLink = () => undefined,
   appState = null,
@@ -759,7 +741,6 @@ export function NoteWorkspace({
                   onClose={onCloseTableOfContentsAisle}
                   onSelectHeading={onSelectTableOfContentsHeading}
                   onSelectLink={onSelectTableOfContentsLink}
-                  onOpenLink={onOpenTableOfContentsLink}
                 />
               )}
             </section>

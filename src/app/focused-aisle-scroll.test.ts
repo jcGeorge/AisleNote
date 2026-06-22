@@ -1,6 +1,4 @@
 import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import {
   cancelScheduledAisleFocusScroll,
@@ -8,7 +6,7 @@ import {
   type ScheduledAisleFocusScroll,
 } from './focused-aisle-scroll'
 
-const appControllerSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), './useAppController.tsx'), 'utf8')
+const notebookAppSource = readFileSync(new URL('./NotebookApp.tsx', import.meta.url), 'utf8')
 
 function createFrameScheduler() {
   let nextFrameId = 1
@@ -132,8 +130,12 @@ describe('focused aisle scroll scheduling', () => {
     expect(scheduled.followupFrameId).toBeNull()
   })
 
-  it('routes same-note filter occurrence aisle switches through focused aisle scroll scheduling', () => {
-    expect(appControllerSource.match(/scheduleAisleFocusScroll\(occurrence\.aisleId\)/g) ?? []).toHaveLength(4)
-    expect(appControllerSource).toContain('scheduleAisleFocusScroll(pending.aisleId)')
+  it('routes pending notebook navigation aisle scrolls through focused aisle scroll scheduling', () => {
+    expect(notebookAppSource).toContain('pendingScrollToAisleIdRef.current = resolvedLocation.aisleId || null')
+    expect(notebookAppSource).toContain('scheduleAisleFocusScroll(targetNoteBodyId, resolvedLocation.aisleId)')
+    expect(notebookAppSource).toContain('scheduleFocusedAisleScroll({')
+    expect(notebookAppSource).toContain('scrollAislePaneIntoHorizontalView(scrollNode, aisleId)')
+    expect(notebookAppSource).toContain('scheduleAisleFocusScroll(activeModel.noteBody.id, targetAisleId)')
+    expect(notebookAppSource).toContain('cancelScheduledAisleFocusScroll(scheduledAisleFocusScrollRef.current, window)')
   })
 })

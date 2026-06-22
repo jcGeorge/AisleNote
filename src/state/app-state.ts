@@ -36,6 +36,7 @@ import {
   MIN_NOTE_FONT_SCALE,
   MIN_TOOLBAR_BUTTON_SCALE,
 } from '../settings/defaults'
+import { normalizeHotkeySettings } from '../hotkeys/shortcuts'
 
 const APP_THEMES: AppTheme[] = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
 const MAX_NORMALIZED_TOAST_HISTORY_ENTRIES = 70
@@ -374,6 +375,8 @@ export function normalizeAppState(raw: unknown): AppState {
     typeof ui.selectedCustomTheme === 'string' && CUSTOM_THEME_IDS.includes(ui.selectedCustomTheme as CustomThemeId)
       ? (ui.selectedCustomTheme as CustomThemeId)
       : fallback.ui.selectedCustomTheme
+  const hotkeys = isRecord(raw.hotkeys) ? raw.hotkeys : {}
+  const normalizedHotkeys = normalizeHotkeySettings(hotkeys)
   return materializeSyncedNoteBodiesInState(ensureNotebookBodies({
     theme: APP_THEMES.includes(raw.theme as AppTheme) ? (raw.theme as AppTheme) : fallback.theme,
     notebook,
@@ -390,9 +393,9 @@ export function normalizeAppState(raw: unknown): AppState {
     hotkeys: {
       shortcuts: {
         ...DEFAULT_SHORTCUTS,
-        ...(isRecord(raw.hotkeys) && isRecord(raw.hotkeys.shortcuts) ? raw.hotkeys.shortcuts : {}),
+        ...(isRecord(hotkeys.shortcuts) ? hotkeys.shortcuts : {}),
       },
-      newlineShortcuts: fallback.hotkeys.newlineShortcuts,
+      newlineShortcuts: normalizedHotkeys.newlineShortcuts,
     },
     frontmatter: isRecord(raw.frontmatter)
       ? {

@@ -410,11 +410,13 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('aria-label="Scroll aisles horizontally"')
   })
 
-  it('reserves a leading gutter for split aisle table selectors', () => {
+  it('reserves inline gutters for split aisle table selectors and focused aisle alignment', () => {
     expect(editorShellCss).toContain('--note-aisle-leading-gutter: 1.5rem;')
     expect(editorShellCss).toContain('.note-aisles-shell.is-split .note-aisle-scroll')
     expect(editorShellCss).toContain('padding-inline-start: var(--note-aisle-leading-gutter);')
+    expect(editorShellCss).toContain('padding-inline-end: var(--note-aisle-leading-gutter);')
     expect(responsiveCss).toContain('padding-inline-start: 0 !important;')
+    expect(responsiveCss).toContain('padding-inline-end: 0 !important;')
   })
 
   it('renders resize handles for split aisles', () => {
@@ -719,8 +721,9 @@ describe('NoteWorkspace aisle mounting', () => {
       />,
     )
 
-    expect(html.match(/class="aisle-toc-panel"/g) ?? []).toHaveLength(1)
+    expect(html.match(/class="aisle-toc-panel(?:\s|")/g) ?? []).toHaveLength(1)
     expect(html).toContain('class="aisle-toc-panel-layer"')
+    expect(html).toContain('>Headers</h4>')
     expect(html).toContain('Alpha')
     expect(html).toContain('Nested')
     expect(html).toContain('aria-current="true"')
@@ -763,13 +766,15 @@ describe('NoteWorkspace aisle mounting', () => {
       />,
     )
 
-    expect(html).toContain('class="aisle-toc-panel"')
-    expect(html).toContain('>links</div>')
+    expect(html).toContain('class="aisle-toc-panel')
+    expect(html).toContain('>Links</h4>')
     expect(html).toContain('Example')
-    expect(html).toContain('aisle-toc-link-strip')
-    expect(html).toContain('aisle-toc-link-open-btn')
+    expect(html).toContain('aisle-toc-link-list')
+    expect(html).toContain('aisle-toc-link-btn')
     expect(html).toContain('aria-current="true"')
     expect(html).not.toContain('>table of contents</div>')
+    expect(html).not.toContain('aisle-toc-link-open-btn')
+    expect(html).not.toContain('aisle-toc-link-strip')
     expect(html).not.toContain('--toc-heading-indent')
   })
 

@@ -350,6 +350,46 @@ function removeNotebookItem(
   }
 }
 
+function removeNotebookItems(
+  items: NotebookTreeItem[],
+  itemIds: Set<string>,
+  parentFolderId: string | null = null,
+): {
+  items: NotebookTreeItem[]
+  removed: Array<{ item: NotebookTreeItem; parentFolderId: string | null; index: number }>
+} {
+  const removed: Array<{ item: NotebookTreeItem; parentFolderId: string | null; index: number }> = []
+  const nextItems: NotebookTreeItem[] = []
+
+  items.forEach((item, index) => {
+    if (itemIds.has(item.id)) {
+      removed.push({ item, parentFolderId, index })
+      return
+    }
+
+    if (item.type === 'folder') {
+      const childResult = removeNotebookItems(item.children, itemIds, item.id)
+      removed.push(...childResult.removed)
+      nextItems.push(
+        childResult.items === item.children
+          ? item
+          : {
+              ...item,
+              children: childResult.items,
+            },
+      )
+      return
+    }
+
+    nextItems.push(item)
+  })
+
+  return {
+    items: removed.length > 0 ? nextItems : items,
+    removed,
+  }
+}
+
 export function insertNotebookItem(
   notebook: NotebookState,
   item: NotebookTreeItem,
@@ -395,6 +435,43 @@ export function moveNotebookItem(
   const result = updateFolderChildren(removal.items, targetParentFolderId, (children) => {
     const boundedIndex = Math.max(0, Math.min(adjustedTargetIndex, children.length))
     return [...children.slice(0, boundedIndex), removal.removed as NotebookTreeItem, ...children.slice(boundedIndex)]
+  })
+  if (!result.changed) return notebook
+
+  return ensureValidActiveNote({
+    ...notebook,
+    items: result.items,
+  })
+}
+
+export function moveNotebookItems(
+  notebook: NotebookState,
+  itemIds: string[],
+  targetParentFolderId: string | null,
+  targetIndex: number,
+): NotebookState {
+  const uniqueItemIds = Array.from(new Set(itemIds))
+  if (uniqueItemIds.length === 0) return notebook
+
+  const sources = uniqueItemIds.map((itemId) => findNotebookItem(notebook.items, itemId))
+  if (sources.some((source) => !source || source.item.type !== 'note')) return notebook
+
+  const itemIdSet = new Set(uniqueItemIds)
+  const removal = removeNotebookItems(notebook.items, itemIdSet)
+  if (removal.removed.length !== uniqueItemIds.length) return notebook
+
+  const targetParentExists =
+    targetParentFolderId === null || Boolean(findNotebookFolder(removal.items, targetParentFolderId))
+  if (!targetParentExists) return notebook
+
+  const removedBeforeTarget = removal.removed.filter(
+    (entry) => entry.parentFolderId === targetParentFolderId && entry.index < targetIndex,
+  ).length
+  const adjustedTargetIndex = Math.max(0, targetIndex - removedBeforeTarget)
+  const movingItems = removal.removed.map((entry) => entry.item)
+  const result = updateFolderChildren(removal.items, targetParentFolderId, (children) => {
+    const boundedIndex = Math.max(0, Math.min(adjustedTargetIndex, children.length))
+    return [...children.slice(0, boundedIndex), ...movingItems, ...children.slice(boundedIndex)]
   })
   if (!result.changed) return notebook
 
