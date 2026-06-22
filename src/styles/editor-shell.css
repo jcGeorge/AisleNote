@@ -1536,8 +1536,10 @@
 
 .aisle-toc-heading-btn:hover,
 .aisle-toc-heading-btn:focus-visible,
+.aisle-toc-heading-btn.is-active,
 .aisle-toc-link-open-btn:hover,
-.aisle-toc-link-open-btn:focus-visible {
+.aisle-toc-link-open-btn:focus-visible,
+.aisle-toc-link-open-btn.is-active {
   background: var(--context-menu-item-hover-bg);
 }
 

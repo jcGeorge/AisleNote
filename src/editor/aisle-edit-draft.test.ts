@@ -20,7 +20,7 @@ import {
   reorderAisleDraft,
   reorderAisleDraftByInsertion,
 } from './aisle-edit-draft'
-import { EDITOR_BLANK_LINE_PLACEHOLDER } from '../markdown/markdown-utils'
+import { BLOCK_INDENT_TOKEN, EDITOR_BLANK_LINE_PLACEHOLDER } from '../markdown/markdown-utils'
 import type { ResolvedNoteAisle } from '../types/app'
 
 const aisle = (id: string, markdown = id): ResolvedNoteAisle => ({ id, aisleBodyId: id, markdown })
@@ -88,6 +88,19 @@ describe('aisle edit draft helpers', () => {
       '* [x] Hmm',
       "* [ ] That's not great",
     ].join('\n'))
+  })
+
+  it('decodes tab-block wrappers for markdown and text previews', () => {
+    const markdown = [
+      '<div tab-block="2">',
+      '',
+      'indented',
+      '',
+      '</div>',
+    ].join('\n')
+
+    expect(getAislePreviewMarkdown(markdown)).toBe(`${BLOCK_INDENT_TOKEN.repeat(2)}indented`)
+    expect(getAislePreviewText(markdown)).toBe('indented')
   })
 
   it('finds and reclaims the rightmost empty aisle before adding at the limit', () => {

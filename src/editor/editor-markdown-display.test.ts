@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Editor } from '@toast-ui/editor'
-import { EDITOR_BLANK_LINE_PLACEHOLDER } from '../markdown/markdown-utils'
+import {
+  BLOCK_INDENT_TOKEN,
+  EDITOR_BLANK_LINE_PLACEHOLDER,
+  INDENT_TOKEN,
+} from '../markdown/markdown-utils'
 import {
   escapeNotePreviewTokensForEditorDisplay,
   getEditorMarkdownForPersistence,
@@ -96,6 +100,27 @@ describe('editor markdown display helpers', () => {
     } as unknown as Editor
 
     expect(getEditorMarkdownForPersistence(editor)).toBe('==text==\n\nplain\u2060\u2003\u2003indent')
+  })
+
+  it('uses tab-block wrappers for persisted block indents and internal tokens for display', () => {
+    const editor = {
+      getMarkdown: vi.fn(() => `${BLOCK_INDENT_TOKEN}indented`),
+    } as unknown as Editor
+
+    expect(getEditorMarkdownForPersistence(editor)).toBe([
+      '<div tab-block="1">',
+      '',
+      'indented',
+      '',
+      '</div>',
+    ].join('\n'))
+    expect(prepareMarkdownForEditorDisplay([
+      '<div tab-block="2">',
+      '',
+      'indented',
+      '',
+      '</div>',
+    ].join('\n'))).toBe(`${BLOCK_INDENT_TOKEN.repeat(2)}indented`)
   })
 
   it('uses editor-safe internal note link destinations for display', () => {
@@ -194,7 +219,7 @@ describe('editor markdown display helpers', () => {
     expect(getEditorMarkdownForPersistence(editor)).toBe('okay\nso\n\n')
   })
 
-  it('passes markdown without blank sentinels to Toast UI and restores blank paragraphs in ProseMirror', () => {
+  it('strips blank placeholders before Toast UI and restores the ProseMirror layout once', () => {
     const { editor, tr, dispatch } = fakeEditorWithBlocks([
       textBlock('paragraph', 'one'),
       textBlock('paragraph', 'two'),
@@ -207,6 +232,129 @@ describe('editor markdown display helpers', () => {
     expect(tr.insertedNodes.map((entry: any) => [entry.position, entry.node.textContent])).toEqual([[1, '']])
     expect(tr.meta.addToHistory).toBe(false)
     expect(dispatch).toHaveBeenCalled()
+  })
+
+  it('uses compact display markdown for table-adjacent blanks and lets restore own visual spacing', () => {
+    const markdown = [
+      'before',
+      '',
+      '',
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      '',
+      '',
+      'after',
+    ].join('\n')
+    const displayMarkdown = prepareMarkdownForEditorDisplay(markdown)
+
+    expect(displayMarkdown).toBe([
+      'before',
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      '',
+      'after',
+    ].join('\n'))
+  })
+
+  it('keeps restored table-adjacent blank paragraphs stable through persistence', () => {
+    const source = [
+      'before',
+      '',
+      '',
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+      '',
+      '',
+      'after',
+    ].join('\n')
+    const { editor } = fakeEditorWithBlocks([
+      textBlock('paragraph', 'before'),
+      textBlock('paragraph'),
+      textBlock('paragraph'),
+      textBlock('paragraph'),
+      textBlock('table', 'A B C D'),
+      textBlock('paragraph'),
+      textBlock('paragraph'),
+      textBlock('paragraph', 'after'),
+    ])
+    Object.assign(editor, {
+      getMarkdown: vi.fn(() => [
+        'before',
+        '',
+        '| A | B |',
+        '| --- | --- |',
+        '| C | D |',
+        '',
+        'after',
+      ].join('\n')),
+    })
+
+    for (let index = 0; index < 5; index += 1) {
+      expect(getEditorMarkdownForPersistence(editor)).toBe(source)
+    }
+  })
+
+  it('preserves restored tab-block and table-adjacent blank paragraphs before persistence normalization', () => {
+    const indentedText = 'I\u2019ve got enough to make the plan concrete.'
+    const source = [
+      '# Completed items Yazoo xyq',
+      'I remember when theis app ran well.',
+      'Okay, this si still slow. Which is fine.',
+      '',
+      'Even here, this item is still slow.',
+      'SUre.',
+      '',
+      '<div tab-block="2">',
+      '',
+      indentedText,
+      '',
+      '</div>',
+      `${INDENT_TOKEN}${indentedText}`,
+      '',
+      '| [copy](https://lucide.dev/icons/files) |',
+      '| ---- |',
+      '| [tableOfContents](https://lucide.dev/icons/table-of-contents) |',
+    ].join('\n')
+    const editorMarkdown = [
+      '# Completed items Yazoo xyq',
+      '',
+      'I remember when theis app ran well.',
+      'Okay, this si still slow. Which is fine.',
+      '',
+      'Even here, this item is still slow.',
+      'SUre.',
+      '',
+      `${BLOCK_INDENT_TOKEN.repeat(2)}${indentedText}`,
+      `${INDENT_TOKEN}${indentedText}`,
+      '',
+      '| [copy](https://lucide.dev/icons/files) |',
+      '| ---- |',
+      '| [tableOfContents](https://lucide.dev/icons/table-of-contents) |',
+    ].join('\n')
+    const { editor } = fakeEditorWithBlocks([
+      textBlock('heading', 'Completed items Yazoo xyq'),
+      textBlock('paragraph', 'I remember when theis app ran well.'),
+      textBlock('paragraph', 'Okay, this si still slow. Which is fine.'),
+      textBlock('paragraph'),
+      textBlock('paragraph', 'Even here, this item is still slow.'),
+      textBlock('paragraph', 'SUre.'),
+      textBlock('paragraph'),
+      textBlock('paragraph', `${BLOCK_INDENT_TOKEN.repeat(2)}${indentedText}`),
+      textBlock('paragraph', `${INDENT_TOKEN}${indentedText}`),
+      textBlock('paragraph'),
+      textBlock('table', 'copytableOfContents'),
+    ])
+    Object.assign(editor, {
+      getMarkdown: vi.fn(() => editorMarkdown),
+    })
+
+    expect(getEditorMarkdownForPersistence(editor)).toBe(source)
   })
 
   it('restores blank paragraphs without replacing hyperlink content nodes', () => {
@@ -304,6 +452,24 @@ describe('editor markdown display helpers', () => {
     expect(dispatch).not.toHaveBeenCalled()
   })
 
+  it('observes placeholder-backed display readiness without mutating the editor document', () => {
+    const { editor, tr, dispatch } = fakeEditorWithBlocks([
+      textBlock('paragraph', 'one'),
+      textBlock('paragraph'),
+      textBlock('paragraph', 'two'),
+    ])
+
+    expect(restoreEditorDisplay(editor, `one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)).toEqual({
+      restored: false,
+      viewReady: true,
+      displayReady: true,
+    })
+
+    expect(tr.replaceWith).not.toHaveBeenCalled()
+    expect(tr.insertedNodes).toEqual([])
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
   it('repairs broken table markdown before passing it to Toast UI', () => {
     const { editor } = fakeEditorWithBlocks([textBlock('table')])
     const brokenTable = [
@@ -323,6 +489,48 @@ describe('editor markdown display helpers', () => {
       '| --- | --- |',
       '| C | D |',
     ].join('\n'), false)
+  })
+
+  it('keeps the table-adjacent cursor theft fixture as paragraph plus table display markdown', () => {
+    const fixture = [
+      '# Completed items Yazoo xyq',
+      'I remember when theis app ran well.',
+      'Okay, this si still slow. Which is fine.',
+      'Even here, this item is still slow.',
+      'SUre.',
+      '<div tab-block="2">',
+      '',
+      'I\u2019ve got enough to make the plan concrete. The implementation should not try to force synchronous disk writes on every keystroke; it should restore the missing \u201cedit buffer becomes canonical state\u201d path, then flush that state at the right boundaries.',
+      '',
+      '</div>',
+      '\u2060\u2003\u2003I\u2019ve got enough to make the plan concrete. The implementation should not try to force synchronous disk writes on every keystroke; it should restore the missing \u201cedit buffer becomes canonical state\u201d path, then flush that state at the right boundaries.',
+      '| [copy](https://lucide.dev/icons/files) |',
+      '| ---- |',
+      '| [tableOfContents](https://lucide.dev/icons/table-of-contents) |',
+      '| [aisles](https://lucide.dev/icons/shelving-unit) |',
+      '| [findReplace](https://lucide.dev/icons/search) |',
+      '| [undo](https://lucide.dev/icons/undo) |',
+      '| [redo](https://lucide.dev/icons/redo) |',
+    ].join('\n')
+
+    expect(prepareMarkdownForEditorDisplay(fixture)).toBe([
+      '# Completed items Yazoo xyq',
+      '',
+      'I remember when theis app ran well.',
+      'Okay, this si still slow. Which is fine.',
+      'Even here, this item is still slow.',
+      'SUre.',
+      `${BLOCK_INDENT_TOKEN.repeat(2)}I\u2019ve got enough to make the plan concrete. The implementation should not try to force synchronous disk writes on every keystroke; it should restore the missing \u201cedit buffer becomes canonical state\u201d path, then flush that state at the right boundaries.`,
+      `${INDENT_TOKEN}I\u2019ve got enough to make the plan concrete. The implementation should not try to force synchronous disk writes on every keystroke; it should restore the missing \u201cedit buffer becomes canonical state\u201d path, then flush that state at the right boundaries.`,
+      '',
+      '| [copy](https://lucide.dev/icons/files) |',
+      '| ---- |',
+      '| [tableOfContents](https://lucide.dev/icons/table-of-contents) |',
+      '| [aisles](https://lucide.dev/icons/shelving-unit) |',
+      '| [findReplace](https://lucide.dev/icons/search) |',
+      '| [undo](https://lucide.dev/icons/undo) |',
+      '| [redo](https://lucide.dev/icons/redo) |',
+    ].join('\n'))
   })
 
   it('removes parser-only table spacing without replacing table content', () => {

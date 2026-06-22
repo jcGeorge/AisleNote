@@ -26,6 +26,7 @@ export const NEWLINE_OPERATIONS: Array<{ id: NewlineOperationId; label: string }
   { id: 'blockQuote', label: 'block quote' },
   { id: 'blockIndent', label: 'block indent' },
   { id: 'strikethrough', label: 'strikethrough' },
+  { id: 'tableOfContents', label: 'table of contents' },
   { id: 'operationsMenu', label: 'shortcut menu' },
 ]
 
@@ -50,6 +51,7 @@ export const SHORTCUT_MENU_ELIGIBLE_OPERATIONS: NewlineOperationId[] = [
   'blockQuote',
   'blockIndent',
   'strikethrough',
+  'tableOfContents',
 ]
 
 const DEFAULT_SHORTCUT_MENU_OPERATIONS: NewlineOperationId[] = [

@@ -2,6 +2,7 @@ import type { Editor } from '@toast-ui/editor'
 import {
   EDITOR_BLANK_LINE_PLACEHOLDER,
   type BlankParagraphDisplayOptions,
+  decodeBlockIndentHtmlForInternalMarkdown,
   isBlankParagraphNode,
   mergeLeadingIndentsFromWysiwyg,
   normalizeEscapedAnnotationLineMarkers,
@@ -80,25 +81,29 @@ export function normalizeEditorNoteLinkDestinationsForPersistence(markdown: stri
 }
 
 export function getEditorMarkdownForPersistence(editor: Editor): string {
+  const editorMarkdown = mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())
+  const blankPreservedMarkdown = preserveBlankParagraphsFromWysiwyg(editor, editorMarkdown)
   return normalizeMarkdownImageSourcesForPersistence(
     normalizeEditorNoteLinkDestinationsForPersistence(
       normalizeEmptyHeadingMarkersFromWysiwyg(
         editor,
-        preserveBlankParagraphsFromWysiwyg(
-          editor,
-          normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())),
-        ),
+        normalizeMarkdownForPersistence(blankPreservedMarkdown),
       ),
     ),
   )
+}
+
+function prepareMarkdownForBlankParagraphPlanning(markdown: string): string {
+  const blockIndentsPrepared = decodeBlockIndentHtmlForInternalMarkdown(markdown)
+  const escapedLinksPrepared = normalizeEscapedMarkdownLinks(blockIndentsPrepared)
+  return normalizeEscapedAnnotationLineMarkers(escapedLinksPrepared)
 }
 
 export function prepareMarkdownForEditorDisplay(
   markdown: string,
   options: BlankParagraphDisplayOptions = {},
 ): string {
-  const escapedLinksPrepared = normalizeEscapedMarkdownLinks(markdown)
-  const annotationMarkersPrepared = normalizeEscapedAnnotationLineMarkers(escapedLinksPrepared)
+  const annotationMarkersPrepared = prepareMarkdownForBlankParagraphPlanning(markdown)
   const blankPrepared = prepareBlankParagraphsForEditorDisplay(annotationMarkersPrepared, options)
   const noteLinksPrepared = prepareMarkdownNoteLinkDestinationsForEditorDisplay(blankPrepared.markdown)
   const notePreviewsPrepared = escapeNotePreviewTokensForEditorDisplay(noteLinksPrepared)
@@ -313,8 +318,9 @@ function measureBlankParagraphRestore(editor: Editor | null, markdown: string): 
 }
 
 function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown: string): BlankParagraphRestoreState {
-  let blankPrepared = prepareBlankParagraphsForEditorDisplay(markdown)
-  const tableRestoreWithoutExplicitMarkers = hasMarkdownTable(markdown) && !hasExplicitBlankRestoreMarker(markdown)
+  const planningMarkdown = prepareMarkdownForBlankParagraphPlanning(markdown)
+  let blankPrepared = prepareBlankParagraphsForEditorDisplay(planningMarkdown)
+  const tableRestoreWithoutExplicitMarkers = hasMarkdownTable(planningMarkdown) && !hasExplicitBlankRestoreMarker(markdown)
 
   const view = getWysiwygView(editor)
   const doc = view?.state?.doc
@@ -331,7 +337,7 @@ function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown:
   const currentContentCount = topLevelNodes.filter((item) => item.kind === 'content').length
   let expectedContentCount = getContentNodeCount(blankPrepared.blockKinds)
   if (currentContentCount !== expectedContentCount) {
-    const splitPlainPrepared = prepareBlankParagraphsForEditorDisplay(markdown, { splitPlainParagraphLines: true })
+    const splitPlainPrepared = prepareBlankParagraphsForEditorDisplay(planningMarkdown, { splitPlainParagraphLines: true })
     const splitPlainContentCount = getContentNodeCount(splitPlainPrepared.blockKinds)
     if (currentContentCount === splitPlainContentCount) {
       blankPrepared = splitPlainPrepared

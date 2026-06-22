@@ -9,7 +9,7 @@ describe('ShortcutMenu block quote and block indent labels', () => {
       <ShortcutMenu
         top={0}
         left={0}
-        operations={['blockQuote', 'blockIndent', 'aisleLeft', 'aisleRight']}
+        operations={['blockQuote', 'blockIndent', 'aisleLeft', 'aisleRight', 'tableOfContents']}
         activeIndex={0}
         onHighlight={vi.fn()}
         onRun={vi.fn()}
@@ -20,6 +20,7 @@ describe('ShortcutMenu block quote and block indent labels', () => {
     expect(html).toContain('block indent')
     expect(html).toContain('aisle to the left')
     expect(html).toContain('aisle to the right')
+    expect(html).toContain('table of contents')
     expect(html).not.toContain('block tab indent')
     expect(html).not.toContain('>aisle</')
   })

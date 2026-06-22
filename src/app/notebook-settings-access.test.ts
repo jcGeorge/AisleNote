@@ -50,6 +50,8 @@ describe('notebook settings access', () => {
     expect(notebookAppSource).toContain('ShortcutMenuSettingsPanel')
     expect(notebookAppSource).toContain('NEWLINE_OPERATION_LABELS.operationsMenu')
     expect(notebookAppSource).toContain('updateShortcutMenuOperationsSetting')
+    expect(notebookAppSource).toContain('onOpenTableOfContents: openTableOfContentsFromEditorShortcut')
+    expect(notebookAppSource).toContain("operation === 'tableOfContents'")
   })
 
   it('removes obsolete permanent delete setting from active notebook settings', () => {
@@ -67,6 +69,7 @@ describe('notebook settings access', () => {
     expect(notebookAppSource).toContain('MAX_SCRATCHPAD_AISLE_LIMIT')
     expect(notebookAppSource).toContain('DEFAULT_SCRATCHPAD_AISLE_LIMIT')
     expect(notebookAppSource).toContain('clampScratchpadAisleLimit(event.target.value)')
+    expect(notebookAppSource).toContain("{ id: 'focused-aisle', label: 'Current aisle' }")
     expect(notebookAppSource).not.toContain('Math.max(1, Math.min(12')
   })
 

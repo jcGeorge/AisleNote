@@ -77,6 +77,7 @@ const NEWLINE_OPERATION_IDS = new Set([
   'blockQuote',
   'blockIndent',
   'strikethrough',
+  'tableOfContents',
   'operationsMenu',
 ])
 
@@ -93,6 +94,7 @@ const SHORTCUT_MENU_ELIGIBLE_OPERATION_IDS = new Set([
   'blockQuote',
   'blockIndent',
   'strikethrough',
+  'tableOfContents',
 ])
 
 const DEFAULT_SYNCED_UI_SETTINGS = {

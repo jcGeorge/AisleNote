@@ -1,4 +1,10 @@
-import { EDITOR_BLANK_LINE_PLACEHOLDER, normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
+import {
+  BLOCK_INDENT_TOKEN,
+  EDITOR_BLANK_LINE_PLACEHOLDER,
+  INDENT_TOKEN,
+  decodeBlockIndentHtmlForInternalMarkdown,
+  normalizeMarkdownForPersistence,
+} from '../markdown/markdown-utils'
 import type { NoteAisle, ResolvedNoteAisle } from '../types/app'
 
 export const MAX_NOTE_AISLES = 8
@@ -207,7 +213,9 @@ export function moveAisleInDraft(draft: ResolvedNoteAisle[], aisleId: string, di
 }
 
 export function getAislePreviewText(markdown: string, maxLength = 140) {
-  const text = normalizeMarkdownForPersistence(markdown)
+  const text = decodeBlockIndentHtmlForInternalMarkdown(normalizeMarkdownForPersistence(markdown))
+    .replaceAll(BLOCK_INDENT_TOKEN, ' ')
+    .replaceAll(INDENT_TOKEN, ' ')
     .replace(/```[\s\S]*?```/g, ' code block ')
     .replace(/!\[[^\]]*]\([^)]*\)/g, ' image ')
     .replace(/\[([^\]]+)]\([^)]*\)/g, '$1')
@@ -221,5 +229,5 @@ export function getAislePreviewText(markdown: string, maxLength = 140) {
 }
 
 export function getAislePreviewMarkdown(markdown: string) {
-  return normalizeMarkdownForPersistence(markdown).replace(/<br\s*\/?>/gi, '\n')
+  return decodeBlockIndentHtmlForInternalMarkdown(normalizeMarkdownForPersistence(markdown)).replace(/<br\s*\/?>/gi, '\n')
 }

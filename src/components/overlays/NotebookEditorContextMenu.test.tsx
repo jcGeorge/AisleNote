@@ -171,6 +171,8 @@ describe('notebook editor context menu wiring', () => {
     expect(notebookAppSource).toContain('onCopyAs={copyNotebookStructureAs}')
     expect(notebookAppSource).toContain('onRevealLocation={revealEditorContextLocation}')
     expect(notebookAppSource).toContain("trigger: 'notebook-editor-reveal-location'")
+    expect(notebookAppSource).toContain('const latest = getLatestNotebookStateFromMountedEditors()')
+    expect(notebookAppSource).toContain('pendingEditorCount: latest.pendingEditorCount')
     expect(notebookAppSource).toContain('revealNoteLocation(payload)')
     expect(notebookEditorsSource).toContain('onNotebookStructurePaste')
     expect(notebookEditorsSource).toContain('readNotebookStructureClipboardPayloadFromDataTransfer(event.clipboardData)')

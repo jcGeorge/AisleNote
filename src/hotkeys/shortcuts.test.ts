@@ -90,6 +90,12 @@ describe('newline shortcut settings', () => {
     expect(NEWLINE_OPERATION_LABELS.operationsMenu).toBe('shortcut menu')
   })
 
+  it('makes table of contents available for shortcut menu configuration without selecting it by default', () => {
+    expect(NEWLINE_OPERATION_LABELS.tableOfContents).toBe('table of contents')
+    expect(SHORTCUT_MENU_ELIGIBLE_OPERATIONS).toContain('tableOfContents')
+    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).not.toContain('tableOfContents')
+  })
+
   it('normalizes persisted dash-list shortcuts and dedupes menu entries', () => {
     const normalized = normalizeHotkeySettings({
       newlineShortcuts: {
@@ -203,6 +209,22 @@ describe('newline shortcut settings', () => {
     expect(normalized.newlineShortcuts.shortcuts.controlEnter).toBe('blockIndent')
     expect(normalized.newlineShortcuts.shortcuts.shiftEnter).toBe('blockQuote')
     expect(normalized.newlineShortcuts.menuOperations).toEqual(['blockQuote', 'blockIndent', 'strikethrough'])
+  })
+
+  it('normalizes persisted table of contents menu entries and shortcuts', () => {
+    const normalized = normalizeHotkeySettings({
+      newlineShortcuts: {
+        shortcuts: {
+          controlEnter: 'tableOfContents',
+          shiftEnter: 'task',
+          commandEnter: 'operationsMenu',
+        },
+        menuOperations: ['tableOfContents', 'tableOfContents', 'blockQuote'],
+      },
+    })
+
+    expect(normalized.newlineShortcuts.shortcuts.controlEnter).toBe('tableOfContents')
+    expect(normalized.newlineShortcuts.menuOperations).toEqual(['tableOfContents', 'blockQuote', 'strikethrough'])
   })
 
   it('defaults aisle cycle shortcuts to alt brackets and recognizes physical bracket keys', () => {

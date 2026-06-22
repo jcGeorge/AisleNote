@@ -401,7 +401,7 @@ const TABLE_TARGET_OPTIONS: Array<{ id: TableControlTargetMode; label: string }>
 
 const TABLE_OF_CONTENTS_SCOPE_OPTIONS: Array<{ id: TableOfContentsScope; label: string }> = [
   { id: 'all-aisles', label: 'All aisles' },
-  { id: 'focused-aisle', label: 'Focused aisle' },
+  { id: 'focused-aisle', label: 'Current aisle' },
 ]
 
 const SETTINGS_SECTION_SET = new Set<SettingsSection>(SETTINGS_SECTION_TABS.map((tab) => tab.id))
@@ -1961,7 +1961,7 @@ function NotebookThemeSettings({
 }
 
 export function NotebookApp() {
-  const { state, setState, stateRef, commitAppStateNow } = usePersistentAppState()
+  const { state, setState, stateRef, externalStateLoadVersion, commitAppStateNow } = usePersistentAppState()
   const [viewMode, setViewMode] = useState<ViewMode>('main')
   const [settingsSection, setSettingsSectionState] = useState<SettingsSection>(() =>
     SETTINGS_SECTION_SET.has(state.ui.settingsSection) ? state.ui.settingsSection : 'data',
@@ -2011,6 +2011,7 @@ export function NotebookApp() {
   const navigateToNotebookLocationRef = useRef<(location: NotebookNavigationLocation) => boolean>(() => false)
   const pendingCreatedEditRef = useRef<unknown>(null)
   const addAisleFromNewlineRef = useRef<((side: 'left' | 'right', aisleId: string, markdown: string) => void) | null>(null)
+  const openTableOfContentsForAisleRef = useRef<((aisleId: string) => void) | null>(null)
   const frontmatterStateSnapshotRef = useRef(state.frontmatter)
   const skipNextTreeRenameCommitRef = useRef(false)
   const sidebarResizeRef = useRef<{
@@ -2521,6 +2522,10 @@ export function NotebookApp() {
     addAisleFromNewlineRef.current?.(side, aisleId, markdown)
   }, [])
 
+  const openTableOfContentsFromEditorShortcut = useCallback((aisleId: string) => {
+    openTableOfContentsForAisleRef.current?.(aisleId)
+  }, [])
+
   const openShortcutMenuFromEditor = useCallback(
     ({ aisleId, anchor }: { aisleId: string; anchor: { top: number; left: number } }) => {
       const estimatedMenuHeight =
@@ -2581,8 +2586,10 @@ export function NotebookApp() {
     hotkeys: state.hotkeys,
     isMacPlatform,
     onOpenShortcutMenu: openShortcutMenuFromEditor,
+    onOpenTableOfContents: openTableOfContentsFromEditorShortcut,
     onOpenUrlLinkPrompt: openUrlLinkPrompt,
     onInsertAisleFromNewline: insertAisleFromNewlineShortcut,
+    externalStateLoadVersion,
   })
 
   const activateEditorFromAssetTarget = useCallback(
@@ -2682,6 +2689,14 @@ export function NotebookApp() {
   const pendingCursorRestoreRef = cursorPersistence.pendingCursorRestoreRef
   const applyActiveCursorToState = cursorPersistence.applyActiveCursorToState
 
+  const getLatestNotebookStateFromMountedEditors = useCallback(() => {
+    const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
+    return {
+      state: applyActiveCursorToState(applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots)),
+      pendingEditorCount: snapshots.length,
+    }
+  }, [applyActiveCursorToState, notebookEditors, stateRef])
+
   const clearNotebookNavigationTransientUi = useCallback(() => {
     setAisleContextMenu(null)
     setEditorContextMenu(null)
@@ -2695,7 +2710,9 @@ export function NotebookApp() {
 
   const applyNotebookNavigationLocation = useCallback(
     (location: NotebookNavigationLocation) => {
-      const resolvedLocation = resolveNotebookNavigationLocation(stateRef.current, location)
+      const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
+      const snapshotState = applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots)
+      const resolvedLocation = resolveNotebookNavigationLocation(snapshotState, location)
       if (!resolvedLocation) return false
 
       pendingFocusToAisleIdRef.current = resolvedLocation.aisleId || null
@@ -2705,7 +2722,8 @@ export function NotebookApp() {
       setSelectedFolderId('')
       clearNotebookNavigationTransientUi()
       mutateState((previous) => {
-        const previousWithCursor = applyActiveCursorToState(previous)
+        const previousWithEditorContent = applyNotebookEditorMarkdownSnapshotsToState(previous, snapshots)
+        const previousWithCursor = applyActiveCursorToState(previousWithEditorContent)
         if (previousWithCursor.notebook.activeNoteId === resolvedLocation.noteId) return previousWithCursor
         return {
           ...previousWithCursor,
@@ -2771,15 +2789,14 @@ export function NotebookApp() {
 
   const flushNotebookPersistenceNow = useCallback((eventName: 'blur' | 'visibilitychange' | 'beforeunload' | 'pagehide') => {
     clearNotebookFocusBoundaryFlush()
-    const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
-    const latestState = applyActiveCursorToState(applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots))
-    void commitAppStateNow(latestState, {
+    const latest = getLatestNotebookStateFromMountedEditors()
+    void commitAppStateNow(latest.state, {
       preferSync: eventName === 'beforeunload' || eventName === 'pagehide',
       flushQueue: true,
       trigger: `notebook-editor-focus-boundary:${eventName}`,
-      pendingEditorCount: snapshots.length,
+      pendingEditorCount: latest.pendingEditorCount,
     })
-  }, [applyActiveCursorToState, clearNotebookFocusBoundaryFlush, commitAppStateNow, notebookEditors, stateRef])
+  }, [clearNotebookFocusBoundaryFlush, commitAppStateNow, getLatestNotebookStateFromMountedEditors])
 
   const scheduleNotebookFocusBoundaryFlush = useCallback((eventName: 'blur' | 'visibilitychange') => {
     if (eventName === 'visibilitychange' && document.visibilityState !== 'hidden') return
@@ -3089,10 +3106,12 @@ export function NotebookApp() {
       itemId: treeContextMenu.itemId,
       itemType: treeContextMenu.itemType,
     }
-    void Promise.resolve(commitAppStateNow(stateRef.current, {
+    const latest = getLatestNotebookStateFromMountedEditors()
+    void Promise.resolve(commitAppStateNow(latest.state, {
       preferSync: true,
       flushQueue: true,
       trigger: 'notebook-sidebar-reveal-item',
+      pendingEditorCount: latest.pendingEditorCount,
     }))
       .then(() => revealNotebookItemLocation(payload))
       .then((result) => {
@@ -3100,7 +3119,7 @@ export function NotebookApp() {
         window.alert(result.error || 'Could not reveal notebook item.')
       })
       .catch(() => window.alert('Could not reveal notebook item.'))
-  }, [commitAppStateNow, stateRef, treeContextMenu])
+  }, [commitAppStateNow, getLatestNotebookStateFromMountedEditors, treeContextMenu])
 
   const restoreDeletedItem = useCallback(
     (deletedItemId: string) => {
@@ -3328,6 +3347,10 @@ export function NotebookApp() {
       const aisleId = shortcutMenu?.aisleId || renderedActiveAisleId
       setShortcutMenu(null)
       if (!aisleId) return
+      if (operation === 'tableOfContents') {
+        openTableOfContentsForAisleRef.current?.(aisleId)
+        return
+      }
       notebookEditors.runNewlineOperation(operation, aisleId)
     },
     [notebookEditors, renderedActiveAisleId, shortcutMenu?.aisleId],
@@ -3876,15 +3899,16 @@ export function NotebookApp() {
     [mutateState, stateRef],
   )
 
-  const openTableOfContents = useCallback(() => {
+  const openTableOfContents = useCallback((options: { scope?: TableOfContentsScope; focusedAisleId?: string } = {}) => {
     if (!activeModel) return
+    const focusedAisleId = options.focusedAisleId ?? renderedActiveAisleId
     const panels = buildTableOfContentsPanels(
       activeModel.noteBody.id,
       activeModel.resolved.aisles,
       notebookEditors.getHeadingOutlineForAisle,
       {
-        scope: state.ui.tableOfContentsScope ?? 'all-aisles',
-        focusedAisleId: renderedActiveAisleId,
+        scope: options.scope ?? state.ui.tableOfContentsScope ?? 'all-aisles',
+        focusedAisleId,
         getLinksForAisle: notebookEditors.getTableOfContentsLinksForAisle,
       },
     )
@@ -3894,6 +3918,16 @@ export function NotebookApp() {
     }
     setTableOfContentsPanels(panels)
   }, [activeModel, notebookEditors, renderedActiveAisleId, state.ui.tableOfContentsScope])
+
+  const openFocusedTableOfContents = useCallback(
+    (aisleId: string) => {
+      if (!aisleId) return
+      setActiveAisleId(aisleId)
+      openTableOfContents({ scope: 'focused-aisle', focusedAisleId: aisleId })
+    },
+    [openTableOfContents],
+  )
+  openTableOfContentsForAisleRef.current = openFocusedTableOfContents
 
   const closeTableOfContentsAisle = useCallback((aisleId: string) => {
     setTableOfContentsPanels((current) => {
@@ -4161,10 +4195,12 @@ export function NotebookApp() {
         location: { noteId },
         aisleId,
       }
-      void Promise.resolve(commitAppStateNow(stateRef.current, {
+      const latest = getLatestNotebookStateFromMountedEditors()
+      void Promise.resolve(commitAppStateNow(latest.state, {
         preferSync: true,
         flushQueue: true,
         trigger: 'notebook-editor-reveal-location',
+        pendingEditorCount: latest.pendingEditorCount,
       }))
         .then(() => revealNoteLocation(payload))
         .then((result) => {
@@ -4173,7 +4209,7 @@ export function NotebookApp() {
         })
         .catch(() => window.alert('Could not reveal note location.'))
     },
-    [commitAppStateNow, stateRef],
+    [commitAppStateNow, getLatestNotebookStateFromMountedEditors, stateRef],
   )
 
   const startSidebarResize = useCallback(

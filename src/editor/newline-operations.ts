@@ -580,7 +580,7 @@ export function applyEditorNewlineOperation(
   editor: Editor,
   operation: NewlineOperationId,
 ): EditorNewlineOperationResult {
-  if (operation === 'operationsMenu') return { handled: false }
+  if (operation === 'operationsMenu' || operation === 'tableOfContents') return { handled: false }
   if (isAisleNewlineOperation(operation)) return extractSelectionForAisle(editor)
   if (operation === 'strikethrough') {
     editor.focus()

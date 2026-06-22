@@ -53,6 +53,7 @@ import {
   getLightweightPreviewText,
   getMarkdownWorkloadProfile,
 } from './note-workspace-preview'
+import { getTableOfContentsPanelKeyboardAction } from './table-of-contents-panel-keyboard'
 
 void React
 
@@ -215,6 +216,36 @@ function AisleTableOfContentsPanel({
 }: AisleTableOfContentsPanelProps) {
   const hasHeadings = headings.length > 0
   const hasLinks = links.length > 0
+  const itemCount = headings.length + links.length * 2
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const [activeIndex, setActiveIndex] = useState(0)
+
+  const setItemRef = useCallback((index: number, node: HTMLButtonElement | null) => {
+    itemRefs.current[index] = node
+  }, [])
+
+  const focusItem = useCallback(
+    (index: number) => {
+      if (itemCount <= 0) return
+      const nextIndex = Math.max(0, Math.min(itemCount - 1, index))
+      setActiveIndex(nextIndex)
+      itemRefs.current[nextIndex]?.focus({ preventScroll: true })
+    },
+    [itemCount],
+  )
+
+  useEffect(() => {
+    itemRefs.current = itemRefs.current.slice(0, itemCount)
+    setActiveIndex(0)
+    if (itemCount <= 0) return undefined
+    const frame = window.requestAnimationFrame(() => {
+      itemRefs.current[0]?.focus({ preventScroll: true })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [aisleId, itemCount])
+
+  let keyboardItemIndex = 0
+
   return (
     <div
       className="aisle-toc-panel-layer"
@@ -231,6 +262,21 @@ function AisleTableOfContentsPanel({
         className="aisle-toc-panel"
         role="dialog"
         aria-label="Table of contents"
+        onKeyDown={(event) => {
+          const action = getTableOfContentsPanelKeyboardAction(event.nativeEvent, activeIndex, itemCount)
+          if (action.type === 'none') return
+          event.preventDefault()
+          event.stopPropagation()
+          if (action.type === 'close') {
+            onClose(aisleId)
+            return
+          }
+          if (action.type === 'highlight') {
+            focusItem(action.index)
+            return
+          }
+          itemRefs.current[action.index]?.click()
+        }}
         onPointerDown={(event) => {
           event.stopPropagation()
         }}
@@ -240,21 +286,28 @@ function AisleTableOfContentsPanel({
             <section className="aisle-toc-section aisle-toc-heading-section" aria-label="Table of contents headings">
               <div className="aisle-toc-panel-title">table of contents</div>
               <div className="aisle-toc-list aisle-toc-heading-list">
-                {headings.map((heading) => (
-                  <button
-                    key={heading.key}
-                    type="button"
-                    className="aisle-toc-heading-btn"
-                    style={{ '--toc-heading-indent': `${Math.max(0, heading.level - 1) * 0.78}rem` } as CSSProperties}
-                    onClick={(event) => {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      onSelectHeading(aisleId, heading.key)
-                    }}
-                  >
-                    {heading.text || `heading ${heading.level}`}
-                  </button>
-                ))}
+                {headings.map((heading) => {
+                  const itemIndex = keyboardItemIndex
+                  keyboardItemIndex += 1
+                  return (
+                    <button
+                      key={heading.key}
+                      ref={(node) => setItemRef(itemIndex, node)}
+                      type="button"
+                      className={`aisle-toc-heading-btn${itemIndex === activeIndex ? ' is-active' : ''}`}
+                      aria-current={itemIndex === activeIndex ? 'true' : undefined}
+                      style={{ '--toc-heading-indent': `${Math.max(0, heading.level - 1) * 0.78}rem` } as CSSProperties}
+                      onFocus={() => setActiveIndex(itemIndex)}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        onSelectHeading(aisleId, heading.key)
+                      }}
+                    >
+                      {heading.text || `heading ${heading.level}`}
+                    </button>
+                  )
+                })}
               </div>
             </section>
           )}
@@ -262,34 +315,46 @@ function AisleTableOfContentsPanel({
             <section className="aisle-toc-section aisle-toc-links-section" aria-label="Table of contents links">
               <div className="aisle-toc-panel-title aisle-toc-links-title">links</div>
               <div className="aisle-toc-link-strip">
-                {links.map((link) => (
-                  <div key={link.key} className="aisle-toc-link-row">
-                    <button
-                      type="button"
-                      className="aisle-toc-link-open-btn"
-                      aria-label={`Open ${link.label}`}
-                      data-app-tooltip="Open"
-                      onClick={(event) => {
-                        event.preventDefault()
-                        event.stopPropagation()
-                        onOpenLink(aisleId, link)
-                      }}
-                    >
-                      <span className="aisle-toc-link-open-icon" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="aisle-toc-heading-btn aisle-toc-link-btn"
-                      onClick={(event) => {
-                        event.preventDefault()
-                        event.stopPropagation()
-                        onSelectLink(aisleId, link.key)
-                      }}
-                    >
-                      {link.label}
-                    </button>
-                  </div>
-                ))}
+                {links.map((link) => {
+                  const openIndex = keyboardItemIndex
+                  keyboardItemIndex += 1
+                  const selectIndex = keyboardItemIndex
+                  keyboardItemIndex += 1
+                  return (
+                    <div key={link.key} className="aisle-toc-link-row">
+                      <button
+                        ref={(node) => setItemRef(openIndex, node)}
+                        type="button"
+                        className={`aisle-toc-link-open-btn${openIndex === activeIndex ? ' is-active' : ''}`}
+                        aria-current={openIndex === activeIndex ? 'true' : undefined}
+                        aria-label={`Open ${link.label}`}
+                        data-app-tooltip="Open"
+                        onFocus={() => setActiveIndex(openIndex)}
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          onOpenLink(aisleId, link)
+                        }}
+                      >
+                        <span className="aisle-toc-link-open-icon" aria-hidden="true" />
+                      </button>
+                      <button
+                        ref={(node) => setItemRef(selectIndex, node)}
+                        type="button"
+                        className={`aisle-toc-heading-btn aisle-toc-link-btn${selectIndex === activeIndex ? ' is-active' : ''}`}
+                        aria-current={selectIndex === activeIndex ? 'true' : undefined}
+                        onFocus={() => setActiveIndex(selectIndex)}
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          onSelectLink(aisleId, link.key)
+                        }}
+                      >
+                        {link.label}
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             </section>
           )}

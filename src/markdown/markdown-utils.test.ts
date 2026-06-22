@@ -5,8 +5,11 @@ import {
   countBlockIndentLevels,
   countLeadingIndentUnits,
   convertInternalTabsForExport,
+  decodeBlockIndentHtmlForInternalMarkdown,
+  encodeBlockIndentTokensForPersistence,
   EDITOR_BLANK_LINE_PLACEHOLDER,
   INDENT_TOKEN,
+  isBlankParagraphNode,
   mergeLeadingIndentsFromWysiwyg,
   normalizeEscapedAnnotationLineMarkers,
   normalizeEscapedMarkdownLinks,
@@ -52,6 +55,24 @@ function block(typeName: string, textContent = ''): FakeNode {
 
 function emptyParagraph(): FakeNode {
   return block('paragraph')
+}
+
+function hardBreakNode(): FakeNode {
+  return {
+    type: { name: 'hardBreak' },
+    textContent: '',
+  }
+}
+
+function hardBreakOnlyParagraph(): FakeNode {
+  const children = [hardBreakNode()]
+  return {
+    type: { name: 'paragraph' },
+    textContent: '',
+    childCount: children.length,
+    child: (index) => children[index] ?? null,
+    isTextblock: true,
+  }
 }
 
 function editorForBlocks(blocks: FakeNode[]): Editor {
@@ -199,6 +220,57 @@ describe('markdown WYSIWYG blank line preservation', () => {
     })
   })
 
+  it('can serialize arbitrary blank paragraph runs as editor placeholders', () => {
+    const blankCount = 4
+    const markdown = ['before', ...Array.from({ length: blankCount }, () => ''), 'next'].join('\n')
+
+    expect(prepareBlankParagraphsForEditorDisplay(markdown, { preserveBlankParagraphPlaceholders: true })).toEqual({
+      markdown: [
+        'before',
+        '',
+        EDITOR_BLANK_LINE_PLACEHOLDER,
+        '',
+        EDITOR_BLANK_LINE_PLACEHOLDER,
+        '',
+        EDITOR_BLANK_LINE_PLACEHOLDER,
+        '',
+        EDITOR_BLANK_LINE_PLACEHOLDER,
+        '',
+        'next',
+      ].join('\n'),
+      blockKinds: ['content', 'blank', 'blank', 'blank', 'blank', 'content'],
+    })
+  })
+
+  it('can serialize table-adjacent blank paragraph runs as editor placeholders', () => {
+    const markdown = [
+      'before',
+      '',
+      '',
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+    ].join('\n')
+
+    expect(prepareBlankParagraphsForEditorDisplay(markdown, { preserveBlankParagraphPlaceholders: true })).toEqual({
+      markdown: [
+        'before',
+        '',
+        EDITOR_BLANK_LINE_PLACEHOLDER,
+        '',
+        EDITOR_BLANK_LINE_PLACEHOLDER,
+        '',
+        EDITOR_BLANK_LINE_PLACEHOLDER,
+        '',
+        '| A | B |',
+        '| --- | --- |',
+        '| C | D |',
+      ].join('\n'),
+      blockKinds: ['content', 'blank', 'blank', 'blank', 'content'],
+    })
+  })
+
   it('plans leading blank rows separately from parser spacing for adjacent visible lines', () => {
     expect(prepareBlankParagraphsForEditorDisplay('\nokay\nso\nthese are together.')).toEqual({
       markdown: 'okay\nso\nthese are together.',
@@ -279,6 +351,43 @@ describe('markdown WYSIWYG blank line preservation', () => {
     expect(normalizeMarkdownForPersistence('one\n\n<br>\n\ntwo')).toBe('one\n\ntwo')
     expect(normalizeMarkdownForPersistence('one <br> two')).toBe('one <br> two')
     expect(normalizeMarkdownForPersistence('```\none\n<br>\ntwo\n```')).toBe('```\none\n<br>\ntwo\n```')
+  })
+
+  it('strips editor blank placeholders when typed text lands on the placeholder line', () => {
+    expect(normalizeMarkdownForPersistence(`${EDITOR_BLANK_LINE_PLACEHOLDER}x`)).toBe('x')
+  })
+
+  it('preserves extra plain blank paragraphs added beside editor blank placeholders', () => {
+    expect(normalizeMarkdownForPersistence([
+      'one',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      '',
+      'two',
+    ].join('\n'))).toBe([
+      'one',
+      '',
+      '',
+      'two',
+    ].join('\n'))
+
+    expect(normalizeMarkdownForPersistence([
+      'one',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      '',
+      EDITOR_BLANK_LINE_PLACEHOLDER,
+      '',
+      'two',
+    ].join('\n'))).toBe([
+      'one',
+      '',
+      '',
+      '',
+      'two',
+    ].join('\n'))
   })
 
   it('repairs fully escaped markdown links from persisted editor text', () => {
@@ -656,6 +765,75 @@ describe('markdown WYSIWYG blank line preservation', () => {
     ].join('\n'))
   })
 
+  it('treats hard-break-only paragraphs as blank editor paragraphs', () => {
+    expect(isBlankParagraphNode(hardBreakOnlyParagraph())).toBe(true)
+    expect(isBlankParagraphNode(block('paragraph', 'real text'))).toBe(false)
+  })
+
+  it('preserves six hard-break blank paragraphs between text and a table', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', 'before'),
+        ...Array.from({ length: 6 }, () => hardBreakOnlyParagraph()),
+        block('table', 'A B C D'),
+      ]),
+      [
+        'before',
+        '',
+        '| A | B |',
+        '| --- | --- |',
+        '| C | D |',
+      ].join('\n'),
+    )
+
+    expect(markdown).toBe([
+      'before',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+    ].join('\n'))
+  })
+
+  it('preserves six hard-break blank paragraphs when text is typed before a table', () => {
+    const markdown = preserveBlankParagraphsFromWysiwyg(
+      editorForBlocks([
+        block('paragraph', 'before'),
+        ...Array.from({ length: 6 }, () => hardBreakOnlyParagraph()),
+        block('paragraph', 'x'),
+        block('table', 'A B C D'),
+      ]),
+      [
+        'before',
+        '',
+        'x',
+        '',
+        '| A | B |',
+        '| --- | --- |',
+        '| C | D |',
+      ].join('\n'),
+    )
+
+    expect(markdown).toBe([
+      'before',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      'x',
+      '| A | B |',
+      '| --- | --- |',
+      '| C | D |',
+    ].join('\n'))
+  })
+
   it('preserves repeated trailing blank paragraphs after a table', () => {
     const markdown = preserveBlankParagraphsFromWysiwyg(
       editorForBlocks([
@@ -820,6 +998,61 @@ describe('markdown WYSIWYG blank line preservation', () => {
     expect(convertInternalTabsForExport(`${BLOCK_INDENT_TOKEN.repeat(2)}${INDENT_TOKEN}one`)).toBe('            one')
   })
 
+  it('persists block indent tokens as explicit tab-block wrappers', () => {
+    expect(normalizeMarkdownForPersistence(`${BLOCK_INDENT_TOKEN}one`)).toBe([
+      '<div tab-block="1">',
+      '',
+      'one',
+      '',
+      '</div>',
+    ].join('\n'))
+  })
+
+  it('groups adjacent same-level block indents into one wrapper', () => {
+    expect(normalizeMarkdownForPersistence(`${BLOCK_INDENT_TOKEN.repeat(2)}one\n\n${BLOCK_INDENT_TOKEN.repeat(2)}two`)).toBe([
+      '<div tab-block="2">',
+      '',
+      'one',
+      '',
+      'two',
+      '',
+      '</div>',
+    ].join('\n'))
+  })
+
+  it('decodes tab-block wrappers into internal block indent tokens for display', () => {
+    expect(decodeBlockIndentHtmlForInternalMarkdown([
+      '<div tab-block="2">',
+      '',
+      '**bold** and [link](https://example.com)',
+      '',
+      '</div>',
+    ].join('\n'))).toBe(`${BLOCK_INDENT_TOKEN.repeat(2)}**bold** and [link](https://example.com)`)
+  })
+
+  it('leaves invalid tab-block wrappers untouched', () => {
+    const markdown = [
+      '<div tab-block="0">',
+      '',
+      'one',
+      '',
+      '</div>',
+    ].join('\n')
+
+    expect(decodeBlockIndentHtmlForInternalMarkdown(markdown)).toBe(markdown)
+    expect(normalizeMarkdownForPersistence(markdown)).toBe(markdown)
+  })
+
+  it('keeps paragraph indents distinct from block indents', () => {
+    expect(normalizeMarkdownForPersistence(`${INDENT_TOKEN}one`)).toBe(`${INDENT_TOKEN}one`)
+    expect(encodeBlockIndentTokensForPersistence(`${INDENT_TOKEN}one`)).toBe(`${INDENT_TOKEN}one`)
+  })
+
+  it('leaves markdown blockquotes distinct from tab-block wrappers', () => {
+    expect(normalizeMarkdownForPersistence('> quote')).toBe('> quote')
+    expect(normalizeMarkdownForPersistence('> quote')).not.toContain('tab-block')
+  })
+
   it('restores paragraph indents after stacked block indent tokens', () => {
     const text = `${BLOCK_INDENT_TOKEN.repeat(2)}${INDENT_TOKEN}one`
 
@@ -830,7 +1063,14 @@ describe('markdown WYSIWYG blank line preservation', () => {
 
   it('strips legacy block indent tokens from quoted lines during persistence and export', () => {
     expect(normalizeMarkdownForPersistence(`> ${BLOCK_INDENT_TOKEN}quote\n${BLOCK_INDENT_TOKEN}normal`)).toBe(
-      `> quote\n${BLOCK_INDENT_TOKEN}normal`,
+      [
+        '> quote',
+        '<div tab-block="1">',
+        '',
+        'normal',
+        '',
+        '</div>',
+      ].join('\n'),
     )
     expect(convertInternalTabsForExport(`> ${BLOCK_INDENT_TOKEN}quote\n${BLOCK_INDENT_TOKEN}normal`)).toBe(
       '> quote\n    normal',

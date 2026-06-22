@@ -86,7 +86,11 @@ import { getUrlLinkPromptDraftFromSelection } from './url-link-prompt'
 import { recordDiagnosticEvent } from '../diagnostics/diagnostic-logger'
 import { installCompletedTaskCheckboxBehavior } from './task-behavior'
 import { resolveMarkdownNoteReferenceToken } from '../notes/note-references'
-import type { NotebookEditorMarkdownSnapshot } from '../app/notebook-editor-persistence'
+import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
+import {
+  collapseNotebookEditorMarkdownSnapshots,
+  type NotebookEditorMarkdownSnapshot,
+} from '../app/notebook-editor-persistence'
 import type { AisleActivationSource } from './aisle-activation'
 import type { AppState, LinkPromptState, NewlineOperationId, NoteLocation, ResolvedNoteAisle, ToastTone, ViewMode } from '../types/app'
 
@@ -101,8 +105,20 @@ type NotebookAisleEditorMeta = {
   aisleId: string
   aisleBodyId: string
   markdown: string
+  revision: number
   displayRestoreReady: boolean
+  programmaticMarkdownUpdatePending: boolean
+  userEditedSinceProgrammaticUpdate: boolean
   cleanup: () => void
+}
+
+type NotebookEditorMarkdownCommitSource = 'user' | 'programmatic' | 'lifecycle'
+
+type NotebookEditorLocalStateEcho = {
+  markdown: string
+  canonicalMarkdown: string
+  revision: number
+  externalStateLoadVersion: number
 }
 
 export type NotebookAisleEditorActivationOptions = {
@@ -131,9 +147,11 @@ type UseNotebookAisleEditorsOptions = {
   hotkeys: AppState['hotkeys']
   isMacPlatform: boolean
   onOpenShortcutMenu?: (request: { aisleId: string; anchor: { top: number; left: number } }) => void
+  onOpenTableOfContents?: (aisleId: string) => void
   onOpenUrlLinkPrompt?: (prompt: LinkPromptState) => void
   onInsertAisleFromNewline?: (side: 'left' | 'right', aisleId: string, markdown: string) => void
   pushToast?: (message: string, tone?: ToastTone, durationMs?: number) => void
+  externalStateLoadVersion: number
 }
 
 const TOAST_AISLE_EDITOR_RECENT_RETAIN_LIMIT = 3
@@ -290,14 +308,23 @@ export function useNotebookAisleEditors({
   hotkeys,
   isMacPlatform,
   onOpenShortcutMenu,
+  onOpenTableOfContents,
   onOpenUrlLinkPrompt,
   onInsertAisleFromNewline,
   pushToast = () => undefined,
+  externalStateLoadVersion,
 }: UseNotebookAisleEditorsOptions) {
   const editorRootsRef = useRef<Map<string, HTMLElement>>(new Map())
   const aislePaneRootsRef = useRef<Map<string, HTMLElement>>(new Map())
   const editorMetaRef = useRef<Map<string, NotebookAisleEditorMeta>>(new Map())
   const lastMarkdownByAisleBodyRef = useRef<Map<string, string>>(new Map())
+  const renderedMarkdownByAisleBodyRef = useRef<Map<string, string>>(new Map())
+  const revisionByAisleBodyRef = useRef<Map<string, number>>(new Map())
+  const localStateEchoByAisleBodyRef = useRef<Map<string, NotebookEditorLocalStateEcho>>(new Map())
+  const externalStateLoadVersionRef = useRef(externalStateLoadVersion)
+  const externalReconciledVersionByAisleBodyRef = useRef<Map<string, number>>(new Map())
+  const userEditedExternalVersionByAisleBodyRef = useRef<Map<string, number>>(new Map())
+  const editorMarkdownRevisionRef = useRef(0)
   const activeEditorAisleIdRef = useRef('')
   const [nearVisibleAisleIds, setNearVisibleAisleIds] = useState<Set<string>>(() => new Set())
   const [backgroundMountedAisleIds, setBackgroundMountedAisleIds] = useState<Set<string>>(() => new Set())
@@ -308,6 +335,7 @@ export function useNotebookAisleEditors({
   const hotkeysRef = useRef(hotkeys)
   const isMacPlatformRef = useRef(isMacPlatform)
   const onOpenShortcutMenuRef = useRef(onOpenShortcutMenu)
+  const onOpenTableOfContentsRef = useRef(onOpenTableOfContents)
   const onOpenUrlLinkPromptRef = useRef(onOpenUrlLinkPrompt)
   const onInsertAisleFromNewlineRef = useRef(onInsertAisleFromNewline)
   const runNewlineOperationForEditorRef = useRef<
@@ -319,8 +347,10 @@ export function useNotebookAisleEditors({
   hotkeysRef.current = hotkeys
   isMacPlatformRef.current = isMacPlatform
   onOpenShortcutMenuRef.current = onOpenShortcutMenu
+  onOpenTableOfContentsRef.current = onOpenTableOfContents
   onOpenUrlLinkPromptRef.current = onOpenUrlLinkPrompt
   onInsertAisleFromNewlineRef.current = onInsertAisleFromNewline
+  externalStateLoadVersionRef.current = externalStateLoadVersion
 
   const aisleIds = useMemo(() => aisles.map((aisle) => aisle.id), [aisles])
   const aisleIdsKey = aisleIds.join('\n')
@@ -350,6 +380,35 @@ export function useNotebookAisleEditors({
     return editorMetaRef.current.get(editorKey) ?? null
   }, [])
 
+  const nextEditorMarkdownRevision = useCallback(() => {
+    editorMarkdownRevisionRef.current += 1
+    return editorMarkdownRevisionRef.current
+  }, [])
+
+  const markLocalStateEchoForAisleBody = useCallback((aisleBodyId: string, markdown: string, revision: number) => {
+    const safeRevision = typeof revision === 'number' && Number.isFinite(revision) ? revision : 0
+    localStateEchoByAisleBodyRef.current.set(aisleBodyId, {
+      markdown,
+      canonicalMarkdown: normalizeMarkdownForPersistence(markdown),
+      revision: safeRevision,
+      externalStateLoadVersion: externalStateLoadVersionRef.current,
+    })
+  }, [])
+
+  const takeMatchingLocalStateEcho = useCallback((aisleBodyId: string, markdown: string) => {
+    const echo = localStateEchoByAisleBodyRef.current.get(aisleBodyId) ?? null
+    if (!echo) return null
+    if (
+      echo.externalStateLoadVersion !== externalStateLoadVersionRef.current ||
+      (echo.markdown !== markdown && echo.canonicalMarkdown !== markdown)
+    ) {
+      localStateEchoByAisleBodyRef.current.delete(aisleBodyId)
+      return null
+    }
+    localStateEchoByAisleBodyRef.current.delete(aisleBodyId)
+    return echo
+  }, [])
+
   const restoreEditorDisplayWhenReady = useCallback(
     (
       editorKey: string,
@@ -360,6 +419,8 @@ export function useNotebookAisleEditors({
       const result = restoreEditorDisplay(meta.editor, markdown)
       if (result.displayReady) {
         meta.displayRestoreReady = true
+        meta.programmaticMarkdownUpdatePending = false
+        meta.userEditedSinceProgrammaticUpdate = false
         return true
       }
 
@@ -393,14 +454,135 @@ export function useNotebookAisleEditors({
     [editorRef, getEditorMetaForAisle, scheduleToolbarFormatStateSync, setActiveAisleId],
   )
 
+  const replaceMountedEditorMarkdown = useCallback(
+    (
+      editorKey: string,
+      meta: NotebookAisleEditorMeta,
+      markdown: string,
+      revision: number,
+    ) => {
+      meta.revision = Math.max(meta.revision, revision)
+      lastMarkdownByAisleBodyRef.current.set(meta.aisleBodyId, markdown)
+      revisionByAisleBodyRef.current.set(meta.aisleBodyId, meta.revision)
+      if (meta.markdown === markdown) return
+      meta.markdown = markdown
+      meta.displayRestoreReady = false
+      meta.programmaticMarkdownUpdatePending = true
+      meta.userEditedSinceProgrammaticUpdate = false
+      setEditorMarkdownForDisplay(meta.editor, markdown, false)
+      restoreEditorDisplayWhenReady(editorKey, meta, markdown)
+    },
+    [restoreEditorDisplayWhenReady],
+  )
+
+  const syncMountedEditorsForAisleBody = useCallback(
+    (sourceMeta: NotebookAisleEditorMeta, markdown: string, revision: number) => {
+      editorMetaRef.current.forEach((meta, editorKey) => {
+        if (meta === sourceMeta || meta.aisleBodyId !== sourceMeta.aisleBodyId) return
+        replaceMountedEditorMarkdown(editorKey, meta, markdown, revision)
+      })
+    },
+    [replaceMountedEditorMarkdown],
+  )
+
+  const markUserEditedAisleBodyAtCurrentExternalVersion = useCallback((aisleBodyId: string) => {
+    const externalVersion = externalStateLoadVersionRef.current
+    userEditedExternalVersionByAisleBodyRef.current.set(aisleBodyId, externalVersion)
+    externalReconciledVersionByAisleBodyRef.current.set(aisleBodyId, externalVersion)
+  }, [])
+
+  const commitEditorOriginatedAisleMarkdown = useCallback(
+    (aisleBodyId: string, markdown: string, revision: number) => {
+      markLocalStateEchoForAisleBody(aisleBodyId, markdown, revision)
+      commitAisleMarkdown(aisleBodyId, markdown)
+    },
+    [commitAisleMarkdown, markLocalStateEchoForAisleBody],
+  )
+
+  const markEditorUserEditIntent = useCallback((editorKey: string) => {
+    const meta = editorMetaRef.current.get(editorKey)
+    if (meta) meta.userEditedSinceProgrammaticUpdate = true
+  }, [])
+
+  const markEditorUserEditIntentForEditor = useCallback((editor: Editor | null) => {
+    if (!editor) return
+    const meta = Array.from(editorMetaRef.current.values()).find((candidate) => candidate.editor === editor)
+    if (meta) meta.userEditedSinceProgrammaticUpdate = true
+  }, [])
+
+  const reconcileMountedEditorsFromExternalState = useCallback(() => {
+    const appState = getAppState?.()
+    if (!appState?.noteAisleBodies?.length) return
+    const externalVersion = externalStateLoadVersionRef.current
+    const markdownByAisleBodyId = new Map(
+      appState.noteAisleBodies.map((body) => [body.id, body.markdown ?? '']),
+    )
+    const revisionByAisleBodyId = new Map<string, number>()
+
+    editorMetaRef.current.forEach((meta, editorKey) => {
+      const authoritativeMarkdown = markdownByAisleBodyId.get(meta.aisleBodyId)
+      if (authoritativeMarkdown === undefined) return
+      if (meta.markdown === authoritativeMarkdown) {
+        if (externalVersion > 0) {
+          externalReconciledVersionByAisleBodyRef.current.set(meta.aisleBodyId, externalVersion)
+        }
+        return
+      }
+
+      const userEditVersion = userEditedExternalVersionByAisleBodyRef.current.get(meta.aisleBodyId) ?? -1
+      const reconciledVersion = externalReconciledVersionByAisleBodyRef.current.get(meta.aisleBodyId) ?? -1
+      if (externalVersion > 0 && userEditVersion >= externalVersion && reconciledVersion < externalVersion) {
+        return
+      }
+
+      const revision = revisionByAisleBodyId.get(meta.aisleBodyId) ?? nextEditorMarkdownRevision()
+      revisionByAisleBodyId.set(meta.aisleBodyId, revision)
+      replaceMountedEditorMarkdown(editorKey, meta, authoritativeMarkdown, revision)
+      syncMountedEditorsForAisleBody(meta, authoritativeMarkdown, revision)
+      if (externalVersion > 0) {
+        externalReconciledVersionByAisleBodyRef.current.set(meta.aisleBodyId, externalVersion)
+      }
+    })
+  }, [getAppState, nextEditorMarkdownRevision, replaceMountedEditorMarkdown, syncMountedEditorsForAisleBody])
+
   const commitEditorMarkdown = useCallback(
-    (meta: NotebookAisleEditorMeta, editor: Editor = meta.editor) => {
+    (
+      meta: NotebookAisleEditorMeta,
+      editor: Editor = meta.editor,
+      source: NotebookEditorMarkdownCommitSource = 'user',
+    ) => {
       const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
-      const nextMarkdown = meta.displayRestoreReady ? getEditorMarkdownForPersistence(editor) : meta.markdown
+      const useCachedMarkdown =
+        (source === 'lifecycle' && !meta.displayRestoreReady) ||
+        (
+          source === 'programmatic' &&
+          meta.programmaticMarkdownUpdatePending &&
+          !meta.userEditedSinceProgrammaticUpdate &&
+          !meta.displayRestoreReady
+        )
+      const nextMarkdown =
+        useCachedMarkdown
+          ? meta.markdown
+          : getEditorMarkdownForPersistence(editor)
+      if (!useCachedMarkdown) {
+        meta.programmaticMarkdownUpdatePending = false
+        meta.userEditedSinceProgrammaticUpdate = false
+      }
       if (nextMarkdown === meta.markdown) return nextMarkdown
+      const revision = nextEditorMarkdownRevision()
       meta.markdown = nextMarkdown
+      meta.revision = revision
+      meta.programmaticMarkdownUpdatePending = false
+      meta.userEditedSinceProgrammaticUpdate = false
+      if (source === 'user') markUserEditedAisleBodyAtCurrentExternalVersion(meta.aisleBodyId)
       lastMarkdownByAisleBodyRef.current.set(meta.aisleBodyId, nextMarkdown)
-      commitAisleMarkdown(meta.aisleBodyId, nextMarkdown)
+      revisionByAisleBodyRef.current.set(meta.aisleBodyId, revision)
+      if (source === 'user') {
+        commitEditorOriginatedAisleMarkdown(meta.aisleBodyId, nextMarkdown, revision)
+      } else {
+        commitAisleMarkdown(meta.aisleBodyId, nextMarkdown)
+      }
+      syncMountedEditorsForAisleBody(meta, nextMarkdown, revision)
       const durationMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt
       const linkCount = countMarkdownLinks(nextMarkdown)
       if (import.meta.env?.DEV && (durationMs >= 16 || linkCount >= 8)) {
@@ -418,7 +600,14 @@ export function useNotebookAisleEditors({
       }
       return nextMarkdown
     },
-    [commitAisleMarkdown, noteId],
+    [
+      commitAisleMarkdown,
+      commitEditorOriginatedAisleMarkdown,
+      markUserEditedAisleBodyAtCurrentExternalVersion,
+      nextEditorMarkdownRevision,
+      noteId,
+      syncMountedEditorsForAisleBody,
+    ],
   )
 
   const commitActiveEditorMarkdownNow = useCallback(
@@ -452,25 +641,51 @@ export function useNotebookAisleEditors({
   )
 
   const getMountedEditorMarkdownSnapshots = useCallback((): NotebookEditorMarkdownSnapshot[] => {
-    return Array.from(editorMetaRef.current.values()).map((meta) => {
-      const markdown = meta.displayRestoreReady ? getEditorMarkdownForPersistence(meta.editor) : meta.markdown
-      meta.markdown = markdown
-      lastMarkdownByAisleBodyRef.current.set(meta.aisleBodyId, markdown)
+    reconcileMountedEditorsFromExternalState()
+    const snapshots = Array.from(editorMetaRef.current.values()).map((meta) => {
+      const useCachedMarkdown =
+        meta.programmaticMarkdownUpdatePending &&
+        !meta.userEditedSinceProgrammaticUpdate &&
+        !meta.displayRestoreReady
+      const markdown = useCachedMarkdown ? meta.markdown : getEditorMarkdownForPersistence(meta.editor)
+      if (!useCachedMarkdown) meta.programmaticMarkdownUpdatePending = false
+      if (markdown !== meta.markdown) {
+        const revision = nextEditorMarkdownRevision()
+        meta.markdown = markdown
+        meta.revision = revision
+        markUserEditedAisleBodyAtCurrentExternalVersion(meta.aisleBodyId)
+        lastMarkdownByAisleBodyRef.current.set(meta.aisleBodyId, markdown)
+        revisionByAisleBodyRef.current.set(meta.aisleBodyId, revision)
+        syncMountedEditorsForAisleBody(meta, markdown, revision)
+      }
       return {
         noteId,
         noteBodyId: meta.noteBodyId,
         aisleId: meta.aisleId,
         aisleBodyId: meta.aisleBodyId,
         markdown,
+        revision: meta.revision,
+        active: meta.aisleId === activeEditorAisleIdRef.current,
       }
     })
-  }, [noteId])
+    collapseNotebookEditorMarkdownSnapshots(snapshots).forEach((snapshot) => {
+      markLocalStateEchoForAisleBody(snapshot.aisleBodyId, snapshot.markdown, snapshot.revision ?? 0)
+    })
+    return snapshots
+  }, [
+    markUserEditedAisleBodyAtCurrentExternalVersion,
+    markLocalStateEchoForAisleBody,
+    nextEditorMarkdownRevision,
+    noteId,
+    reconcileMountedEditorsFromExternalState,
+    syncMountedEditorsForAisleBody,
+  ])
 
   const commitMountedEditorMarkdownNow = useCallback(() => {
-    getMountedEditorMarkdownSnapshots().forEach((snapshot) => {
-      commitAisleMarkdown(snapshot.aisleBodyId, snapshot.markdown)
+    collapseNotebookEditorMarkdownSnapshots(getMountedEditorMarkdownSnapshots()).forEach((snapshot) => {
+      commitEditorOriginatedAisleMarkdown(snapshot.aisleBodyId, snapshot.markdown, snapshot.revision ?? 0)
     })
-  }, [commitAisleMarkdown, getMountedEditorMarkdownSnapshots])
+  }, [commitEditorOriginatedAisleMarkdown, getMountedEditorMarkdownSnapshots])
 
   const replaceActiveEditorMarkdown = useCallback(
     (markdown: string) => {
@@ -481,12 +696,25 @@ export function useNotebookAisleEditors({
       setEditorMarkdownForDisplay(editor, markdown, false)
       if (meta) {
         restoreEditorDisplayWhenReady(buildAisleEditorKey(meta.noteBodyId, meta.aisleId), meta, markdown)
-        meta.markdown = meta.displayRestoreReady ? getEditorMarkdownForPersistence(editor) : markdown
+        const revision = nextEditorMarkdownRevision()
+        meta.markdown = markdown
+        meta.revision = revision
+        meta.programmaticMarkdownUpdatePending = false
+        markUserEditedAisleBodyAtCurrentExternalVersion(meta.aisleBodyId)
         lastMarkdownByAisleBodyRef.current.set(meta.aisleBodyId, meta.markdown)
-        commitAisleMarkdown(meta.aisleBodyId, meta.markdown)
+        revisionByAisleBodyRef.current.set(meta.aisleBodyId, revision)
+        commitEditorOriginatedAisleMarkdown(meta.aisleBodyId, meta.markdown, revision)
+        syncMountedEditorsForAisleBody(meta, meta.markdown, revision)
       }
     },
-    [commitAisleMarkdown, editorRef, restoreEditorDisplayWhenReady],
+    [
+      commitEditorOriginatedAisleMarkdown,
+      editorRef,
+      markUserEditedAisleBodyAtCurrentExternalVersion,
+      nextEditorMarkdownRevision,
+      restoreEditorDisplayWhenReady,
+      syncMountedEditorsForAisleBody,
+    ],
   )
 
   const editorOperationRuntime = useMemo<EditorOperationRuntime>(
@@ -505,6 +733,7 @@ export function useNotebookAisleEditors({
       if (!editor) return false
       const result = runWysiwygHistory(editor, direction)
       if (result === 'applied') {
+        markEditorUserEditIntentForEditor(editor)
         finishEditorOperation(editorOperationRuntime, editor, {
           commitMode: 'deferred',
           focus: 'none',
@@ -515,7 +744,7 @@ export function useNotebookAisleEditors({
       }
       return true
     },
-    [editorOperationRuntime, scheduleToolbarFormatStateSync],
+    [editorOperationRuntime, markEditorUserEditIntentForEditor, scheduleToolbarFormatStateSync],
   )
 
   const destroyEditor = useCallback((editorKey: string, captureContent = false) => {
@@ -523,7 +752,7 @@ export function useNotebookAisleEditors({
     if (!meta) return
     if (captureContent) {
       try {
-        commitEditorMarkdown(meta)
+        commitEditorMarkdown(meta, meta.editor, 'lifecycle')
       } catch {
         // Snapshot before destroy is best-effort.
       }
@@ -622,13 +851,29 @@ export function useNotebookAisleEditors({
 
       const existing = editorMetaRef.current.get(editorKey)
       if (existing && existing.root === root && existing.aisleBodyId === aisle.aisleBodyId) {
+        const previouslyRenderedMarkdown = renderedMarkdownByAisleBodyRef.current.get(aisle.aisleBodyId)
+        const stateMarkdownChanged = previouslyRenderedMarkdown !== undefined && previouslyRenderedMarkdown !== aisle.markdown
+        renderedMarkdownByAisleBodyRef.current.set(aisle.aisleBodyId, aisle.markdown)
         const cachedMarkdown = lastMarkdownByAisleBodyRef.current.get(aisle.aisleBodyId) ?? aisle.markdown
-        if (cachedMarkdown !== aisle.markdown && existing.markdown !== aisle.markdown) {
-          existing.markdown = aisle.markdown
-          existing.displayRestoreReady = false
+        if (stateMarkdownChanged) {
+          const localStateEcho = takeMatchingLocalStateEcho(aisle.aisleBodyId, aisle.markdown)
+          const revision = localStateEcho?.revision ?? nextEditorMarkdownRevision()
           lastMarkdownByAisleBodyRef.current.set(aisle.aisleBodyId, aisle.markdown)
-          setEditorMarkdownForDisplay(existing.editor, aisle.markdown, false)
-          restoreEditorDisplayWhenReady(editorKey, existing, aisle.markdown)
+          revisionByAisleBodyRef.current.set(aisle.aisleBodyId, revision)
+          const existingMarkdownMatchesLocalState =
+            existing.markdown === aisle.markdown ||
+            normalizeMarkdownForPersistence(existing.markdown) === aisle.markdown
+          if (localStateEcho && existingMarkdownMatchesLocalState) {
+            existing.revision = Math.max(existing.revision, revision)
+            return
+          }
+          replaceMountedEditorMarkdown(editorKey, existing, aisle.markdown, revision)
+        } else if (cachedMarkdown !== aisle.markdown && existing.markdown !== cachedMarkdown) {
+          const revision = revisionByAisleBodyRef.current.get(aisle.aisleBodyId) ?? nextEditorMarkdownRevision()
+          replaceMountedEditorMarkdown(editorKey, existing, cachedMarkdown, revision)
+        } else if (cachedMarkdown === aisle.markdown && existing.markdown !== aisle.markdown) {
+          const revision = revisionByAisleBodyRef.current.get(aisle.aisleBodyId) ?? nextEditorMarkdownRevision()
+          replaceMountedEditorMarkdown(editorKey, existing, aisle.markdown, revision)
         }
         return
       }
@@ -670,6 +915,7 @@ export function useNotebookAisleEditors({
       const handlePaste = (event: ClipboardEvent) => {
         const payload = readNotebookStructureClipboardPayloadFromDataTransfer(event.clipboardData)
         if (!payload || !onNotebookStructurePaste?.(payload, aisle.id)) return
+        markEditorUserEditIntent(editorKey)
         event.preventDefault()
         event.stopPropagation()
         event.stopImmediatePropagation()
@@ -681,6 +927,7 @@ export function useNotebookAisleEditors({
         const historyDirection = getEditorKeyboardHistoryDirection(event, isMacPlatformRef.current)
         if (historyDirection) {
           consumeEditorHistoryEvent(event)
+          markEditorUserEditIntent(editorKey)
           setActiveEditor(aisle.id)
           runGuardedEditorHistory(editor, historyDirection)
           return
@@ -706,6 +953,7 @@ export function useNotebookAisleEditors({
         event.preventDefault()
         event.stopPropagation()
         event.stopImmediatePropagation()
+        markEditorUserEditIntent(editorKey)
         setActiveEditor(aisle.id)
 
         if (operation === 'operationsMenu') {
@@ -718,11 +966,18 @@ export function useNotebookAisleEditors({
           return
         }
 
+        if (operation === 'tableOfContents') {
+          onOpenTableOfContentsRef.current?.(aisle.id)
+          return
+        }
+
         if (editor) runNewlineOperationForEditorRef.current?.(editor, aisle.id, operation)
       }
       const handleBeforeInput = (event: InputEvent) => {
         if (event.defaultPrevented || event.isComposing) return
         if (!getElementFromEventTarget(event.target)?.closest('.ProseMirror[contenteditable="true"]')) return
+
+        markEditorUserEditIntent(editorKey)
 
         const historyDirection = getEditorBeforeInputHistoryDirection(event)
         if (!historyDirection) return
@@ -796,7 +1051,11 @@ export function useNotebookAisleEditors({
             change: () => {
               const meta = editorMetaRef.current.get(editorKey)
               if (!meta || !editor) return
-              commitEditorMarkdown(meta, editor)
+              const source =
+                meta.programmaticMarkdownUpdatePending && !meta.userEditedSinceProgrammaticUpdate
+                  ? 'programmatic'
+                  : 'user'
+              commitEditorMarkdown(meta, editor, source)
               scheduleToolbarFormatStateSync()
               notifyNoteMentionQueryChange(editor)
             },
@@ -818,11 +1077,15 @@ export function useNotebookAisleEditors({
           aisleId: aisle.id,
           aisleBodyId: aisle.aisleBodyId,
           markdown: aisle.markdown,
+          revision: revisionByAisleBodyRef.current.get(aisle.aisleBodyId) ?? 0,
           displayRestoreReady: false,
+          programmaticMarkdownUpdatePending: true,
+          userEditedSinceProgrammaticUpdate: false,
           cleanup: () => cleanupFns.forEach((cleanup) => cleanup()),
         }
         editorMetaRef.current.set(editorKey, meta)
         lastMarkdownByAisleBodyRef.current.set(aisle.aisleBodyId, aisle.markdown)
+        renderedMarkdownByAisleBodyRef.current.set(aisle.aisleBodyId, aisle.markdown)
         restoreEditorDisplayWhenReady(editorKey, meta, aisle.markdown)
         if (aisle.id === resolvedActiveAisleId) {
           editorRef.current = mountedEditor
@@ -856,11 +1119,14 @@ export function useNotebookAisleEditors({
     commitEditorMarkdown,
     destroyEditor,
     mountedAisleIds,
+    nextEditorMarkdownRevision,
     noteBodyId,
     onNotebookStructurePaste,
+    replaceMountedEditorMarkdown,
     restoreEditorDisplayWhenReady,
     runGuardedEditorHistory,
     setActiveEditor,
+    takeMatchingLocalStateEcho,
     viewMode,
   ])
 
@@ -911,6 +1177,7 @@ export function useNotebookAisleEditors({
       }
 
       if (command === 'bold' || command === 'italic' || command === 'strike' || command === 'highlight') {
+        markEditorUserEditIntentForEditor(editor)
         return runEditorCommandOperation(editorOperationRuntime, command, undefined, {
           commitMode: 'deferred',
           syncToolbar: true,
@@ -918,30 +1185,35 @@ export function useNotebookAisleEditors({
       }
 
       if (command === 'bulletList' || command === 'orderedList' || command === 'taskList' || command === 'dashList') {
+        markEditorUserEditIntentForEditor(editor)
         applyListToolbarCommand(editor, command as ToolbarListCommand)
         finishEditorOperation(editorOperationRuntime, editor, { commitMode: 'deferred', syncToolbar: true })
         return true
       }
 
       if (command === 'blockIndent' || command === 'removeBlockIndent') {
+        markEditorUserEditIntentForEditor(editor)
         if (runSelectionBlockIndent(editor, command === 'removeBlockIndent', editorOperationRuntime)) return true
         pushToast(command === 'blockIndent' ? 'Nothing to indent.' : 'No block indent to remove.', 'warning')
         return true
       }
 
       if (command === 'blockQuote') {
+        markEditorUserEditIntentForEditor(editor)
         const result = applyEditorNewlineOperation(editor, 'blockQuote')
         if (result.handled) finishEditorOperation(editorOperationRuntime, editor, { syncToolbar: true })
         return result.handled
       }
 
       if (command === 'hr') {
+        markEditorUserEditIntentForEditor(editor)
         const result = applyEditorNewlineOperation(editor, 'horizontalLine')
         if (result.handled) finishEditorOperation(editorOperationRuntime, editor, { syncToolbar: true })
         return result.handled
       }
 
       if (command === 'code') {
+        markEditorUserEditIntentForEditor(editor)
         return runEditorCommandOperation(editorOperationRuntime, 'code', undefined, {
           commitMode: 'deferred',
           syncToolbar: true,
@@ -949,12 +1221,14 @@ export function useNotebookAisleEditors({
       }
 
       if (command === 'codeBlock') {
+        markEditorUserEditIntentForEditor(editor)
         const result = applyEditorNewlineOperation(editor, 'codeBlock')
         if (result.handled) finishEditorOperation(editorOperationRuntime, editor, { syncToolbar: true })
         return result.handled
       }
 
       if (command === 'addTable' || command === 'table') {
+        markEditorUserEditIntentForEditor(editor)
         const tableSelectionResult = replaceSelectedTextWithTableOperation(editorOperationRuntime, {
           commitMode: 'none',
           syncToolbar: false,
@@ -982,17 +1256,27 @@ export function useNotebookAisleEditors({
           : command === 'image'
             ? 'addImage'
             : command
+      markEditorUserEditIntentForEditor(editor)
       return runEditorCommandOperation(editorOperationRuntime, mappedCommand, payload, {
         commitMode: 'deferred',
         syncToolbar: true,
       }).handled
     },
-    [editorOperationRuntime, editorRef, pushToast, replaceActiveEditorMarkdown, scheduleToolbarFormatStateSync],
+    [
+      editorOperationRuntime,
+      editorRef,
+      markEditorUserEditIntentForEditor,
+      pushToast,
+      replaceActiveEditorMarkdown,
+      scheduleToolbarFormatStateSync,
+    ],
   )
 
   const runNewlineOperationForEditor = useCallback(
     (editor: Editor, aisleId: string, operation: NewlineOperationId) => {
-      if (operation === 'operationsMenu') return false
+      if (operation === 'operationsMenu' || operation === 'tableOfContents') return false
+
+      markEditorUserEditIntentForEditor(editor)
 
       if (operation === 'blockIndent') {
         if (runSelectionBlockIndent(editor, false, editorOperationRuntime)) return true
@@ -1015,7 +1299,7 @@ export function useNotebookAisleEditors({
 
       return true
     },
-    [editorOperationRuntime, pushToast],
+    [editorOperationRuntime, markEditorUserEditIntentForEditor, pushToast],
   )
   runNewlineOperationForEditorRef.current = runNewlineOperationForEditor
 
@@ -1058,16 +1342,25 @@ export function useNotebookAisleEditors({
       editor.focus()
       const view = getWysiwygView(editor)
       if (insertVisualClipboardTextIntoView(view, text)) {
+        markEditorUserEditIntentForEditor(editor)
         commitActiveEditorMarkdownNow(editor)
         scheduleToolbarFormatStateSync()
         return true
       }
+      markEditorUserEditIntentForEditor(editor)
       return insertEditorTextOperation(editorOperationRuntime, text, {
         commitMode: 'deferred',
         syncToolbar: true,
       }).handled
     },
-    [commitActiveEditorMarkdownNow, editorOperationRuntime, editorRef, pushToast, scheduleToolbarFormatStateSync],
+    [
+      commitActiveEditorMarkdownNow,
+      editorOperationRuntime,
+      editorRef,
+      markEditorUserEditIntentForEditor,
+      pushToast,
+      scheduleToolbarFormatStateSync,
+    ],
   )
 
   const replaceActiveEditorRangeWithText = useCallback(
@@ -1083,6 +1376,7 @@ export function useNotebookAisleEditors({
         const docSize = view.state.doc?.content?.size ?? to
         const safeFrom = Math.max(0, Math.min(docSize, Math.floor(from)))
         const safeTo = Math.max(safeFrom, Math.min(docSize, Math.floor(to)))
+        markEditorUserEditIntentForEditor(editor)
         view.dispatch(view.state.tr.insertText(text, safeFrom, safeTo).scrollIntoView())
         editor.focus()
         finishEditorOperation(editorOperationRuntime, editor, { commitMode: 'deferred', syncToolbar: true })
@@ -1092,7 +1386,14 @@ export function useNotebookAisleEditors({
         return insertTextFromContextMenu(text)
       }
     },
-    [editorOperationRuntime, editorRef, insertTextFromContextMenu, notifyNoteMentionQueryChange, pushToast],
+    [
+      editorOperationRuntime,
+      editorRef,
+      insertTextFromContextMenu,
+      markEditorUserEditIntentForEditor,
+      notifyNoteMentionQueryChange,
+      pushToast,
+    ],
   )
 
   const insertClipboardMarkdownResult = useCallback(
@@ -1107,6 +1408,7 @@ export function useNotebookAisleEditors({
       editor.focus()
       const view = getWysiwygView(editor)
       if (insertVisualClipboardMarkdownIntoView(view, result.markdown)) {
+        markEditorUserEditIntentForEditor(editor)
         commitActiveEditorMarkdownNow(editor)
         scheduleToolbarFormatStateSync()
         return true
@@ -1117,6 +1419,7 @@ export function useNotebookAisleEditors({
       commitActiveEditorMarkdownNow,
       editorRef,
       insertTextFromContextMenu,
+      markEditorUserEditIntentForEditor,
       pushToast,
       scheduleToolbarFormatStateSync,
     ],
@@ -1139,6 +1442,7 @@ export function useNotebookAisleEditors({
           const payload = await readTableSelectionClipboardPayloadFromClipboard()
           const view = getWysiwygView(editor)
           if (payload && insertTableSelectionClipboardPayloadIntoView(view, payload)) {
+            markEditorUserEditIntentForEditor(editor)
             commitActiveEditorMarkdownNow(editor)
             scheduleToolbarFormatStateSync()
             return
@@ -1157,6 +1461,7 @@ export function useNotebookAisleEditors({
       commitActiveEditorMarkdownNow,
       editorRef,
       insertClipboardMarkdownResult,
+      markEditorUserEditIntentForEditor,
       pushToast,
       readClipboardMarkdownForPaste,
       scheduleToolbarFormatStateSync,
@@ -1186,6 +1491,7 @@ export function useNotebookAisleEditors({
           file,
           view?.dom instanceof HTMLElement ? view.dom : null,
         )
+        markEditorUserEditIntentForEditor(editor)
         runEditorCommandOperation(editorOperationRuntime, 'addImage', { imageUrl: displayUrl, altText: file.name }, {
           commitMode: 'deferred',
           syncToolbar: true,
@@ -1193,7 +1499,7 @@ export function useNotebookAisleEditors({
       })
     }
     input.click()
-  }, [editorOperationRuntime, editorRef, pushToast])
+  }, [editorOperationRuntime, editorRef, markEditorUserEditIntentForEditor, pushToast])
 
   const insertAttachmentFile = useCallback(() => {
     const editor = editorRef.current
@@ -1234,6 +1540,7 @@ export function useNotebookAisleEditors({
           view?.dom instanceof HTMLElement ? view.dom : null,
         )
         editor.focus()
+        markEditorUserEditIntentForEditor(editor)
         runEditorCommandOperation(editorOperationRuntime, 'addImage', { imageUrl: displayUrl, altText: file.name }, {
           commitMode: 'deferred',
           syncToolbar: true,
@@ -1249,10 +1556,12 @@ export function useNotebookAisleEditors({
         const label = file.name.trim() || 'attachment'
         editor.focus()
         if (insertAssetLinksIntoWysiwygView(getWysiwygView(editor), [{ label, url: assetUrl }])) {
+          markEditorUserEditIntentForEditor(editor)
           commitActiveEditorMarkdownNow(editor)
           scheduleToolbarFormatStateSync()
           return
         }
+        markEditorUserEditIntentForEditor(editor)
         insertEditorTextOperation(editorOperationRuntime, buildMediaMarkdownLink(label, assetUrl), {
           commitMode: 'deferred',
           syncToolbar: true,
@@ -1267,6 +1576,7 @@ export function useNotebookAisleEditors({
     commitActiveEditorMarkdownNow,
     editorOperationRuntime,
     editorRef,
+    markEditorUserEditIntentForEditor,
     pushToast,
     scheduleToolbarFormatStateSync,
   ])
@@ -1348,6 +1658,7 @@ export function useNotebookAisleEditors({
     const view = getWysiwygView(editor)
     const linkType = view?.state?.schema?.marks?.link
     if (!view?.state?.doc || !view?.state?.tr || typeof view.dispatch !== 'function' || !linkType) {
+      markEditorUserEditIntentForEditor(editor)
       return runEditorCommandOperation(editorOperationRuntime, 'addLink', { linkUrl }, {
         commitMode: 'deferred',
         syncToolbar: true,
@@ -1372,17 +1683,19 @@ export function useNotebookAisleEditors({
       }
       const nextCursor = Math.max(0, Math.min(transaction.doc.content.size, from + label.length))
       transaction = transaction.setSelection(TextSelection.create(transaction.doc, nextCursor, nextCursor)).scrollIntoView()
+      markEditorUserEditIntentForEditor(editor)
       view.dispatch(transaction)
       editor.focus()
       finishEditorOperation(editorOperationRuntime, editor, { commitMode: 'deferred', syncToolbar: true })
       return true
     } catch {
+      markEditorUserEditIntentForEditor(editor)
       return runEditorCommandOperation(editorOperationRuntime, 'addLink', { linkUrl }, {
         commitMode: 'deferred',
         syncToolbar: true,
       }).handled
     }
-  }, [editorOperationRuntime, editorRef, pushToast])
+  }, [editorOperationRuntime, editorRef, markEditorUserEditIntentForEditor, pushToast])
 
   const insertUrlLink = useCallback((url: string) => {
     const editor = editorRef.current
@@ -1392,11 +1705,12 @@ export function useNotebookAisleEditors({
     }
     const linkUrl = url.trim()
     if (!linkUrl) return false
+    markEditorUserEditIntentForEditor(editor)
     return runEditorCommandOperation(editorOperationRuntime, 'addLink', { linkUrl }, {
       commitMode: 'deferred',
       syncToolbar: true,
     }).handled
-  }, [editorOperationRuntime, editorRef, pushToast])
+  }, [editorOperationRuntime, editorRef, markEditorUserEditIntentForEditor, pushToast])
 
   const getPreviewMarkdownForAisle = useCallback((aisle: ResolvedNoteAisle) => {
     return lastMarkdownByAisleBodyRef.current.get(aisle.aisleBodyId) ?? aisle.markdown

@@ -145,6 +145,22 @@ describe('AisleEditModal', () => {
     expect(html).not.toContain(BLOCK_INDENT_TOKEN)
   })
 
+  it('renders tab-block storage wrappers as block indents without exposing wrapper tags', () => {
+    const html = renderModal([aisle('a', [
+      '<div tab-block="2">',
+      '',
+      'indented',
+      '',
+      '</div>',
+    ].join('\n'))])
+
+    expect(html).toContain('style="--tabs-block-indent-level:2"')
+    expect(html).toContain('class="tabs-rendered-markdown-paragraph tabs-block-indent"')
+    expect(html).toContain('indented')
+    expect(html).not.toContain('tab-block')
+    expect(html).not.toContain('&lt;div')
+  })
+
   it('renders note preview markdown without custom notebook preview state in the edit modal', () => {
     const token = '![Child note](<Child note--123abc>)'
     const html = renderModal([aisle('a', `${token}\n\nregular text`)])

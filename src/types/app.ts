@@ -297,6 +297,7 @@ export type NewlineOperationId =
   | 'blockQuote'
   | 'blockIndent'
   | 'strikethrough'
+  | 'tableOfContents'
   | 'operationsMenu'
 
 export type NewlineShortcutId = 'controlEnter' | 'shiftEnter' | 'commandEnter'

@@ -14,7 +14,6 @@ function currentSettingsJson() {
       shortcuts: {
         openSettings: 'Ctrl+,',
         newNote: 'Ctrl+Alt+N',
-        newTab: 'Ctrl+Alt+N',
       },
     },
     ui: {
@@ -39,7 +38,6 @@ describe('portable app settings parsing', () => {
           toggleNotesFilter: '',
           newNote: 'Mod+N',
           newFolder: 'Mod+Shift+N',
-          newTab: 'Mod+Shift+N',
         },
         newlineShortcuts: {
           shortcuts: {
@@ -73,7 +71,6 @@ describe('portable app settings parsing', () => {
           shortcuts: {
             openSettings: 'Ctrl+,',
             newNote: 'Ctrl+Alt+N',
-            newTab: 'Ctrl+Alt+N',
           },
         },
         ui: {
@@ -177,7 +174,6 @@ describe('portable app settings parsing', () => {
             toggleNotesFilter: '',
             newNote: 'Mod+N',
             newFolder: 'Mod+Shift+N',
-            newTab: 'Mod+Shift+N',
           },
           newlineShortcuts: {
             shortcuts: {
@@ -242,5 +238,27 @@ describe('portable app settings parsing', () => {
     expect(syncedSettings.hotkeys.shortcuts.newFolder).toBe('Mod+Shift+N')
     expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Alt+]')
     expect(syncedSettings.hotkeys.newlineShortcuts.menuOperations).toEqual(['blockQuote', 'strikethrough'])
+  })
+
+  it('keeps table of contents in split-file newline shortcut settings', () => {
+    const syncedSettings = buildSyncedSettingsFromSplitFiles({
+      appSettings: {
+        hotkeys: {
+          newlineShortcuts: {
+            shortcuts: {
+              controlEnter: 'tableOfContents',
+            },
+            menuOperations: ['tableOfContents', 'tableOfContents', 'blockQuote'],
+          },
+        },
+      },
+    })
+
+    expect(syncedSettings.hotkeys.newlineShortcuts.shortcuts.controlEnter).toBe('tableOfContents')
+    expect(syncedSettings.hotkeys.newlineShortcuts.menuOperations).toEqual([
+      'tableOfContents',
+      'blockQuote',
+      'strikethrough',
+    ])
   })
 })
