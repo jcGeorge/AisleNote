@@ -1,10 +1,10 @@
 # Cross-Platform Data Strategy
 
-Tabs uses different storage capabilities by runtime. The data format stays portable, but folder control is not treated as universal.
+AisleNote uses different storage capabilities by runtime. The data format stays portable, but folder control is not treated as universal.
 
 ## Desktop
 
-- Notebook content lives in a user-selected named notebook folder containing root-level `manifest.json`, visible Markdown folders/notes, `.tabs/` metadata, and `assets/`.
+- Notebook content lives in a user-selected named notebook folder containing root-level `manifest.json`, visible Markdown folders/notes, `.aislenote/` metadata, and `assets/`.
 - User settings can live in a separate user-selected settings folder containing `settings/app-settings.json`.
 - Folder export/import, folder switching, folder moves, and live filesystem reload are desktop features.
 - Desktop can use OS/cloud-synced folders because the operating system owns that sync behavior.

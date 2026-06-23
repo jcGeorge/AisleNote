@@ -1,5 +1,5 @@
 export const TAGS_FRONTMATTER_COMPUTED_VALUE = 'tags'
-export const TAG_TOKEN_CLASS_NAME = 'tabs-tag-token'
+export const TAG_TOKEN_CLASS_NAME = 'aislenote-tag-token'
 
 function isRecord(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)

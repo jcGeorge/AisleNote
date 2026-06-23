@@ -179,7 +179,7 @@ export function NoteFilterControl({
                   aria-checked={selected}
                   className={[
                     'tag-filter-tag-btn note-filter-option-btn',
-                    kind === 'tags' ? 'tabs-tag-token' : '',
+                    kind === 'tags' ? 'aislenote-tag-token' : '',
                     kind === 'media' ? 'note-filter-media-option-btn' : '',
                     option.mediaKind === 'image' ? 'is-media-image' : '',
                     selected ? 'is-selected' : '',

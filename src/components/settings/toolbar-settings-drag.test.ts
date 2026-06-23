@@ -32,13 +32,13 @@ describe('toolbar settings drag helpers', () => {
     writeToolbarDragPayload(dataTransfer as DataTransfer, payload)
 
     expect(readToolbarDragPayload(dataTransfer, null)).toEqual(payload)
-    expect(parseToolbarDragPayload(`tabs-toolbar:${serializeToolbarDragPayload(payload)}`)).toEqual(payload)
+    expect(parseToolbarDragPayload(`aislenote-toolbar:${serializeToolbarDragPayload(payload)}`)).toEqual(payload)
   })
 
   it('falls back when drag transfer data is missing or malformed', () => {
     const dataTransfer = createDataTransferStore()
     const fallback: ToolbarDragPayload = { source: 'spacer' }
-    dataTransfer.setData('application/x-tabs-toolbar', '{')
+    dataTransfer.setData('application/x-aislenote-toolbar', '{')
 
     expect(readToolbarDragPayload(dataTransfer, fallback)).toEqual(fallback)
     expect(readToolbarDragPayload(dataTransfer, null)).toBeNull()

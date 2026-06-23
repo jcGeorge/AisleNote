@@ -9,7 +9,7 @@ import {
 
 describe('media playback popup helpers', () => {
   it('detects speed and volume settings targets by closest wrapper', () => {
-    const settingsElement = { className: 'tabs-media-speed-wrap' }
+    const settingsElement = { className: 'aislenote-media-speed-wrap' }
     const target = {
       closest: vi.fn(() => settingsElement),
     }
@@ -29,7 +29,7 @@ describe('media playback popup helpers', () => {
   })
 
   it('keeps settings clicks active only for the owning media player', () => {
-    const settingsElement = { className: 'tabs-media-volume-wrap' }
+    const settingsElement = { className: 'aislenote-media-volume-wrap' }
     const target = {
       closest: vi.fn(() => settingsElement),
     }

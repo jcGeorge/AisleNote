@@ -8,11 +8,11 @@ import { withDefaultInsertedImageDisplayWidth } from './image-insertion'
 import {
   convertClipboardHtmlToVisualMarkdown,
   normalizeVisualClipboardText,
-  TABS_MARKDOWN_CLIPBOARD_MIME,
+  AISLENOTE_MARKDOWN_CLIPBOARD_MIME,
 } from './visual-clipboard'
 
 export type ClipboardPasteMode = 'rich' | 'plainText'
-export type ClipboardMarkdownSource = 'tabs-markdown' | 'html' | 'plain-text' | 'image' | 'media'
+export type ClipboardMarkdownSource = 'aislenote-markdown' | 'html' | 'plain-text' | 'image' | 'media'
 
 export type ClipboardMarkdownReadResult =
   | { ok: true; markdown: string; source: ClipboardMarkdownSource; text?: string }
@@ -186,11 +186,11 @@ export async function readClipboardMarkdown({
   if (clipboard.read) {
     try {
       const items = await clipboard.read()
-      const tabsMarkdown = await getFirstItemText(items, TABS_MARKDOWN_CLIPBOARD_MIME)
+      const tabsMarkdown = await getFirstItemText(items, AISLENOTE_MARKDOWN_CLIPBOARD_MIME)
       if (tabsMarkdown && tabsMarkdown.length > 0) {
         const normalized = normalizeMarkdownForPersistence(normalizeVisualClipboardText(tabsMarkdown))
         return normalized.trim().length > 0
-          ? { ok: true, markdown: normalized, source: 'tabs-markdown', text: normalized }
+          ? { ok: true, markdown: normalized, source: 'aislenote-markdown', text: normalized }
           : { ok: false, reason: 'empty' }
       }
       const html = await getFirstItemText(items, HTML_MIME)

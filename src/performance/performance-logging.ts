@@ -39,7 +39,7 @@ export function logSlowOperation(label: string, durationMs: number, thresholdMs 
     maxSuppressedDurationMs: 0,
   })
   if (isPerformanceLoggingEnabled()) {
-    console.warn(`[tabs perf] ${label} took ${durationMs.toFixed(1)}ms`)
+    console.warn(`[aislenote perf] ${label} took ${durationMs.toFixed(1)}ms`)
   }
   recordDiagnosticEvent('performance', 'slow-operation', {
     level: 'warning',

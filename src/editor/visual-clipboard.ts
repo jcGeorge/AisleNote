@@ -5,7 +5,7 @@ import {
   readTableSelectionClipboardPayloadFromDataTransfer,
 } from './table-selection-clipboard'
 
-export const TABS_MARKDOWN_CLIPBOARD_MIME = 'application/x-tabs-markdown'
+export const AISLENOTE_MARKDOWN_CLIPBOARD_MIME = 'application/x-aislenote-markdown'
 
 export type EditorClipboardSerialization = {
   text: string
@@ -156,14 +156,14 @@ export function writeEditorClipboardData(
 ): boolean {
   if (!clipboardData) return false
   clipboardData.setData('text/plain', serialization.text)
-  clipboardData.setData(TABS_MARKDOWN_CLIPBOARD_MIME, serialization.markdown)
+  clipboardData.setData(AISLENOTE_MARKDOWN_CLIPBOARD_MIME, serialization.markdown)
   return true
 }
 
-export function readTabsMarkdownFromDataTransfer(dataTransfer: DataTransferReadLike): string {
+export function readAisleNoteMarkdownFromDataTransfer(dataTransfer: DataTransferReadLike): string {
   if (!dataTransfer) return ''
   try {
-    return normalizeVisualClipboardText(dataTransfer.getData(TABS_MARKDOWN_CLIPBOARD_MIME) ?? '')
+    return normalizeVisualClipboardText(dataTransfer.getData(AISLENOTE_MARKDOWN_CLIPBOARD_MIME) ?? '')
   } catch {
     return ''
   }
@@ -568,7 +568,7 @@ export function insertClipboardHtmlIntoView(view: any | null, html: string): boo
 export function insertClipboardDataIntoView(view: any | null, dataTransfer: DataTransferReadLike): boolean {
   const tablePayload = readTableSelectionClipboardPayloadFromDataTransfer(dataTransfer)
   if (tablePayload && insertTableSelectionClipboardPayloadIntoView(view, tablePayload)) return true
-  const tabsMarkdown = readTabsMarkdownFromDataTransfer(dataTransfer)
+  const tabsMarkdown = readAisleNoteMarkdownFromDataTransfer(dataTransfer)
   if (tabsMarkdown) return insertVisualClipboardMarkdownIntoView(view, tabsMarkdown)
   const html = dataTransfer?.getData('text/html') ?? ''
   if (html && insertClipboardHtmlIntoView(view, html)) return true

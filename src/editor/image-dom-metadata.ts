@@ -5,7 +5,7 @@ export type ImageDisplayLayoutReservation = {
   height: number
 }
 
-const RESERVED_IMAGE_LAYOUT_ATTR = 'data-tabs-image-layout-reserved'
+const RESERVED_IMAGE_LAYOUT_ATTR = 'data-aislenote-image-layout-reserved'
 
 function normalizeReservedImageLayout(value: number): number | null {
   if (!Number.isFinite(value)) return null

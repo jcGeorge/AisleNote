@@ -1,4 +1,4 @@
-export const MEDIA_PLAYBACK_SETTINGS_SELECTOR = '.tabs-media-speed-wrap, .tabs-media-volume-wrap'
+export const MEDIA_PLAYBACK_SETTINGS_SELECTOR = '.aislenote-media-speed-wrap, .aislenote-media-volume-wrap'
 export type MediaPlaybackPopupAlignment = 'center' | 'left'
 
 const MEDIA_PLAYBACK_POPUP_GAP_PX = 5
@@ -103,7 +103,7 @@ function hidePopupElement(element: HTMLElement) {
     }
   }
   element.hidden = true
-  element.removeAttribute('data-tabs-media-popup-open')
+  element.removeAttribute('data-aislenote-media-popup-open')
   element.style.removeProperty('position')
   element.style.removeProperty('left')
   element.style.removeProperty('right')
@@ -126,7 +126,7 @@ export function syncMediaPlaybackPopupElement(
   }
 
   element.hidden = false
-  element.setAttribute('data-tabs-media-popup-open', 'true')
+  element.setAttribute('data-aislenote-media-popup-open', 'true')
   const popup = element as PopoverCapable
   if (typeof popup.showPopover === 'function' && !isPopoverOpen(element)) {
     try {

@@ -17,23 +17,23 @@ function createMediaPlayer(kind: 'audio' | 'video', source: string) {
     },
   } as unknown as Element
   const child = {
-    closest: (selector: string) => (selector.includes('.tabs-media-player') ? player : null),
+    closest: (selector: string) => (selector.includes('.aislenote-media-player') ? player : null),
   } as unknown as Element
   return { player, child }
 }
 
 describe('media context menu helpers', () => {
   it('returns reveal metadata for local audio and video asset players', () => {
-    const audio = createMediaPlayer('audio', 'tabs-asset:///assets/song.mp3#tabs-media=speed=1.5')
-    const video = createMediaPlayer('video', 'tabs-asset:///assets/clip.webm#tabs-media=width=360')
+    const audio = createMediaPlayer('audio', 'aislenote-asset:///assets/song.mp3#aislenote-media=speed=1.5')
+    const video = createMediaPlayer('video', 'aislenote-asset:///assets/clip.webm#aislenote-media=width=360')
 
     expect(getMediaRevealTargetFromPlayer(audio.player)).toEqual({
       kind: 'audio',
-      source: 'tabs-asset:///assets/song.mp3#tabs-media=speed=1.5',
+      source: 'aislenote-asset:///assets/song.mp3#aislenote-media=speed=1.5',
     })
     expect(getMediaRevealContextMenuDetailFromTarget(video.child, 12, 34)).toEqual({
       kind: 'video',
-      source: 'tabs-asset:///assets/clip.webm#tabs-media=width=360',
+      source: 'aislenote-asset:///assets/clip.webm#aislenote-media=width=360',
       x: 12,
       y: 34,
     })
@@ -41,7 +41,7 @@ describe('media context menu helpers', () => {
 
   it('ignores external media and non-media asset links', () => {
     const external = createMediaPlayer('audio', 'https://example.com/song.mp3')
-    const pdf = createMediaPlayer('audio', 'tabs-asset:///assets/file.pdf')
+    const pdf = createMediaPlayer('audio', 'aislenote-asset:///assets/file.pdf')
     const plainTarget = {
       closest: () => null,
     } as unknown as Element
@@ -52,13 +52,13 @@ describe('media context menu helpers', () => {
   })
 
   it('dispatches a window-level media context menu event from preview players', () => {
-    const { player } = createMediaPlayer('audio', 'tabs-asset:///assets/song.mp3')
+    const { player } = createMediaPlayer('audio', 'aislenote-asset:///assets/song.mp3')
     const ownerWindow = player.ownerDocument.defaultView as unknown as { dispatchEvent: ReturnType<typeof vi.fn> }
 
     expect(
       dispatchMediaRevealContextMenuEvent(player, {
         kind: 'audio',
-        source: 'tabs-asset:///assets/song.mp3',
+        source: 'aislenote-asset:///assets/song.mp3',
         x: 2,
         y: 4,
       }),
@@ -67,7 +67,7 @@ describe('media context menu helpers', () => {
       type: MEDIA_REVEAL_CONTEXT_MENU_EVENT,
       detail: {
         kind: 'audio',
-        source: 'tabs-asset:///assets/song.mp3',
+        source: 'aislenote-asset:///assets/song.mp3',
         x: 2,
         y: 4,
       },
@@ -82,7 +82,7 @@ describe('media context menu helpers', () => {
     expect(
       dispatchMediaRevealContextMenuEvent(player, {
         kind: 'audio',
-        source: 'tabs-asset:///assets/song.mp3',
+        source: 'aislenote-asset:///assets/song.mp3',
         x: 2,
         y: 4,
       }),

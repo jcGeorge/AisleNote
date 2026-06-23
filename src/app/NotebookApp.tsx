@@ -272,11 +272,13 @@ import {
   type NotebookStructureClipboardPayload,
 } from '../notes/notebook-structure-clipboard'
 import {
-  DEFAULT_SCRATCHPAD_AISLE_LIMIT,
-  MAX_SCRATCHPAD_AISLE_LIMIT,
-  MIN_SCRATCHPAD_AISLE_LIMIT,
-  clampScratchpadAisleLimit,
-} from '../state/scratchpad-limits'
+  SCRATCHPAD_CONTENT_TARGET_ID,
+  SCRATCHPAD_CURSOR_LOCATION_KEY,
+  getScratchpadActiveAisleId,
+  getScratchpadNoteBody,
+  resolveScratchpadNoteBody,
+  setScratchpadActiveAisleId,
+} from '../state/scratchpad'
 import {
   applyNotebookEditorMarkdownSnapshotsToState,
   commitNotebookAisleMarkdownInState,
@@ -392,9 +394,9 @@ const THEME_LABELS: Record<AppTheme, string> = {
   custom3: 'Custom 3',
 }
 
-const ACTIVE_TOOLBAR_LAYOUT_STORAGE_KEY = 'tabs:notebook-active-toolbar-layout:v1'
-const TAG_AUTOCOMPLETE_RECENT_STORAGE_KEY = 'tabs:tag-autocomplete-recent:v1'
-const NOTEBOOK_SETUP_APP_NAME = 'Tabs'
+const ACTIVE_TOOLBAR_LAYOUT_STORAGE_KEY = 'aislenote:notebook-active-toolbar-layout:v1'
+const TAG_AUTOCOMPLETE_RECENT_STORAGE_KEY = 'aislenote:tag-autocomplete-recent:v1'
+const NOTEBOOK_SETUP_APP_NAME = 'AisleNote'
 const NOTEBOOK_SETUP_LOGO_SRC = './favicon.svg'
 
 const UTILITY_VIEW_MODES = ['settings', 'messages', 'about', 'trash'] as const
@@ -431,6 +433,7 @@ const ABOUT_SECTION_TABS: Array<{ id: AboutSection; label: string }> = [
 const HOTKEY_ROWS: Array<{ id: ShortcutId; label: string }> = [
   { id: 'openSettings', label: 'Open settings' },
   { id: 'toggleNotesTrash', label: 'Toggle notes / trash' },
+  { id: 'toggleNotesScratchpad', label: 'Toggle scratchpad' },
   { id: 'toggleNotesFilter', label: 'Toggle filter' },
   { id: 'newNote', label: 'New note' },
   { id: 'newFolder', label: 'New folder' },
@@ -550,6 +553,7 @@ function getDeletedNotebookNoteMarkdown(entry: DeletedNotebookItem, state: AppSt
 }
 
 type ActiveNoteModel = {
+  kind: 'note'
   noteId: string
   title: string
   noteBody: NoteBody
@@ -557,6 +561,18 @@ type ActiveNoteModel = {
   linked: boolean
   folderPath: string
 }
+
+type ActiveScratchpadModel = {
+  kind: 'scratchpad'
+  noteId: typeof SCRATCHPAD_CONTENT_TARGET_ID
+  title: string
+  noteBody: NoteBody
+  resolved: NonNullable<ReturnType<typeof resolveNoteBody>>
+  linked: false
+  folderPath: ''
+}
+
+type ActiveEditorModel = ActiveNoteModel | ActiveScratchpadModel
 
 type NotebookAisleContextMenuState = {
   x: number
@@ -617,6 +633,7 @@ function getActiveNoteModel(state: AppState): ActiveNoteModel | null {
     .map((segment) => segment.title)
     .join(' / ')
   return {
+    kind: 'note',
     noteId: fallbackNote.id,
     title: fallbackNote.title,
     noteBody,
@@ -624,6 +641,25 @@ function getActiveNoteModel(state: AppState): ActiveNoteModel | null {
     linked: isNoteBodyLinked(state.notebook.items, fallbackNote.noteBodyId),
     folderPath,
   }
+}
+
+function getScratchpadEditorModel(state: AppState): ActiveScratchpadModel | null {
+  const noteBody = getScratchpadNoteBody(state)
+  const resolved = resolveScratchpadNoteBody(state)
+  if (!noteBody || !resolved) return null
+  return {
+    kind: 'scratchpad',
+    noteId: SCRATCHPAD_CONTENT_TARGET_ID,
+    title: 'Scratchpad',
+    noteBody,
+    resolved,
+    linked: false,
+    folderPath: '',
+  }
+}
+
+function getActiveEditorModel(state: AppState, scratchpadActive: boolean): ActiveEditorModel | null {
+  return scratchpadActive ? getScratchpadEditorModel(state) ?? getActiveNoteModel(state) : getActiveNoteModel(state)
 }
 
 function getPreferredNotebookAisleId(
@@ -1101,10 +1137,10 @@ function TreeItemRow({
     }
     clearLongPress()
     event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('application/x-tabs-notebook-item', item.id)
+    event.dataTransfer.setData('application/x-aislenote-notebook-item', item.id)
     if (item.type === 'note') {
       const noteIds = selectedNoteIds.has(item.id) ? Array.from(selectedNoteIds) : [item.id]
-      event.dataTransfer.setData('application/x-tabs-notebook-note-ids', JSON.stringify(noteIds))
+      event.dataTransfer.setData('application/x-aislenote-notebook-note-ids', JSON.stringify(noteIds))
     }
     event.dataTransfer.setData('text/plain', item.id)
     onDragItemStart(item.id)
@@ -2026,6 +2062,7 @@ export function NotebookApp() {
   const [toolbarEditorLayoutId, setToolbarEditorLayoutId] = useState(activeToolbarLayoutId)
   const [query, setQuery] = useState('')
   const [sidebarSearchMode, setSidebarSearchMode] = useState(false)
+  const [scratchpadActive, setScratchpadActive] = useState(false)
   const [activeAisleId, setActiveAisleId] = useState('')
   const [selectedFolderId, setSelectedFolderId] = useState('')
   const [renamingTreeItemId, setRenamingTreeItemId] = useState('')
@@ -2066,6 +2103,7 @@ export function NotebookApp() {
   const dismissedMentionStartRef = useRef<number | null>(null)
   const activeAisleIdRef = useRef('')
   const activeNoteLocationKeyRef = useRef('')
+  const scratchpadActiveRef = useRef(false)
   const previousAssetToolsNoteLocationKeyRef = useRef('')
   const isMainViewRef = useRef(true)
   const pendingScrollToAisleIdRef = useRef<string | null>(null)
@@ -2108,7 +2146,10 @@ export function NotebookApp() {
     stateRef,
   })
 
-  const activeModel = useMemo(() => getActiveNoteModel(state), [state])
+  const activeNotebookModel = useMemo(() => getActiveNoteModel(state), [state])
+  const scratchpadModel = useMemo(() => getScratchpadEditorModel(state), [state])
+  const activeModel = scratchpadActive ? scratchpadModel ?? activeNotebookModel : activeNotebookModel
+  const activeModelIsScratchpad = activeModel?.kind === 'scratchpad'
   const collapsedFolderIds = useMemo(() => new Set(state.ui.collapsedFolderIds), [state.ui.collapsedFolderIds])
   const visibleTreeNoteIds = useMemo(
     () => getVisibleNotebookTreeNoteIds(state.notebook.items, collapsedFolderIds),
@@ -2147,23 +2188,25 @@ export function NotebookApp() {
   const sidebarSearchVisible = sidebarSearchMode || sidebarSearchActive
   const noteActionEntries = useMemo(() => {
     if (!noteActionPicker) return []
-    const activeNoteId = activeModel?.noteId ?? state.notebook.activeNoteId
+    const activeNoteId = activeNotebookModel?.noteId ?? state.notebook.activeNoteId
     return filterNoteSearchEntries(
       listSearchableNoteLocations(state).filter((entry) => entry.noteId !== activeNoteId),
       noteActionPicker.query,
       12,
     )
-  }, [activeModel?.noteId, noteActionPicker, state])
+  }, [activeNotebookModel?.noteId, noteActionPicker, state])
   const getNoteActionPickerAislesForNote = useCallback((noteId: string): NotebookNoteActionPickerAisleOption[] => {
     const note = findNotebookNote(state.notebook.items, noteId)?.note
     const noteBody = note ? state.noteBodies.find((body) => body.id === note.noteBodyId) : null
     return noteBody?.aisles.map((aisle, index) => ({ id: aisle.id, label: `aisle ${index + 1}` })) ?? []
   }, [state.noteBodies, state.notebook.items])
   const activeAisleIdsSignature = activeModel?.resolved.aisles.map((aisle) => aisle.id).join('|') ?? ''
-  const activeNoteLocationKey = activeModel?.noteId ?? ''
+  const activeNoteLocationKey = activeModelIsScratchpad ? SCRATCHPAD_CURSOR_LOCATION_KEY : activeModel?.noteId ?? ''
   const activeNoteAisles = activeModel?.noteBody.aisles ?? []
   const savedActiveAisleId = activeModel
-    ? getPreferredNotebookAisleId(state, activeModel.noteId, activeModel.noteBody.aisles)
+    ? activeModel.kind === 'scratchpad'
+      ? getScratchpadActiveAisleId(state)
+      : getPreferredNotebookAisleId(state, activeModel.noteId, activeModel.noteBody.aisles)
     : ''
   const renderedActiveAisleId = useMemo(() => {
     if (!activeModel) return ''
@@ -2175,7 +2218,7 @@ export function NotebookApp() {
   }, [activeAisleId, activeModel, savedActiveAisleId])
   const aisleBodyReferenceCounts = useMemo(() => getAisleBodyReferenceCounts(state.noteBodies), [state.noteBodies])
   const linkedAisleIds = useMemo(() => {
-    if (!activeModel) return new Set<string>()
+    if (!activeModel || activeModel.kind === 'scratchpad') return new Set<string>()
     return new Set(
       activeModel.resolved.aisles
         .filter((aisle) => (aisleBodyReferenceCounts.get(aisle.aisleBodyId) ?? 0) > 1)
@@ -2183,7 +2226,7 @@ export function NotebookApp() {
     )
   }, [activeModel, aisleBodyReferenceCounts])
   const frontmatterAisleIds = useMemo(() => {
-    if (!activeModel) return new Set<string>()
+    if (!activeModel || activeModel.kind === 'scratchpad') return new Set<string>()
     return new Set(
       activeModel.resolved.aisles
         .filter((aisle) => {
@@ -2208,10 +2251,15 @@ export function NotebookApp() {
   )
   const toolbarLayouts = useMemo(() => getToolbarLayouts(state.ui.toolbarLayouts), [state.ui.toolbarLayouts])
   const normalizedHotkeys = useMemo(() => normalizeHotkeySettings(state.hotkeys), [state.hotkeys])
-  const activeAisleWidthLocationKey = activeModel ? buildNoteLocationKey({ noteId: activeModel.noteId }) : ''
+  const activeAisleWidthLocationKey = activeModel
+    ? activeModel.kind === 'scratchpad'
+      ? SCRATCHPAD_CURSOR_LOCATION_KEY
+      : buildNoteLocationKey({ noteId: activeModel.noteId })
+    : ''
   const activeAisleWidths = activeAisleWidthLocationKey ? state.ui.aisleWidths?.[activeAisleWidthLocationKey] ?? {} : {}
   const canDecoupleAisleById = useCallback(
     (aisleId: string) => {
+      if (activeModel?.kind === 'scratchpad') return false
       const aisle = activeModel?.resolved.aisles.find((candidate) => candidate.id === aisleId)
       return Boolean(aisle && (aisleBodyReferenceCounts.get(aisle.aisleBodyId) ?? 0) > 1)
     },
@@ -2220,6 +2268,7 @@ export function NotebookApp() {
 
   activeAisleIdRef.current = renderedActiveAisleId
   activeNoteLocationKeyRef.current = activeNoteLocationKey
+  scratchpadActiveRef.current = scratchpadActive
   isMainViewRef.current = viewMode === 'main'
 
   useEffect(() => {
@@ -2279,7 +2328,12 @@ export function NotebookApp() {
 
   const mutateState = useCallback((updater: (previous: AppState) => AppState) => {
     setState((previous) => updater(previous))
-  }, [])
+  }, [setState])
+
+  useEffect(() => {
+    if (!activeModelIsScratchpad || !renderedActiveAisleId) return
+    mutateState((previous) => setScratchpadActiveAisleId(previous, renderedActiveAisleId))
+  }, [activeModelIsScratchpad, mutateState, renderedActiveAisleId])
 
   const setActiveToolbarLayoutId = useCallback((layoutId: string) => {
     const nextLayoutId = layoutId.trim() || DEFAULT_TOOLBAR_LAYOUT_ID
@@ -2602,6 +2656,7 @@ export function NotebookApp() {
 
   const applyNotebookStructureClipboardPaste = useCallback(
     (payload: NotebookStructureClipboardPayload, aisleId: string) => {
+      if (scratchpadActiveRef.current) return true
       let nextActiveAisleId = ''
       let blockedMessage = ''
       mutateState((previous) => {
@@ -2840,9 +2895,10 @@ export function NotebookApp() {
         aisleId,
         noteBodyId,
         scheduler: window,
-        getCurrentNoteBodyId: () => getActiveNoteModel(stateRef.current)?.noteBody.id ?? '',
+        getCurrentNoteBodyId: () =>
+          getActiveEditorModel(stateRef.current, scratchpadActiveRef.current)?.noteBody.id ?? '',
         hasAisle: (targetAisleId) => {
-          const active = getActiveNoteModel(stateRef.current)
+          const active = getActiveEditorModel(stateRef.current, scratchpadActiveRef.current)
           return Boolean(
             active?.noteBody.id === noteBodyId &&
               active.noteBody.aisles.some((aisle) => aisle.id === targetAisleId),
@@ -2972,6 +3028,7 @@ export function NotebookApp() {
         }
       })
       setViewMode('main')
+      setScratchpadActive(false)
       scheduleAisleFocusScroll(targetNoteBodyId, resolvedLocation.aisleId)
       window.requestAnimationFrame(() => {
         if (pendingFocusToAisleIdRef.current !== (resolvedLocation.aisleId || null)) return
@@ -2997,7 +3054,7 @@ export function NotebookApp() {
 
   const { navigateNotebookHistoryBy } = useNotebookNavigationHistory({
     viewMode,
-    activeNoteId: activeModel?.noteId ?? '',
+    activeNoteId: activeNotebookModel?.noteId ?? '',
     resolveLocation: resolveNotebookNavigationHistoryLocation,
     onApplyLocation: applyNotebookNavigationLocation,
   })
@@ -3080,8 +3137,17 @@ export function NotebookApp() {
 
   const revealFindReplaceMatch = useCallback(
     (match: FindReplaceMatch) => {
-      if (match.context.noteKind === 'scratchpad') return
       pendingFindReplaceRevealRef.current = match
+      if (match.context.noteKind === 'scratchpad') {
+        setViewMode('main')
+        setScratchpadActive(true)
+        setActiveAisleId(match.aisleId)
+        scheduleAisleFocusScroll(match.noteBodyId, match.aisleId)
+        window.requestAnimationFrame(() => {
+          scrollPendingFindReplaceMatch()
+        })
+        return
+      }
       if (activeModel?.noteId !== match.location.noteId) {
         applyNotebookNavigationLocation({ noteId: match.location.noteId, aisleId: match.aisleId })
         return
@@ -3288,6 +3354,7 @@ export function NotebookApp() {
   const createNoteAt = useCallback((targetParentFolderId?: string | null, targetIndex?: number) => {
     const createdRenameRef: { current: PendingCreatedTreeRename | null } = { current: null }
     closeSidebarSearchMode()
+    setScratchpadActive(false)
     mutateState((previous) => {
       const parentFolderId = targetParentFolderId === undefined
         ? selectedFolderId && findNotebookFolder(previous.notebook.items, selectedFolderId)
@@ -3323,9 +3390,12 @@ export function NotebookApp() {
 
   const createFolderAt = useCallback((targetParentFolderId?: string | null, targetIndex?: number) => {
     const createdRenameRef: { current: PendingCreatedTreeRename | null } = { current: null }
-    const returnNoteBodyId = activeModel?.noteBody.id ?? ''
-    const returnAisleId = renderedActiveAisleId
+    const returnNoteBodyId = activeNotebookModel?.noteBody.id ?? ''
+    const returnAisleId = activeNotebookModel
+      ? getPreferredNotebookAisleId(stateRef.current, activeNotebookModel.noteId, activeNotebookModel.noteBody.aisles)
+      : ''
     closeSidebarSearchMode()
+    setScratchpadActive(false)
     mutateState((previous) => {
       const parentFolderId = targetParentFolderId === undefined
         ? selectedFolderId && findNotebookFolder(previous.notebook.items, selectedFolderId)
@@ -3354,7 +3424,7 @@ export function NotebookApp() {
     setSelectedTreeNoteIds([])
     setTreeSelectionAnchorNoteId('')
     setViewMode('main')
-  }, [activeModel?.noteBody.id, beginCreatedTreeRename, closeSidebarSearchMode, mutateState, renderedActiveAisleId, selectedFolderId])
+  }, [activeNotebookModel, beginCreatedTreeRename, closeSidebarSearchMode, mutateState, selectedFolderId, stateRef])
 
   const createFolder = useCallback(() => createFolderAt(), [createFolderAt])
 
@@ -3391,7 +3461,7 @@ export function NotebookApp() {
         setViewMode('main')
         return
       }
-      window.alert('Selected file is not a Tabs notebook or Markdown import source.')
+      window.alert('Selected file is not an AisleNote notebook or Markdown import source.')
     })
   }, [setState])
 
@@ -3789,6 +3859,32 @@ export function NotebookApp() {
     setViewMode((previous) => (previous === 'trash' ? 'main' : 'trash'))
   }, [])
 
+  const toggleNotesScratchpadFromShortcut = useCallback(() => {
+    pendingFindReplaceRevealRef.current = null
+    setFindReplaceOpen(false)
+    clearNotebookNavigationTransientUi()
+    closeSidebarSearchMode()
+    setViewMode('main')
+
+    if (scratchpadActiveRef.current) {
+      setScratchpadActive(false)
+      return
+    }
+
+    const activeScratchpad = getScratchpadEditorModel(stateRef.current)
+    const targetAisleId = getScratchpadActiveAisleId(stateRef.current) || (activeScratchpad?.noteBody.aisles[0]?.id ?? '')
+    setScratchpadActive(true)
+    setSelectedFolderId('')
+    setSelectedTreeNoteIds([])
+    setTreeSelectionAnchorNoteId('')
+    setActiveAisleId(targetAisleId)
+    if (!activeScratchpad || !targetAisleId) return
+    pendingFocusToAisleIdRef.current = targetAisleId
+    pendingScrollToAisleIdRef.current = targetAisleId
+    pendingNavigationTopAisleIdRef.current = null
+    scheduleAisleFocusScroll(activeScratchpad.noteBody.id, targetAisleId)
+  }, [clearNotebookNavigationTransientUi, closeSidebarSearchMode, scheduleAisleFocusScroll, stateRef])
+
   const focusNotesFilterFromShortcut = useCallback(() => {
     pendingFindReplaceRevealRef.current = null
     setFindReplaceOpen(false)
@@ -3845,8 +3941,7 @@ export function NotebookApp() {
       if (!activeModel) return
       let createdAisleId = ''
       mutateState((previous) => {
-        const notePath = findNotebookNote(previous.notebook.items, activeModel.noteId)
-        const body = notePath ? previous.noteBodies.find((candidate) => candidate.id === notePath.note.noteBodyId) : null
+        const body = previous.noteBodies.find((candidate) => candidate.id === activeModel.noteBody.id)
         if (!body) return previous
         const idGenerator = createReservedIdAllocator(collectNotebookIds(previous))
         const { aisle, body: aisleBody } = createNewAisleBody(idGenerator, markdown)
@@ -3858,7 +3953,7 @@ export function NotebookApp() {
             : side === 'left'
               ? Math.max(0, activeIndex)
               : Math.max(0, activeIndex + 1)
-        return {
+        const nextState: AppState = {
           ...previous,
           noteBodies: previous.noteBodies.map((candidate) =>
             candidate.id === body.id
@@ -3875,6 +3970,9 @@ export function NotebookApp() {
           ),
           noteAisleBodies: [...(previous.noteAisleBodies ?? []), aisleBody],
         }
+        return activeModel.kind === 'scratchpad'
+          ? setScratchpadActiveAisleId(nextState, createdAisleId)
+          : nextState
       })
       if (!createdAisleId) return
       pendingFocusToAisleIdRef.current = createdAisleId
@@ -3932,6 +4030,7 @@ export function NotebookApp() {
       newNote: createNote,
       newFolder: createFolder,
       toggleNotesTrash: toggleNotesTrashFromShortcut,
+      toggleNotesScratchpad: toggleNotesScratchpadFromShortcut,
       toggleNotesFilter: focusNotesFilterFromShortcut,
       cycleAislePrev: () => cycleActiveAisle(-1),
       cycleAisleNext: () => cycleActiveAisle(1),
@@ -4083,6 +4182,7 @@ export function NotebookApp() {
   }, [linkPrompt.editRange, toolbarState])
 
   const openWholeNoteCopyPicker = useCallback(() => {
+    if (scratchpadActiveRef.current) return
     toolbarState.closeToolbarPopovers()
     setEditorContextMenu(null)
     setAisleContextMenu(null)
@@ -4097,6 +4197,7 @@ export function NotebookApp() {
 
   const copyNotebookStructureAs = useCallback(
     (kind: NotebookEditorCopyAsKind, mode: NotebookEditorCopyAsMode, aisleId: string) => {
+      if (scratchpadActiveRef.current) return
       const currentState = stateRef.current
       const result = buildNotebookStructureClipboardPayload(currentState, {
         activeNoteId: currentState.notebook.activeNoteId,
@@ -4307,6 +4408,9 @@ export function NotebookApp() {
             nextState = clearAisleFrontmatterInState(nextState, aisle.aisleBodyId)
           }
         })
+        if (activeModel.kind === 'scratchpad') {
+          nextState = setScratchpadActiveAisleId(nextState, options.activeAisleId ?? nextAisles[0]?.id ?? '')
+        }
         return pruneUnreferencedBodies(nextState)
       })
 
@@ -4344,7 +4448,7 @@ export function NotebookApp() {
 
   const openFrontmatterModalForAisle = useCallback(
     (aisleId = renderedActiveAisleId) => {
-      if (!activeModel || !aisleId) return
+      if (!activeModel || activeModel.kind === 'scratchpad' || !aisleId) return
       const modal = buildFrontmatterModalForAisle(state, activeModel, aisleId)
       if (typeof modal === 'string') {
         window.alert(modal)
@@ -4357,7 +4461,7 @@ export function NotebookApp() {
 
   const selectFrontmatterAisle = useCallback(
     (modal: NotebookFrontmatterModalState, aisleId: string): NotebookFrontmatterModalState | string | null => {
-      if (!activeModel) return null
+      if (!activeModel || activeModel.kind === 'scratchpad') return null
       return buildFrontmatterModalForAisle(state, activeModel, aisleId) ?? modal
     },
     [activeModel, buildFrontmatterModalForAisle, state],
@@ -4941,12 +5045,12 @@ export function NotebookApp() {
 
   const renderSegmentedTabs = <T extends string,>(
     label: string,
-    tabs: Array<{ id: T; label: string }>,
+    tabItems: Array<{ id: T; label: string }>,
     activeId: T,
     onSelect: (id: T) => void,
   ) => (
     <div className="notebook-utility-tabs" role="tablist" aria-label={label}>
-      {tabs.map((tab) => (
+      {tabItems.map((tab) => (
         <button
           key={tab.id}
           type="button"
@@ -5177,7 +5281,7 @@ export function NotebookApp() {
             </button>
           </div>
           <p className="notebook-settings-help">
-            Import replaces the current notebook with a Tabs notebook, notebook ZIP, Markdown folder, or Markdown ZIP.
+            Import replaces the current notebook with an AisleNote notebook, notebook ZIP, Markdown folder, or Markdown ZIP.
           </p>
         </div>
       ) : null}
@@ -5853,26 +5957,6 @@ export function NotebookApp() {
                 },
               })),
           )}
-          <label className="settings-hotkey-row" htmlFor="notebook-settings-scratchpad-aisle-limit">
-            <span className="settings-hotkey-label">Scratchpad aisle limit</span>
-            <input
-              id="notebook-settings-scratchpad-aisle-limit"
-              className="settings-text-input"
-              type="number"
-              min={MIN_SCRATCHPAD_AISLE_LIMIT}
-              max={MAX_SCRATCHPAD_AISLE_LIMIT}
-              value={state.ui.scratchpadAisleLimit ?? DEFAULT_SCRATCHPAD_AISLE_LIMIT}
-              onChange={(event) =>
-                mutateState((previous) => ({
-                  ...previous,
-                  ui: {
-                    ...previous.ui,
-                    scratchpadAisleLimit: clampScratchpadAisleLimit(event.target.value),
-                  },
-                }))
-              }
-            />
-          </label>
         </div>
       </section>
     )
@@ -6071,7 +6155,7 @@ export function NotebookApp() {
           <div className="notebook-setup-action-row">
             <div className="notebook-setup-action-copy">
               <h2>Open notebook folder</h2>
-              <p>Choose an existing Tabs notebook folder.</p>
+              <p>Choose an existing AisleNote notebook folder.</p>
             </div>
             <button type="button" className="notebook-setup-action-button" onClick={() => void storageProfileController.openNotebook()}>
               Open
@@ -6114,19 +6198,35 @@ export function NotebookApp() {
             >
               <AppIcon iconId="folderPlus" className="notebook-sidebar-header-icon" />
             </button>
-            <button
-              type="button"
-              className={`notebook-icon-button notebook-sidebar-header-action ${
-                sidebarSearchVisible ? 'is-active' : ''
-              }`}
-              onClick={toggleSidebarSearchModeFromButton}
-              aria-label="Search notes"
-              title="Search notes"
-              aria-pressed={sidebarSearchVisible}
-            >
-              <AppIcon iconId="search" className="notebook-sidebar-header-icon" />
-            </button>
           </div>
+        ) : null}
+        {!state.ui.sidebarCollapsed ? (
+          <button
+            type="button"
+            className={`notebook-icon-button notebook-sidebar-search-mode-toggle ${
+              sidebarSearchVisible ? 'is-active' : ''
+            }`}
+            onClick={toggleSidebarSearchModeFromButton}
+            aria-label="Search notes"
+            title="Search notes"
+            aria-pressed={sidebarSearchVisible}
+          >
+            <AppIcon iconId="search" className="notebook-sidebar-search-mode-toggle-icon" />
+          </button>
+        ) : null}
+        {!state.ui.sidebarCollapsed ? (
+          <button
+            type="button"
+            className={`notebook-icon-button notebook-sidebar-scratchpad-toggle ${
+              scratchpadActive ? 'is-active' : ''
+            }`}
+            onClick={toggleNotesScratchpadFromShortcut}
+            aria-label={scratchpadActive ? 'Return to notes' : 'Show scratchpad'}
+            title={scratchpadActive ? 'Return to notes' : 'Show scratchpad'}
+            aria-pressed={scratchpadActive}
+          >
+            <span className="notebook-sidebar-scratchpad-icon" aria-hidden="true" />
+          </button>
         ) : null}
         <button
           className={`notebook-icon-button notebook-sidebar-settings ${isUtilityViewMode(viewMode) ? 'is-active' : ''}`}

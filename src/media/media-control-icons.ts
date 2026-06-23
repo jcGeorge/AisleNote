@@ -28,17 +28,17 @@ export const MEDIA_CONTROL_ICON_VIEW_BOX = '0 0 24 24'
 
 export const MEDIA_CONTROL_ICON_SPECS: Record<MediaControlIconName, MediaControlIconSpec> = {
   play: {
-    className: 'tabs-media-icon-play',
+    className: 'aislenote-media-icon-play',
     appIconId: 'play',
     paths: [],
   },
   pause: {
-    className: 'tabs-media-icon-pause',
+    className: 'aislenote-media-icon-pause',
     appIconId: 'pause',
     paths: [],
   },
   loop: {
-    className: 'tabs-media-icon-loop',
+    className: 'aislenote-media-icon-loop',
     paths: [
       { d: 'm17 2 4 4-4 4' },
       { d: 'M3 11V9a4 4 0 0 1 4-4h14' },
@@ -47,21 +47,21 @@ export const MEDIA_CONTROL_ICON_SPECS: Record<MediaControlIconName, MediaControl
     ],
   },
   undo: {
-    className: 'tabs-media-icon-history-undo',
+    className: 'aislenote-media-icon-history-undo',
     paths: [
       { d: 'M3 7v6h6' },
       { d: 'M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13' },
     ],
   },
   redo: {
-    className: 'tabs-media-icon-history-redo',
+    className: 'aislenote-media-icon-history-redo',
     paths: [
       { d: 'M21 7v6h-6' },
       { d: 'M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7' },
     ],
   },
   'volume-muted': {
-    className: 'tabs-media-icon-volume-muted',
+    className: 'aislenote-media-icon-volume-muted',
     paths: [
       { d: 'M11 5 6 9H2v6h4l5 4V5Z' },
       { d: 'm16 9 6 6' },
@@ -69,14 +69,14 @@ export const MEDIA_CONTROL_ICON_SPECS: Record<MediaControlIconName, MediaControl
     ],
   },
   'volume-medium': {
-    className: 'tabs-media-icon-volume-medium',
+    className: 'aislenote-media-icon-volume-medium',
     paths: [
       { d: 'M11 5 6 9H2v6h4l5 4V5Z' },
       { d: 'M15.5 8.5a5 5 0 0 1 0 7' },
     ],
   },
   'volume-full': {
-    className: 'tabs-media-icon-volume-full',
+    className: 'aislenote-media-icon-volume-full',
     paths: [
       { d: 'M11 5 6 9H2v6h4l5 4V5Z' },
       { d: 'M15.5 8.5a5 5 0 0 1 0 7' },
@@ -92,10 +92,10 @@ export function getMediaVolumeIconName(volumePercent: number): MediaControlIconN
 
 export function createMediaControlIconElement(iconName: MediaControlIconName): SVGSVGElement {
   const spec = MEDIA_CONTROL_ICON_SPECS[iconName]
-  if (spec.appIconId) return createAppIconElement(spec.appIconId, { className: `tabs-media-icon ${spec.className}` })
+  if (spec.appIconId) return createAppIconElement(spec.appIconId, { className: `aislenote-media-icon ${spec.className}` })
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-  svg.setAttribute('class', spec.svgClassName ?? `tabs-media-icon ${spec.className}`)
+  svg.setAttribute('class', spec.svgClassName ?? `aislenote-media-icon ${spec.className}`)
   svg.setAttribute('viewBox', spec.viewBox ?? MEDIA_CONTROL_ICON_VIEW_BOX)
   svg.setAttribute('aria-hidden', 'true')
   svg.setAttribute('focusable', 'false')
@@ -103,7 +103,7 @@ export function createMediaControlIconElement(iconName: MediaControlIconName): S
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
     path.setAttribute('d', pathSpec.d)
     if (pathSpec.className) path.setAttribute('class', pathSpec.className)
-    else if (pathSpec.fill) path.setAttribute('class', 'tabs-media-icon-fill')
+    else if (pathSpec.fill) path.setAttribute('class', 'aislenote-media-icon-fill')
     svg.append(path)
   }
   return svg

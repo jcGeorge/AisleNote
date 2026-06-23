@@ -45,7 +45,7 @@ export function TagAutocompleteMenu({
             onChoose(index)
           }}
         >
-          <span className="tag-autocomplete-token tabs-tag-token">#{suggestion.label}</span>
+          <span className="tag-autocomplete-token aislenote-tag-token">#{suggestion.label}</span>
         </button>
       ))}
     </div>

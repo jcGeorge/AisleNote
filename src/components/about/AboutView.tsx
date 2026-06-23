@@ -17,11 +17,11 @@ export function AboutViewContent({
 }) {
   if (section === 'tooltip-sources') {
     return (
-      <section className="utility-page-wrap about-view" aria-label="About Tabs">
+      <section className="utility-page-wrap about-view" aria-label="About AisleNote">
         <div className="utility-page-card about-view-card">
           <h2>tooltip sources</h2>
           <p>
-            Tabs uses Lucide icons for toolbar, navigation, and app controls. Lucide is an open-source icon set used
+            AisleNote uses Lucide icons for toolbar, navigation, and app controls. Lucide is an open-source icon set used
             throughout the interface for clear, consistent visual labels.
           </p>
         </div>
@@ -30,11 +30,11 @@ export function AboutViewContent({
   }
 
   return (
-    <section className="utility-page-wrap about-view" aria-label="About Tabs">
+    <section className="utility-page-wrap about-view" aria-label="About AisleNote">
       <div className="utility-page-card about-view-card">
-        <h2>Tabs</h2>
+        <h2>AisleNote</h2>
         <p>
-          Tabs is a local-first notebook for organizing notes in folders, with aisle-based editing inside each note.
+          AisleNote is a local-first notebook for organizing notes in folders, with aisle-based editing inside each note.
         </p>
         <p>
           Toolbar and app icons include icons from Lucide.dev.

@@ -1355,7 +1355,7 @@ describe('block indent WYSIWYG decorations', () => {
         kind: 'node',
         from: 0,
         to: BLOCK_INDENT_TOKEN.length + 3 + 2,
-        attrs: { class: BLOCK_INDENT_CLASS_NAME, style: '--tabs-block-indent-level: 1;' },
+        attrs: { class: BLOCK_INDENT_CLASS_NAME, style: '--aislenote-block-indent-level: 1;' },
       },
       {
         kind: 'inline',
@@ -1648,7 +1648,7 @@ describe('tag WYSIWYG decorations', () => {
         kind: 'inline',
         from: 4,
         to: 10,
-        attrs: { class: TAG_TOKEN_CLASS_NAME, 'data-tabs-tag': 'Tag-3', 'data-app-tooltip': 'filter by tag' },
+        attrs: { class: TAG_TOKEN_CLASS_NAME, 'data-aislenote-tag': 'Tag-3', 'data-app-tooltip': 'filter by tag' },
       },
     ])
   })
@@ -1664,7 +1664,7 @@ describe('tag WYSIWYG decorations', () => {
         to: 5,
         attrs: {
           class: `${TAG_TOKEN_CLASS_NAME} ${TAG_JUMP_TARGET_CLASS_NAME}`,
-          'data-tabs-tag': 'one',
+          'data-aislenote-tag': 'one',
           'data-app-tooltip': 'filter by tag',
         },
       },
@@ -1672,7 +1672,7 @@ describe('tag WYSIWYG decorations', () => {
         kind: 'inline',
         from: 6,
         to: 10,
-        attrs: { class: TAG_TOKEN_CLASS_NAME, 'data-tabs-tag': 'two', 'data-app-tooltip': 'filter by tag' },
+        attrs: { class: TAG_TOKEN_CLASS_NAME, 'data-aislenote-tag': 'two', 'data-app-tooltip': 'filter by tag' },
       },
     ])
     expect(getTagDecorationCalls(doc, [{ from: 1, to: 5, requestId: 1 }, null]).map((call) => call.attrs?.class)).toEqual([
@@ -1773,7 +1773,7 @@ describe('annotation line WYSIWYG decorations', () => {
   it('adds a visible caret proxy at arrow marker boundaries', () => {
     expect(
       getAnnotationDecorationCalls('asdf --^', undefined, 6).find((call) =>
-        call.kind === 'widget' && call.classNames?.includes('tabs-annotation-arrow-boundary-caret'),
+        call.kind === 'widget' && call.classNames?.includes('aislenote-annotation-arrow-boundary-caret'),
       ),
     ).toMatchObject({
       from: 6,
@@ -1783,7 +1783,7 @@ describe('annotation line WYSIWYG decorations', () => {
 
     expect(
       getAnnotationDecorationCalls('asdf --^', undefined, 9).find((call) =>
-        call.kind === 'widget' && call.classNames?.includes('tabs-annotation-arrow-boundary-caret'),
+        call.kind === 'widget' && call.classNames?.includes('aislenote-annotation-arrow-boundary-caret'),
       ),
     ).toMatchObject({
       from: 9,

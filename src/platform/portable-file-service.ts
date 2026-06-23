@@ -35,7 +35,7 @@ function sanitizeFileName(fileName: string): string {
     .replace(/[<>:"/\\|?*]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
-  return cleaned || 'tabs-export'
+  return cleaned || 'aislenote-export'
 }
 
 async function shareCachedFile(path: string, title: string): Promise<PortableFileSaveResult> {

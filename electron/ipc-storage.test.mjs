@@ -11,7 +11,7 @@ const tempRoots = []
 const storageSessions = []
 
 function tempRoot() {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'tabs-ipc-storage-'))
+  const root = mkdtempSync(path.join(os.tmpdir(), 'aislenote-ipc-storage-'))
   tempRoots.push(root)
   return root
 }
@@ -63,7 +63,7 @@ function pathFromRoot(root, relativePath) {
 }
 
 function readNotebookIndex(root) {
-  return JSON.parse(readFileSync(pathFromRoot(root, '.tabs/notebook-index.json'), 'utf8'))
+  return JSON.parse(readFileSync(pathFromRoot(root, '.aislenote/notebook-index.json'), 'utf8'))
 }
 
 function getRootNotePath(root) {
@@ -298,7 +298,7 @@ describe('notebook folder IPC operations', () => {
     expect(parentOpen.error).toContain('Notebook folders cannot be nested')
   })
 
-  it('rejects opening non-Tabs Markdown folders with import guidance', async () => {
+  it('rejects opening non-AisleNote Markdown folders with import guidance', async () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
     const markdownFolder = path.join(root, 'Christianity')
@@ -312,7 +312,7 @@ describe('notebook folder IPC operations', () => {
     const opened = await callHandler(ipcMain, 'open-notebook')
 
     expect(opened.ok).toBe(false)
-    expect(opened.error).toContain('not a Tabs notebook')
+    expect(opened.error).toContain('not an AisleNote notebook')
     expect(opened.error).toContain('Markdown import')
   })
 

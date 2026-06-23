@@ -6,9 +6,9 @@ function storageStatus(event: string, overrides: Partial<StorageProfileStatus> =
   return {
     status: 'ready',
     event,
-    profileRootPath: '/tmp/tabs',
-    notebookPath: '/tmp/tabs',
-    notebookName: 'tabs',
+    profileRootPath: '/tmp/aislenote',
+    notebookPath: '/tmp/aislenote',
+    notebookName: 'aislenote',
     hasProfile: true,
     canWrite: true,
     ...overrides,

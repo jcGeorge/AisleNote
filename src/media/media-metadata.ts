@@ -4,7 +4,7 @@ import {
   normalizeStoredMediaVolumePercent,
 } from './media-playback-settings'
 
-export const MEDIA_METADATA_FRAGMENT_PREFIX = '#tabs-media='
+export const MEDIA_METADATA_FRAGMENT_PREFIX = '#aislenote-media='
 
 export type MediaTransformMetadata = {
   v: 1
@@ -131,6 +131,6 @@ export function withMediaTransformMetadata(
   return fragment ? `${mediaUrl}${fragment}` : mediaUrl
 }
 
-export function isTabsAssetMediaUrl(url: string): boolean {
+export function isAisleNoteAssetMediaUrl(url: string): boolean {
   return Boolean(parseAssetUrl(stripMediaMetadataFromUrl(url)))
 }

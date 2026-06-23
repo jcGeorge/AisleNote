@@ -78,7 +78,7 @@ describe('clipboard markdown paste helpers', () => {
   })
 
   it('imports image-only clipboard items as image markdown', async () => {
-    const importImageBlobAsAssetUrl = vi.fn(async () => 'tabs-image-asset:///assets/image.png')
+    const importImageBlobAsAssetUrl = vi.fn(async () => 'aislenote-image-asset:///assets/image.png')
 
     const result = await readClipboardMarkdown({
       mode: 'rich',
@@ -94,14 +94,14 @@ describe('clipboard markdown paste helpers', () => {
 
     expect(result).toEqual({
       ok: true,
-      markdown: '![clipboard-image.png](tabs-image-asset:///assets/image.png)',
+      markdown: '![clipboard-image.png](aislenote-image-asset:///assets/image.png)',
       source: 'image',
     })
     expect(importImageBlobAsAssetUrl).toHaveBeenCalledWith(expect.any(Blob), 'clipboard-image.png')
   })
 
   it('imports media-only clipboard items as media links', async () => {
-    const importBlobAsAssetUrl = vi.fn(async (_blob: Blob, fileName?: string) => `tabs-asset:///assets/${fileName}`)
+    const importBlobAsAssetUrl = vi.fn(async (_blob: Blob, fileName?: string) => `aislenote-asset:///assets/${fileName}`)
 
     const result = await readClipboardMarkdown({
       mode: 'rich',
@@ -119,7 +119,7 @@ describe('clipboard markdown paste helpers', () => {
     expect(result).toEqual({
       ok: true,
       markdown:
-        '[clipboard-audio.mp3](tabs-asset:///assets/clipboard-audio.mp3)\n\n[clipboard-video-2.webm](tabs-asset:///assets/clipboard-video-2.webm)',
+        '[clipboard-audio.mp3](aislenote-asset:///assets/clipboard-audio.mp3)\n\n[clipboard-video-2.webm](aislenote-asset:///assets/clipboard-video-2.webm)',
       source: 'media',
     })
     expect(importBlobAsAssetUrl).toHaveBeenCalledWith(expect.any(Blob), 'clipboard-audio.mp3')
@@ -127,8 +127,8 @@ describe('clipboard markdown paste helpers', () => {
   })
 
   it('keeps image clipboard items on the image import path before media', async () => {
-    const importImageBlobAsAssetUrl = vi.fn(async () => 'tabs-asset:///assets/image.png')
-    const importBlobAsAssetUrl = vi.fn(async () => 'tabs-asset:///assets/song.mp3')
+    const importImageBlobAsAssetUrl = vi.fn(async () => 'aislenote-asset:///assets/image.png')
+    const importBlobAsAssetUrl = vi.fn(async () => 'aislenote-asset:///assets/song.mp3')
 
     const result = await readClipboardMarkdown({
       mode: 'rich',
@@ -146,7 +146,7 @@ describe('clipboard markdown paste helpers', () => {
 
     expect(result).toEqual({
       ok: true,
-      markdown: '![clipboard-image.png](tabs-asset:///assets/image.png)',
+      markdown: '![clipboard-image.png](aislenote-asset:///assets/image.png)',
       source: 'image',
     })
     expect(importImageBlobAsAssetUrl).toHaveBeenCalled()

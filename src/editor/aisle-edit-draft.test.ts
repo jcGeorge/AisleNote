@@ -62,7 +62,7 @@ describe('aisle edit draft helpers', () => {
     expect(isEmptyAisleMarkdown('---\ntitle: note\n---')).toBe(false)
     expect(isEmptyAisleMarkdown('#tag')).toBe(false)
     expect(isEmptyAisleMarkdown('[link](https://example.com)')).toBe(false)
-    expect(isEmptyAisleMarkdown('![image](tabs-asset:image)')).toBe(false)
+    expect(isEmptyAisleMarkdown('![image](aislenote-asset:image)')).toBe(false)
     expect(isEmptyAisleMarkdown('-')).toBe(false)
   })
 

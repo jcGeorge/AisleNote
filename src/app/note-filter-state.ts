@@ -10,7 +10,7 @@ export type NoteFilterReconciliationResult = {
 
 export type NoteFilterRailVisibility = {
   scratchpadOnlyFilterActive: boolean
-  showNoteWorkspaceTabs: boolean
+  showNoteWorkspaceAisleNote: boolean
 }
 
 function withCurrentKindSelectedKeys(filter: NoteFilterSettings, selectedKeys: string[]): NoteFilterSettings {
@@ -80,6 +80,6 @@ export function getNoteFilterRailVisibility({
   const scratchpadOnlyFilterActive = isScratchpadOnlyNoteFilterActive(filterActive, index)
   return {
     scratchpadOnlyFilterActive,
-    showNoteWorkspaceTabs: !scratchpadOnlyFilterActive,
+    showNoteWorkspaceAisleNote: !scratchpadOnlyFilterActive,
   }
 }

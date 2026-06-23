@@ -1,6 +1,6 @@
-# Tabs
+# AisleNote
 
-Tabs is a local-first React/Electron note workspace with domains, spaces, parent tabs, sub-tabs, trash, aisles, image handling, and keyboard shortcuts.
+AisleNote is a local-first React/Electron note workspace with notebooks, folders, notes, trash, aisles, image handling, and keyboard shortcuts.
 
 ## Architecture Map
 
@@ -30,7 +30,7 @@ When changing storage behavior, add or update a round-trip test before editing s
 
 - Toast UI Editor exposes ProseMirror internals that are not fully typed. Keep those accesses behind `src/editor/` helpers where practical.
 - Markdown persistence normalizes internal indentation tokens and repairs broken data-image Markdown.
-- Aisles are part of note bodies, not separate tabs. Keep the legacy `homeContent` and `content` mirrors synchronized with `noteBodies`.
+- Aisles are part of note bodies, not separate notes. Keep the legacy `homeContent` and `content` mirrors synchronized with `noteBodies`.
 - Keyboard and multiline editing behavior has Electron menu integration; verify desktop shortcuts when changing editor event handling.
 
 ## Commands
@@ -58,7 +58,7 @@ npm ci
 npm run package:win
 ```
 
-The expected output is `release/Tabs-0.0.0-x64-portable.exe`. Electron Builder also creates an unpacked app folder under `release/win-unpacked/`; smoke test both `release/win-unpacked/Tabs.exe` and the portable `.exe`.
+The expected output is `release/AisleNote-0.0.0-x64-portable.exe`. Electron Builder also creates an unpacked app folder under `release/win-unpacked/`; smoke test both `release/win-unpacked/AisleNote.exe` and the portable `.exe`.
 
 The MVP smoke test is: open the app, create the default notebook, save a note, close and reopen with the data still present, verify file/image dialogs, export a notebook, and confirm external links open in the browser. The executable is unsigned, so Windows SmartScreen warnings are expected.
 

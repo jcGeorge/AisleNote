@@ -10,7 +10,7 @@ import {
 } from './image-asset-protocol.mjs'
 
 async function withTempProfile(run) {
-  const profileRootPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-asset-protocol-'))
+  const profileRootPath = mkdtempSync(path.join(os.tmpdir(), 'aislenote-asset-protocol-'))
   try {
     return await run(profileRootPath)
   } finally {
@@ -28,12 +28,12 @@ async function readResponseBytes(response) {
   return Array.from(new Uint8Array(await response.arrayBuffer()))
 }
 
-describe('tabs-asset protocol responses', () => {
+describe('aislenote-asset protocol responses', () => {
   it('returns full asset responses with media content type, length, and range support', async () => {
     await withTempProfile(async (profileRootPath) => {
       writeAsset(profileRootPath, 'song.mp3', Uint8Array.from([0, 1, 2, 3, 4]))
 
-      const response = createImageAssetProtocolResponse(new Request('tabs-asset:///assets/song.mp3'), profileRootPath)
+      const response = createImageAssetProtocolResponse(new Request('aislenote-asset:///assets/song.mp3'), profileRootPath)
 
       expect(response.status).toBe(200)
       expect(response.headers.get('content-type')).toBe('audio/mpeg')
@@ -48,7 +48,7 @@ describe('tabs-asset protocol responses', () => {
       writeAsset(profileRootPath, 'clip.webm', Uint8Array.from([0, 1, 2, 3, 4, 5, 6, 7]))
 
       const response = createImageAssetProtocolResponse(
-        new Request('tabs-asset:///assets/clip.webm', { headers: { Range: 'bytes=2-5' } }),
+        new Request('aislenote-asset:///assets/clip.webm', { headers: { Range: 'bytes=2-5' } }),
         profileRootPath,
       )
 
@@ -65,7 +65,7 @@ describe('tabs-asset protocol responses', () => {
       writeAsset(profileRootPath, 'clip.mp4', Uint8Array.from([0, 1, 2, 3, 4, 5]))
 
       const response = createImageAssetProtocolResponse(
-        new Request('tabs-asset:///assets/clip.mp4', { headers: { Range: 'bytes=-3' } }),
+        new Request('aislenote-asset:///assets/clip.mp4', { headers: { Range: 'bytes=-3' } }),
         profileRootPath,
       )
 
@@ -80,7 +80,7 @@ describe('tabs-asset protocol responses', () => {
       writeAsset(profileRootPath, 'song.mp3', Uint8Array.from([0, 1, 2]))
 
       const response = createImageAssetProtocolResponse(
-        new Request('tabs-asset:///assets/song.mp3', { headers: { Range: 'bytes=9-12' } }),
+        new Request('aislenote-asset:///assets/song.mp3', { headers: { Range: 'bytes=9-12' } }),
         profileRootPath,
       )
 
@@ -94,9 +94,9 @@ describe('tabs-asset protocol responses', () => {
     await withTempProfile(async (profileRootPath) => {
       writeAsset(profileRootPath, 'song.mp3', Uint8Array.from([0]))
 
-      expect(createImageAssetProtocolResponse(new Request('tabs-asset:///song.mp3'), profileRootPath).status).toBe(404)
+      expect(createImageAssetProtocolResponse(new Request('aislenote-asset:///song.mp3'), profileRootPath).status).toBe(404)
       expect(
-        createImageAssetProtocolResponse(new Request('tabs-asset:///assets/..%2Fsong.mp3'), profileRootPath).status,
+        createImageAssetProtocolResponse(new Request('aislenote-asset:///assets/..%2Fsong.mp3'), profileRootPath).status,
       ).toBe(404)
     })
   })
@@ -110,7 +110,7 @@ describe('tabs-asset protocol responses', () => {
 
   it('registers the app-owned protocol handler without requiring net.fetch', () => {
     const protocol = { handle: vi.fn() }
-    const storageSession = { getProfileRootPath: vi.fn(() => '/tmp/tabs-profile') }
+    const storageSession = { getProfileRootPath: vi.fn(() => '/tmp/aislenote-profile') }
 
     registerImageAssetProtocol({ protocol, storageSession })
 

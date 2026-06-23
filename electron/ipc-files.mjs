@@ -428,7 +428,7 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
         cancelId: 2,
         defaultId: 0,
         message: 'Import notebook',
-        detail: 'Choose a Tabs notebook ZIP, Markdown ZIP, Tabs notebook folder, or Markdown folder.',
+        detail: 'Choose an AisleNote notebook ZIP, Markdown ZIP, AisleNote notebook folder, or Markdown folder.',
       })
       if (choice.response === 2) return { canceled: true }
       if (choice.response === 0) {

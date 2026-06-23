@@ -8,7 +8,7 @@ import {
 describe('Electron app state coordinator', () => {
   it('sets revision 1 for an initial serialized load', () => {
     const coordinator = createAppStateCoordinator({
-      userDataPath: '/tmp/tabs',
+      userDataPath: '/tmp/aislenote',
       load: () => ({ ok: true, serializedState: '{"theme":"dawn"}', source: 'hybrid' }),
       save: vi.fn(),
     })
@@ -24,7 +24,7 @@ describe('Electron app state coordinator', () => {
   it('allows first save from an empty profile at revision 0', () => {
     const save = vi.fn()
     const coordinator = createAppStateCoordinator({
-      userDataPath: '/tmp/tabs',
+      userDataPath: '/tmp/aislenote',
       load: () => ({ ok: true, serializedState: null, source: 'empty' }),
       save,
     })
@@ -34,12 +34,12 @@ describe('Electron app state coordinator', () => {
       serializedState: '{"theme":"dawn"}',
       revision: 1,
     })
-    expect(save).toHaveBeenCalledWith('/tmp/tabs', '{"theme":"dawn"}', { userDataPath: '/tmp/tabs' })
+    expect(save).toHaveBeenCalledWith('/tmp/aislenote', '{"theme":"dawn"}', { userDataPath: '/tmp/aislenote' })
   })
 
   it('increments revision after a matching save', () => {
     const coordinator = createAppStateCoordinator({
-      userDataPath: '/tmp/tabs',
+      userDataPath: '/tmp/aislenote',
       load: () => ({ ok: true, serializedState: '{"theme":"dawn"}', source: 'hybrid' }),
       save: vi.fn(),
     })
@@ -56,7 +56,7 @@ describe('Electron app state coordinator', () => {
     const load = vi.fn(() => ({ ok: true, serializedState: '{"theme":"dawn"}', source: 'hybrid' }))
     const save = vi.fn(() => ({ storageFingerprint: 'storage-fingerprint-1' }))
     const coordinator = createAppStateCoordinator({
-      userDataPath: '/tmp/tabs',
+      userDataPath: '/tmp/aislenote',
       load,
       save,
     })
@@ -68,7 +68,7 @@ describe('Electron app state coordinator', () => {
     })
 
     expect(load).toHaveBeenCalledTimes(1)
-    expect(save).toHaveBeenCalledWith('/tmp/tabs', '{"theme":"light"}', { userDataPath: '/tmp/tabs' })
+    expect(save).toHaveBeenCalledWith('/tmp/aislenote', '{"theme":"light"}', { userDataPath: '/tmp/aislenote' })
     expect(coordinator.isRecentAppSaveStorageEcho('storage-fingerprint-1')).toBe(true)
     expect(coordinator.isRecentAppSaveStorageEcho('storage-fingerprint-2')).toBe(false)
   })
@@ -110,7 +110,7 @@ describe('Electron app state coordinator', () => {
       },
     }
     const coordinator = createAppStateCoordinator({
-      userDataPath: '/tmp/tabs',
+      userDataPath: '/tmp/aislenote',
       load: () => ({ ok: true, serializedState: '{"theme":"dawn"}', source: 'hybrid' }),
       save: vi.fn(() => ({ storageFingerprint: 'storage-fingerprint-1', saveMetrics })),
     })
@@ -126,7 +126,7 @@ describe('Electron app state coordinator', () => {
   it('rejects stale revision saves without persisting', () => {
     const save = vi.fn()
     const coordinator = createAppStateCoordinator({
-      userDataPath: '/tmp/tabs',
+      userDataPath: '/tmp/aislenote',
       load: () => ({ ok: true, serializedState: '{"theme":"dawn"}', source: 'hybrid' }),
       save,
     })
@@ -144,7 +144,7 @@ describe('Electron app state coordinator', () => {
   it('blocks saves after a failed load', () => {
     const save = vi.fn()
     const coordinator = createAppStateCoordinator({
-      userDataPath: '/tmp/tabs',
+      userDataPath: '/tmp/aislenote',
       load: () => ({
         ok: false,
         serializedState: null,
@@ -167,14 +167,14 @@ describe('Electron app state coordinator', () => {
   it('reloads valid external profile changes and increments revision', () => {
     let serializedState = '{"theme":"dawn"}'
     const coordinator = createAppStateCoordinator({
-      userDataPath: '/tmp/tabs',
+      userDataPath: '/tmp/aislenote',
       load: () => ({ ok: true, serializedState, source: 'hybrid' }),
       save: vi.fn(),
     })
 
     serializedState = '{"theme":"light"}'
 
-    expect(coordinator.reloadProfileRoot('/tmp/tabs')).toEqual({
+    expect(coordinator.reloadProfileRoot('/tmp/aislenote')).toEqual({
       ok: true,
       serializedState: '{"theme":"light"}',
       source: 'hybrid',
@@ -184,12 +184,12 @@ describe('Electron app state coordinator', () => {
 
   it('keeps revision stable when a reload returns identical serialized state', () => {
     const coordinator = createAppStateCoordinator({
-      userDataPath: '/tmp/tabs',
+      userDataPath: '/tmp/aislenote',
       load: () => ({ ok: true, serializedState: '{"theme":"dawn"}', source: 'hybrid' }),
       save: vi.fn(),
     })
 
-    expect(coordinator.reloadProfileRoot('/tmp/tabs')).toEqual({
+    expect(coordinator.reloadProfileRoot('/tmp/aislenote')).toEqual({
       ok: true,
       serializedState: '{"theme":"dawn"}',
       source: 'hybrid',
@@ -207,7 +207,7 @@ describe('Electron app state coordinator', () => {
     let now = 1_000
     let loadedSerializedState = '{"theme":"initial"}'
     const coordinator = createAppStateCoordinator({
-      userDataPath: '/tmp/tabs',
+      userDataPath: '/tmp/aislenote',
       load: () => ({ ok: true, serializedState: loadedSerializedState, source: 'hybrid' }),
       save: vi.fn((_profileRootPath, serializedState) => {
         loadedSerializedState = serializedState
@@ -228,7 +228,7 @@ describe('Electron app state coordinator', () => {
     loadedSerializedState = '{"theme":"dawn"}'
     now += 1_000
 
-    expect(coordinator.reloadProfileRoot('/tmp/tabs')).toEqual({
+    expect(coordinator.reloadProfileRoot('/tmp/aislenote')).toEqual({
       ok: true,
       serializedState: '{"theme":"light"}',
       source: 'hybrid',
@@ -242,7 +242,7 @@ describe('Electron app state coordinator', () => {
     let now = 1_000
     let loadedSerializedState = '{"theme":"initial"}'
     const coordinator = createAppStateCoordinator({
-      userDataPath: '/tmp/tabs',
+      userDataPath: '/tmp/aislenote',
       load: () => ({ ok: true, serializedState: loadedSerializedState, source: 'hybrid' }),
       save: vi.fn((_profileRootPath, serializedState) => {
         loadedSerializedState = serializedState
@@ -263,7 +263,7 @@ describe('Electron app state coordinator', () => {
     loadedSerializedState = '{"theme":"dawn"}'
     now += 20
 
-    expect(coordinator.reloadProfileRoot('/tmp/tabs')).toEqual({
+    expect(coordinator.reloadProfileRoot('/tmp/aislenote')).toEqual({
       ok: true,
       serializedState: '{"theme":"dawn"}',
       source: 'hybrid',
@@ -275,7 +275,7 @@ describe('Electron app state coordinator', () => {
     let corrupt = false
     const save = vi.fn()
     const coordinator = createAppStateCoordinator({
-      userDataPath: '/tmp/tabs',
+      userDataPath: '/tmp/aislenote',
       load: () =>
         corrupt
           ? {
@@ -290,7 +290,7 @@ describe('Electron app state coordinator', () => {
 
     corrupt = true
 
-    expect(coordinator.reloadProfileRoot('/tmp/tabs')).toEqual({
+    expect(coordinator.reloadProfileRoot('/tmp/aislenote')).toEqual({
       ok: false,
       serializedState: null,
       source: 'hybrid',

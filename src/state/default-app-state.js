@@ -36,7 +36,7 @@ function createNoteBodyWithAisle(markdown = '', idGenerator = createDefaultId) {
 export const DEFAULT_SHORTCUTS = {
   openSettings: 'mod+,',
   toggleNotesTrash: 'mod+shift+backspace',
-  toggleNotesScratchpad: 'mod+shift+s',
+  toggleNotesScratchpad: 'mod+s',
   toggleNotesFilter: 'mod+shift+f',
   newNote: 'mod+n',
   newFolder: 'mod+shift+n',
@@ -115,7 +115,6 @@ export function createDefaultAppState(options = {}) {
       findReplaceScope: 'note',
       removeNoteReferencesOnTrash: false,
       noteMentionCopyRequiresConfirmation: true,
-      scratchpadAisleLimit: 16,
       scratchpadNewAisleSide: 'right',
       decoupledItemsKeepData: true,
       tableAddTargetMode: 'active-cell',

@@ -12,7 +12,6 @@ import { normalizeAisleWidths } from '../notes/aisle-widths'
 import { normalizeTipIds } from '../tips/tips'
 import { normalizeHeadingCollapseState } from '../editor/heading-collapse-state'
 import { normalizeToolbarLayouts } from '../editor/toolbar-layouts'
-import { clampScratchpadAisleLimit, DEFAULT_SCRATCHPAD_AISLE_LIMIT } from '../state/scratchpad-limits'
 import {
   DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
   normalizeRegisteredSyncedUiSetting,
@@ -98,7 +97,6 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   },
   noteFontScale: 1,
   toolbarButtonScale: 1,
-  scratchpadAisleLimit: DEFAULT_SCRATCHPAD_AISLE_LIMIT,
   settingsSection: DEFAULT_SETTINGS_SECTION,
   dataSettingsSection: DEFAULT_DATA_SETTINGS_SECTION,
   visualsSettingsSection: DEFAULT_VISUALS_SETTINGS_SECTION,
@@ -291,10 +289,6 @@ export function normalizeUiSettings(raw: unknown): AppState['ui'] {
       typeof obj.toolbarButtonScale === 'number'
         ? clampToolbarButtonScale(obj.toolbarButtonScale)
         : DEFAULT_UI_SETTINGS.toolbarButtonScale,
-    scratchpadAisleLimit:
-      typeof obj.scratchpadAisleLimit === 'number' || typeof obj.scratchpadAisleLimit === 'string'
-        ? clampScratchpadAisleLimit(obj.scratchpadAisleLimit)
-        : DEFAULT_SCRATCHPAD_AISLE_LIMIT,
     noteFilter: normalizeNoteFilterSettings(obj.noteFilter),
     settingsSection: normalizeSettingsSection(obj.settingsSection),
     visualsSettingsSection: normalizeVisualsSettingsSection(

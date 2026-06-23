@@ -78,7 +78,7 @@ function TransferDataSection({
         </button>
       </div>
       <p className="settings-help">
-        Import replaces the current notebook with a Tabs notebook, notebook ZIP, Markdown folder, or Markdown ZIP; user settings stay separate.
+        Import replaces the current notebook with an AisleNote notebook, notebook ZIP, Markdown folder, or Markdown ZIP; user settings stay separate.
       </p>
       <p>app settings transfer:</p>
       <div className="settings-page-actions">

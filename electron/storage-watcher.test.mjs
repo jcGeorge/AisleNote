@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computeStorageContentFingerprint, createStorageProfileWatcher } from './storage-watcher.mjs'
 
 function withTempProfile(run) {
-  const profileRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-storage-watcher-'))
+  const profileRoot = mkdtempSync(path.join(os.tmpdir(), 'aislenote-storage-watcher-'))
   mkdirSync(profileRoot, { recursive: true })
   try {
     return run(profileRoot)

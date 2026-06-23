@@ -1,5 +1,5 @@
 {
-  "name": "tabs",
+  "name": "aislenote",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -34,8 +34,8 @@
     "cap:open:android": "npx cap open android"
   },
   "build": {
-    "productName": "Tabs",
-    "appId": "com.josephgeorge.tabs",
+    "productName": "AisleNote",
+    "appId": "com.josephgeorge.aislenote",
     "directories": {
       "output": "release"
     },

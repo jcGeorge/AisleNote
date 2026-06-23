@@ -34,7 +34,7 @@ export function buildStorageAlerts(messages: AppMessage[], dismissedStorageAlert
       return [{
         signature,
         label: 'notebook recovered',
-        message: 'Tabs reset the notebook because the folder could not be loaded.',
+        message: 'AisleNote reset the notebook because the folder could not be loaded.',
         actionLabel: message.failedNotebookPath && message.failedNotebookAvailable !== false
           ? localNotebookWasTheFailedFolder
             ? 'open notebook folder'

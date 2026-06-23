@@ -6,8 +6,8 @@ import {
 import { getMediaKindFromUrl, MEDIA_PLAYER_SELECTOR } from '../media/media-utils'
 import { TextSelection } from 'prosemirror-state'
 
-export const TERMINAL_BLOCK_LANDING_ZONE_ATTR = 'data-tabs-terminal-block-landing-zone'
-export const TERMINAL_BLOCK_LANDING_ZONE_CLASS = 'tabs-terminal-block-landing-zone'
+export const TERMINAL_BLOCK_LANDING_ZONE_ATTR = 'data-aislenote-terminal-block-landing-zone'
+export const TERMINAL_BLOCK_LANDING_ZONE_CLASS = 'aislenote-terminal-block-landing-zone'
 const TERMINAL_BLOCK_BOUNDARY_CLICK_MAX_DISTANCE_PX = 64
 
 export type TerminalBlockLandingKind = 'codeBlock' | 'notePreview' | 'image' | 'media' | 'table'

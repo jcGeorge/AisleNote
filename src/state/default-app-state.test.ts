@@ -8,7 +8,7 @@ describe('default app state', () => {
 
     expect(state.notebook.items[0]).toMatchObject({ type: 'note', title: 'Welcome' })
     expect(state.noteAisleBodies[0]).toMatchObject({ markdown: '' })
-    expect(state.ui.scratchpadAisleLimit).toBe(16)
+    expect(state.ui).not.toHaveProperty('scratchpadAisleLimit')
     expect(state.ui).not.toHaveProperty('trashDeleteForRealRequiresConfirmation')
     expect(state.hotkeys.newlineShortcuts.shortcuts).toEqual({
       controlEnter: 'operationsMenu',

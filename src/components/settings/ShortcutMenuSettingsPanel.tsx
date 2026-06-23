@@ -6,7 +6,7 @@ import {
 import type { NewlineOperationId } from '../../types/app'
 
 const MENU_SLOT_LABELS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
-const SHORTCUT_MENU_DRAG_MIME = 'application/x-tabs-shortcut-menu-operation'
+const SHORTCUT_MENU_DRAG_MIME = 'application/x-aislenote-shortcut-menu-operation'
 
 export function ShortcutMenuSettingsPanel({
   operations,

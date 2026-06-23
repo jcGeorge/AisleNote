@@ -35,8 +35,8 @@ const trashMarkdownPreviewComponents = {
 }
 
 const transformTrashPreviewUrl = (url: string, key: string) => {
-  if (key === 'href' && /^tabs-asset:/i.test(url)) return url
-  if (key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^tabs-asset:/i.test(url))) {
+  if (key === 'href' && /^aislenote-asset:/i.test(url)) return url
+  if (key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^aislenote-asset:/i.test(url))) {
     return resolveAssetDisplayUrl(url)
   }
   return defaultUrlTransform(url)

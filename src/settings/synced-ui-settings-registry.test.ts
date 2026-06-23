@@ -29,12 +29,10 @@ describe('synced UI settings registry', () => {
       toolbarEditorShowNames: false,
     })
     expect(DEFAULT_SIMPLE_SYNCED_UI_SETTINGS).not.toHaveProperty('newAislePlacement')
-    expect(DEFAULT_SIMPLE_SYNCED_UI_SETTINGS).not.toHaveProperty('toggleTabsTarget')
   })
 
   it('normalizes booleans and enum values with invalid-value fallbacks', () => {
     const normalized = normalizeRegisteredSyncedUiSettings({
-      toggleTabsTarget: 'messages',
       findRegex: true,
       findReplaceMode: 'replace',
       findReplaceScope: 'folder',
@@ -62,7 +60,6 @@ describe('synced UI settings registry', () => {
       removeNoteReferencesOnTrash: true,
       trashDeleteForRealRequiresConfirmation: false,
     })
-    expect(normalized).not.toHaveProperty('toggleTabsTarget')
     expect(normalized).not.toHaveProperty('newAislePlacement')
     expect(normalized).not.toHaveProperty('showParentHomeTab')
     expect(normalizeRegisteredSyncedUiSetting('findReplaceMode', 'bad')).toBe('find')
@@ -78,13 +75,11 @@ describe('synced UI settings registry', () => {
     const picked = pickRegisteredSyncedUiSettings({
       findCaseSensitive: true,
       unknownBoolean: true,
-      toggleTabsTarget: 'messages',
     })
     expect(picked).toMatchObject({
       findCaseSensitive: true,
       findWholeWord: false,
     })
-    expect(picked).not.toHaveProperty('toggleTabsTarget')
     expect(getSyncedUiBooleanSettings({ noteMentionCopyRequiresConfirmation: false })).toMatchObject({
       noteMentionCopyRequiresConfirmation: false,
       removeNoteReferencesOnTrash: true,

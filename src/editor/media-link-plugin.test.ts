@@ -90,7 +90,7 @@ function createPluginContext() {
 }
 
 function createViewWithMediaSelection(selectionPosition: number) {
-  const mediaMark = pmSchema.marks.link.create({ linkUrl: 'tabs-asset:///assets/song.mp3' })
+  const mediaMark = pmSchema.marks.link.create({ linkUrl: 'aislenote-asset:///assets/song.mp3' })
   const doc = pmSchema.nodes.doc.create(null, [
     pmSchema.nodes.paragraph.create(null, [
       pmSchema.text('before '),
@@ -119,24 +119,24 @@ describe('media link plugin', () => {
 
   it('collects media link ranges and groups split marked text', () => {
     const ranges = collectMediaLinkRanges(createDoc([
-      { text: 'Song ', href: 'tabs-asset:///assets/song.mp3' },
-      { text: 'One', href: 'tabs-asset:///assets/song.mp3' },
-      { text: ' and report ', href: 'tabs-asset:///assets/report.pdf' },
-      { text: ' clip', href: 'clip.webm#tabs-media=width=320,ratio=shorts' },
+      { text: 'Song ', href: 'aislenote-asset:///assets/song.mp3' },
+      { text: 'One', href: 'aislenote-asset:///assets/song.mp3' },
+      { text: ' and report ', href: 'aislenote-asset:///assets/report.pdf' },
+      { text: ' clip', href: 'clip.webm#aislenote-media=width=320,ratio=shorts' },
     ]))
 
     expect(ranges).toEqual([
       {
         from: 1,
         to: 9,
-        href: 'tabs-asset:///assets/song.mp3',
+        href: 'aislenote-asset:///assets/song.mp3',
         label: 'Song One',
         kind: 'audio',
       },
       {
         from: 21,
         to: 26,
-        href: 'clip.webm#tabs-media=width=320,ratio=shorts',
+        href: 'clip.webm#aislenote-media=width=320,ratio=shorts',
         label: ' clip',
         kind: 'video',
       },
@@ -149,7 +149,7 @@ describe('media link plugin', () => {
         {
           isText: true,
           text: 'Song',
-          marks: [linkMark('tabs-asset:///assets/song.mp3')],
+          marks: [linkMark('aislenote-asset:///assets/song.mp3')],
         },
         1,
       )
@@ -167,7 +167,7 @@ describe('media link plugin', () => {
     const plugin = createMediaLinkPlugin(context).wysiwygPlugins[0]()
 
     const decorations = plugin.props.decorations({
-      doc: createDoc([{ text: 'Clip', href: 'tabs-asset:///assets/clip.mp4#tabs-media=width=320,rotate=90' }]),
+      doc: createDoc([{ text: 'Clip', href: 'aislenote-asset:///assets/clip.mp4#aislenote-media=width=320,rotate=90' }]),
     })
     const widget = decorations.find((decoration: any) => decoration.type === 'widget')
     const inline = decorations.find((decoration: any) => decoration.type === 'inline')
@@ -176,25 +176,25 @@ describe('media link plugin', () => {
 
     expect(createMediaPlayerElement).toHaveBeenCalledWith({
       kind: 'video',
-      src: 'tabs-asset:///assets/clip.mp4#tabs-media=width=320,rotate=90',
+      src: 'aislenote-asset:///assets/clip.mp4#aislenote-media=width=320,rotate=90',
       label: 'Clip',
       sourceFrom: 1,
       sourceTo: 5,
       onSourceChange: expect.any(Function),
     })
     expect(widget.from).toBe(1)
-    expect(widget.options.key).toBe('media-link-video:tabs-asset:///assets/clip.mp4:Clip-0')
+    expect(widget.options.key).toBe('media-link-video:aislenote-asset:///assets/clip.mp4:Clip-0')
     expect(inline).toMatchObject({
       from: 1,
       to: 5,
-      attrs: { class: 'tabs-media-link-source-hidden' },
+      attrs: { class: 'aislenote-media-link-source-hidden' },
     })
   })
 
   it('reuses media decorations for unchanged document identity', () => {
     const context = createPluginContext()
     const plugin = createMediaLinkPlugin(context).wysiwygPlugins[0]()
-    const doc = createDoc([{ text: 'Clip', href: 'tabs-asset:///assets/clip.mp4' }])
+    const doc = createDoc([{ text: 'Clip', href: 'aislenote-asset:///assets/clip.mp4' }])
 
     const firstDecorations = plugin.props.decorations({ doc })
     const secondDecorations = plugin.props.decorations({ doc })
@@ -206,7 +206,7 @@ describe('media link plugin', () => {
   it('keeps media widget keys stable when text is inserted before them', () => {
     const context = createPluginContext()
     const plugin = createMediaLinkPlugin(context).wysiwygPlugins[0]()
-    const source = 'tabs-asset:///assets/song.mp3#tabs-media=speed=1.25'
+    const source = 'aislenote-asset:///assets/song.mp3#aislenote-media=speed=1.25'
 
     const originalDecorations = plugin.props.decorations({
       doc: createDoc([{ text: 'Song', href: source }]),
@@ -229,9 +229,9 @@ describe('media link plugin', () => {
 
     const decorations = plugin.props.decorations({
       doc: createDoc([
-        { text: 'Song', href: 'tabs-asset:///assets/song.mp3' },
+        { text: 'Song', href: 'aislenote-asset:///assets/song.mp3' },
         { text: ' and ' },
-        { text: 'Song', href: 'tabs-asset:///assets/song.mp3' },
+        { text: 'Song', href: 'aislenote-asset:///assets/song.mp3' },
       ]),
     })
     const keys = decorations
@@ -239,15 +239,15 @@ describe('media link plugin', () => {
       .map((decoration: any) => decoration.options.key)
 
     expect(keys).toEqual([
-      'media-link-audio:tabs-asset:///assets/song.mp3:Song-0',
-      'media-link-audio:tabs-asset:///assets/song.mp3:Song-1',
+      'media-link-audio:aislenote-asset:///assets/song.mp3:Song-0',
+      'media-link-audio:aislenote-asset:///assets/song.mp3:Song-1',
     ])
   })
 
   it('persists source changes to the media range at the widget current position', () => {
     const context = createPluginContext()
     const plugin = createMediaLinkPlugin(context).wysiwygPlugins[0]()
-    const source = 'tabs-asset:///assets/song.mp3'
+    const source = 'aislenote-asset:///assets/song.mp3'
     const initialDecorations = plugin.props.decorations({
       doc: createDoc([{ text: 'Song', href: source }]),
     })
@@ -287,13 +287,13 @@ describe('media link plugin', () => {
       { onSourceChange?: (nextSrc: string) => void },
     ]>
     const onSourceChange = mediaPlayerCalls.at(-1)?.[0].onSourceChange
-    onSourceChange?.('tabs-asset:///assets/song.mp3#tabs-media=speed=1.25')
+    onSourceChange?.('aislenote-asset:///assets/song.mp3#aislenote-media=speed=1.25')
 
     expect(tr.removeMark).toHaveBeenCalledWith(8, 12, linkMarkType)
     expect(tr.addMark).toHaveBeenCalledWith(8, 12, {
       type: linkMarkType,
       attrs: {
-        linkUrl: 'tabs-asset:///assets/song.mp3#tabs-media=speed=1.25',
+        linkUrl: 'aislenote-asset:///assets/song.mp3#aislenote-media=speed=1.25',
         title: 'Song title',
       },
     })
@@ -330,13 +330,13 @@ describe('media link plugin', () => {
       href: 'clip.mp4',
       label: 'Clip',
       kind: 'video',
-    }, 'clip.mp4#tabs-media=speed=1.25')).toBe(true)
+    }, 'clip.mp4#aislenote-media=speed=1.25')).toBe(true)
 
     expect(tr.removeMark).toHaveBeenCalledWith(1, 5, linkMarkType)
     expect(tr.addMark).toHaveBeenCalledWith(1, 5, {
       type: linkMarkType,
       attrs: {
-        linkUrl: 'clip.mp4#tabs-media=speed=1.25',
+        linkUrl: 'clip.mp4#aislenote-media=speed=1.25',
         title: 'Clip title',
       },
     })
@@ -344,7 +344,7 @@ describe('media link plugin', () => {
   })
 
   it('finds media links adjacent to forward and backward delete positions', () => {
-    const mediaMark = pmSchema.marks.link.create({ linkUrl: 'tabs-asset:///assets/song.mp3' })
+    const mediaMark = pmSchema.marks.link.create({ linkUrl: 'aislenote-asset:///assets/song.mp3' })
     const doc = pmSchema.nodes.doc.create(null, [
       pmSchema.nodes.paragraph.create(null, [
         pmSchema.text('before '),

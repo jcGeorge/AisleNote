@@ -16,7 +16,7 @@ import { AisleMarkdownPreview } from './AisleMarkdownPreview'
 import { AisleHorizontalScrollbar } from './AisleHorizontalScrollbar'
 import { getHorizontalDragAutoScrollDelta } from './aisle-horizontal-scroll'
 
-const AISLE_DRAG_MIME = 'application/x-tabs-aisle-id'
+const AISLE_DRAG_MIME = 'application/x-aislenote-aisle-id'
 const EMPTY_STAGED_DECOUPLE_IDS: string[] = []
 const EMPTY_STAGED_FRONTMATTER_IDS: string[] = []
 const AISLE_EDIT_DRAG_AUTO_SCROLL_EDGE_ZONE = 72

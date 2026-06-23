@@ -205,7 +205,7 @@ export function createNotePreviewPlugin({
                         range.widgetFrom,
                         (view: any) => {
                           const host = document.createElement('div')
-                          host.className = 'tabs-note-preview-widget-host'
+                          host.className = 'aislenote-note-preview-widget-host'
                           host.contentEditable = 'false'
                           host.setAttribute('data-note-preview-widget', 'true')
                           host.setAttribute('data-note-workspace-skip-aisle-activation', 'true')
@@ -238,9 +238,9 @@ export function createNotePreviewPlugin({
                       ),
                     )
                     if (range.hideAsBlock && typeof Decoration.node === 'function') {
-                      decorations.push(Decoration.node(range.hideFrom, range.hideTo, { class: 'tabs-note-preview-source-block-hidden' }))
+                      decorations.push(Decoration.node(range.hideFrom, range.hideTo, { class: 'aislenote-note-preview-source-block-hidden' }))
                     } else {
-                      decorations.push(Decoration.inline(range.hideFrom, range.hideTo, { class: 'tabs-note-preview-source-hidden' }))
+                      decorations.push(Decoration.inline(range.hideFrom, range.hideTo, { class: 'aislenote-note-preview-source-hidden' }))
                     }
                   })
                   return DecorationSet.create(doc, decorations)

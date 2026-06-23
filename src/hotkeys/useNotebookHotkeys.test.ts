@@ -103,13 +103,19 @@ describe('notebook hotkey intents', () => {
     })).toBe('formatStrikethrough')
   })
 
-  it('does not expose scratchpad or main-editor commands as utility-shell intents', () => {
+  it('exposes scratchpad toggle but keeps main-editor-only commands in the main view', () => {
     expect(getNotebookHotkeyIntent({
-      event: keyboardEvent('/', { code: 'Slash', metaKey: true }),
+      event: keyboardEvent('s', { code: 'KeyS', metaKey: true }),
       hotkeys: defaultHotkeys,
       isMacPlatform: true,
       viewMode: 'main',
-    })).toBeNull()
+    })).toBe('toggleNotesScratchpad')
+    expect(getNotebookHotkeyIntent({
+      event: keyboardEvent('s', { code: 'KeyS', metaKey: true }),
+      hotkeys: defaultHotkeys,
+      isMacPlatform: true,
+      viewMode: 'settings',
+    })).toBe('toggleNotesScratchpad')
     expect(getNotebookHotkeyIntent({
       event: keyboardEvent('[', { code: 'BracketLeft', altKey: true }),
       hotkeys: defaultHotkeys,

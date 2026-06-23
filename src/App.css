@@ -99,6 +99,9 @@
   padding: var(--notebook-sidebar-control-inset-block)
     calc(
       var(--notebook-sidebar-control-size)
+      + var(--notebook-sidebar-control-size)
+      + var(--notebook-sidebar-control-size)
+      + var(--notebook-sidebar-control-gap)
       + var(--notebook-sidebar-control-gap)
       + var(--notebook-sidebar-control-inset-inline)
     )
@@ -163,7 +166,9 @@
   justify-content: center;
 }
 
-.notebook-sidebar-header-action.is-active {
+.notebook-sidebar-header-action.is-active,
+.notebook-sidebar-search-mode-toggle.is-active,
+.notebook-sidebar-scratchpad-toggle.is-active {
   border-color: transparent;
   background: var(--notebook-sidebar-active-bg);
   color: var(--notebook-sidebar-active-text);
@@ -190,6 +195,36 @@
   justify-content: center;
 }
 
+.notebook-sidebar-search-mode-toggle {
+  position: absolute;
+  right: calc(
+    var(--notebook-sidebar-control-inset-inline)
+    + var(--notebook-sidebar-control-size)
+    + var(--notebook-sidebar-control-gap)
+    + var(--notebook-sidebar-control-size)
+    + var(--notebook-sidebar-control-gap)
+  );
+  top: var(--notebook-sidebar-control-inset-block);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notebook-sidebar-scratchpad-toggle {
+  position: absolute;
+  right: calc(
+    var(--notebook-sidebar-control-inset-inline)
+    + var(--notebook-sidebar-control-size)
+    + var(--notebook-sidebar-control-gap)
+  );
+  top: var(--notebook-sidebar-control-inset-block);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .notebook-sidebar-settings.is-active {
   border-color: transparent;
   background: var(--notebook-sidebar-active-bg);
@@ -202,11 +237,19 @@
   height: var(--notebook-sidebar-control-icon-size);
 }
 
+.notebook-sidebar-search-mode-toggle-icon,
 .notebook-sidebar-header-icon,
-.notebook-sidebar-settings-icon {
+.notebook-sidebar-settings-icon,
+.notebook-sidebar-scratchpad-icon {
   display: block;
   width: var(--notebook-sidebar-control-icon-size);
   height: var(--notebook-sidebar-control-icon-size);
+}
+
+.notebook-sidebar-scratchpad-icon {
+  background: currentColor;
+  mask: url("./assets/scratchpad.svg") center / contain no-repeat;
+  -webkit-mask: url("./assets/scratchpad.svg") center / contain no-repeat;
 }
 
 .notebook-trash-actions button,

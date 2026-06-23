@@ -196,7 +196,7 @@ describe('toolbar list command detection', () => {
     ])
     const dashView = collapsedView([
       node('doc'),
-      node('bulletList', { htmlAttrs: { 'data-tabs-list-marker': 'dash' } }),
+      node('bulletList', { htmlAttrs: { 'data-aislenote-list-marker': 'dash' } }),
       node('listItem'),
       node('paragraph', null, { isTextblock: true }),
     ])
@@ -217,7 +217,7 @@ describe('toolbar list command detection', () => {
   it('treats unmarked nested bullets inside dash lists as dash list selections', () => {
     const nestedDashView = collapsedView([
       node('doc'),
-      node('bulletList', { htmlAttrs: { 'data-tabs-list-marker': 'dash' } }),
+      node('bulletList', { htmlAttrs: { 'data-aislenote-list-marker': 'dash' } }),
       node('listItem'),
       node('bulletList'),
       node('listItem'),
@@ -277,7 +277,7 @@ describe('toolbar list command detection', () => {
     const view: any = {
       ...collapsedView([
         node('doc'),
-        node('bulletList', { htmlAttrs: { 'data-tabs-list-marker': 'dash' } }),
+        node('bulletList', { htmlAttrs: { 'data-aislenote-list-marker': 'dash' } }),
         node('listItem'),
         node('paragraph', null, { isTextblock: true }),
       ]),
@@ -299,7 +299,7 @@ describe('toolbar list command detection', () => {
       10,
       undefined,
       expect.objectContaining({
-        htmlAttrs: { 'data-tabs-list-marker': 'dash' },
+        htmlAttrs: { 'data-aislenote-list-marker': 'dash' },
       }),
     )
     expect(dispatch).toHaveBeenCalledWith(transaction)
@@ -314,7 +314,7 @@ describe('toolbar list command detection', () => {
     const view: any = {
       ...collapsedView([
         node('doc'),
-        node('bulletList', { htmlAttrs: { 'data-tabs-list-marker': 'dash' } }),
+        node('bulletList', { htmlAttrs: { 'data-aislenote-list-marker': 'dash' } }),
         node('listItem'),
         node('bulletList'),
         node('listItem'),
@@ -338,7 +338,7 @@ describe('toolbar list command detection', () => {
       30,
       undefined,
       expect.objectContaining({
-        htmlAttrs: { 'data-tabs-list-marker': 'dash' },
+        htmlAttrs: { 'data-aislenote-list-marker': 'dash' },
       }),
     )
   })
@@ -348,7 +348,7 @@ describe('toolbar list command detection', () => {
     expect(getToolbarListKindForNode(listNode('bulletList', null, [null]))).toBe('bulletList')
     expect(
       getToolbarListKindForNode(
-        listNode('bulletList', { htmlAttrs: { 'data-tabs-list-marker': 'dash' } }, [null]),
+        listNode('bulletList', { htmlAttrs: { 'data-aislenote-list-marker': 'dash' } }, [null]),
       ),
     ).toBe('dashList')
     expect(getToolbarListKindForNode(listNode('orderedList', null, [null]))).toBe('orderedList')
@@ -357,7 +357,7 @@ describe('toolbar list command detection', () => {
 
   it('finds only adjacent same-kind lists for merge', () => {
     const bullet = listNode('bulletList', null, [null])
-    const dash = listNode('bulletList', { htmlAttrs: { 'data-tabs-list-marker': 'dash' } }, [null])
+    const dash = listNode('bulletList', { htmlAttrs: { 'data-aislenote-list-marker': 'dash' } }, [null])
     const ordered = listNode('orderedList', null, [null])
     const paragraph = node('paragraph')
 
@@ -381,7 +381,7 @@ describe('toolbar list command detection', () => {
 
   it('converts a selected dash list to an ordered list structurally', () => {
     const dashList = listCommandSchema.nodes.bulletList.create(
-      { htmlAttrs: { 'data-tabs-list-marker': 'dash' } },
+      { htmlAttrs: { 'data-aislenote-list-marker': 'dash' } },
       [pmListItem('one'), pmListItem('two')],
     )
     const doc = listCommandSchema.nodes.doc.create(null, [dashList])
@@ -399,7 +399,7 @@ describe('toolbar list command detection', () => {
   it('converts nested dash children when converting a parent dash list to ordered', () => {
     const nestedDashList = listCommandSchema.nodes.bulletList.create(null, [pmListItem('child')])
     const dashList = listCommandSchema.nodes.bulletList.create(
-      { htmlAttrs: { 'data-tabs-list-marker': 'dash' } },
+      { htmlAttrs: { 'data-aislenote-list-marker': 'dash' } },
       [pmListItem('parent', [nestedDashList]), pmListItem('sibling')],
     )
     const doc = listCommandSchema.nodes.doc.create(null, [dashList])
@@ -418,7 +418,7 @@ describe('toolbar list command detection', () => {
   it('converts an inherited nested dash list to an ordered list at the nested level', () => {
     const nestedBulletList = listCommandSchema.nodes.bulletList.create(null, [pmListItem('child')])
     const dashList = listCommandSchema.nodes.bulletList.create(
-      { htmlAttrs: { 'data-tabs-list-marker': 'dash' } },
+      { htmlAttrs: { 'data-aislenote-list-marker': 'dash' } },
       [pmListItem('parent', [nestedBulletList])],
     )
     const doc = listCommandSchema.nodes.doc.create(null, [dashList])
@@ -608,7 +608,7 @@ describe('toolbar list command detection', () => {
       'dash',
       () =>
         listCommandSchema.nodes.bulletList.create(
-          { htmlAttrs: { 'data-tabs-list-marker': 'dash' } },
+          { htmlAttrs: { 'data-aislenote-list-marker': 'dash' } },
           [pmListItem('one'), pmListItem('two'), pmListItem('closing')],
         ),
     ],

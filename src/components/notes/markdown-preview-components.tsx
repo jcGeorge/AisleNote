@@ -69,7 +69,7 @@ type MarkdownUnorderedListProps = HTMLAttributes<HTMLUListElement> & {
 }
 
 type BlockIndentStyle = CSSProperties & {
-  '--tabs-block-indent-level'?: number
+  '--aislenote-block-indent-level'?: number
 }
 
 function mergeClassNames(...classNames: Array<string | undefined>) {
@@ -118,7 +118,7 @@ function renderInlineText(value: string, keyPrefix: string): ReactNode {
       <span
         key={`${keyPrefix}-tag-${index}`}
         className={TAG_TOKEN_CLASS_NAME}
-        data-tabs-tag={part.tag}
+        data-aislenote-tag={part.tag}
         data-app-tooltip="filter by tag"
       >
         {part.text}
@@ -191,7 +191,7 @@ function renderAnnotationText(value: string, matches: AnnotationLineMatch[]): Re
 function isPotentialInternalNoteHref(href: string): boolean {
   const normalized = normalizePotentialInternalNoteHref(href)
   if (!normalized) return false
-  if (/^(?:https?:|mailto:|tel:|data:|blob:|tabs-asset:|#|\/|\.)/i.test(normalized)) return false
+  if (/^(?:https?:|mailto:|tel:|data:|blob:|aislenote-asset:|#|\/|\.)/i.test(normalized)) return false
   return true
 }
 
@@ -218,7 +218,7 @@ export function MarkdownPreviewParagraph({
   const previewChildren = stripBlockIndentTokenFromPreviewChildren(children)
   const blockIndentStyle: BlockIndentStyle | undefined =
     previewChildren.blockIndentLevel > 0
-      ? { ...style, '--tabs-block-indent-level': previewChildren.blockIndentLevel }
+      ? { ...style, '--aislenote-block-indent-level': previewChildren.blockIndentLevel }
       : style
   const annotationText = getReactNodeText(previewChildren.children)
   const annotationMatches = parseAnnotationLineMarkers(annotationText)
@@ -230,7 +230,7 @@ export function MarkdownPreviewParagraph({
       className={mergeClassNames(
         className,
         RENDERED_MARKDOWN_CLASS_NAMES.paragraph,
-        previewChildren.blockIndentLevel > 0 ? 'tabs-block-indent' : undefined,
+        previewChildren.blockIndentLevel > 0 ? 'aislenote-block-indent' : undefined,
         annotationLineMatch ? getAnnotationLineClassNames(annotationLineMatch).join(' ') : undefined,
       )}
     >
@@ -314,7 +314,7 @@ export function createMarkdownPreviewListItem(markdown: string) {
         className={mergeClassNames(
           className,
           RENDERED_MARKDOWN_CLASS_NAMES.listItem,
-          dashListItemLines.has(line) ? 'tabs-dash-list-item' : undefined,
+          dashListItemLines.has(line) ? 'aislenote-dash-list-item' : undefined,
         )}
       >
         {renderMarkdownPreviewTags(children)}
@@ -340,7 +340,7 @@ export function createMarkdownPreviewUnorderedList(markdown: string) {
   }: MarkdownUnorderedListProps) {
     const line = node?.position?.start?.line ?? 0
     return (
-      <ul {...props} className={mergeClassNames(className, dashListLines.has(line) ? 'tabs-dash-list' : undefined)}>
+      <ul {...props} className={mergeClassNames(className, dashListLines.has(line) ? 'aislenote-dash-list' : undefined)}>
         {children}
       </ul>
     )

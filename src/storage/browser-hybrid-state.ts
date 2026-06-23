@@ -27,12 +27,12 @@ type BrowserStorageRecord = {
   data: string | ArrayBuffer
 }
 
-const BROWSER_DB_NAME = 'tabs-notebook-storage'
+const BROWSER_DB_NAME = 'aislenote-notebook-storage'
 const BROWSER_DB_VERSION = 1
 const BROWSER_FILE_STORE = 'files'
 
 const NOTEBOOK_ROOT_DIR = 'notes'
-const NOTEBOOK_INTERNAL_DIR = `${NOTEBOOK_ROOT_DIR}/.tabs`
+const NOTEBOOK_INTERNAL_DIR = `${NOTEBOOK_ROOT_DIR}/.aislenote`
 const SETTINGS_DIR = 'settings'
 const MANIFEST_FILE = `${NOTEBOOK_ROOT_DIR}/manifest.json`
 const NOTEBOOK_APP_STATE_FILE = `${NOTEBOOK_INTERNAL_DIR}/app-state.json`

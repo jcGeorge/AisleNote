@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
-  appId: 'com.tabs.app',
-  appName: 'Tabs',
+  appId: 'com.josephgeorge.aislenote',
+  appName: 'AisleNote',
   webDir: 'dist',
 }
 

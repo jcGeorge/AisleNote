@@ -116,7 +116,6 @@ function createState(): AppState {
       findReplaceScope: 'note',
       removeNoteReferencesOnTrash: false,
       noteMentionCopyRequiresConfirmation: true,
-      scratchpadAisleLimit: 16,
       scratchpadNewAisleSide: 'right',
       decoupledItemsKeepData: true,
       tableAddTargetMode: 'active-cell',

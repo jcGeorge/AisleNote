@@ -50,10 +50,10 @@ type ToastListMdNode = {
   listData?: { type?: string; bulletChar?: string } | null
 }
 
-const ANNOTATION_ARROW_BOUNDARY_CARET_CLASS_NAME = 'tabs-annotation-arrow-boundary-caret'
-export const BLOCK_INDENT_CLASS_NAME = 'tabs-block-indent'
-export const BLOCK_INDENT_TOKEN_HIDDEN_CLASS_NAME = 'tabs-block-indent-token-hidden'
-export const BLOCK_INDENT_BOUNDARY_ACTIVE_CLASS_NAME = 'tabs-block-indent-boundary-active'
+const ANNOTATION_ARROW_BOUNDARY_CARET_CLASS_NAME = 'aislenote-annotation-arrow-boundary-caret'
+export const BLOCK_INDENT_CLASS_NAME = 'aislenote-block-indent'
+export const BLOCK_INDENT_TOKEN_HIDDEN_CLASS_NAME = 'aislenote-block-indent-token-hidden'
+export const BLOCK_INDENT_BOUNDARY_ACTIVE_CLASS_NAME = 'aislenote-block-indent-boundary-active'
 
 export type TagDecorationRange = {
   from: number
@@ -68,8 +68,8 @@ export type TagJumpHighlightRange = {
   requestId: number
 }
 
-export const TAG_JUMP_HIGHLIGHT_META = 'tabs-tag-jump-highlight'
-export const TAG_JUMP_TARGET_CLASS_NAME = 'tabs-tag-jump-target'
+export const TAG_JUMP_HIGHLIGHT_META = 'aislenote-tag-jump-highlight'
+export const TAG_JUMP_TARGET_CLASS_NAME = 'aislenote-tag-jump-target'
 export const TAG_JUMP_GLOW_DURATION_MS = 1400
 
 function getTextOffsetDecorationRange(
@@ -539,7 +539,7 @@ export function blockIndentPlugin(context: {
                       class: activeAtBoundary
                         ? `${BLOCK_INDENT_CLASS_NAME} ${BLOCK_INDENT_BOUNDARY_ACTIVE_CLASS_NAME}`
                         : BLOCK_INDENT_CLASS_NAME,
-                      style: `--tabs-block-indent-level: ${range.level};`,
+                      style: `--aislenote-block-indent-level: ${range.level};`,
                     },
                     { key: `block-indent-node-${range.nodeFrom}-${index}` },
                   ),
@@ -658,7 +658,7 @@ export function tagAppearancePlugin(context: {
                     class: activeJumpRange && activeJumpRange.from === range.from && activeJumpRange.to === range.to
                       ? `${TAG_TOKEN_CLASS_NAME} ${TAG_JUMP_TARGET_CLASS_NAME}`
                       : TAG_TOKEN_CLASS_NAME,
-                    'data-tabs-tag': range.tag,
+                    'data-aislenote-tag': range.tag,
                     'data-app-tooltip': 'filter by tag',
                   },
                   { key: `tag-token-${index}-${range.from}-${range.to}` },
@@ -1795,7 +1795,7 @@ export function multiLineSelectionShortcutPlugin(context: {
   const { Decoration, DecorationSet } = context.pmView
   const { keymap } = context.pmKeymap
   const { onExpand, onPluginKeyReady } = context
-  const pluginKey = new PluginKey('tabs-multiline-cursors')
+  const pluginKey = new PluginKey('aislenote-multiline-cursors')
   onPluginKeyReady(pluginKey)
 
   const createCursorWidget = () => {

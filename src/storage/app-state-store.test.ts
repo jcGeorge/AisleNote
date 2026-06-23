@@ -8,7 +8,7 @@ afterEach(() => {
 
 describe('app state storage keys', () => {
   it('uses the current renderer cache key', () => {
-    expect(APP_STATE_STORAGE_KEY).toBe('tabs:app-state-cache:v1')
+    expect(APP_STATE_STORAGE_KEY).toBe('aislenote:app-state-cache:v1')
   })
 })
 
@@ -144,9 +144,9 @@ describe('Electron app state store', () => {
 
     statusHandler?.({
       status: 'ready',
-      profileRootPath: '/tmp/tabs',
-      notebookPath: '/tmp/tabs',
-      notebookName: 'tabs',
+      profileRootPath: '/tmp/aislenote',
+      notebookPath: '/tmp/aislenote',
+      notebookName: 'aislenote',
       hasProfile: false,
       canWrite: true,
       revision: 0,
@@ -529,7 +529,7 @@ describe('Electron app state store', () => {
       serializedState: '{"theme":"fresh"}',
       baseRevision: 1,
     })
-    expect(window.__tabsGetAppStateRevision?.()).toBe(7)
+    expect(window.__aislenoteGetAppStateRevision?.()).toBe(7)
   })
 
   it('subscribes to accepted app-state updates from other windows', () => {

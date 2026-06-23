@@ -2,7 +2,7 @@
 
 This document describes the current desktop on-disk notebook format.
 
-The notebook source of truth is the named notebook folder. It contains a root manifest, visible Markdown note files, imported/editor assets, and `.tabs/` metadata files that preserve app structure and editor state. Electron user settings live outside the selected notebook folder at `<electron-user-data>/settings/app-settings.json` and move only through explicit user-settings import/export.
+The notebook source of truth is the named notebook folder. It contains a root manifest, visible Markdown note files, imported/editor assets, and `.aislenote/` metadata files that preserve app structure and editor state. Electron user settings live outside the selected notebook folder at `<electron-user-data>/settings/app-settings.json` and move only through explicit user-settings import/export.
 
 The design goals are:
 
@@ -26,7 +26,7 @@ The design goals are:
       aisle 2--<id-hash>.md
   assets/
     asset-<content-hash>.<ext>
-  .tabs/
+  .aislenote/
     notebook-index.json
     navigation-state.json
     note-registry.json
@@ -71,9 +71,9 @@ Note contents are stored in `.md` files.
 
 - A note with one aisle is stored as `<note-title>--<id-hash>.md`.
 - A note with multiple aisles is stored as a folder containing `aisle N--<id-hash>.md` files.
-- The folder tree in `.tabs/notebook-index.json` records the logical notebook hierarchy and the visible file paths.
+- The folder tree in `.aislenote/notebook-index.json` records the logical notebook hierarchy and the visible file paths.
 - Shared aisle bodies can have multiple visible Markdown mirrors. On load, the newest changed mirror wins and is written back to every mirror on the next save.
-- Aisle bodies without a visible Markdown mirror, such as deleted or scratchpad-only content, are preserved in `.tabs/note-registry.json`.
+- Aisle bodies without a visible Markdown mirror, such as deleted or scratchpad-only content, are preserved in `.aislenote/note-registry.json`.
 
 User frontmatter values live inside the aisle Markdown file as a top YAML block. `note-registry.json` keeps note-body IDs, aisle slots, shared aisle-body IDs, content hashes, derived tag caches, and internal `frontmatterMeta`, keyed by `aisleBodyId`.
 
@@ -94,23 +94,23 @@ Markdown body text.
 
 Images and similar binary files are stored under `assets/`.
 
-Markdown references assets with `tabs-asset:///assets/...` URLs inside the app. Runtime/editor layers may inline those files temporarily for rendering or editing, but saves keep the asset files on disk.
+Markdown references assets with `aislenote-asset:///assets/...` URLs inside the app. Runtime/editor layers may inline those files temporarily for rendering or editing, but saves keep the asset files on disk.
 
 Active asset cleanup uses the save pass that writes Markdown. Each save rebuilds the expected file list from live notes, aisle bodies, and preserved content, then prunes generated Markdown files that are no longer expected. The `assets/` folder is preserved by that Markdown prune pass.
 
-Video resize, rotate, flip, and crop operations are metadata-only. They keep the original asset file and store display metadata in a `#tabs-media=...` URL fragment on the Markdown link. Crop rectangles use normalized source coordinates, so no resized or transcoded video copy is created by default.
+Video resize, rotate, flip, and crop operations are metadata-only. They keep the original asset file and store display metadata in a `#aislenote-media=...` URL fragment on the Markdown link. Crop rectangles use normalized source coordinates, so no resized or transcoded video copy is created by default.
 
 Example:
 
 ```md
-![diagram](tabs-asset:///assets/asset-0123456789abcdef.png)
+![diagram](aislenote-asset:///assets/asset-0123456789abcdef.png)
 ```
 
 ### Trash
 
 Trash is modeled explicitly, not as a boolean field on active notes.
 
-`.tabs/trash-index.json` tracks deleted notebook items, their original parent folder/index, and deletion timestamps. Deleted note bodies and aisle bodies remain available through `.tabs/note-registry.json`.
+`.aislenote/trash-index.json` tracks deleted notebook items, their original parent folder/index, and deletion timestamps. Deleted note bodies and aisle bodies remain available through `.aislenote/note-registry.json`.
 
 ## Manifest Responsibilities
 
@@ -122,8 +122,8 @@ Stores:
 
 - `schemaVersion: 2`
 - `notebookId`
-- `createdBy: "tabs"`
-- `files`: paths to the `.tabs/` split files
+- `createdBy: "aislenote"`
+- `files`: paths to the `.aislenote/` split files
 - optional sync metadata
 
 Does not store:
@@ -142,16 +142,16 @@ Example:
 {
   "schemaVersion": 2,
   "notebookId": "notebook-id",
-  "createdBy": "tabs",
+  "createdBy": "aislenote",
   "files": {
-    "notebookIndex": ".tabs/notebook-index.json",
-    "navigationState": ".tabs/navigation-state.json",
-    "noteRegistry": ".tabs/note-registry.json",
-    "trashIndex": ".tabs/trash-index.json",
-    "frontmatterSettings": ".tabs/frontmatter-settings.json",
-    "editorState": ".tabs/editor-state.json",
-    "messages": ".tabs/messages.json",
-    "syncState": ".tabs/sync-state.json"
+    "notebookIndex": ".aislenote/notebook-index.json",
+    "navigationState": ".aislenote/navigation-state.json",
+    "noteRegistry": ".aislenote/note-registry.json",
+    "trashIndex": ".aislenote/trash-index.json",
+    "frontmatterSettings": ".aislenote/frontmatter-settings.json",
+    "editorState": ".aislenote/editor-state.json",
+    "messages": ".aislenote/messages.json",
+    "syncState": ".aislenote/sync-state.json"
   },
   "syncMetadata": null
 }
@@ -159,7 +159,7 @@ Example:
 
 ### Split Files
 
-All split files live under `.tabs/`.
+All split files live under `.aislenote/`.
 
 - `notebook-index.json`: active note ID, notebook folder/note tree, generated file paths, and notebook settings.
 - `navigation-state.json`: active note ID and view mode.
@@ -176,8 +176,8 @@ Portable user preferences live in `<electron-user-data>/settings/app-settings.js
 
 Notebook imports replace the current notebook folder contents. Supported import sources are:
 
-- Tabs notebook folders
-- Tabs notebook ZIPs
+- AisleNote notebook folders
+- AisleNote notebook ZIPs
 - Markdown folders
 - Markdown ZIPs
 

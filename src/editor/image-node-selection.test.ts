@@ -26,7 +26,7 @@ const schema = new Schema({
 
 function createImageView() {
   const imageNode = schema.nodes.image.create({
-    imageUrl: 'tabs-asset:///assets/pixel.png',
+    imageUrl: 'aislenote-asset:///assets/pixel.png',
     altText: 'pixel',
   })
   const doc = schema.nodes.doc.create(null, [
@@ -34,7 +34,7 @@ function createImageView() {
   ])
   const image = {
     getAttribute: (name: string) =>
-      name === 'src' ? 'tabs-asset:///assets/pixel.png' : name === 'alt' ? 'pixel' : null,
+      name === 'src' ? 'aislenote-asset:///assets/pixel.png' : name === 'alt' ? 'pixel' : null,
   } as unknown as HTMLImageElement
   const view = {
     state: EditorState.create({

@@ -36,7 +36,7 @@ const AISLE_ACTIVATION_INTERACTIVE_SIDE_TARGET_SELECTOR = [
   '.table-tools',
   '.table-selector-segment',
   '.link-prompt',
-  '.tabs-media-player',
+  '.aislenote-media-player',
 ].join(', ')
 const AISLE_ACTIVATION_TEXT_BLOCK_SELECTOR = 'p, li, h1, h2, h3, h4, h5, h6, blockquote, pre'
 

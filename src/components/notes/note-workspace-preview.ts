@@ -37,12 +37,12 @@ function isExternalDestination(destination: string) {
 }
 
 function isMediaCandidateDestination(destination: string) {
-  return /^(?:data:image\/|blob:|tabs-asset:)/i.test(destination) || MEDIA_EXTENSION_RE.test(destination)
+  return /^(?:data:image\/|blob:|aislenote-asset:)/i.test(destination) || MEDIA_EXTENSION_RE.test(destination)
 }
 
 function isInternalNoteCandidateDestination(destination: string) {
   if (!destination || isExternalDestination(destination)) return false
-  if (/^(?:data:|blob:|tabs-asset:|mailto:|tel:|#)/i.test(destination)) return false
+  if (/^(?:data:|blob:|aislenote-asset:|mailto:|tel:|#)/i.test(destination)) return false
   return true
 }
 

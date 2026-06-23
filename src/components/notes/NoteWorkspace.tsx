@@ -64,8 +64,8 @@ type HeadingOutlineItem = {
 }
 
 const transformAislePreviewUrl = (url: string, key: string) => {
-  if (key === 'href' && /^tabs-asset:/i.test(url)) return url
-  if (key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^tabs-asset:/i.test(url))) {
+  if (key === 'href' && /^aislenote-asset:/i.test(url)) return url
+  if (key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^aislenote-asset:/i.test(url))) {
     return resolveAssetDisplayUrl(url)
   }
   return defaultUrlTransform(url)
@@ -569,8 +569,8 @@ export function NoteWorkspace({
         }}
         onClickCapture={(event) => {
           const target = event.target instanceof Element ? event.target : null
-          const tagToken = target?.closest<HTMLElement>('[data-tabs-tag]')
-          const tag = tagToken?.dataset.tabsTag?.trim()
+          const tagToken = target?.closest<HTMLElement>('[data-aislenote-tag]')
+          const tag = tagToken?.dataset.aislenoteTag?.trim()
           if (!tag) return
           event.preventDefault()
           event.stopPropagation()

@@ -19,7 +19,7 @@ describe('theme transfer helpers', () => {
   it('rejects wrapped theme json', () => {
     const result = parseThemeSettingsImport(
       JSON.stringify({
-        type: 'tabs.theme-settings',
+        type: 'aislenote.theme-settings',
         version: 1,
         theme: 'custom1',
         palette: {

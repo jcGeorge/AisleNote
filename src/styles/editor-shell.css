@@ -14,70 +14,70 @@
   height: auto;
 }
 
-.tabs-rendered-markdown-surface {
+.aislenote-rendered-markdown-surface {
   color: var(--editor-text);
   font-size: calc(1rem * var(--note-font-scale, 1));
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-paragraph,
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-list-item {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-paragraph,
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-list-item {
   white-space: pre-wrap;
   tab-size: 4;
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-heading {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-heading {
   color: var(--editor-heading-text, var(--editor-text));
   font-weight: 650;
   letter-spacing: 0;
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-heading-1 {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-heading-1 {
   font-size: calc(1.35rem * var(--note-font-scale, 1));
   line-height: 1.28;
   margin: 0.32rem 0 0.16rem;
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-heading-2 {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-heading-2 {
   font-size: calc(1.2rem * var(--note-font-scale, 1));
   line-height: 1.32;
   margin: 0.24rem 0 0.12rem;
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-heading-3 {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-heading-3 {
   font-size: calc(1.08rem * var(--note-font-scale, 1));
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-heading-4 {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-heading-4 {
   font-size: calc(1rem * var(--note-font-scale, 1));
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-heading-5 {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-heading-5 {
   font-size: calc(0.92rem * var(--note-font-scale, 1));
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-heading-6 {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-heading-6 {
   font-size: calc(0.86rem * var(--note-font-scale, 1));
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-link,
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-image-label {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-link,
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-image-label {
   color: var(--editor-link-text, var(--accent));
   text-decoration: underline;
   text-underline-offset: 0.16em;
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-link {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-link {
   cursor: pointer;
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-link:hover,
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-link:focus-visible {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-link:hover,
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-link:focus-visible {
   color: var(--editor-link-hover-text, var(--editor-link-text, var(--accent)));
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-code {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-code {
   color: var(--editor-text);
   background: var(--editor-code-bg, color-mix(in srgb, var(--editor-bg) 82%, var(--app-border)));
   border-radius: 0.18em;
@@ -86,33 +86,33 @@
   font-size: 0.92em;
 }
 
-.tabs-rendered-markdown-surface pre,
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-code-block-line {
+.aislenote-rendered-markdown-surface pre,
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-code-block-line {
   color: var(--editor-text);
   background: var(--editor-pre-bg);
   border-radius: 0.18rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
 }
 
-.tabs-rendered-markdown-surface pre {
+.aislenote-rendered-markdown-surface pre {
   overflow: auto;
   padding: 0.55rem;
 }
 
-.tabs-rendered-markdown-surface blockquote,
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-blockquote-line {
+.aislenote-rendered-markdown-surface blockquote,
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-blockquote-line {
   color: var(--editor-blockquote-text);
   background: var(--editor-blockquote-bg);
 }
 
-.tabs-rendered-markdown-surface blockquote {
+.aislenote-rendered-markdown-surface blockquote {
   position: relative;
   border: 0;
   margin: 0.18em 0;
   padding: 0.08em 0 0.08em 0.95rem;
 }
 
-.tabs-rendered-markdown-surface blockquote::before {
+.aislenote-rendered-markdown-surface blockquote::before {
   content: '';
   position: absolute;
   left: 0.18rem;
@@ -125,17 +125,17 @@
   pointer-events: none;
 }
 
-.tabs-rendered-markdown-surface ul.tabs-dash-list {
+.aislenote-rendered-markdown-surface ul.aislenote-dash-list {
   list-style: none;
   padding-left: 1.35rem;
 }
 
-.tabs-rendered-markdown-surface ul.tabs-dash-list > li:not(.task-list-item) {
+.aislenote-rendered-markdown-surface ul.aislenote-dash-list > li:not(.task-list-item) {
   position: relative;
   list-style: none;
 }
 
-.tabs-rendered-markdown-surface ul.tabs-dash-list > li:not(.task-list-item)::before {
+.aislenote-rendered-markdown-surface ul.aislenote-dash-list > li:not(.task-list-item)::before {
   content: '';
   position: absolute;
   left: -1.2rem;
@@ -147,35 +147,35 @@
   opacity: var(--editor-list-marker-opacity, 1);
 }
 
-.tabs-rendered-markdown-surface .contains-task-list {
+.aislenote-rendered-markdown-surface .contains-task-list {
   list-style: none;
   padding-left: 0;
 }
 
-.tabs-rendered-markdown-surface .task-list-item {
+.aislenote-rendered-markdown-surface .task-list-item {
   display: flex;
   align-items: baseline;
   gap: 0.42rem;
   list-style: none;
 }
 
-.tabs-rendered-markdown-surface .task-list-item::before,
-.tabs-rendered-markdown-surface .task-list-item::marker {
+.aislenote-rendered-markdown-surface .task-list-item::before,
+.aislenote-rendered-markdown-surface .task-list-item::marker {
   content: none !important;
 }
 
-.tabs-rendered-markdown-surface .task-list-item > input[type='checkbox'] {
+.aislenote-rendered-markdown-surface .task-list-item > input[type='checkbox'] {
   flex: 0 0 auto;
   margin: 0 0.08rem 0 0;
   accent-color: var(--app-primary);
 }
 
-.tabs-rendered-markdown-surface p.tabs-annotation-line {
+.aislenote-rendered-markdown-surface p.aislenote-annotation-line {
   position: relative;
   padding-left: 2.4rem;
 }
 
-.tabs-rendered-markdown-surface p.tabs-annotation-line::before {
+.aislenote-rendered-markdown-surface p.aislenote-annotation-line::before {
   content: '';
   position: absolute;
   left: 0.35rem;
@@ -188,7 +188,7 @@
   transform: translateY(-50%);
 }
 
-.tabs-rendered-markdown-surface .tabs-annotation-inline-arrow {
+.aislenote-rendered-markdown-surface .aislenote-annotation-inline-arrow {
   display: inline-block;
   width: 1.35rem;
   color: var(--editor-text);
@@ -197,7 +197,7 @@
   vertical-align: -0.08em;
 }
 
-.tabs-rendered-markdown-surface table {
+.aislenote-rendered-markdown-surface table {
   border-collapse: collapse;
   border: 1px solid var(--editor-table-grid-border);
   color: var(--editor-text);
@@ -205,8 +205,8 @@
   margin: 0.35em 0;
 }
 
-.tabs-rendered-markdown-surface th,
-.tabs-rendered-markdown-surface td {
+.aislenote-rendered-markdown-surface th,
+.aislenote-rendered-markdown-surface td {
   border: 1px solid var(--editor-table-grid-border);
   background: var(--editor-bg);
   color: var(--editor-text);
@@ -217,19 +217,19 @@
   text-align: inherit;
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-strong {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-strong {
   font-weight: 700;
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-emphasis {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-emphasis {
   font-style: italic;
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-strike {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-strike {
   text-decoration: line-through;
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-highlight {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-highlight {
   color: var(--editor-highlight-text, #1f2937);
   background: var(--editor-highlight-bg, #fde047);
   border-radius: 0.14em;
@@ -238,8 +238,8 @@
   box-decoration-break: clone;
 }
 
-.tabs-rendered-markdown-surface .tabs-rendered-markdown-hr,
-.tabs-rendered-markdown-surface hr {
+.aislenote-rendered-markdown-surface .aislenote-rendered-markdown-hr,
+.aislenote-rendered-markdown-surface hr {
   display: block;
   height: 1px;
   margin: 0.95rem 0;
@@ -407,7 +407,7 @@
   background: transparent;
 }
 
-.tabs-note-preview-widget-host {
+.aislenote-note-preview-widget-host {
   display: block;
   clear: both;
   position: relative;
@@ -436,11 +436,11 @@
   cursor: default;
 }
 
-.tabs-note-preview-widget-host:has(.note-preview-widget.is-action-menu-open) {
+.aislenote-note-preview-widget-host:has(.note-preview-widget.is-action-menu-open) {
   z-index: 40;
 }
 
-.tabs-note-preview-widget-host .note-preview-widget {
+.aislenote-note-preview-widget-host .note-preview-widget {
   margin: 0;
 }
 
@@ -1980,7 +1980,7 @@
   background: var(--context-menu-item-hover-bg);
 }
 
-.tag-autocomplete-token.tabs-tag-token {
+.tag-autocomplete-token.aislenote-tag-token {
   color: var(--editor-tag-text);
   background: var(--editor-tag-bg);
   font-size: inherit;

@@ -19,7 +19,7 @@ import {
 const tempRoots = []
 
 function tempRoot() {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'tabs-notebook-library-'))
+  const root = mkdtempSync(path.join(os.tmpdir(), 'aislenote-notebook-library-'))
   tempRoots.push(root)
   return root
 }
@@ -83,7 +83,7 @@ function readRawLibrary(userDataPath) {
 }
 
 function readNotebookIndex(root) {
-  return JSON.parse(readFileSync(path.join(root, '.tabs', 'notebook-index.json'), 'utf8'))
+  return JSON.parse(readFileSync(path.join(root, '.aislenote', 'notebook-index.json'), 'utf8'))
 }
 
 function getRootNotePath(root) {

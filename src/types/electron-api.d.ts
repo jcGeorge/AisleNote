@@ -402,8 +402,8 @@ declare global {
       readDiagnosticLogEntries?: (payload: { dayKey: string }) => Promise<DiagnosticLogEntriesResult>
       openDiagnosticsFolder?: () => Promise<OpenDiagnosticsFolderResult>
     }
-    __tabsGetLatestAppState?: () => string
-    __tabsGetAppStateRevision?: () => number
-    __tabsHandleMultilineShortcut?: (direction: 'up' | 'down') => boolean
+    __aislenoteGetLatestAppState?: () => string
+    __aislenoteGetAppStateRevision?: () => number
+    __aislenoteHandleMultilineShortcut?: (direction: 'up' | 'down') => boolean
   }
 }

@@ -161,7 +161,7 @@ const AISLE_EDITOR_INTERSECTION_ROOT_MARGIN = '240px'
 const DISPLAY_RESTORE_MAX_FRAME_ATTEMPTS = 8
 
 function countMarkdownLinks(markdown: string): number {
-  return String(markdown ?? '').match(/\[[^\]\n]+\]\((?:https?:\/\/|#tabs-note\/)[^)]+\)/gi)?.length ?? 0
+  return String(markdown ?? '').match(/\[[^\]\n]+\]\((?:https?:\/\/|#aislenote-note\/)[^)]+\)/gi)?.length ?? 0
 }
 
 function buildMountedAisleIds({

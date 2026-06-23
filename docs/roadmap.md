@@ -1,4 +1,4 @@
-# Tabs Roadmap
+# AisleNote Roadmap
 
 This roadmap prioritizes stabilizing the local-first product core before broad UI overhaul, desktop release work, or PWA/mobile packaging.
 
@@ -35,7 +35,7 @@ Goal: make the manifest/Markdown/assets storage model resilient enough for real 
 
 Completed outcomes:
 
-- `docs/storage-schema.md` now describes the current generic notebook tree, visible Markdown files, `.tabs/` metadata, and asset layout as canonical.
+- `docs/storage-schema.md` now describes the current generic notebook tree, visible Markdown files, `.aislenote/` metadata, and asset layout as canonical.
 - Missing Markdown files, missing/corrupt trash manifests, corrupt branch manifests, corrupt/unsupported root manifests, stale revisions, conflict folders, and paused-write safeguards are covered by storage behavior and tests.
 - Settings > Data surfaces notebook folder transfer, user-settings transfer, notebook create/switch/move actions, notebook-folder health, folder path, schema/writable state, issue details, reveal folder, and retry reload actions.
 - Browser hybrid storage and Electron filesystem storage have parity coverage for the current logical app state.

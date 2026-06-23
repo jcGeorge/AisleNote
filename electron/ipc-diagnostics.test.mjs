@@ -18,7 +18,7 @@ function createIpcMain() {
 }
 
 async function withTempUserDataPath(run) {
-  const userDataPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-diagnostics-user-data-'))
+  const userDataPath = mkdtempSync(path.join(os.tmpdir(), 'aislenote-diagnostics-user-data-'))
   try {
     return await run(userDataPath)
   } finally {

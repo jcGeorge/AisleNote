@@ -4,7 +4,7 @@ import {
   type TableSelectionRange,
 } from './table-editing'
 
-export const TABS_TABLE_SELECTION_CLIPBOARD_MIME = 'application/x-tabs-table-selection'
+export const AISLENOTE_TABLE_SELECTION_CLIPBOARD_MIME = 'application/x-aislenote-table-selection'
 
 export type TableSelectionClipboardCell = {
   node: unknown | null
@@ -141,7 +141,7 @@ export function writeTableSelectionClipboardData(
   serialization: TableSelectionClipboardSerialization,
 ): boolean {
   if (!clipboardData) return false
-  clipboardData.setData(TABS_TABLE_SELECTION_CLIPBOARD_MIME, JSON.stringify(serialization.payload))
+  clipboardData.setData(AISLENOTE_TABLE_SELECTION_CLIPBOARD_MIME, JSON.stringify(serialization.payload))
   clipboardData.setData('text/html', serialization.html)
   clipboardData.setData('text/plain', serialization.text)
   return true
@@ -173,7 +173,7 @@ export function readTableSelectionClipboardPayloadFromDataTransfer(
 ): TableSelectionClipboardPayload | null {
   if (!dataTransfer) return null
   try {
-    return parseTableSelectionClipboardPayload(dataTransfer.getData(TABS_TABLE_SELECTION_CLIPBOARD_MIME) ?? '')
+    return parseTableSelectionClipboardPayload(dataTransfer.getData(AISLENOTE_TABLE_SELECTION_CLIPBOARD_MIME) ?? '')
   } catch {
     return null
   }
@@ -303,8 +303,8 @@ export async function readTableSelectionClipboardPayloadFromClipboard(
   try {
     const items = await clipboard.read()
     for (const item of items) {
-      if (!item.types?.includes(TABS_TABLE_SELECTION_CLIPBOARD_MIME) || !item.getType) continue
-      const blob = await item.getType(TABS_TABLE_SELECTION_CLIPBOARD_MIME)
+      if (!item.types?.includes(AISLENOTE_TABLE_SELECTION_CLIPBOARD_MIME) || !item.getType) continue
+      const blob = await item.getType(AISLENOTE_TABLE_SELECTION_CLIPBOARD_MIME)
       return parseTableSelectionClipboardPayload(await blob.text())
     }
   } catch {

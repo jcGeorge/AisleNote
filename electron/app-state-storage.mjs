@@ -16,17 +16,17 @@ import YAML from 'yaml'
 import { buildAssetUrl, normalizeImageAssetPath } from '../src/markdown/image-asset-refs.js'
 
 export const SCHEMA_VERSION = 2
-export const TABS_METADATA_DIR = '.tabs'
+export const AISLENOTE_METADATA_DIR = '.aislenote'
 export const USER_SETTINGS_FILE_PATH = path.join('settings', 'app-settings.json')
 
-const NOTEBOOK_INDEX_FILE = '.tabs/notebook-index.json'
-const NAVIGATION_STATE_FILE = '.tabs/navigation-state.json'
-const NOTE_REGISTRY_FILE = '.tabs/note-registry.json'
-const TRASH_INDEX_FILE = '.tabs/trash-index.json'
-const FRONTMATTER_SETTINGS_FILE = '.tabs/frontmatter-settings.json'
-const EDITOR_STATE_FILE = '.tabs/editor-state.json'
-const MESSAGES_FILE = '.tabs/messages.json'
-const SYNC_STATE_FILE = '.tabs/sync-state.json'
+const NOTEBOOK_INDEX_FILE = '.aislenote/notebook-index.json'
+const NAVIGATION_STATE_FILE = '.aislenote/navigation-state.json'
+const NOTE_REGISTRY_FILE = '.aislenote/note-registry.json'
+const TRASH_INDEX_FILE = '.aislenote/trash-index.json'
+const FRONTMATTER_SETTINGS_FILE = '.aislenote/frontmatter-settings.json'
+const EDITOR_STATE_FILE = '.aislenote/editor-state.json'
+const MESSAGES_FILE = '.aislenote/messages.json'
+const SYNC_STATE_FILE = '.aislenote/sync-state.json'
 const ASSETS_DIR = 'assets'
 const MANIFEST_FILE = 'manifest.json'
 const MARKDOWN_EXTENSION_RE = /\.md$/i
@@ -250,7 +250,7 @@ export function createStorageFilesFingerprint(entries) {
 function listStorageFileContents(rootPath, currentPath = rootPath, entries = []) {
   if (!existsSync(currentPath)) return entries
   for (const entry of readdirSync(currentPath, { withFileTypes: true })) {
-    if (entry.name.startsWith('.') && entry.name !== TABS_METADATA_DIR) continue
+    if (entry.name.startsWith('.') && entry.name !== AISLENOTE_METADATA_DIR) continue
     const absolutePath = path.join(currentPath, entry.name)
     const relativePath = path.relative(rootPath, absolutePath)
     if (entry.isDirectory()) {
@@ -267,7 +267,7 @@ function buildManifest(notebookId = null, syncMetadata = null) {
   return {
     schemaVersion: SCHEMA_VERSION,
     notebookId,
-    createdBy: 'tabs',
+    createdBy: 'aislenote',
     files: {
       notebookIndex: NOTEBOOK_INDEX_FILE,
       navigationState: NAVIGATION_STATE_FILE,
@@ -513,7 +513,7 @@ function pruneGeneratedNotebookFiles(rootPath, expectedFiles) {
 
   function visit(directoryPath) {
     for (const entry of readdirSync(directoryPath, { withFileTypes: true })) {
-      if (entry.name === TABS_METADATA_DIR || entry.name === ASSETS_DIR || entry.name === 'settings') continue
+      if (entry.name === AISLENOTE_METADATA_DIR || entry.name === ASSETS_DIR || entry.name === 'settings') continue
       const absolutePath = path.join(directoryPath, entry.name)
       const relativePath = path.relative(rootPath, absolutePath).split(path.sep).join('/')
       if (entry.isDirectory()) {
@@ -1055,7 +1055,7 @@ export function writeNotebookFolderExport(destinationRootPath, serializedState, 
 }
 
 export async function importNotebookZipArchive(archivePath) {
-  const tempRoot = path.join(os.tmpdir(), `tabs-import-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+  const tempRoot = path.join(os.tmpdir(), `aislenote-import-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   try {
     const zip = await JSZip.loadAsync(readFileSync(archivePath))
     const files = Object.values(zip.files)

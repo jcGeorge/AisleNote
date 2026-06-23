@@ -1,7 +1,7 @@
 import { normalizeImageResizeMetadataFragment } from './image-metadata-core.js'
 
-const IMAGE_METADATA_FRAGMENT_PREFIX = '#tabs-image='
-const MEDIA_METADATA_FRAGMENT_PREFIX = '#tabs-media='
+const IMAGE_METADATA_FRAGMENT_PREFIX = '#aislenote-image='
+const MEDIA_METADATA_FRAGMENT_PREFIX = '#aislenote-media='
 
 export function splitAssetMetadataFromUrl(url) {
   const source = String(url ?? '')

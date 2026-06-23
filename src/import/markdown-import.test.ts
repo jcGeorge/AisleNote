@@ -152,14 +152,14 @@ describe('Markdown folder import', () => {
       assets,
       importAsset: async (asset) => {
         imported.push(asset)
-        return `tabs-asset:///${asset.relativePath}`
+        return `aislenote-asset:///${asset.relativePath}`
       },
     })
     const markdown = getImportedMarkdownForTitle(result, 'Etc')
 
-    expect(markdown).toContain('![Pasted Graphic.png](tabs-asset:///Z-Assets/Pasted Graphic.png)')
-    expect(markdown).toContain('![local](tabs-asset:///Ministry/local.png)')
-    expect(markdown).toContain('[report](tabs-asset:///Ministry/Flag/docs/report.pdf)')
+    expect(markdown).toContain('![Pasted Graphic.png](aislenote-asset:///Z-Assets/Pasted Graphic.png)')
+    expect(markdown).toContain('![local](aislenote-asset:///Ministry/local.png)')
+    expect(markdown).toContain('[report](aislenote-asset:///Ministry/Flag/docs/report.pdf)')
     expect(markdown).toContain('![[Missing.png]]')
     expect(imported).toHaveLength(3)
     expect(result.summary.importedAssets).toBe(3)

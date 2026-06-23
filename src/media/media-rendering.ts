@@ -102,9 +102,9 @@ export function applyMediaMetadataToPlayer(
   wrapper.removeAttribute('style')
   assignStyles(wrapper, getMediaRootStyle(metadata))
 
-  const viewport = wrapper.querySelector<HTMLElement>('.tabs-media-viewport')
-  const frame = wrapper.querySelector<HTMLElement>('.tabs-media-frame')
-  const video = wrapper.querySelector<HTMLVideoElement>('video.tabs-media-video')
+  const viewport = wrapper.querySelector<HTMLElement>('.aislenote-media-viewport')
+  const frame = wrapper.querySelector<HTMLElement>('.aislenote-media-frame')
+  const video = wrapper.querySelector<HTMLVideoElement>('video.aislenote-media-video')
   if (viewport) {
     viewport.removeAttribute('style')
     assignStyles(viewport, getMediaViewportStyle(metadata, naturalAspectRatio))

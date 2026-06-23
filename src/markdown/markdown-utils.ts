@@ -545,7 +545,7 @@ function stripStandaloneBlankLinePlaceholders(markdown: string): string {
   return normalizeBlankLineRuns(markdown)
 }
 
-export function convertInternalTabsForExport(markdown: string): string {
+export function convertInternalAisleNoteForExport(markdown: string): string {
   return stripBlockIndentTokensFromQuotedLines(
     stripStandaloneBlankLinePlaceholders(decodeBlockIndentHtmlForInternalMarkdown(markdown)),
   )

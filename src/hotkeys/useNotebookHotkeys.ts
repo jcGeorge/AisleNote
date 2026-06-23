@@ -8,6 +8,7 @@ export type NotebookHotkeyIntent = Extract<
   | 'newNote'
   | 'newFolder'
   | 'toggleNotesTrash'
+  | 'toggleNotesScratchpad'
   | 'toggleNotesFilter'
   | 'cycleAislePrev'
   | 'cycleAisleNext'
@@ -24,6 +25,7 @@ const NOTEBOOK_HOTKEY_INTENTS: NotebookHotkeyIntent[] = [
   'newNote',
   'newFolder',
   'toggleNotesTrash',
+  'toggleNotesScratchpad',
   'toggleNotesFilter',
   'cycleAislePrev',
   'cycleAisleNext',

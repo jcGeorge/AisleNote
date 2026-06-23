@@ -13,7 +13,7 @@ import { isInsideReadonlyNotePreview } from './note-preview-dom'
 import { getWysiwygView } from './prosemirror-utils'
 import {
   getMediaTransformMetadata,
-  isTabsAssetMediaUrl,
+  isAisleNoteAssetMediaUrl,
   withMediaTransformMetadata,
   type MediaTransformMetadata,
 } from '../media/media-metadata'
@@ -119,7 +119,7 @@ function getUpdatedRotation(current: MediaTransformMetadata, operation: ImageTra
 }
 
 function captureVideoPlayback(player: HTMLElement): VideoPlaybackSnapshot | null {
-  const video = player.querySelector<HTMLVideoElement>('video.tabs-media-video')
+  const video = player.querySelector<HTMLVideoElement>('video.aislenote-media-video')
   if (!video) return null
   return {
     currentTime: Number.isFinite(video.currentTime) ? video.currentTime : 0,
@@ -130,7 +130,7 @@ function captureVideoPlayback(player: HTMLElement): VideoPlaybackSnapshot | null
 
 function restoreVideoPlayback(player: HTMLElement, snapshot: VideoPlaybackSnapshot | null) {
   if (!snapshot) return
-  const video = player.querySelector<HTMLVideoElement>('video.tabs-media-video')
+  const video = player.querySelector<HTMLVideoElement>('video.aislenote-media-video')
   if (!video) return
   video.loop = snapshot.loop
   if (Number.isFinite(snapshot.currentTime) && snapshot.currentTime > 0) {
@@ -216,7 +216,7 @@ export function useMediaTools({
       return false
     }
     const placement = getImageToolPlacement(rect)
-    const viewportRect = media.querySelector<HTMLElement>('.tabs-media-viewport')?.getBoundingClientRect()
+    const viewportRect = media.querySelector<HTMLElement>('.aislenote-media-viewport')?.getBoundingClientRect()
     const resizePlacement =
       viewportRect && isUsableImageToolPlacementRect(viewportRect)
         ? getVideoViewportResizeToolPlacement(viewportRect)
@@ -238,7 +238,7 @@ export function useMediaTools({
       close()
       return
     }
-    if (!sourceUrl || !isTabsAssetMediaUrl(sourceUrl)) {
+    if (!sourceUrl || !isAisleNoteAssetMediaUrl(sourceUrl)) {
       close()
       return
     }
@@ -292,7 +292,7 @@ export function useMediaTools({
       from: range.from,
       to: range.to,
     }
-    const video = media.querySelector<HTMLVideoElement>('video.tabs-media-video')
+    const video = media.querySelector<HTMLVideoElement>('video.aislenote-media-video')
     applyMediaMetadataToPlayer(media, nextUrl, getVideoNaturalAspectRatio(video))
     restoreVideoPlayback(media, playback)
     window.requestAnimationFrame(() => refreshPosition({ closeOnMissing: false }))
@@ -315,7 +315,7 @@ export function useMediaTools({
     const media = activeMediaRef.current?.isConnected ? activeMediaRef.current : recoverActiveMedia()
     if (!media) return
     const sourceUrl = getSourceUrl(media)
-    const video = media.querySelector<HTMLVideoElement>('video.tabs-media-video')
+    const video = media.querySelector<HTMLVideoElement>('video.aislenote-media-video')
     const aspectRatio = getMediaViewportAspectRatio(getCurrentMetadata(sourceUrl), getVideoNaturalAspectRatio(video))
     media.classList.add('is-media-resizing')
     mediaResizeRef.current = {

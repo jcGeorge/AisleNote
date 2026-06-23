@@ -392,7 +392,7 @@ function getSourceFileName(source: string): string {
   if (!normalized || normalized.startsWith('data:')) return ''
 
   try {
-    const parsed = new URL(normalized, 'https://tabs.local')
+    const parsed = new URL(normalized, 'https://aislenote.local')
     const segment = parsed.pathname.split('/').pop() ?? ''
     return decodeURIComponent(segment).trim()
   } catch {

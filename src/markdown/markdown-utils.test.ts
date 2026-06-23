@@ -4,7 +4,7 @@ import {
   BLOCK_INDENT_TOKEN,
   countBlockIndentLevels,
   countLeadingIndentUnits,
-  convertInternalTabsForExport,
+  convertInternalAisleNoteForExport,
   decodeBlockIndentHtmlForInternalMarkdown,
   encodeBlockIndentTokensForPersistence,
   EDITOR_BLANK_LINE_PLACEHOLDER,
@@ -990,12 +990,12 @@ describe('markdown WYSIWYG blank line preservation', () => {
   })
 
   it('strips standalone blank-line placeholders from export markdown', () => {
-    expect(convertInternalTabsForExport(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)).toBe('one\n\ntwo')
+    expect(convertInternalAisleNoteForExport(`one\n\n${EDITOR_BLANK_LINE_PLACEHOLDER}\n\ntwo`)).toBe('one\n\ntwo')
   })
 
   it('exports block indent and paragraph indent tokens as spaces', () => {
     expect(countBlockIndentLevels(`${BLOCK_INDENT_TOKEN.repeat(2)}${INDENT_TOKEN}one`)).toBe(2)
-    expect(convertInternalTabsForExport(`${BLOCK_INDENT_TOKEN.repeat(2)}${INDENT_TOKEN}one`)).toBe('            one')
+    expect(convertInternalAisleNoteForExport(`${BLOCK_INDENT_TOKEN.repeat(2)}${INDENT_TOKEN}one`)).toBe('            one')
   })
 
   it('persists block indent tokens as explicit tab-block wrappers', () => {
@@ -1072,7 +1072,7 @@ describe('markdown WYSIWYG blank line preservation', () => {
         '</div>',
       ].join('\n'),
     )
-    expect(convertInternalTabsForExport(`> ${BLOCK_INDENT_TOKEN}quote\n${BLOCK_INDENT_TOKEN}normal`)).toBe(
+    expect(convertInternalAisleNoteForExport(`> ${BLOCK_INDENT_TOKEN}quote\n${BLOCK_INDENT_TOKEN}normal`)).toBe(
       '> quote\n    normal',
     )
   })

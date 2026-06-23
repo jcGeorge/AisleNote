@@ -69,8 +69,8 @@ describe('MediaToolsOverlay', () => {
   it('lets resized video viewports scale vertically with their width', () => {
     const css = readFileSync(new URL('../../styles/editor-content.css', import.meta.url), 'utf8')
 
-    expect(css).toContain('.tabs-media-player.is-video.has-media-width .tabs-media-viewport')
-    expect(css).toContain('.tabs-media-player.is-video.is-media-resizing .tabs-media-viewport')
+    expect(css).toContain('.aislenote-media-player.is-video.has-media-width .aislenote-media-viewport')
+    expect(css).toContain('.aislenote-media-player.is-video.is-media-resizing .aislenote-media-viewport')
     expect(css).toContain('max-height: none;')
   })
 })

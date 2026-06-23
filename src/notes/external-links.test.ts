@@ -21,7 +21,7 @@ describe('external web links', () => {
   })
 
   it('rejects non-web links', () => {
-    expect(normalizeExternalWebUrl('tabs://note/body-1')).toBeNull()
+    expect(normalizeExternalWebUrl('aislenote://note/body-1')).toBeNull()
     expect(normalizeExternalWebUrl('mailto:test@example.com')).toBeNull()
     expect(normalizeExternalWebUrl('normal text')).toBeNull()
     expect(normalizeExternalWebUrl('example .com')).toBeNull()

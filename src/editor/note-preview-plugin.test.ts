@@ -196,7 +196,7 @@ describe('note preview plugin', () => {
     expect(inline).toMatchObject({
       from: 1,
       to: 1 + token.length,
-      attrs: { class: 'tabs-note-preview-source-hidden' },
+      attrs: { class: 'aislenote-note-preview-source-hidden' },
     })
   })
 
@@ -230,19 +230,19 @@ describe('note preview plugin', () => {
         type: 'node',
         from: 0,
         to: paragraphSize,
-        attrs: { class: 'tabs-note-preview-source-block-hidden' },
+        attrs: { class: 'aislenote-note-preview-source-block-hidden' },
       },
       {
         type: 'node',
         from: paragraphSize,
         to: paragraphSize * 2,
-        attrs: { class: 'tabs-note-preview-source-block-hidden' },
+        attrs: { class: 'aislenote-note-preview-source-block-hidden' },
       },
       {
         type: 'node',
         from: paragraphSize * 2,
         to: paragraphSize * 3,
-        attrs: { class: 'tabs-note-preview-source-block-hidden' },
+        attrs: { class: 'aislenote-note-preview-source-block-hidden' },
       },
     ])
   })

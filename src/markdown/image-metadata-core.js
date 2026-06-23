@@ -1,4 +1,4 @@
-export const IMAGE_RESIZE_METADATA_FRAGMENT_PREFIX = '#tabs-image='
+export const IMAGE_RESIZE_METADATA_FRAGMENT_PREFIX = '#aislenote-image='
 
 function normalizeImageResizeWidth(value) {
   const width = typeof value === 'number' ? value : Number(value)

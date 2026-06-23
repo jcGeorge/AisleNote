@@ -36,7 +36,7 @@ export const REQUIRED_ROOT_SPLIT_FILE_KEYS = Object.freeze([
 const DEFAULT_COMMAND_SHORTCUTS = {
   openSettings: 'Mod+,',
   toggleNotesTrash: 'Mod+T',
-  toggleNotesScratchpad: 'Mod+/',
+  toggleNotesScratchpad: 'Mod+S',
   toggleNotesFilter: '',
   newNote: 'Mod+N',
   newFolder: 'Mod+Shift+N',
@@ -124,7 +124,6 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   visualsSettingsSection: 'theming',
   noteFontScale: 1,
   toolbarButtonScale: 1,
-  scratchpadAisleLimit: 16,
   noteCursorLocations: {},
   headingCollapseState: {},
   aisleWidths: {},
@@ -134,8 +133,6 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
 
 const MIN_AISLE_WIDTH_PX = 160
 const MAX_AISLE_WIDTH_PX = 1200
-const MIN_SCRATCHPAD_AISLE_LIMIT = 8
-const MAX_SCRATCHPAD_AISLE_LIMIT = 40
 const THEME_PALETTE_IDS = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
 const CUSTOM_THEME_IDS = ['custom1', 'custom2', 'custom3']
 const DATA_SETTINGS_SECTIONS = ['transfer', 'storage', 'trash']
@@ -191,9 +188,6 @@ function normalizeShortcutValue(raw, fallback) {
 }
 
 function getRawShortcutValue(rawShortcuts, shortcutId) {
-  if (shortcutId === 'toggleNotesTrash') {
-    return rawShortcuts.toggleNotesTrash ?? rawShortcuts.toggleTabsTarget
-  }
   return rawShortcuts[shortcutId]
 }
 
@@ -252,12 +246,6 @@ function normalizeShortcutSettings(raw) {
     shortcuts,
     newlineShortcuts: normalizeNewlineShortcutSettings(source.newlineShortcuts),
   }
-}
-
-function optionalScratchpadAisleLimit(value, fallback) {
-  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10)
-  if (!Number.isFinite(parsed)) return fallback
-  return Math.min(MAX_SCRATCHPAD_AISLE_LIMIT, Math.max(MIN_SCRATCHPAD_AISLE_LIMIT, Math.floor(parsed)))
 }
 
 function isPortableSettingsRecord(value) {
@@ -468,10 +456,6 @@ export function extractSyncedUiSettings(rawUi) {
     selectedCustomTheme: normalizeSelectedCustomTheme(ui.selectedCustomTheme),
     themePalettes,
     toolbarLayouts: optionalArray(ui.toolbarLayouts, DEFAULT_SYNCED_UI_SETTINGS.toolbarLayouts),
-    scratchpadAisleLimit: optionalScratchpadAisleLimit(
-      ui.scratchpadAisleLimit,
-      DEFAULT_SYNCED_UI_SETTINGS.scratchpadAisleLimit,
-    ),
     disabledTipIds: optionalArray(ui.disabledTipIds, DEFAULT_SYNCED_UI_SETTINGS.disabledTipIds),
   }
 }
@@ -500,10 +484,6 @@ export function extractAppearanceSettings(appState) {
       typeof ui.toolbarButtonScale === 'number'
         ? ui.toolbarButtonScale
         : DEFAULT_SYNCED_UI_SETTINGS.toolbarButtonScale,
-    scratchpadAisleLimit: optionalScratchpadAisleLimit(
-      ui.scratchpadAisleLimit,
-      DEFAULT_SYNCED_UI_SETTINGS.scratchpadAisleLimit,
-    ),
   }
 }
 

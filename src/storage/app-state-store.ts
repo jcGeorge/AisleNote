@@ -5,7 +5,7 @@ import { measureSlowAsyncOperation, measureSlowOperation } from '../performance/
 import { isNativeCapacitorRuntime } from '../platform/data-platform'
 import type { AppStateSaveOptions } from './persistence-debounce'
 
-export const APP_STATE_STORAGE_KEY = 'tabs:app-state-cache:v1'
+export const APP_STATE_STORAGE_KEY = 'aislenote:app-state-cache:v1'
 const SAVE_DIAGNOSTIC_THROTTLE_MS = 10_000
 const SAVE_METRICS_SLOW_THRESHOLD_MS = 50
 
@@ -149,7 +149,7 @@ class ElectronAppStateStore implements AppStateStore {
   private lastSaveMetricsDiagnosticAtByKey = new Map<string, number>()
 
   constructor() {
-    window.__tabsGetAppStateRevision = () => this.revision
+    window.__aislenoteGetAppStateRevision = () => this.revision
     window.electronAPI?.onStorageProfileStatusUpdated?.((status) => {
       this.savesBlockedByLoadFailure = status.status !== 'ready'
       const nextRevision = status.revision
@@ -452,7 +452,7 @@ class ElectronAppStateStore implements AppStateStore {
         this.savesBlockedByLoadFailure = false
         this.revision = payload.revision
         if (typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
-          window.dispatchEvent(new CustomEvent('tabs:external-app-state-updated'))
+          window.dispatchEvent(new CustomEvent('aislenote:external-app-state-updated'))
         }
         this.notifySubscribers(payload.serializedState)
       }) ?? (() => undefined)

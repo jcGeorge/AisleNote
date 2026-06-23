@@ -162,7 +162,7 @@ export function ReadOnlyMarkdownViewer({
   return (
     <div
       ref={hostRef}
-      className={`${className} tabs-note-preview-readonly-viewer`.trim()}
+      className={`${className} aislenote-note-preview-readonly-viewer`.trim()}
       onClick={handleClick}
       data-note-preview-readonly-viewer="true"
     />

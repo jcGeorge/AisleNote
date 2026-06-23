@@ -3,7 +3,7 @@ import { MAX_NOTE_AISLES } from '../editor/aisle-edit-draft'
 import { createReservedIdAllocator, type IdGenerator } from '../state/navigation-ids'
 import { collectNotebookIds, findNotebookNote, getNotebookNotePathLabel } from '../state/notebook'
 
-export const TABS_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME = 'application/x-tabs-notebook-structure'
+export const AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME = 'application/x-aislenote-notebook-structure'
 
 export type NotebookStructureClipboardKind = 'note' | 'aisle'
 export type NotebookStructureClipboardMode = 'independent' | 'synced'
@@ -237,7 +237,7 @@ export function readNotebookStructureClipboardPayloadFromDataTransfer(
 ): NotebookStructureClipboardPayload | null {
   if (!dataTransfer) return null
   try {
-    const structured = dataTransfer.getData(TABS_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME)
+    const structured = dataTransfer.getData(AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME)
     const payload = structured ? parseNotebookStructureClipboardPayload(structured) : null
     if (payload) return payload
   } catch {
@@ -261,8 +261,8 @@ export async function readNotebookStructureClipboardPayloadFromNavigator(
     try {
       const items = await clipboard.read()
       for (const item of items) {
-        if (!item.types.includes(TABS_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME)) continue
-        const blob = await item.getType(TABS_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME)
+        if (!item.types.includes(AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME)) continue
+        const blob = await item.getType(AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME)
         const payload = parseNotebookStructureClipboardPayload(await blob.text())
         if (payload) return payload
       }
@@ -295,8 +295,8 @@ export async function writeNotebookStructureClipboardPayload(
     try {
       await clipboard.write([
         new ClipboardItem({
-          [TABS_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME]: new Blob([serializeNotebookStructureClipboardPayload(payload)], {
-            type: TABS_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME,
+          [AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME]: new Blob([serializeNotebookStructureClipboardPayload(payload)], {
+            type: AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME,
           }),
           'text/plain': new Blob([markdown], { type: 'text/plain' }),
         }),

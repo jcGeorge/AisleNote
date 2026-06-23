@@ -289,7 +289,7 @@ describe('editor newline operations', () => {
     const taskItem = createPmNode('listItem', { task: true })
     const plainItem = createPmNode('listItem')
     const bulletList = createPmNode('bulletList', null, [plainItem])
-    const dashList = createPmNode('bulletList', { htmlAttrs: { 'data-tabs-list-marker': 'dash' } }, [plainItem])
+    const dashList = createPmNode('bulletList', { htmlAttrs: { 'data-aislenote-list-marker': 'dash' } }, [plainItem])
     const taskList = createPmNode('bulletList', null, [taskItem])
     const orderedList = createPmNode('orderedList', { order: 1 }, [plainItem])
 

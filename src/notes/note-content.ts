@@ -2,7 +2,7 @@ import { extractMarkdownTags } from '../tags/tags.js'
 import type { NoteAisle, NoteAisleBody, NoteBody } from '../types/app'
 import { createRandomId, type IdGenerator } from '../state/navigation-ids'
 
-export const MAX_NOTE_AISLES = 8
+export const MAX_NOTE_AISLES = 10
 
 export function createId(): string {
   return createRandomId()

@@ -8,7 +8,7 @@ import {
   readNotebookStructureClipboardPayloadFromDataTransfer,
   rememberNotebookStructureClipboardPayload,
   serializeNotebookStructureClipboardPayload,
-  TABS_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME,
+  AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME,
 } from './notebook-structure-clipboard'
 
 function idSequence(ids: string[]) {
@@ -132,8 +132,8 @@ describe('notebook structure clipboard', () => {
       readNotebookStructureClipboardPayloadFromNavigator({
         read: async () => [
           {
-            types: [TABS_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME],
-            getType: async () => new Blob([serialized], { type: TABS_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME }),
+            types: [AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME],
+            getType: async () => new Blob([serialized], { type: AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME }),
           },
         ],
       } as unknown as Clipboard),

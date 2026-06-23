@@ -160,7 +160,7 @@ describe('NoteWorkspace aisle mounting', () => {
 
     expect(html).toContain('is-editor-mount-pending')
     expect(html).not.toContain('>active</')
-    expect(html).toContain('<p class="tabs-rendered-markdown-paragraph">far</p>')
+    expect(html).toContain('<p class="aislenote-rendered-markdown-paragraph">far</p>')
   })
 
   it('renders deferred inactive link-heavy previews as markdown outside arrange mode', () => {
@@ -217,7 +217,7 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).not.toContain('is-lightweight-preview')
     expect(html).toContain('<table>')
     expect(html).toContain('href="https://lucide.dev/icons/table-of-contents"')
-    expect(html).toContain('tabs-rendered-markdown-surface')
+    expect(html).toContain('aislenote-rendered-markdown-surface')
   })
 
   it('renders one-column link-heavy table previews as formatted tables', () => {
@@ -237,7 +237,7 @@ describe('NoteWorkspace aisle mounting', () => {
 
     expect(html).toContain('data-aisle-preview-mode="markdown-preview"')
     expect(html).toContain('<table>')
-    expect(html).toContain('<th><a href="https://lucide.dev/icons/files" class="tabs-rendered-markdown-link" target="_blank" rel="noopener noreferrer">copy</a></th>')
+    expect(html).toContain('<th><a href="https://lucide.dev/icons/files" class="aislenote-rendered-markdown-link" target="_blank" rel="noopener noreferrer">copy</a></th>')
     expect(html).toContain('href="https://lucide.dev/icons/table-of-contents"')
     expect(html).not.toContain('is-lightweight-preview')
   })
@@ -333,7 +333,7 @@ describe('NoteWorkspace aisle mounting', () => {
     })
 
     expect(html.match(/data-note-reference="true"/g) ?? []).toHaveLength(1)
-    expect(html).toContain('class="tabs-rendered-markdown-link"')
+    expect(html).toContain('class="aislenote-rendered-markdown-link"')
     expect(html).toContain('Child note')
     expect(html).toContain('href="https://example.com"')
   })
@@ -490,10 +490,10 @@ describe('NoteWorkspace aisle mounting', () => {
         id: 'media',
         aisleBodyId: 'media',
         markdown: [
-          '[Song](tabs-asset:///assets/song.mp3)',
-          '[Voice](tabs-asset:///assets/voice.wav)',
-          '[Movie](tabs-asset:///assets/movie.mp4)',
-          '[Clip](tabs-asset:///assets/clip.webm)',
+          '[Song](aislenote-asset:///assets/song.mp3)',
+          '[Voice](aislenote-asset:///assets/voice.wav)',
+          '[Movie](aislenote-asset:///assets/movie.mp4)',
+          '[Clip](aislenote-asset:///assets/clip.webm)',
           '[Site](https://example.com)',
         ].join('\n\n'),
       },
@@ -519,11 +519,11 @@ describe('NoteWorkspace aisle mounting', () => {
       />,
     )
 
-    expect(html.match(/tabs-media-player/g) ?? []).toHaveLength(4)
+    expect(html.match(/aislenote-media-player/g) ?? []).toHaveLength(4)
     expect(html.match(/data-media-kind="audio"/g) ?? []).toHaveLength(2)
     expect(html.match(/data-media-kind="video"/g) ?? []).toHaveLength(2)
     expect(html).toContain('aria-label="Song player"')
-    expect(html).toContain('<a href="https://example.com" class="tabs-rendered-markdown-link" target="_blank" rel="noopener noreferrer">Site</a>')
+    expect(html).toContain('<a href="https://example.com" class="aislenote-rendered-markdown-link" target="_blank" rel="noopener noreferrer">Site</a>')
   })
 
   it('renders fallback aisles that start with a heading', () => {
@@ -550,7 +550,7 @@ describe('NoteWorkspace aisle mounting', () => {
     )
 
     expect(html).toContain('aisle-editor-preview-fallback')
-    expect(html).toContain('class="tabs-rendered-markdown-heading tabs-rendered-markdown-heading-1"')
+    expect(html).toContain('class="aislenote-rendered-markdown-heading aislenote-rendered-markdown-heading-1"')
     expect(html).toContain('Top heading</h1>')
   })
 
@@ -577,8 +577,8 @@ describe('NoteWorkspace aisle mounting', () => {
       />,
     )
 
-    expect(html).toContain('style="--tabs-block-indent-level:2"')
-    expect(html).toContain('class="tabs-rendered-markdown-paragraph tabs-block-indent"')
+    expect(html).toContain('style="--aislenote-block-indent-level:2"')
+    expect(html).toContain('class="aislenote-rendered-markdown-paragraph aislenote-block-indent"')
     expect(html).toContain('indented')
     expect(html).not.toContain(BLOCK_INDENT_TOKEN)
   })

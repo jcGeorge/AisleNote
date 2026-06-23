@@ -5,7 +5,7 @@ import { getHybridStorageRoot } from './app-state-storage.mjs'
 import { normalizeImageAssetPath } from '../src/markdown/image-asset-refs.js'
 import { getMimeTypeFromExtension } from '../src/storage/hybrid-storage-core.js'
 
-export const IMAGE_ASSET_PROTOCOL_SCHEME = 'tabs-asset'
+export const IMAGE_ASSET_PROTOCOL_SCHEME = 'aislenote-asset'
 
 const EXTENSION_MIME_TYPES = new Map([
   ['aac', 'audio/aac'],

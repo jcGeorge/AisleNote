@@ -8,15 +8,9 @@ import {
 import { getAisleBodyId } from '../notes/note-markdown'
 import type { AppState, NoteAisle, NoteAisleBody, NoteBody, ResolvedNoteAisle, ScratchpadState } from '../types/app'
 import { createId, createNoteBodyContent, createTimestamp } from '../notes/note-content'
-export {
-  DEFAULT_SCRATCHPAD_AISLE_LIMIT,
-  MAX_SCRATCHPAD_AISLE_LIMIT,
-  MIN_SCRATCHPAD_AISLE_LIMIT,
-  clampScratchpadAisleLimit,
-} from './scratchpad-limits'
 
 export const SCRATCHPAD_CURSOR_LOCATION_KEY = 'scratchpad'
-export const SCRATCHPAD_CONTENT_TARGET_ID = '__tabs_scratchpad__'
+export const SCRATCHPAD_CONTENT_TARGET_ID = '__aislenote_scratchpad__'
 
 export function createScratchpadState(noteBodyId = createId()): ScratchpadState {
   return { noteBodyId }

@@ -16,7 +16,7 @@ import {
 } from './user-settings-location.mjs'
 
 function withTempDir(run) {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'tabs-settings-location-'))
+  const root = mkdtempSync(path.join(os.tmpdir(), 'aislenote-settings-location-'))
   try {
     return run(root)
   } finally {

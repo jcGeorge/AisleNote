@@ -8,7 +8,7 @@ import { registerFileIpc } from './ipc-files.mjs'
 const tempRoots = []
 
 function tempRoot() {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'tabs-ipc-files-'))
+  const root = mkdtempSync(path.join(os.tmpdir(), 'aislenote-ipc-files-'))
   tempRoots.push(root)
   return root
 }

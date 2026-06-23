@@ -1,7 +1,7 @@
 import { parseAssetUrl } from '../markdown/image-asset-refs.js'
 import { MEDIA_PLAYER_SELECTOR, getMediaKindFromUrl, type MediaKind } from './media-utils'
 
-export const MEDIA_REVEAL_CONTEXT_MENU_EVENT = 'tabs-media-reveal-context-menu'
+export const MEDIA_REVEAL_CONTEXT_MENU_EVENT = 'aislenote-media-reveal-context-menu'
 
 export type MediaRevealContextMenuDetail = {
   x: number

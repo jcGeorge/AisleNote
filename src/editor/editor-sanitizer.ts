@@ -21,7 +21,7 @@ function isSafeUrl(value: string): boolean {
   if (/^(mailto|tel|callto|cid|xmpp):/i.test(trimmed)) return true
   if (/^data:image\//i.test(trimmed)) return true
   if (/^blob:/i.test(trimmed)) return true
-  if (/^tabs-asset:/i.test(trimmed)) return true
+  if (/^aislenote-asset:/i.test(trimmed)) return true
   return !/^[a-z][a-z0-9+.-]*:/i.test(trimmed)
 }
 

@@ -251,7 +251,7 @@ describe('heading collapse plugin', () => {
     const boundaryDecoration = decorations.find((decoration) => decoration.attrs?.[HEADING_COLLAPSE_KEY_ATTRIBUTE] === boundaryKey)
 
     expect(boundaryDecoration?.attrs?.class).toContain(HEADING_COLLAPSE_PRESERVED_GAP_CLASS)
-    expect(boundaryDecoration?.attrs?.style).toBe('--tabs-heading-preserved-gap-lines: 2')
+    expect(boundaryDecoration?.attrs?.style).toBe('--aislenote-heading-preserved-gap-lines: 2')
   })
 
   it('does not add a markdown gap when blank paragraph nodes already remain visible', () => {

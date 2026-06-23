@@ -399,7 +399,6 @@ export type AppState = {
     findReplaceScope?: FindReplaceScope
     removeNoteReferencesOnTrash?: boolean
     noteMentionCopyRequiresConfirmation?: boolean
-    scratchpadAisleLimit?: number
     scratchpadNewAisleSide?: ScratchpadNewAisleSide
     decoupledItemsKeepData?: boolean
     trashDeleteForRealRequiresConfirmation?: boolean

@@ -78,7 +78,7 @@ function contextToken(id = 'preview-token') {
   return `![Preview ${id}](<Preview ${id}--123abc>)`
 }
 
-function mediaTextNode(text = 'Song', href = 'tabs-asset:///assets/song.mp3') {
+function mediaTextNode(text = 'Song', href = 'aislenote-asset:///assets/song.mp3') {
   return pmNode('text', text, text.length, [], [{ type: { name: 'link' }, attrs: { linkUrl: href } }])
 }
 
@@ -143,7 +143,7 @@ describe('terminal block landing target detection', () => {
     expect(getTerminalBlockLandingTarget(pmDoc([pmNode('paragraph', `${token} extra text`)]))).toBeNull()
     expect(getTerminalBlockLandingTarget(pmDoc([pmNode('paragraph', 'caption', 10, [image, text])]))).toBeNull()
     expect(getTerminalBlockLandingTarget(pmDoc([pmNode('paragraph', 'Song caption', 14, [mediaText, text])]))).toBeNull()
-    expect(isNotePreviewOnlyParagraphText('{{tabs-context:bad}}')).toBe(false)
+    expect(isNotePreviewOnlyParagraphText('{{aislenote-context:bad}}')).toBe(false)
   })
 })
 
@@ -196,14 +196,14 @@ function fakeTerminalElement(kind: 'code' | 'table' | 'preview' | 'image' | 'med
       if (kind === 'table') return selector === 'table'
       if (kind === 'preview') return selector === '.note-context-widget'
       if (kind === 'image') return selector === 'img'
-      if (kind === 'media') return selector === '.tabs-media-player'
+      if (kind === 'media') return selector === '.aislenote-media-player'
       return false
     },
     closest: (selector: string) => {
       if (selector === '.context-preview-editor-host') return null
       if (selector === 'p' && kind === 'image') return {}
       if (selector === '.toastui-editor-ww-code-block' && kind === 'code') return {}
-      if (selector === '.tabs-media-player' && kind === 'media') return {}
+      if (selector === '.aislenote-media-player' && kind === 'media') return {}
       return null
     },
   } as unknown as Element
@@ -289,14 +289,14 @@ function terminalDeletePreview() {
 function terminalDeleteMedia() {
   return terminalDeleteSchema.nodes.paragraph.create(null, [
     terminalDeleteSchema.text('Song', [
-      terminalDeleteSchema.marks.link.create({ linkUrl: 'tabs-asset:///assets/song.mp3' }),
+      terminalDeleteSchema.marks.link.create({ linkUrl: 'aislenote-asset:///assets/song.mp3' }),
     ]),
   ])
 }
 
 function terminalDeleteImage() {
   return terminalDeleteSchema.nodes.paragraph.create(null, [
-    terminalDeleteSchema.nodes.image.create({ src: 'tabs-asset:///assets/image.png' }),
+    terminalDeleteSchema.nodes.image.create({ src: 'aislenote-asset:///assets/image.png' }),
   ])
 }
 

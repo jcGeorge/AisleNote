@@ -279,7 +279,7 @@ function createRecoveryMessage(recovery) {
   const issueSummary = Array.isArray(recovery?.issueSummary) ? recovery.issueSummary : []
   const timestamp = new Date().toISOString()
   const details = [
-    'Tabs could not load this notebook folder, so it reset the notebook in that folder.',
+    'AisleNote could not load this notebook folder, so it reset the notebook in that folder.',
     recovery.failedNotebookPath ? `Failed folder: ${recovery.failedNotebookPath}` : '',
     recovery.backupNotebookPath ? `Backup folder: ${recovery.backupNotebookPath}` : '',
     issueSummary.length > 0 ? `Issue summary: ${issueSummary.join(' ')}` : '',
@@ -509,7 +509,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   }
 
   const logExternalStorageEvent = (event) => {
-    console.info?.(`[tabs:storage] ${event}`)
+    console.info?.(`[aislenote:storage] ${event}`)
   }
 
   const requireActiveNotebook = (actionDescription = 'perform this action') => {
@@ -765,7 +765,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       const serializedState = await sender.executeJavaScript(
         `(() => {
           try {
-            const value = window.__tabsGetLatestAppState?.()
+            const value = window.__aislenoteGetLatestAppState?.()
             return typeof value === 'string' ? value : null
           } catch {
             return null
@@ -1064,10 +1064,10 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
             : ['Keep old copy', 'Move old copy to Trash', 'Cancel'],
           cancelId: 2,
           defaultId: 0,
-          message: targetHasProfile ? 'This folder already contains Tabs data.' : 'Move notebook folder?',
+          message: targetHasProfile ? 'This folder already contains AisleNote data.' : 'Move notebook folder?',
           detail: targetHasProfile
             ? 'Replacing it will write your current notebook into this folder. Current user settings stay in app support.'
-            : 'Tabs will write your current notebook into this folder. Current user settings stay in app support.',
+            : 'AisleNote will write your current notebook into this folder. Current user settings stay in app support.',
         })
         if (moveChoice.response === 2) return { canceled: true, status }
         trashSource = moveChoice.response === 1
@@ -1089,7 +1089,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
         buttons: ['Use this notebook folder', 'Replace with current data', 'Cancel'],
         cancelId: 2,
         defaultId: 0,
-        message: 'This folder already contains Tabs data.',
+        message: 'This folder already contains AisleNote data.',
         detail: 'Use the existing notebook in this folder, or replace it with your current notebook. Current user settings stay in app support.',
       })
       if (choice.response === 0) return useExistingNotebookFolder()
@@ -1100,7 +1100,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     if (targetHasProfile && !targetResult.ok) {
       return {
         ok: false,
-        error: 'This folder contains Tabs data that could not be loaded.',
+        error: 'This folder contains AisleNote data that could not be loaded.',
         status,
       }
     }
@@ -1112,7 +1112,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
         cancelId: 1,
         defaultId: 0,
         message: 'Use this notebook folder?',
-        detail: 'Tabs will save your current notebook into this folder. Current user settings stay in app support.',
+        detail: 'AisleNote will save your current notebook into this folder. Current user settings stay in app support.',
       })
       if (initialize.response !== 0) return { canceled: true, status }
     }
@@ -1137,7 +1137,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     if (!existsSync(path.join(getHybridStorageRoot(profileRootPath), 'manifest.json'))) {
       return {
         ok: false,
-        error: 'This folder is not a Tabs notebook. Use Markdown import for Markdown or Obsidian folders.',
+        error: 'This folder is not an AisleNote notebook. To use Markdown import, create a new notebook, then in settings > data > transfer, select "Import Markdown folders".',
         status,
       }
     }
@@ -1248,7 +1248,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
         cancelId: 1,
         defaultId: 0,
         message: 'Delete notebook?',
-        detail: 'Tabs will remove this notebook from the list and move its folder to Trash.',
+        detail: 'AisleNote will remove this notebook from the list and move its folder to Trash.',
       })
       if (choice.response === 1) return { canceled: true, status }
     }
@@ -1312,7 +1312,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
           defaultId: 0,
           message: 'Apply settings from this folder?',
           detail:
-            'Tabs will use this folder for live user settings and overwrite the current local app settings cache with settings/app-settings.json from that folder.',
+            'AisleNote will use this folder for live user settings and overwrite the current local app settings cache with settings/app-settings.json from that folder.',
         })
         if (choice.response !== 0) return { canceled: true, status: userSettingsLocationStatus }
       }

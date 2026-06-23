@@ -12,7 +12,7 @@ import {
 } from './storage-profile.mjs'
 
 function withTempUserDataPath(run) {
-  const userDataPath = mkdtempSync(path.join(os.tmpdir(), 'tabs-profile-user-data-'))
+  const userDataPath = mkdtempSync(path.join(os.tmpdir(), 'aislenote-profile-user-data-'))
   try {
     return run(userDataPath)
   } finally {

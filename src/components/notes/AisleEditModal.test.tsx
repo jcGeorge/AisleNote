@@ -139,8 +139,8 @@ describe('AisleEditModal', () => {
   it('renders block indents in previews without exposing the storage marker', () => {
     const html = renderModal([aisle('a', `${BLOCK_INDENT_TOKEN.repeat(2)}indented`)])
 
-    expect(html).toContain('style="--tabs-block-indent-level:2"')
-    expect(html).toContain('class="tabs-rendered-markdown-paragraph tabs-block-indent"')
+    expect(html).toContain('style="--aislenote-block-indent-level:2"')
+    expect(html).toContain('class="aislenote-rendered-markdown-paragraph aislenote-block-indent"')
     expect(html).toContain('indented')
     expect(html).not.toContain(BLOCK_INDENT_TOKEN)
   })
@@ -154,8 +154,8 @@ describe('AisleEditModal', () => {
       '</div>',
     ].join('\n'))])
 
-    expect(html).toContain('style="--tabs-block-indent-level:2"')
-    expect(html).toContain('class="tabs-rendered-markdown-paragraph tabs-block-indent"')
+    expect(html).toContain('style="--aislenote-block-indent-level:2"')
+    expect(html).toContain('class="aislenote-rendered-markdown-paragraph aislenote-block-indent"')
     expect(html).toContain('indented')
     expect(html).not.toContain('tab-block')
     expect(html).not.toContain('&lt;div')

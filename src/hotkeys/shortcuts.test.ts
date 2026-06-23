@@ -134,30 +134,19 @@ describe('newline shortcut settings', () => {
     expect(normalized.newlineShortcuts.menuOperations).toEqual(['task', 'aisleRight', 'aisleLeft', 'strikethrough'])
   })
 
-  it('migrates the legacy toggle tabs shortcut key to toggle notes/trash', () => {
-    const normalized = normalizeHotkeySettings({
-      shortcuts: {
-        toggleTabsTarget: 'Ctrl+Alt+T',
-      },
-    })
-
-    expect(normalized.shortcuts.toggleNotesTrash).toBe('Ctrl+Alt+T')
-    expect(normalized.shortcuts).not.toHaveProperty('toggleTabsTarget')
-  })
-
-  it('defaults notes/scratchpad to mod slash and matches slash key events', () => {
-    expect(DEFAULT_SHORTCUTS.toggleNotesScratchpad).toBe('Mod+/')
-    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.toggleNotesScratchpad, true)).toBe('cmd+/')
+  it('defaults notes/scratchpad to mod s and matches s key events', () => {
+    expect(DEFAULT_SHORTCUTS.toggleNotesScratchpad).toBe('Mod+S')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.toggleNotesScratchpad, true)).toBe('cmd+s')
     expect(
       eventMatchesShortcut(
-        { key: '/', code: 'Slash', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent,
+        { key: 's', code: 'KeyS', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent,
         DEFAULT_SHORTCUTS.toggleNotesScratchpad,
         true,
       ),
     ).toBe(true)
     expect(
       eventMatchesShortcut(
-        { key: '/', code: 'Slash', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
+        { key: 's', code: 'KeyS', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
         DEFAULT_SHORTCUTS.toggleNotesScratchpad,
         false,
       ),

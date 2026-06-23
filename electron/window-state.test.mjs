@@ -19,7 +19,7 @@ const defaults = {
 }
 
 function tempRoot() {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'tabs-window-state-'))
+  const root = mkdtempSync(path.join(os.tmpdir(), 'aislenote-window-state-'))
   tempRoots.push(root)
   return root
 }

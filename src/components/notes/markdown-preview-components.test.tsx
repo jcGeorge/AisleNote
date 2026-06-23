@@ -112,10 +112,10 @@ describe('markdown preview tag appearance', () => {
       '- item #nested/tag',
     ].join('\n'))
 
-    expect(html).toContain('<span class="tabs-tag-token" data-tabs-tag="Tag-3" data-app-tooltip="filter by tag">#Tag-3</span>')
-    expect(html).toContain('<span class="tabs-tag-token" data-tabs-tag="asdf" data-app-tooltip="filter by tag">#asdf</span>')
+    expect(html).toContain('<span class="aislenote-tag-token" data-aislenote-tag="Tag-3" data-app-tooltip="filter by tag">#Tag-3</span>')
+    expect(html).toContain('<span class="aislenote-tag-token" data-aislenote-tag="asdf" data-app-tooltip="filter by tag">#asdf</span>')
     expect(html).toContain(
-      '<span class="tabs-tag-token" data-tabs-tag="nested/tag" data-app-tooltip="filter by tag">#nested/tag</span>',
+      '<span class="aislenote-tag-token" data-aislenote-tag="nested/tag" data-app-tooltip="filter by tag">#nested/tag</span>',
     )
   })
 
@@ -128,18 +128,18 @@ describe('markdown preview tag appearance', () => {
       '```',
     ].join('\n'))
 
-    expect(html).toContain('<span class="tabs-tag-token" data-tabs-tag="Tag" data-app-tooltip="filter by tag">#Tag</span>')
+    expect(html).toContain('<span class="aislenote-tag-token" data-aislenote-tag="Tag" data-app-tooltip="filter by tag">#Tag</span>')
     expect(html).toContain('<code>#Inline</code>')
     expect(html).toContain('<code>#Fenced')
-    expect(html).not.toContain('<span class="tabs-tag-token">#Inline</span>')
-    expect(html).not.toContain('<span class="tabs-tag-token">#Fenced</span>')
+    expect(html).not.toContain('<span class="aislenote-tag-token">#Inline</span>')
+    expect(html).not.toContain('<span class="aislenote-tag-token">#Fenced</span>')
   })
 
   it('applies shared rendered Markdown surface classes to preview links and headings', () => {
     const html = renderPreview('# My Header\n\n[copy](https://lucide.dev/icons/files)')
 
-    expect(html).toContain('class="tabs-rendered-markdown-heading tabs-rendered-markdown-heading-1"')
-    expect(html).toContain('class="tabs-rendered-markdown-link"')
+    expect(html).toContain('class="aislenote-rendered-markdown-heading aislenote-rendered-markdown-heading-1"')
+    expect(html).toContain('class="aislenote-rendered-markdown-link"')
     expect(html).toContain('href="https://lucide.dev/icons/files"')
     expect(html).toContain('target="_blank"')
     expect(html).toContain('rel="noopener noreferrer"')
@@ -148,7 +148,7 @@ describe('markdown preview tag appearance', () => {
   it('renders app highlight syntax without exposing the == markers', () => {
     const html = renderPreview('Alright\n==highlighted==')
 
-    expect(html).toContain('class="tabs-rendered-markdown-highlight"')
+    expect(html).toContain('class="aislenote-rendered-markdown-highlight"')
     expect(html).toContain('highlighted</span>')
     expect(html).not.toContain('==highlighted==')
   })
@@ -156,8 +156,8 @@ describe('markdown preview tag appearance', () => {
   it('keeps dash lists distinct from bullet lists in React markdown previews', () => {
     const html = renderPreview(['* bullet item', '', 'between', '', '- dash item'].join('\n'))
 
-    expect(html).toContain('class="tabs-dash-list"')
-    expect(html).toContain('tabs-dash-list-item')
+    expect(html).toContain('class="aislenote-dash-list"')
+    expect(html).toContain('aislenote-dash-list-item')
     expect(html).toContain('bullet item')
     expect(html).toContain('dash item')
   })
@@ -165,9 +165,9 @@ describe('markdown preview tag appearance', () => {
   it('renders annotation markers without exposing their source marker text', () => {
     const html = renderPreview(['-- And this bad boy', '^-- Man that is inconsistent.'].join('\n\n'))
 
-    expect(html).toContain('tabs-annotation-line')
+    expect(html).toContain('aislenote-annotation-line')
     expect(html).toContain('And this bad boy')
-    expect(html).toContain('tabs-annotation-inline-arrow')
+    expect(html).toContain('aislenote-annotation-inline-arrow')
     expect(html).toContain('\u21b0')
     expect(html).toContain('Man that is inconsistent.')
     expect(html).not.toContain('-- And this bad boy')
@@ -177,7 +177,7 @@ describe('markdown preview tag appearance', () => {
   it('renders one real checkbox for task list rows', () => {
     const html = renderPreview("- [x] That's not great")
 
-    expect(html).toContain('class="task-list-item tabs-rendered-markdown-list-item"')
+    expect(html).toContain('class="task-list-item aislenote-rendered-markdown-list-item"')
     expect(html.match(/type="checkbox"/g) ?? []).toHaveLength(1)
     expect(html).toContain('checked=""')
     expect(html).not.toContain('disabled=""')
@@ -204,10 +204,10 @@ describe('markdown preview tag appearance', () => {
     ].join('\n')
     const html = renderPreview(markdown)
 
-    expect(html).toContain('tabs-dash-list-item')
-    expect(html).toContain('tabs-annotation-line')
+    expect(html).toContain('aislenote-dash-list-item')
+    expect(html).toContain('aislenote-annotation-line')
     expect(html).toContain('And this bad boy')
-    expect(html).toContain('tabs-annotation-inline-arrow')
+    expect(html).toContain('aislenote-annotation-inline-arrow')
     expect(html).toContain('Man that is inconsistent.')
     expect(html.match(/type="checkbox"/g) ?? []).toHaveLength(2)
     expect(html).toContain('checked=""')

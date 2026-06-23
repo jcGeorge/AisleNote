@@ -9,7 +9,7 @@ const recoveryMessage: AppMessage = {
   createdAt: '2026-06-01T00:00:00.000Z',
   signature: 'recovery-signature',
   title: 'Recovered notebook',
-  body: 'Tabs could not load this notebook folder.',
+  body: 'AisleNote could not load this notebook folder.',
   failedNotebookPath: '/tmp/Broken Notebook',
   activeNotebookPath: '/tmp/Default Notebook',
   activeNotebookName: 'Default Notebook',
@@ -22,7 +22,7 @@ describe('storage alerts', () => {
       {
         signature: 'recovery-signature',
         label: 'notebook recovered',
-        message: 'Tabs reset the notebook because the folder could not be loaded.',
+        message: 'AisleNote reset the notebook because the folder could not be loaded.',
         actionLabel: 'open previous notebook folder',
       },
     ])
@@ -37,7 +37,7 @@ describe('storage alerts', () => {
       {
         signature: 'recovery-signature',
         label: 'notebook recovered',
-        message: 'Tabs reset the notebook because the folder could not be loaded.',
+        message: 'AisleNote reset the notebook because the folder could not be loaded.',
         actionLabel: undefined,
       },
     ])

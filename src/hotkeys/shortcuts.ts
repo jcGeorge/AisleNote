@@ -3,7 +3,7 @@ import type { AppState, NewlineOperationId, NewlineShortcutId, ShortcutId } from
 export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
   openSettings: 'Mod+,',
   toggleNotesTrash: 'Mod+T',
-  toggleNotesScratchpad: 'Mod+/',
+  toggleNotesScratchpad: 'Mod+S',
   toggleNotesFilter: '',
   newNote: 'Mod+N',
   newFolder: 'Mod+Shift+N',
@@ -84,9 +84,6 @@ function normalizeShortcutValue(raw: unknown, fallback: string): string {
 }
 
 function getRawShortcutValue(rawShortcuts: Record<string, unknown>, shortcutId: ShortcutId): unknown {
-  if (shortcutId === 'toggleNotesTrash') {
-    return rawShortcuts.toggleNotesTrash ?? rawShortcuts.toggleTabsTarget
-  }
   return rawShortcuts[shortcutId]
 }
 

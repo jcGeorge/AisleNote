@@ -30,13 +30,13 @@ describe('notebook settings access', () => {
     expect(notebookAppSource).not.toContain('Utility\\n')
   })
 
-  it('uses notebook-native hotkeys and hides the dormant scratchpad row', () => {
+  it('uses notebook-native hotkeys and exposes the scratchpad shortcut row', () => {
     expect(notebookAppSource).toContain('useNotebookHotkeys({')
     expect(notebookAppSource).not.toContain('useGlobalHotkeys')
     expect(notebookAppSource).toContain("{ id: 'openSettings', label: 'Open settings' }")
+    expect(notebookAppSource).toContain("{ id: 'toggleNotesScratchpad', label: 'Toggle scratchpad' }")
     expect(notebookAppSource).toContain("{ id: 'newNote', label: 'New note' }")
     expect(notebookAppSource).toContain("{ id: 'newFolder', label: 'New folder' }")
-    expect(notebookAppSource).not.toContain('Toggle scratchpad')
   })
 
   it('uses platform-aware notebook hotkey recorder buttons', () => {
@@ -65,10 +65,11 @@ describe('notebook settings access', () => {
     expect(notebookAppSource).toContain('NotebookSettingsSwitch')
     expect(notebookAppSource).toContain('frontmatterDraft')
     expect(notebookAppSource).toContain('Template changes apply only after saving.')
-    expect(notebookAppSource).toContain('MIN_SCRATCHPAD_AISLE_LIMIT')
-    expect(notebookAppSource).toContain('MAX_SCRATCHPAD_AISLE_LIMIT')
-    expect(notebookAppSource).toContain('DEFAULT_SCRATCHPAD_AISLE_LIMIT')
-    expect(notebookAppSource).toContain('clampScratchpadAisleLimit(event.target.value)')
+    expect(notebookAppSource).not.toContain('Scratchpad aisle limit')
+    expect(notebookAppSource).not.toContain('MIN_SCRATCHPAD_AISLE_LIMIT')
+    expect(notebookAppSource).not.toContain('MAX_SCRATCHPAD_AISLE_LIMIT')
+    expect(notebookAppSource).not.toContain('DEFAULT_SCRATCHPAD_AISLE_LIMIT')
+    expect(notebookAppSource).not.toContain('clampScratchpadAisleLimit')
     expect(notebookAppSource).toContain("{ id: 'focused-aisle', label: 'Current aisle' }")
     expect(notebookAppSource).not.toContain('Math.max(1, Math.min(12')
   })

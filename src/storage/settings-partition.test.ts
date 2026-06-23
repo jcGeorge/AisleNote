@@ -34,7 +34,7 @@ describe('portable app settings parsing', () => {
         shortcuts: {
           openSettings: 'Mod+,',
           toggleNotesTrash: 'Mod+T',
-          toggleNotesScratchpad: 'Mod+/',
+          toggleNotesScratchpad: 'Mod+S',
           toggleNotesFilter: '',
           newNote: 'Mod+N',
           newFolder: 'Mod+Shift+N',
@@ -57,7 +57,6 @@ describe('portable app settings parsing', () => {
         toolbarLayouts: [],
       },
     })
-    expect(createDefaultPortableAppSettings().ui).not.toHaveProperty('toggleTabsTarget')
   })
 
   it('accepts current exported app-settings json for explicit imports', () => {
@@ -97,7 +96,7 @@ describe('portable app settings parsing', () => {
           tags: { selectedKeys: ['tag'], sortMode: 'occurrences' },
           synced: { selectedKeys: ['synced-note:body-1'] },
           frontmatter: { selectedKeys: ['fm-property:status'] },
-          media: { selectedKeys: ['media:image:tabs-asset:///assets/photo.png'] },
+          media: { selectedKeys: ['media:image:aislenote-asset:///assets/photo.png'] },
         },
       },
     }))
@@ -112,7 +111,7 @@ describe('portable app settings parsing', () => {
             tags: { selectedKeys: ['tag'], sortMode: 'occurrences' },
             synced: { selectedKeys: ['synced-note:body-1'] },
             frontmatter: { selectedKeys: ['fm-property:status'] },
-            media: { selectedKeys: ['media:image:tabs-asset:///assets/photo.png'] },
+            media: { selectedKeys: ['media:image:aislenote-asset:///assets/photo.png'] },
           },
         },
       },
@@ -126,7 +125,7 @@ describe('portable app settings parsing', () => {
       JSON.stringify({ foo: 'bar' }),
       JSON.stringify({ theme: 'dawn', hotkeys: {}, settings: {} }),
       JSON.stringify({
-        type: 'tabs.app-settings',
+        type: 'aislenote.app-settings',
         settings: JSON.parse(currentSettingsJson()),
       }),
     ]
@@ -170,7 +169,7 @@ describe('portable app settings parsing', () => {
           shortcuts: {
             openSettings: 'Mod+,',
             toggleNotesTrash: 'Mod+T',
-            toggleNotesScratchpad: 'Mod+/',
+            toggleNotesScratchpad: 'Mod+S',
             toggleNotesFilter: '',
             newNote: 'Mod+N',
             newFolder: 'Mod+Shift+N',
@@ -185,34 +184,6 @@ describe('portable app settings parsing', () => {
         },
       },
     })
-  })
-
-  it('migrates legacy toggle tabs shortcut settings to notes/trash', () => {
-    const settings = parsePortableAppSettingsJson(JSON.stringify({
-      theme: 'dawn',
-      hotkeys: {
-        shortcuts: {
-          toggleTabsTarget: 'Ctrl+Alt+T',
-        },
-      },
-      ui: {
-        toggleTabsTarget: 'messages',
-      },
-    }))
-
-    expect(settings).toMatchObject({
-      ok: true,
-      settings: {
-        hotkeys: {
-          shortcuts: {
-            toggleNotesTrash: 'Ctrl+Alt+T',
-          },
-        },
-      },
-    })
-    if (!settings.ok || !settings.settings) throw new Error(settings.error)
-    expect(settings.settings.hotkeys.shortcuts).not.toHaveProperty('toggleTabsTarget')
-    expect(settings.settings.ui).not.toHaveProperty('toggleTabsTarget')
   })
 
   it('normalizes split-file hotkeys before hydrating app state', () => {
@@ -232,7 +203,7 @@ describe('portable app settings parsing', () => {
 
     expect(syncedSettings.hotkeys.shortcuts.toggleNotesTrash).toBe('Mod+T')
     expect(syncedSettings.hotkeys.shortcuts.openSettings).toBe('Mod+,')
-    expect(syncedSettings.hotkeys.shortcuts.toggleNotesScratchpad).toBe('Mod+/')
+    expect(syncedSettings.hotkeys.shortcuts.toggleNotesScratchpad).toBe('Mod+S')
     expect(syncedSettings.hotkeys.shortcuts.toggleNotesFilter).toBe('')
     expect(syncedSettings.hotkeys.shortcuts.newNote).toBe('Mod+N')
     expect(syncedSettings.hotkeys.shortcuts.newFolder).toBe('Mod+Shift+N')

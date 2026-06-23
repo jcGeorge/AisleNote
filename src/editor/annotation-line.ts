@@ -1,13 +1,13 @@
-export const ANNOTATION_LINE_CLASS_NAME = 'tabs-annotation-line'
-export const ANNOTATION_LINE_MARKER_CLASS_NAME = 'tabs-annotation-line-marker'
-export const ANNOTATION_INLINE_ARROW_CLASS_NAME = 'tabs-annotation-inline-arrow'
-export const ANNOTATION_LINE_ARROW_CLASS_NAME = 'tabs-annotation-line-arrow'
-export const ANNOTATION_LINE_ARROW_UP_CLASS_NAME = 'tabs-annotation-line-arrow-up'
-export const ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME = 'tabs-annotation-line-arrow-down'
-export const ANNOTATION_LINE_ARROW_LEFT_CLASS_NAME = 'tabs-annotation-line-arrow-left'
-export const ANNOTATION_LINE_ARROW_RIGHT_CLASS_NAME = 'tabs-annotation-line-arrow-right'
-export const ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME = 'tabs-annotation-line-tail-left'
-export const ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME = 'tabs-annotation-line-tail-right'
+export const ANNOTATION_LINE_CLASS_NAME = 'aislenote-annotation-line'
+export const ANNOTATION_LINE_MARKER_CLASS_NAME = 'aislenote-annotation-line-marker'
+export const ANNOTATION_INLINE_ARROW_CLASS_NAME = 'aislenote-annotation-inline-arrow'
+export const ANNOTATION_LINE_ARROW_CLASS_NAME = 'aislenote-annotation-line-arrow'
+export const ANNOTATION_LINE_ARROW_UP_CLASS_NAME = 'aislenote-annotation-line-arrow-up'
+export const ANNOTATION_LINE_ARROW_DOWN_CLASS_NAME = 'aislenote-annotation-line-arrow-down'
+export const ANNOTATION_LINE_ARROW_LEFT_CLASS_NAME = 'aislenote-annotation-line-arrow-left'
+export const ANNOTATION_LINE_ARROW_RIGHT_CLASS_NAME = 'aislenote-annotation-line-arrow-right'
+export const ANNOTATION_LINE_TAIL_LEFT_CLASS_NAME = 'aislenote-annotation-line-tail-left'
+export const ANNOTATION_LINE_TAIL_RIGHT_CLASS_NAME = 'aislenote-annotation-line-tail-right'
 
 type AnnotationLineMarker =
   | { kind: 'line'; raw: '--' }

@@ -23,7 +23,7 @@ function createImageDouble(src: string): HTMLImageElement {
 
 describe('image DOM metadata sync', () => {
   it('keeps reserved resize commit height until the reservation is released', () => {
-    const image = createImageDouble(withImageResizeMetadata('tabs-asset:///assets/example.png', { v: 1, w: 240 }))
+    const image = createImageDouble(withImageResizeMetadata('aislenote-asset:///assets/example.png', { v: 1, w: 240 }))
 
     expect(reserveImageDisplayLayout(image, { width: 240, height: 135 })).toBe(true)
     expect(syncImageDisplayMetadata(image)).toBe(true)

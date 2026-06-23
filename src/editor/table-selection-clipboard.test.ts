@@ -6,7 +6,7 @@ import {
   insertTableSelectionClipboardPayloadIntoView,
   readTableSelectionClipboardPayloadFromDataTransfer,
   serializeTableSelectionForClipboard,
-  TABS_TABLE_SELECTION_CLIPBOARD_MIME,
+  AISLENOTE_TABLE_SELECTION_CLIPBOARD_MIME,
   writeTableSelectionClipboardData,
 } from './table-selection-clipboard'
 import type { TableSelectionRange } from './table-editing'
@@ -157,7 +157,7 @@ describe('table selection clipboard helpers', () => {
     expect(readTableSelectionClipboardPayloadFromDataTransfer({
       getData: (type) => store.get(type) ?? '',
     })?.rows).toHaveLength(1)
-    expect(store.has(TABS_TABLE_SELECTION_CLIPBOARD_MIME)).toBe(true)
+    expect(store.has(AISLENOTE_TABLE_SELECTION_CLIPBOARD_MIME)).toBe(true)
   })
 
   it('creates and inserts a real table node from the private payload', () => {

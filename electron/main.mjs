@@ -95,7 +95,7 @@ function isExternalWebUrl(value) {
 
 function sendMultilineShortcutToWindow(window, direction) {
   if (!window || window.isDestroyed()) return
-  void window.webContents.executeJavaScript(`window.__tabsHandleMultilineShortcut?.(${JSON.stringify(direction)})`, true)
+  void window.webContents.executeJavaScript(`window.__aislenoteHandleMultilineShortcut?.(${JSON.stringify(direction)})`, true)
 }
 
 function withTimeout(promise, timeoutMs) {
@@ -312,8 +312,8 @@ function createWindow(storageSession) {
         const rendererState = await withTimeout(
           window.webContents.executeJavaScript(
             `(() => {
-              const serializedState = window.__tabsGetLatestAppState?.() ?? null
-              const baseRevision = window.__tabsGetAppStateRevision?.() ?? null
+              const serializedState = window.__aislenoteGetLatestAppState?.() ?? null
+              const baseRevision = window.__aislenoteGetAppStateRevision?.() ?? null
               return { serializedState, baseRevision }
             })()`,
             true,

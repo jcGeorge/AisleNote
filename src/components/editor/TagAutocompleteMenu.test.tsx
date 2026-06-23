@@ -25,7 +25,7 @@ describe('TagAutocompleteMenu', () => {
     expect(html).toContain('class="tag-autocomplete-item"')
     expect(html).toContain('class="tag-autocomplete-item is-active"')
     expect(html).toContain('aria-selected="true"')
-    expect(html).toContain('class="tag-autocomplete-token tabs-tag-token"')
+    expect(html).toContain('class="tag-autocomplete-token aislenote-tag-token"')
     expect(html).toContain('#asdf')
     expect(html).toContain('#Nested/Tag')
   })

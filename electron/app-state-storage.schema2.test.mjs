@@ -13,7 +13,7 @@ import {
 const tempRoots = []
 
 function tempRoot() {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'tabs-schema2-'))
+  const root = mkdtempSync(path.join(os.tmpdir(), 'aislenote-schema2-'))
   tempRoots.push(root)
   return root
 }
@@ -168,7 +168,7 @@ function pathFromRoot(root, relativePath) {
 }
 
 function readNotebookIndex(root) {
-  return JSON.parse(readFileSync(pathFromRoot(root, '.tabs/notebook-index.json'), 'utf8'))
+  return JSON.parse(readFileSync(pathFromRoot(root, '.aislenote/notebook-index.json'), 'utf8'))
 }
 
 function findNotebookIndexItem(items, itemId) {
@@ -208,7 +208,7 @@ describe('schema 2 app-state storage', () => {
 
     const saveResult = saveAppState(root, JSON.stringify(state))
     expect(saveResult.ok).toBe(true)
-    expect(existsSync(path.join(root, '.tabs', 'notebook-index.json'))).toBe(true)
+    expect(existsSync(path.join(root, '.aislenote', 'notebook-index.json'))).toBe(true)
     const index = readNotebookIndex(root)
     const inbox = findNotebookIndexItem(index.items, 'note-root')
     const projects = findNotebookIndexItem(index.items, 'folder-projects')
@@ -407,7 +407,7 @@ describe('schema 2 app-state storage', () => {
       aisleId: 'aisle-multi-b',
     })
 
-    expect(asset.url).toContain('tabs-asset:///assets/asset-')
+    expect(asset.url).toContain('aislenote-asset:///assets/asset-')
     expect(existsSync(path.join(root, asset.assetPath))).toBe(true)
     expect(reveal).toMatchObject({ ok: true, rootRelativePath: inbox.file })
     expect(aisleReveal).toMatchObject({

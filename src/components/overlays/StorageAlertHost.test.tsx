@@ -39,7 +39,7 @@ describe('StorageAlertHost', () => {
           {
             signature: 'recovery-1',
             label: 'notebook recovered',
-            message: 'Tabs reset the notebook because the folder could not be loaded.',
+            message: 'AisleNote reset the notebook because the folder could not be loaded.',
             actionLabel: 'open previous notebook folder',
           },
         ]}

@@ -9,10 +9,10 @@ import {
 const HEADING_SELECTOR = 'h1, h2, h3, h4, h5, h6'
 const LONG_PRESS_DELAY_MS = 500
 const LONG_PRESS_CANCEL_DISTANCE_PX = 6
-export const HEADING_COLLAPSE_HEADING_CLASS = 'tabs-heading-collapse-heading'
-export const HEADING_COLLAPSE_COLLAPSED_CLASS = 'tabs-heading-collapse-heading-collapsed'
-export const HEADING_COLLAPSE_HIDDEN_CLASS = 'tabs-heading-collapse-hidden'
-export const HEADING_COLLAPSE_PRESERVED_GAP_CLASS = 'tabs-heading-collapse-preserved-gap-before'
+export const HEADING_COLLAPSE_HEADING_CLASS = 'aislenote-heading-collapse-heading'
+export const HEADING_COLLAPSE_COLLAPSED_CLASS = 'aislenote-heading-collapse-heading-collapsed'
+export const HEADING_COLLAPSE_HIDDEN_CLASS = 'aislenote-heading-collapse-hidden'
+export const HEADING_COLLAPSE_PRESERVED_GAP_CLASS = 'aislenote-heading-collapse-preserved-gap-before'
 export const HEADING_COLLAPSE_KEY_ATTRIBUTE = 'data-heading-collapse-key'
 
 type HeadingCollapsePluginOptions = {
@@ -138,7 +138,7 @@ function getHeadingDecorationAttrs(headingKey: string, collapsed: boolean, prese
     [HEADING_COLLAPSE_KEY_ATTRIBUTE]: headingKey,
     'data-heading-collapsed': collapsed ? 'true' : 'false',
     ...(normalizedGapLineCount > 0
-      ? { style: `--tabs-heading-preserved-gap-lines: ${normalizedGapLineCount}` }
+      ? { style: `--aislenote-heading-preserved-gap-lines: ${normalizedGapLineCount}` }
       : {}),
   }
 }
