@@ -5,6 +5,7 @@ import {
   TAG_AUTOCOMPLETE_CONTAINS_MIN_QUERY_LENGTH,
   TAG_AUTOCOMPLETE_RECENT_LIMIT,
   TAG_AUTOCOMPLETE_RECENT_STORAGE_LIMIT,
+  TAG_AUTOCOMPLETE_SUGGESTION_LIMIT,
   getTagAutocompleteKeyboardAction,
   getTagAutocompleteQueryFromText,
   getTagAutocompleteReplacement,
@@ -86,17 +87,31 @@ describe('tag autocomplete helpers', () => {
     expect(new Set(suggestions.map((tag) => tag.key)).size).toBe(suggestions.length)
   })
 
-  it('does not show suggestions when the typed query already exactly matches an existing tag', () => {
-    expect(getTagAutocompleteSuggestions(tags, 'Cool', [])).toEqual([])
+  it('hides suggestions when the typed query only exactly matches an existing tag', () => {
     expect(getTagAutocompleteSuggestions(tags, 'nested/tag', [])).toEqual([])
   })
 
-  it('shows recent existing tags for a bare trigger', () => {
+  it('keeps exact matches when longer or contains alternatives are available', () => {
+    expect(getTagAutocompleteSuggestions(tags, 'Cool', []).map((tag) => tag.label)).toEqual([
+      'Cool',
+      'CoolItems',
+      'SwellCoolJay',
+      'ThingsThatAreCool',
+    ])
+  })
+
+  it('shows recent existing tags first for a bare trigger and fills with A-Z tags', () => {
+    expect(TAG_AUTOCOMPLETE_SUGGESTION_LIMIT).toBe(7)
+    expect(TAG_AUTOCOMPLETE_RECENT_LIMIT).toBe(TAG_AUTOCOMPLETE_SUGGESTION_LIMIT)
     const recent = ['missing', 'tag-3', 'nested/tag', 'asdf']
     expect(getTagAutocompleteSuggestions(tags, '', recent).map((tag) => tag.label)).toEqual([
       'Tag-3',
       'Nested/Tag',
       'asdf',
+      'asdf1',
+      'asdf2',
+      'asdf3',
+      'Cool',
     ])
 
     const manyTags = Array.from({ length: TAG_AUTOCOMPLETE_RECENT_LIMIT + 2 }, (_, index) => ({
@@ -111,6 +126,15 @@ describe('tag autocomplete helpers', () => {
         manyTags.map((tag) => tag.key),
       ),
     ).toHaveLength(TAG_AUTOCOMPLETE_RECENT_LIMIT)
+  })
+
+  it('caps typed suggestions to the menu limit', () => {
+    const manyTags = Array.from({ length: TAG_AUTOCOMPLETE_SUGGESTION_LIMIT + 4 }, (_, index) => ({
+      key: `alpha-${index}`,
+      label: `Alpha-${index}`,
+      count: index + 1,
+    }))
+    expect(getTagAutocompleteSuggestions(manyTags, 'alpha', [])).toHaveLength(TAG_AUTOCOMPLETE_SUGGESTION_LIMIT)
   })
 
   it('normalizes and remembers recent selected tags with a bounded history', () => {

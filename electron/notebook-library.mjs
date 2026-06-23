@@ -1,12 +1,9 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from 'node:fs'
 import path from 'node:path'
@@ -22,7 +19,6 @@ import {
 } from './storage-profile.mjs'
 
 export const NOTEBOOK_LIBRARY_CONFIG_FILE = 'notebook-library.json'
-export const NOTEBOOK_MIRRORS_DIR = 'notebooks'
 
 function nowIso() {
   return new Date().toISOString()
@@ -46,31 +42,8 @@ function normalizePath(value) {
   return typeof value === 'string' && value.trim() ? path.resolve(value) : null
 }
 
-function uniquePaths(paths) {
-  const seen = new Set()
-  const normalized = []
-  paths.forEach((candidate) => {
-    const normalizedPath = normalizePath(candidate)
-    if (!normalizedPath || seen.has(normalizedPath)) return
-    seen.add(normalizedPath)
-    normalized.push(normalizedPath)
-  })
-  return normalized
-}
-
-function isPathInside(parentPath, candidatePath) {
-  const parent = path.resolve(parentPath)
-  const candidate = path.resolve(candidatePath)
-  const relative = path.relative(parent, candidate)
-  return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative))
-}
-
 function getNotebookLibraryConfigPath(userDataPath) {
   return path.join(userDataPath, NOTEBOOK_LIBRARY_CONFIG_FILE)
-}
-
-export function getNotebookMirrorRoot(userDataPath, notebookId) {
-  return path.join(userDataPath, NOTEBOOK_MIRRORS_DIR, notebookId)
 }
 
 export function readNotebookRootManifest(notebookRootPath) {
@@ -81,11 +54,17 @@ function createNotebookId() {
   return `notebook-${randomUUID()}`
 }
 
-function readLegacyStorageProfileConfig(userDataPath) {
-  const config = readJsonFile(path.join(userDataPath, STORAGE_PROFILE_CONFIG_FILE))
-  return {
-    profileRootPath: normalizePath(config?.profileRootPath),
-    knownNotebookPaths: uniquePaths(Array.isArray(config?.knownNotebooks) ? config.knownNotebooks : []),
+function cleanupLegacyAppPrivateNotebook(userDataPath) {
+  const defaultRoot = getDefaultStorageProfileRoot(userDataPath)
+  try {
+    rmSync(defaultRoot, { recursive: true, force: true })
+  } catch {
+    // Best-effort cleanup only; external notebook folders are never touched here.
+  }
+  try {
+    rmSync(path.join(userDataPath, STORAGE_PROFILE_CONFIG_FILE), { force: true })
+  } catch {
+    // Best-effort cleanup only.
   }
 }
 
@@ -96,6 +75,10 @@ function createSyncMetadata(event, extra = {}) {
     updatedAt: nowIso(),
     ...extra,
   }
+}
+
+function hasNotebookManifest(notebookPath) {
+  return Boolean(notebookPath && existsSync(path.join(getHybridStorageRoot(notebookPath), 'manifest.json')))
 }
 
 export function ensureNotebookFolderIdentity(userDataPath, notebookRootPath, requestedNotebookId = null) {
@@ -129,39 +112,45 @@ export function ensureNotebookFolderIdentity(userDataPath, notebookRootPath, req
   return { ok: true, notebookId, upgraded: true }
 }
 
-function normalizeNotebookRecord(userDataPath, record) {
-  const id = typeof record?.id === 'string' && record.id.trim() ? record.id.trim() : ''
-  const localMirrorPath = normalizePath(record?.localMirrorPath)
-  if (!id || !localMirrorPath) return null
+function chooseNotebookPathForLegacyRecord(record) {
+  const directPath = normalizePath(record?.notebookPath)
+  if (directPath) return directPath
+
   const syncTargetPath = normalizePath(record?.syncTargetPath)
+  if (hasNotebookManifest(syncTargetPath)) return syncTargetPath
+
+  const localMirrorPath = normalizePath(record?.localMirrorPath)
+  if (hasNotebookManifest(localMirrorPath)) return localMirrorPath
+
+  return syncTargetPath ?? localMirrorPath
+}
+
+function normalizeNotebookRecord(_userDataPath, record) {
+  const id = typeof record?.id === 'string' && record.id.trim() ? record.id.trim() : ''
+  const notebookPath = chooseNotebookPathForLegacyRecord(record)
+  if (!id || !notebookPath) return null
   return {
     id,
-    name: typeof record?.name === 'string' && record.name.trim()
-      ? record.name.trim()
-      : getStorageProfileNotebookName(syncTargetPath ?? localMirrorPath),
-    localMirrorPath,
-    ...(syncTargetPath ? { syncTargetPath } : {}),
+    notebookPath,
     createdAt: typeof record?.createdAt === 'string' ? record.createdAt : nowIso(),
     updatedAt: typeof record?.updatedAt === 'string' ? record.updatedAt : nowIso(),
-    syncStatus: typeof record?.syncStatus === 'string' ? record.syncStatus : (syncTargetPath ? 'synced' : 'local-only'),
-    syncPending: Boolean(record?.syncPending),
-    syncFiles: normalizeNotebookSyncFiles(record?.syncFiles),
-    lastSyncedAt: typeof record?.lastSyncedAt === 'string' ? record.lastSyncedAt : undefined,
-    lastSyncError: typeof record?.lastSyncError === 'string' ? record.lastSyncError : undefined,
-    isLocalOnlyMigration:
-      record?.isLocalOnlyMigration === true ||
-      localMirrorPath === getDefaultStorageProfileRoot(userDataPath),
+    lastOpenedAt: typeof record?.lastOpenedAt === 'string' ? record.lastOpenedAt : undefined,
+    lastError: typeof record?.lastError === 'string' ? record.lastError : undefined,
   }
 }
 
 function normalizeNotebookLibrary(userDataPath, rawLibrary) {
+  const defaultRoot = getDefaultStorageProfileRoot(userDataPath)
   const records = Array.isArray(rawLibrary?.notebooks)
     ? rawLibrary.notebooks.map((record) => normalizeNotebookRecord(userDataPath, record)).filter(Boolean)
     : []
-  const seen = new Set()
+  const seenIds = new Set()
+  const seenPaths = new Set()
   const notebooks = records.filter((record) => {
-    if (seen.has(record.id)) return false
-    seen.add(record.id)
+    const pathKey = path.resolve(record.notebookPath)
+    if (pathKey === defaultRoot || seenIds.has(record.id) || seenPaths.has(pathKey)) return false
+    seenIds.add(record.id)
+    seenPaths.add(pathKey)
     return true
   })
   const activeNotebookId =
@@ -194,69 +183,25 @@ function buildNotebookRecordFromFolder(userDataPath, notebookRootPath, options =
 
   const identity = ensureNotebookFolderIdentity(userDataPath, rootPath)
   if (!identity.ok) return null
-  const notebookId = identity.notebookId
-  const defaultRoot = getDefaultStorageProfileRoot(userDataPath)
-  const isAppSupportNotebook = rootPath === defaultRoot || isPathInside(path.join(userDataPath, NOTEBOOK_MIRRORS_DIR), rootPath)
-  const localMirrorPath = isAppSupportNotebook ? rootPath : getNotebookMirrorRoot(userDataPath, notebookId)
-  const syncTargetPath = isAppSupportNotebook ? null : rootPath
-
-  if (!existsSync(path.join(localMirrorPath, 'manifest.json'))) {
-    saveAppState(localMirrorPath, loadResult.serializedState, {
-      userDataPath,
-      userSettingsRoot: userDataPath,
-      notebookId,
-      assetSourceRoot: rootPath,
-      syncMetadata: createSyncMetadata('mirror-created'),
-    })
-  }
-
   const timestamp = nowIso()
   return {
-    id: notebookId,
-    name: options.name ?? getStorageProfileNotebookName(rootPath),
-    localMirrorPath,
-    ...(syncTargetPath ? { syncTargetPath } : {}),
-    createdAt: timestamp,
+    id: identity.notebookId,
+    notebookPath: rootPath,
+    createdAt: options.createdAt ?? timestamp,
     updatedAt: timestamp,
-    syncStatus: syncTargetPath ? 'synced' : 'local-only',
-    syncPending: false,
-    syncFiles: syncTargetPath ? normalizeNotebookSyncFiles(loadResult.storageFiles) : [],
-    lastSyncedAt: syncTargetPath ? timestamp : undefined,
-    isLocalOnlyMigration: rootPath === defaultRoot,
-  }
-}
-
-function migrateLegacyStorageProfile(userDataPath) {
-  const legacyConfig = readLegacyStorageProfileConfig(userDataPath)
-  const defaultRoot = getDefaultStorageProfileRoot(userDataPath)
-  const candidates = uniquePaths([
-    legacyConfig.profileRootPath,
-    ...legacyConfig.knownNotebookPaths,
-    existsSync(path.join(defaultRoot, 'manifest.json')) ? defaultRoot : null,
-  ])
-  const records = []
-  const seenIds = new Set()
-  for (const candidate of candidates) {
-    const record = buildNotebookRecordFromFolder(userDataPath, candidate)
-    if (!record || seenIds.has(record.id)) continue
-    seenIds.add(record.id)
-    records.push(record)
-  }
-  const activeRecord = records.find((record) => {
-    const legacyActive = legacyConfig.profileRootPath ?? defaultRoot
-    return record.localMirrorPath === legacyActive || record.syncTargetPath === legacyActive
-  }) ?? records[0] ?? null
-  return {
-    version: 1,
-    activeNotebookId: activeRecord?.id ?? null,
-    notebooks: records,
+    lastOpenedAt: timestamp,
   }
 }
 
 export function initializeNotebookLibrary(userDataPath) {
+  cleanupLegacyAppPrivateNotebook(userDataPath)
   const existing = readNotebookLibrary(userDataPath)
-  if (existing) return existing
-  return writeNotebookLibrary(userDataPath, migrateLegacyStorageProfile(userDataPath))
+  if (existing) return writeNotebookLibrary(userDataPath, existing)
+  return writeNotebookLibrary(userDataPath, {
+    version: 1,
+    activeNotebookId: null,
+    notebooks: [],
+  })
 }
 
 export function getActiveNotebookRecord(library) {
@@ -271,7 +216,7 @@ export function upsertNotebookRecord(userDataPath, library, record, options = {}
   if (!nextRecord) return library
   const notebooks = library.notebooks.some((candidate) => candidate.id === nextRecord.id)
     ? library.notebooks.map((candidate) => (candidate.id === nextRecord.id ? nextRecord : candidate))
-    : [...library.notebooks, nextRecord]
+    : [...library.notebooks.filter((candidate) => path.resolve(candidate.notebookPath) !== path.resolve(nextRecord.notebookPath)), nextRecord]
   return writeNotebookLibrary(userDataPath, {
     version: 1,
     activeNotebookId: options.activate === false ? library.activeNotebookId : nextRecord.id,
@@ -296,37 +241,28 @@ export function setActiveNotebookId(userDataPath, library, notebookId) {
   return writeNotebookLibrary(userDataPath, {
     ...library,
     activeNotebookId: notebookId,
+    notebooks: library.notebooks.map((record) =>
+      record.id === notebookId ? { ...record, lastOpenedAt: nowIso() } : record,
+    ),
   })
 }
 
-export function createNotebookRecord(userDataPath, { name, syncTargetPath, serializedState }) {
+export function createNotebookRecord(userDataPath, { notebookPath, serializedState }) {
   const notebookId = createNotebookId()
-  const localMirrorPath = getNotebookMirrorRoot(userDataPath, notebookId)
+  const rootPath = path.resolve(notebookPath)
   const timestamp = nowIso()
-  saveAppState(localMirrorPath, serializedState, {
+  saveAppState(rootPath, serializedState, {
     userDataPath,
     userSettingsRoot: userDataPath,
     notebookId,
-    syncMetadata: createSyncMetadata('notebook-created'),
-  })
-  const syncSaveResult = saveAppState(syncTargetPath, serializedState, {
-    userDataPath,
-    userSettingsRoot: userDataPath,
-    notebookId,
-    assetSourceRoot: localMirrorPath,
     syncMetadata: createSyncMetadata('notebook-created'),
   })
   return {
     id: notebookId,
-    name,
-    localMirrorPath,
-    syncTargetPath: path.resolve(syncTargetPath),
+    notebookPath: rootPath,
     createdAt: timestamp,
     updatedAt: timestamp,
-    syncStatus: 'synced',
-    syncPending: false,
-    syncFiles: normalizeNotebookSyncFiles(syncSaveResult?.storageFiles),
-    lastSyncedAt: timestamp,
+    lastOpenedAt: timestamp,
   }
 }
 
@@ -337,255 +273,28 @@ export function createNotebookRecordFromExistingFolder(userDataPath, notebookRoo
   return { ok: true, record }
 }
 
-function isIgnoredNotebookFile(fileName) {
-  return (
-    fileName.startsWith('.') ||
-    fileName === 'desktop.ini' ||
-    fileName === 'Thumbs.db' ||
-    fileName.endsWith('~')
-  )
-}
-
-function hashBytes(bytes) {
-  return createHash('sha256').update(bytes).digest('hex')
-}
-
-function listNotebookFileEntries(rootPath, currentPath = rootPath, entries = new Map()) {
-  let directoryEntries
-  try {
-    directoryEntries = readdirSync(currentPath, { withFileTypes: true })
-  } catch {
-    return null
-  }
-  for (const entry of directoryEntries) {
-    if (isIgnoredNotebookFile(entry.name)) continue
-    const absolutePath = path.join(currentPath, entry.name)
-    const relativePath = path.relative(rootPath, absolutePath).split(path.sep).join('/')
-    if (entry.isDirectory()) {
-      const nested = listNotebookFileEntries(rootPath, absolutePath, entries)
-      if (nested === null) return null
-      continue
-    }
-    if (!entry.isFile()) continue
-    try {
-      const bytes = readFileSync(absolutePath)
-      const stat = statSync(absolutePath)
-      entries.set(relativePath, {
-        path: relativePath,
-        absolutePath,
-        bytes,
-        contentHash: hashBytes(bytes),
-        byteLength: bytes.length,
-        mtimeMs: stat.mtimeMs,
-      })
-    } catch {
-      return null
-    }
-  }
-  return entries
-}
-
-function copyEntry(rootPath, relativePath, entry) {
-  const absolutePath = path.resolve(rootPath, ...relativePath.split('/').filter(Boolean))
-  if (!absolutePath.startsWith(path.resolve(rootPath) + path.sep)) return
-  if (!entry) {
-    rmSync(absolutePath, { force: true })
-    return
-  }
-  mkdirSync(path.dirname(absolutePath), { recursive: true })
-  copyFileSync(entry.absolutePath, absolutePath)
-}
-
-function createSyncFiles(entries) {
-  return Array.from(entries.values())
-    .map((entry) => ({
-      path: entry.path,
-      contentHash: entry.contentHash,
-      byteLength: entry.byteLength,
-    }))
-    .sort((left, right) => left.path.localeCompare(right.path))
-}
-
-export function normalizeNotebookSyncFiles(value) {
-  const entries = Array.isArray(value)
-    ? value
-    : Array.isArray(value?.entries)
-      ? value.entries
-      : []
-  return entries
-    .flatMap((entry) => {
-      const filePath = typeof entry?.path === 'string'
-        ? entry.path
-        : typeof entry?.relativePath === 'string'
-          ? entry.relativePath
-          : ''
-      const contentHash = typeof entry?.contentHash === 'string'
-        ? entry.contentHash
-        : typeof entry?.hash === 'string'
-          ? entry.hash
-          : ''
-      const byteLength = Number.isFinite(entry?.byteLength)
-        ? entry.byteLength
-        : Number.isFinite(entry?.size)
-          ? entry.size
-          : null
-      return filePath && contentHash && byteLength !== null
-        ? [{ path: filePath, contentHash, byteLength }]
-        : []
-    })
-    .sort((left, right) => left.path.localeCompare(right.path))
-}
-
-function getCheckpointHash(syncFiles, relativePath) {
-  const entry = Array.isArray(syncFiles)
-    ? syncFiles.find((candidate) => candidate?.path === relativePath)
-    : null
-  return typeof entry?.contentHash === 'string' ? entry.contentHash : null
-}
-
-function getEntryChangeMtime(rootPath, relativePath, entry) {
-  if (entry && Number.isFinite(entry.mtimeMs)) return entry.mtimeMs
-  const root = path.resolve(rootPath)
-  let directoryPath = path.dirname(path.resolve(root, ...relativePath.split('/').filter(Boolean)))
-  while (directoryPath === root || isPathInside(root, directoryPath)) {
-    try {
-      if (existsSync(directoryPath)) return statSync(directoryPath).mtimeMs
-    } catch {
-      return 0
-    }
-    const parentPath = path.dirname(directoryPath)
-    if (parentPath === directoryPath) break
-    directoryPath = parentPath
-  }
-  return 0
-}
-
-export function reconcileNotebookMirrorWithTarget(record) {
-  if (!record?.syncTargetPath) return { ok: true, changed: false, record: { ...record, syncStatus: 'local-only', syncPending: false } }
-  if (!existsSync(record.syncTargetPath)) {
-    return {
-      ok: true,
-      changed: false,
-      record: {
-        ...record,
-        syncStatus: 'offline',
-        syncPending: true,
-        lastSyncError: 'Sync target is unavailable.',
-      },
-    }
-  }
-  const targetLoadResult = loadAppStateResult(record.syncTargetPath)
-  if (!targetLoadResult.ok || typeof targetLoadResult.serializedState !== 'string') {
-    return {
-      ok: false,
-      error: targetLoadResult.error ?? 'Sync target could not be loaded.',
-      record: {
-        ...record,
-        syncStatus: 'error',
-        syncPending: true,
-        lastSyncError: targetLoadResult.error ?? 'Sync target could not be loaded.',
-      },
-    }
-  }
-  const localEntries = listNotebookFileEntries(record.localMirrorPath)
-  const targetEntries = listNotebookFileEntries(record.syncTargetPath)
-  if (localEntries === null || targetEntries === null) {
-    return {
-      ok: false,
-      error: 'Notebook files could not be read for sync.',
-      record: {
-        ...record,
-        syncStatus: 'error',
-        syncPending: true,
-        lastSyncError: 'Notebook files could not be read for sync.',
-      },
-    }
-  }
-
-  const paths = new Set([...localEntries.keys(), ...targetEntries.keys()])
-  let changed = false
-  let tieConflictCount = 0
-  for (const relativePath of paths) {
-    if (relativePath === '_internal/sync-state.json') continue
-    const localEntry = localEntries.get(relativePath) ?? null
-    const targetEntry = targetEntries.get(relativePath) ?? null
-    const checkpointHash = getCheckpointHash(record.syncFiles, relativePath)
-    const localHash = localEntry?.contentHash ?? null
-    const targetHash = targetEntry?.contentHash ?? null
-    if (localHash === targetHash) continue
-
-    const localChanged = localHash !== checkpointHash
-    const targetChanged = targetHash !== checkpointHash
-    if (!localChanged && !targetChanged) continue
-
-    let winner = null
-    if (localChanged && !targetChanged) {
-      winner = 'local'
-    } else if (!localChanged && targetChanged) {
-      winner = 'target'
-    } else {
-      const localMtime = getEntryChangeMtime(record.localMirrorPath, relativePath, localEntry)
-      const targetMtime = getEntryChangeMtime(record.syncTargetPath, relativePath, targetEntry)
-      winner = localMtime >= targetMtime ? 'local' : 'target'
-      if (localMtime === targetMtime) tieConflictCount += 1
-    }
-
-    if (winner === 'local') {
-      copyEntry(record.syncTargetPath, relativePath, localEntry)
-    } else {
-      copyEntry(record.localMirrorPath, relativePath, targetEntry)
-    }
-    changed = true
-  }
-
-  const nextEntries = listNotebookFileEntries(record.localMirrorPath) ?? new Map()
-  const timestamp = nowIso()
-  return {
-    ok: true,
-    changed,
-    warning: tieConflictCount > 0 ? `${tieConflictCount} sync conflict${tieConflictCount === 1 ? '' : 's'} kept local changes.` : undefined,
-    record: {
-      ...record,
-      syncStatus: tieConflictCount > 0 ? 'warning' : 'synced',
-      syncPending: false,
-      syncFiles: createSyncFiles(nextEntries),
-      lastSyncedAt: timestamp,
-      lastSyncError: undefined,
-      updatedAt: timestamp,
-    },
-  }
-}
-
 export function createProfileFromNotebookLibrary(userDataPath, library) {
   const activeRecord = getActiveNotebookRecord(library)
   if (!activeRecord) {
     return {
       setupRequired: true,
       userDataPath,
-      profileRootPath: getDefaultStorageProfileRoot(userDataPath),
+      profileRootPath: '',
       notebookPath: '',
       notebookId: null,
       notebookName: '',
-      localMirrorPath: '',
-      isDefault: false,
       knownNotebookPaths: [],
       notebooks: library.notebooks,
     }
   }
-  const syncTargetMissing = Boolean(activeRecord.syncTargetPath && !existsSync(activeRecord.syncTargetPath))
+  const notebookPath = activeRecord.notebookPath
   return {
     userDataPath,
-    profileRootPath: activeRecord.localMirrorPath,
-    notebookPath: activeRecord.syncTargetPath ?? activeRecord.localMirrorPath,
+    profileRootPath: notebookPath,
+    notebookPath,
     notebookId: activeRecord.id,
-    notebookName: activeRecord.name,
-    localMirrorPath: activeRecord.localMirrorPath,
-    syncTargetPath: activeRecord.syncTargetPath,
-    syncStatus: syncTargetMissing ? 'offline' : activeRecord.syncStatus,
-    syncPending: syncTargetMissing ? true : activeRecord.syncPending,
-    lastSyncError: activeRecord.lastSyncError,
-    isDefault: false,
-    knownNotebookPaths: library.notebooks.map((record) => record.syncTargetPath ?? record.localMirrorPath),
+    notebookName: getStorageProfileNotebookName(notebookPath),
+    knownNotebookPaths: library.notebooks.map((record) => record.notebookPath),
     notebooks: library.notebooks,
   }
 }

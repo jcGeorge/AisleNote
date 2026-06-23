@@ -167,8 +167,8 @@ describe('MessagesView', () => {
       status: 'acknowledged',
       createdAt: '2026-06-01T00:02:00.000Z',
       signature: 'storage-recovered-1',
-      title: 'Started local notebook',
-      body: 'Tabs could not load the connected notebook.',
+      title: 'Recovered notebook',
+      body: 'Tabs could not load this notebook folder.',
       failedNotebookPath: '/Users/me/Broken Notebook',
       recoveryMode: 'created-local',
       issueSummary: ['manifest.json: Root manifest is corrupt.'],
@@ -184,7 +184,7 @@ describe('MessagesView', () => {
       />,
     )
 
-    expect(html).toContain('Started local notebook')
+    expect(html).toContain('Recovered notebook')
     expect(html).toContain('failed notebook folder')
     expect(html).toContain('/Users/me/Broken Notebook')
     expect(html).toContain('issue summary')
@@ -199,8 +199,8 @@ describe('MessagesView', () => {
       status: 'acknowledged',
       createdAt: '2026-06-01T00:02:00.000Z',
       signature: 'storage-recovered-1',
-      title: 'Started local notebook',
-      body: 'Tabs could not load the connected notebook.',
+      title: 'Recovered notebook',
+      body: 'Tabs could not load this notebook folder.',
       failedNotebookPath: '/Users/me/Broken Notebook',
       recoveryMode: 'created-local',
       issueSummary: ['manifest.json: Root manifest is corrupt.'],
@@ -215,7 +215,7 @@ describe('MessagesView', () => {
       />,
     )
 
-    expect(html).toContain('Started local notebook')
+    expect(html).toContain('Recovered notebook')
     expect(html).toContain('failed notebook folder')
     expect(html).not.toContain('open previous notebook folder')
   })
@@ -227,8 +227,8 @@ describe('MessagesView', () => {
       status: 'acknowledged',
       createdAt: '2026-06-01T00:02:00.000Z',
       signature: 'storage-recovered-1',
-      title: 'Started local notebook',
-      body: 'Tabs could not load the connected notebook.',
+      title: 'Recovered notebook',
+      body: 'Tabs could not load this notebook folder.',
       failedNotebookPath: '/Users/me/Missing Notebook',
       failedNotebookAvailable: false,
       recoveryMode: 'created-local',
@@ -249,7 +249,7 @@ describe('MessagesView', () => {
     expect(html).toContain('/Users/me/Missing Notebook')
     expect(html).toContain('Unable to locate folder.')
     expect(html).not.toContain('open previous notebook folder')
-    expect(html).not.toContain('open local notebook folder')
+    expect(html).not.toContain('open notebook folder')
   })
 
   it('renders toast history newest first with tone and timestamp', () => {

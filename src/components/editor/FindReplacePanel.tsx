@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import type { FindReplaceMatch, FindReplaceScope } from '../../notes/find-replace'
 import { AppIcon } from '../icons/AppIcon'
 

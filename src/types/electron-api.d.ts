@@ -74,13 +74,7 @@ type NotebookSelectorPayload = {
   notebookPath?: string
 }
 
-type NotebookSyncTargetPayload = NotebookSelectorPayload & {
-  syncTargetPath?: string
-  locationPath?: string
-}
-
 type NotebookDeletePayload = NotebookSelectorPayload & {
-  trashSyncTarget?: boolean
   skipConfirmation?: boolean
 }
 
@@ -158,14 +152,6 @@ type OpenNotebookImportSourceResult =
   | {
       canceled: false
       ok: true
-      kind: 'zip'
-      bytes: ArrayBuffer
-      filePath?: string
-      nativeNotebookError?: string
-    }
-  | {
-      canceled: false
-      ok: true
       kind: 'notebook-zip'
       filePath?: string
       serializedState: string | null
@@ -200,6 +186,26 @@ type OpenNotebookImportSourceResult =
       folderPath: string
       rootName?: string
       files: Array<{ relativePath: string; markdown: string; size?: number }>
+      assetRoots?: Array<{ id: string; name?: string; sourceBasePath?: string }>
+    }
+  | {
+      canceled: false
+      ok: true
+      kind: 'markdown-zip'
+      filePath?: string
+      rootName?: string
+      files: Array<{ relativePath: string; markdown: string; size?: number }>
+      assets?: Array<{
+        assetRootId?: string
+        relativePath: string
+        bytes: ArrayBuffer
+        fileName?: string
+        name?: string
+        mimeType?: string
+        extension?: string
+      }>
+      assetRoots?: Array<{ id: string; name?: string; sourceBasePath?: string }>
+      nativeNotebookError?: string
     }
   | {
       canceled: false
@@ -322,19 +328,12 @@ declare global {
         | { ok: true; locationPath: string }
         | { ok: false; error: string }
       >
-      createNotebook?: (payload: { name: string; locationPath: string; serializedState: string }) => Promise<StorageProfileActionResult>
-      resetLocalNotebookToBlank?: () => Promise<
-        { ok: true; status: StorageProfileStatus } | { ok: false; error?: string; status: StorageProfileStatus }
-      >
+      createNotebook?: (payload: { name: string; locationPath: string }) => Promise<StorageProfileActionResult>
       renameNotebook?: (payload: { name: string }) => Promise<StorageProfileActionResult>
       openNotebook?: () => Promise<StorageProfileActionResult>
       switchNotebook?: (payload: NotebookSelectorPayload) => Promise<StorageProfileActionResult>
       forgetNotebook?: (payload: NotebookSelectorPayload) => Promise<StorageProfileActionResult>
       deleteNotebook?: (payload?: NotebookDeletePayload) => Promise<StorageProfileActionResult>
-      attachNotebookSyncTarget?: (payload?: NotebookSyncTargetPayload) => Promise<StorageProfileActionResult>
-      detachNotebookSyncTarget?: (payload?: NotebookSelectorPayload) => Promise<StorageProfileActionResult>
-      reconnectNotebookSyncTarget?: (payload?: NotebookSyncTargetPayload) => Promise<StorageProfileActionResult>
-      chooseStorageFolder?: () => Promise<StorageProfileActionResult>
       moveStorageProfile?: () => Promise<StorageProfileActionResult>
       chooseUserSettingsFolder?: () => Promise<
         | { canceled: true; status: UserSettingsLocationStatus }
@@ -358,11 +357,12 @@ declare global {
       retryStorageProfile?: () => Promise<
         { ok: true; status: StorageProfileStatus; warning?: string } | { ok: false; error?: string; status: StorageProfileStatus }
       >
+      onOpenNotebookManager?: (handler: () => void) => () => void
       onStorageProfileStatusUpdated?: (handler: (payload: StorageProfileStatus) => void) => () => void
       onUserSettingsLocationStatusUpdated?: (handler: (payload: UserSettingsLocationStatus) => void) => () => void
       exportNotebookFolder?: (payload: { serializedState: string }) => Promise<ExportNotebookFolderResult>
       openNotebookImportSource?: () => Promise<OpenNotebookImportSourceResult>
-      readFolderImportAsset?: (payload: { sourceId: string; relativePath: string }) => Promise<ReadFolderImportAssetResult>
+      readFolderImportAsset?: (payload: { sourceId: string; assetRootId?: string; relativePath: string }) => Promise<ReadFolderImportAssetResult>
       openUserSettingsFile?: () => Promise<OpenUserSettingsFileResult>
       openUserSettingsFromNotebookFolder?: () => Promise<OpenUserSettingsFileResult>
       saveUserSettingsFile?: (payload: { defaultPath: string; contents: string }) => Promise<{

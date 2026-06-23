@@ -6,12 +6,9 @@ type StorageProfileActionResult =
   | { ok: true; status: StorageProfileStatus; warning?: string }
   | { ok: false; error?: string; status: StorageProfileStatus }
 
-type SerializedStateSource = string | (() => string)
-
 type CreateNotebookPayload = {
   name: string
   locationPath: string
-  serializedState: SerializedStateSource
 }
 
 type NotebookSelectorPayload = {
@@ -19,13 +16,7 @@ type NotebookSelectorPayload = {
   notebookPath?: string
 }
 
-type NotebookSyncTargetPayload = NotebookSelectorPayload & {
-  syncTargetPath?: string
-  locationPath?: string
-}
-
 type NotebookDeletePayload = NotebookSelectorPayload & {
-  trashSyncTarget?: boolean
   skipConfirmation?: boolean
 }
 
@@ -46,7 +37,7 @@ export function getStorageProfileStatusToast(nextStatus: StorageProfileStatus): 
   tone: ToastTone
   durationMs?: number
 } | null {
-  if (nextStatus.event === 'notebook-setup-required') return null
+  if (nextStatus.status === 'setup-required' || nextStatus.event === 'notebook-setup-required') return null
   if (nextStatus.event === 'external-loaded') {
     return { message: 'External notebook folder changes loaded.', tone: 'success' }
   }
@@ -126,21 +117,9 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     return null
   }
 
-  const chooseStorageFolder = async () => {
+  const createNotebook = async ({ name, locationPath }: CreateNotebookPayload) => {
     await beforeStorageActionRef.current?.()
-    const result = await window.electronAPI?.chooseStorageFolder?.()
-    if (!result) {
-      pushToastRef.current('Notebook folder selection is only available in the desktop app.', 'warning')
-      return false
-    }
-    return handleStorageProfileResult(result, 'Notebook folder updated.')
-  }
-
-  const createNotebook = async ({ name, locationPath, serializedState: serializedStateSource }: CreateNotebookPayload) => {
-    await beforeStorageActionRef.current?.()
-    const serializedState =
-      typeof serializedStateSource === 'function' ? serializedStateSource() : serializedStateSource
-    const result = await window.electronAPI?.createNotebook?.({ name, locationPath, serializedState })
+    const result = await window.electronAPI?.createNotebook?.({ name, locationPath })
     if (!result) {
       pushToastRef.current('New notebook is only available in the desktop app.', 'warning')
       return false
@@ -200,36 +179,6 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     return handleStorageProfileResult(result, 'Notebook deleted.')
   }
 
-  const attachNotebookSyncTarget = async (payload: NotebookSyncTargetPayload = {}) => {
-    await beforeStorageActionRef.current?.()
-    const result = await window.electronAPI?.attachNotebookSyncTarget?.(payload)
-    if (!result) {
-      pushToastRef.current('Notebook sync folders are only available in the desktop app.', 'warning')
-      return false
-    }
-    return handleStorageProfileResult(result, 'Sync folder attached.')
-  }
-
-  const detachNotebookSyncTarget = async (payload: NotebookSelectorPayload = {}) => {
-    await beforeStorageActionRef.current?.()
-    const result = await window.electronAPI?.detachNotebookSyncTarget?.(payload)
-    if (!result) {
-      pushToastRef.current('Notebook sync folders are only available in the desktop app.', 'warning')
-      return false
-    }
-    return handleStorageProfileResult(result, 'Sync folder detached.')
-  }
-
-  const reconnectNotebookSyncTarget = async (payload: NotebookSyncTargetPayload = {}) => {
-    await beforeStorageActionRef.current?.()
-    const result = await window.electronAPI?.reconnectNotebookSyncTarget?.(payload)
-    if (!result) {
-      pushToastRef.current('Notebook sync folders are only available in the desktop app.', 'warning')
-      return false
-    }
-    return handleStorageProfileResult(result, 'Sync folder reconnected.')
-  }
-
   const moveStorageProfile = async () => {
     await beforeStorageActionRef.current?.()
     const result = await window.electronAPI?.moveStorageProfile?.()
@@ -271,16 +220,12 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
   return {
     storageProfileStatus,
     chooseNotebookLocation,
-    chooseStorageFolder,
     createNotebook,
     renameNotebook,
     openNotebook,
     switchNotebook,
     forgetNotebook,
     deleteNotebook,
-    attachNotebookSyncTarget,
-    detachNotebookSyncTarget,
-    reconnectNotebookSyncTarget,
     moveStorageProfile,
     revealStorageProfile,
     revealRecoveredNotebookLocation,

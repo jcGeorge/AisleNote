@@ -2,14 +2,19 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { loadAppStateResult } from './app-state-storage.mjs'
+import { loadAppStateResult, saveAppState } from './app-state-storage.mjs'
 import {
   NOTEBOOK_LIBRARY_CONFIG_FILE,
   createNotebookRecord,
-  normalizeNotebookSyncFiles,
-  reconcileNotebookMirrorWithTarget,
+  createNotebookRecordFromExistingFolder,
+  createProfileFromNotebookLibrary,
+  initializeNotebookLibrary,
   writeNotebookLibrary,
 } from './notebook-library.mjs'
+import {
+  STORAGE_PROFILE_CONFIG_FILE,
+  STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME,
+} from './storage-profile.mjs'
 
 const tempRoots = []
 
@@ -25,7 +30,7 @@ afterEach(() => {
   }
 })
 
-function appState() {
+function appState(markdown = 'original markdown') {
   return {
     theme: 'dawn',
     notebook: {
@@ -40,7 +45,7 @@ function appState() {
     noteAisleBodies: [
       {
         id: 'aisle-body-root',
-        markdown: 'original markdown',
+        markdown,
         tags: [],
         frontmatter: null,
         frontmatterStatus: 'none',
@@ -64,6 +69,19 @@ function appState() {
   }
 }
 
+function writeRawLibrary(userDataPath, library) {
+  mkdirSync(userDataPath, { recursive: true })
+  writeFileSync(
+    path.join(userDataPath, NOTEBOOK_LIBRARY_CONFIG_FILE),
+    `${JSON.stringify(library, null, 2)}\n`,
+    'utf8',
+  )
+}
+
+function readRawLibrary(userDataPath) {
+  return JSON.parse(readFileSync(path.join(userDataPath, NOTEBOOK_LIBRARY_CONFIG_FILE), 'utf8'))
+}
+
 function readNotebookIndex(root) {
   return JSON.parse(readFileSync(path.join(root, '.tabs', 'notebook-index.json'), 'utf8'))
 }
@@ -81,26 +99,35 @@ function getMarkdown(root) {
   return state.noteAisleBodies.find((body) => body.id === 'aisle-body-root')?.markdown
 }
 
-describe('notebook library sync checkpoints', () => {
-  it('normalizes storage snapshots and legacy entries into sync-file checkpoints', () => {
-    expect(normalizeNotebookSyncFiles({
-      entries: [{ relativePath: 'Inbox.md', hash: 'abc123', size: 12 }],
-    })).toEqual([{ path: 'Inbox.md', contentHash: 'abc123', byteLength: 12 }])
-
-    expect(normalizeNotebookSyncFiles([
-      { path: 'Inbox.md', contentHash: 'abc123', byteLength: 12 },
-    ])).toEqual([{ path: 'Inbox.md', contentHash: 'abc123', byteLength: 12 }])
-  })
-
-  it('creates synced notebook records with array checkpoints', () => {
+describe('notebook library folders', () => {
+  it('initializes a fresh desktop profile with no active notebook', () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
-    const syncTargetPath = path.join(root, 'sync-target')
+    mkdirSync(userDataPath, { recursive: true })
+
+    const library = initializeNotebookLibrary(userDataPath)
+    const profile = createProfileFromNotebookLibrary(userDataPath, library)
+
+    expect(library).toEqual({ version: 1, activeNotebookId: null, notebooks: [] })
+    expect(profile).toMatchObject({
+      setupRequired: true,
+      profileRootPath: '',
+      notebookPath: '',
+      notebookId: null,
+      notebookName: '',
+      knownNotebookPaths: [],
+    })
+    expect(readRawLibrary(userDataPath)).toEqual(library)
+  })
+
+  it('creates notebook records directly in the selected notebook folder', () => {
+    const root = tempRoot()
+    const userDataPath = path.join(root, 'user-data')
+    const notebookPath = path.join(root, 'Notebooks', 'Christianity')
     mkdirSync(userDataPath, { recursive: true })
 
     const record = createNotebookRecord(userDataPath, {
-      name: 'Synced',
-      syncTargetPath,
+      notebookPath,
       serializedState: JSON.stringify(appState()),
     })
     const library = writeNotebookLibrary(userDataPath, {
@@ -109,53 +136,108 @@ describe('notebook library sync checkpoints', () => {
       notebooks: [record],
     })
 
-    expect(Array.isArray(record.syncFiles)).toBe(true)
-    expect(record.syncFiles.some((entry) => entry.path.endsWith('.md'))).toBe(true)
-    expect(JSON.parse(readFileSync(path.join(userDataPath, NOTEBOOK_LIBRARY_CONFIG_FILE), 'utf8')).notebooks[0].syncFiles)
-      .toEqual(library.notebooks[0].syncFiles)
+    expect(record.notebookPath).toBe(path.resolve(notebookPath))
+    expect(record).not.toHaveProperty('localMirrorPath')
+    expect(record).not.toHaveProperty('syncTargetPath')
+    expect(existsSync(path.join(notebookPath, 'manifest.json'))).toBe(true)
+    expect(getMarkdown(notebookPath)).toBe('original markdown')
+    expect(readRawLibrary(userDataPath).notebooks[0]).toEqual(library.notebooks[0])
   })
 
-  it('keeps local-mirror Markdown edits and copies them to the sync target', () => {
+  it('cleans up the old app-private default notebook without migrating storage-profile.json', () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
-    const syncTargetPath = path.join(root, 'sync-target')
+    const defaultNotebookPath = path.join(userDataPath, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME)
+    const externalNotebookPath = path.join(root, 'external-notebook')
     mkdirSync(userDataPath, { recursive: true })
-    const record = createNotebookRecord(userDataPath, {
-      name: 'Synced',
-      syncTargetPath,
-      serializedState: JSON.stringify(appState()),
+    saveAppState(defaultNotebookPath, JSON.stringify(appState('old default markdown')), { userDataPath })
+    saveAppState(externalNotebookPath, JSON.stringify(appState('external markdown')), {
+      userDataPath,
+      notebookId: 'external-notebook',
     })
+    writeFileSync(
+      path.join(userDataPath, STORAGE_PROFILE_CONFIG_FILE),
+      `${JSON.stringify({ profileRootPath: externalNotebookPath }, null, 2)}\n`,
+      'utf8',
+    )
 
-    writeFileSync(getRootNotePath(record.localMirrorPath), 'local external markdown', 'utf8')
+    const library = initializeNotebookLibrary(userDataPath)
 
-    const reconciliation = reconcileNotebookMirrorWithTarget(record)
-
-    expect(reconciliation.ok).toBe(true)
-    expect(reconciliation.changed).toBe(true)
-    expect(readFileSync(getRootNotePath(syncTargetPath), 'utf8')).toBe('local external markdown')
-    expect(getMarkdown(record.localMirrorPath)).toBe('local external markdown')
-    expect(reconciliation.record.syncFiles.some((entry) => entry.path.endsWith('.md'))).toBe(true)
+    expect(library).toEqual({ version: 1, activeNotebookId: null, notebooks: [] })
+    expect(existsSync(defaultNotebookPath)).toBe(false)
+    expect(existsSync(path.join(userDataPath, STORAGE_PROFILE_CONFIG_FILE))).toBe(false)
+    expect(existsSync(path.join(externalNotebookPath, 'manifest.json'))).toBe(true)
   })
 
-  it('keeps sync-target Markdown edits and copies them to the local mirror', () => {
+  it('filters remembered records that point at the old app-private default folder', () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
-    const syncTargetPath = path.join(root, 'sync-target')
+    const defaultNotebookPath = path.join(userDataPath, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME)
+    const externalNotebookPath = path.join(root, 'external-notebook')
     mkdirSync(userDataPath, { recursive: true })
-    const record = createNotebookRecord(userDataPath, {
-      name: 'Synced',
-      syncTargetPath,
-      serializedState: JSON.stringify(appState()),
+    saveAppState(defaultNotebookPath, JSON.stringify(appState('old default markdown')), {
+      userDataPath,
+      notebookId: 'default-notebook',
+    })
+    saveAppState(externalNotebookPath, JSON.stringify(appState('external markdown')), {
+      userDataPath,
+      notebookId: 'external-notebook',
+    })
+    writeRawLibrary(userDataPath, {
+      version: 1,
+      activeNotebookId: 'default-notebook',
+      notebooks: [
+        {
+          id: 'default-notebook',
+          notebookPath: defaultNotebookPath,
+          createdAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        },
+        {
+          id: 'external-notebook',
+          notebookPath: externalNotebookPath,
+          createdAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        },
+      ],
     })
 
-    writeFileSync(getRootNotePath(syncTargetPath), 'target external markdown', 'utf8')
+    const library = initializeNotebookLibrary(userDataPath)
 
-    const reconciliation = reconcileNotebookMirrorWithTarget(record)
+    expect(library.activeNotebookId).toBe('external-notebook')
+    expect(library.notebooks).toHaveLength(1)
+    expect(library.notebooks[0]).toMatchObject({
+      id: 'external-notebook',
+      notebookPath: path.resolve(externalNotebookPath),
+    })
+    expect(existsSync(defaultNotebookPath)).toBe(false)
+    expect(getMarkdown(externalNotebookPath)).toBe('external markdown')
+  })
 
-    expect(reconciliation.ok).toBe(true)
-    expect(reconciliation.changed).toBe(true)
-    expect(readFileSync(getRootNotePath(record.localMirrorPath), 'utf8')).toBe('target external markdown')
-    expect(getMarkdown(record.localMirrorPath)).toBe('target external markdown')
-    expect(existsSync(getRootNotePath(syncTargetPath))).toBe(true)
+  it('opens an existing folder without a separate notebook name', () => {
+    const root = tempRoot()
+    const userDataPath = path.join(root, 'user-data')
+    const notebookPath = path.join(root, 'Christianity')
+    mkdirSync(userDataPath, { recursive: true })
+    saveAppState(notebookPath, JSON.stringify(appState()), {
+      userDataPath,
+      notebookId: 'existing-notebook',
+    })
+
+    const result = createNotebookRecordFromExistingFolder(userDataPath, notebookPath)
+    expect(result.ok).toBe(true)
+    const library = writeNotebookLibrary(userDataPath, {
+      version: 1,
+      activeNotebookId: result.record.id,
+      notebooks: [result.record],
+    })
+    const profile = createProfileFromNotebookLibrary(userDataPath, library)
+
+    expect(result.record).toMatchObject({
+      id: 'existing-notebook',
+      notebookPath: path.resolve(notebookPath),
+    })
+    expect(profile.notebookName).toBe('Christianity')
+    expect(readFileSync(getRootNotePath(notebookPath), 'utf8')).toBe('original markdown')
   })
 })

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import JSZip from 'jszip'
 import {
   getHybridStorageRoot,
   importNotebookZipArchive,
@@ -15,6 +16,7 @@ const MARKDOWN_IMPORT_MAX_FILE_BYTES = 10 * 1024 * 1024
 const MARKDOWN_IMPORT_MAX_TOTAL_BYTES = 250 * 1024 * 1024
 const FOLDER_IMPORT_MAX_ASSET_BYTES = 100 * 1024 * 1024
 const MARKDOWN_EXTENSION_RE = /\.(?:md|markdown)$/i
+const DEFAULT_MARKDOWN_ASSET_ROOT_ID = 'source'
 
 function toArrayBuffer(buffer) {
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
@@ -142,28 +144,131 @@ function walkMarkdownImportFolder(rootPath) {
   return files.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
 }
 
-export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
-  const folderImportSources = new Map()
-
-  function openZipFile(filePath, fallbackError = null) {
+function findObsidianVaultRoot(folderPath) {
+  let cursor = path.resolve(folderPath)
+  while (true) {
+    const obsidianPath = path.join(cursor, '.obsidian')
     try {
-      const bytes = readFileSync(filePath)
-      return {
-        canceled: false,
-        ok: true,
-        kind: 'zip',
-        bytes: toArrayBuffer(bytes),
-        filePath,
-        ...(fallbackError ? { nativeNotebookError: fallbackError } : {}),
+      if (lstatSync(obsidianPath).isDirectory()) return cursor
+    } catch {
+      // Keep walking toward the filesystem root.
+    }
+    const parent = path.dirname(cursor)
+    if (!parent || parent === cursor) return null
+    cursor = parent
+  }
+}
+
+function buildPublicAssetRoot(root) {
+  return {
+    id: root.id,
+    name: root.name,
+    sourceBasePath: root.sourceBasePath,
+  }
+}
+
+function buildMarkdownFolderAssetRoots(folderPath) {
+  const roots = [{
+    id: DEFAULT_MARKDOWN_ASSET_ROOT_ID,
+    name: path.basename(folderPath),
+    rootPath: folderPath,
+    sourceBasePath: '',
+  }]
+  const vaultRoot = findObsidianVaultRoot(folderPath)
+  if (vaultRoot && path.resolve(vaultRoot) !== path.resolve(folderPath)) {
+    roots.push({
+      id: 'vault',
+      name: path.basename(vaultRoot),
+      rootPath: vaultRoot,
+      sourceBasePath: path.relative(vaultRoot, folderPath).split(path.sep).join('/'),
+    })
+  }
+  return roots
+}
+
+function getMarkdownZipRootName(filePath) {
+  const baseName = path.basename(filePath, path.extname(filePath))
+  return baseName || 'Markdown import'
+}
+
+async function openMarkdownZipImportFile(filePath, fallbackError = null) {
+  try {
+    const zip = await JSZip.loadAsync(readFileSync(filePath))
+    const files = []
+    const assets = []
+    let totalBytes = 0
+
+    for (const file of Object.values(zip.files)) {
+      if (file.dir) continue
+      const relativePath = normalizeFolderImportRelativePath(file.name)
+      if (!relativePath) {
+        return { canceled: false, ok: false, error: 'Markdown ZIP contains an invalid path.' }
       }
-    } catch (error) {
+      const bytes = await file.async('nodebuffer')
+      if (MARKDOWN_EXTENSION_RE.test(relativePath)) {
+        if (bytes.byteLength > MARKDOWN_IMPORT_MAX_FILE_BYTES) {
+          return { canceled: false, ok: false, error: `Markdown file is too large: ${relativePath}` }
+        }
+        if (files.length >= MARKDOWN_IMPORT_MAX_FILES) {
+          return {
+            canceled: false,
+            ok: false,
+            error: `Markdown ZIP contains more than ${MARKDOWN_IMPORT_MAX_FILES} Markdown files.`,
+          }
+        }
+        totalBytes += bytes.byteLength
+        if (totalBytes > MARKDOWN_IMPORT_MAX_TOTAL_BYTES) {
+          return { canceled: false, ok: false, error: 'Markdown ZIP is too large to import.' }
+        }
+        files.push({
+          relativePath,
+          markdown: bytes.toString('utf8'),
+          size: bytes.byteLength,
+        })
+        continue
+      }
+      if (bytes.byteLength > FOLDER_IMPORT_MAX_ASSET_BYTES) continue
+      assets.push({
+        assetRootId: DEFAULT_MARKDOWN_ASSET_ROOT_ID,
+        relativePath,
+        bytes: toArrayBuffer(bytes),
+        fileName: path.basename(relativePath),
+        name: path.basename(relativePath),
+        mimeType: getMimeTypeFromFileName(relativePath),
+        extension: path.extname(relativePath).slice(1).toLowerCase(),
+      })
+    }
+
+    if (files.length === 0) {
       return {
         canceled: false,
         ok: false,
-        error: error instanceof Error ? error.message : 'ZIP file could not be opened.',
+        error: fallbackError ?? 'Markdown ZIP does not contain Markdown files.',
       }
     }
+    const rootName = getMarkdownZipRootName(filePath)
+    return {
+      canceled: false,
+      ok: true,
+      kind: 'markdown-zip',
+      filePath,
+      rootName,
+      files: files.sort((a, b) => a.relativePath.localeCompare(b.relativePath)),
+      assets,
+      assetRoots: [{ id: DEFAULT_MARKDOWN_ASSET_ROOT_ID, name: rootName, sourceBasePath: '' }],
+      ...(fallbackError ? { nativeNotebookError: fallbackError } : {}),
+    }
+  } catch (error) {
+    return {
+      canceled: false,
+      ok: false,
+      error: error instanceof Error ? error.message : 'Markdown ZIP could not be imported.',
+    }
   }
+}
+
+export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
+  const folderImportSources = new Map()
 
   async function openNotebookZipImportFile(filePath) {
     const result = await importNotebookZipArchive(filePath)
@@ -183,7 +288,7 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
     const canTryMarkdownZip = result.issues?.some((issue) =>
       issue.code === 'missing-root-manifest' || issue.code === 'unexpected-archive-entry'
     )
-    if (canTryMarkdownZip) return openZipFile(filePath, result.error)
+    if (canTryMarkdownZip) return openMarkdownZipImportFile(filePath, result.error)
     return {
       canceled: false,
       ok: false,
@@ -257,10 +362,12 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
       if (files.length === 0) {
         return { canceled: false, ok: false, error: 'Folder does not contain Markdown files.' }
       }
+      const assetRoots = buildMarkdownFolderAssetRoots(folderPath)
       const sourceId = rememberFolderImportSource(folderImportSources, {
         kind: 'markdown',
         rootPath: folderPath,
         folderPath,
+        assetRoots,
       })
       return {
         canceled: false,
@@ -270,6 +377,7 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
         folderPath,
         rootName: path.basename(folderPath),
         files,
+        assetRoots: assetRoots.map(buildPublicAssetRoot),
       }
     } catch (error) {
       return {
@@ -320,7 +428,7 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
         cancelId: 2,
         defaultId: 0,
         message: 'Import notebook',
-        detail: 'Choose a notebook ZIP, a Tabs notebook folder, or a Markdown folder.',
+        detail: 'Choose a Tabs notebook ZIP, Markdown ZIP, Tabs notebook folder, or Markdown folder.',
       })
       if (choice.response === 2) return { canceled: true }
       if (choice.response === 0) {
@@ -430,16 +538,24 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
       const source = folderImportSources.get(sourceId)
       if (!source) return { ok: false, error: 'Import source is no longer available.' }
 
+      const requestedAssetRootId = typeof payload?.assetRootId === 'string' && payload.assetRootId.trim()
+        ? payload.assetRootId.trim()
+        : DEFAULT_MARKDOWN_ASSET_ROOT_ID
+      const assetRoot =
+        source.assetRoots?.find((candidate) => candidate.id === requestedAssetRootId) ??
+        source.assetRoots?.[0] ??
+        { rootPath: source.rootPath, id: DEFAULT_MARKDOWN_ASSET_ROOT_ID }
+      const rootPath = path.resolve(assetRoot.rootPath)
       const relativePath = normalizeFolderImportRelativePath(payload?.relativePath)
       if (!relativePath) return { ok: false, error: 'Invalid import asset path.' }
 
-      const absolutePath = path.resolve(source.rootPath, ...relativePath.split('/'))
-      if (!isInsidePath(source.rootPath, absolutePath)) {
+      const absolutePath = path.resolve(rootPath, ...relativePath.split('/'))
+      if (!isInsidePath(rootPath, absolutePath)) {
         return { ok: false, error: 'Invalid import asset path.' }
       }
 
       const stats = lstatSync(absolutePath)
-      if (stats.isSymbolicLink() || importPathContainsSymlink(source.rootPath, relativePath) || !stats.isFile()) {
+      if (stats.isSymbolicLink() || importPathContainsSymlink(rootPath, relativePath) || !stats.isFile()) {
         return { ok: false, error: 'Import asset is not a readable file.' }
       }
       if (stats.size > FOLDER_IMPORT_MAX_ASSET_BYTES) {

@@ -9,7 +9,7 @@ The guiding rule is: data integrity and recovery come before visual polish and p
 Cleaned up on 2026-05-17.
 
 - **Phase 1 is complete.** The stabilization pass covered real-workspace persistence, frontmatter, batch note workflows, rename persistence, trash/restore, export/images, and notebook-folder reload/move behavior.
-- **Phase 2 is complete for the current schema 1 storage model.** The active `domains/` manifest/Markdown/assets format is documented, Electron/browser storage behavior is hardened, notebook-folder health is visible in settings, and global user settings are separated from selected notebook folders.
+- **Phase 2 is complete for the current storage model.** The active manifest/Markdown/assets format is documented, Electron/browser storage behavior is hardened, notebook-folder health is visible in settings, and global user settings are separated from selected notebook folders.
 - **Phase 3 is complete for this roadmap gate.** The first targeted refactor pass extracted notebook-folder orchestration and cleared the hook-dependency cleanup target. Larger refactor slices are now normal engineering hygiene, not blockers for Phase 4.
 - **Phase 4 is the current active phase.** The first input-polish slice is largely implemented; remaining Phase 4 work is continued bug polish plus the later design-system/UI overhaul.
 
@@ -21,7 +21,7 @@ Completed outcomes:
 
 - Frontmatter templates, computed values, default values, manual rows, derived rows, null date/datetime values, picker behavior, and template switching were tested and fixed where needed.
 - Batch note operations were exercised for frontmatter application, note movement, deletion, restore, and review flows.
-- Rename persistence for domains, spaces, parent tabs, and sub-tabs was validated across app restart/storage reload.
+- Rename persistence for folders and notes was validated across app restart/storage reload.
 - Trash restore/delete behavior, export output, image asset handling, image resize/crop/rotation metadata, and notebook-folder move/retry/reload behavior were validated.
 - The manual real-workspace pass used QA-only copied data.
 
@@ -35,7 +35,7 @@ Goal: make the manifest/Markdown/assets storage model resilient enough for real 
 
 Completed outcomes:
 
-- `docs/storage-schema.md` now describes the current schema 1 named-root `domains/...` layout as canonical; the future `topics/` idea remains explicitly deferred.
+- `docs/storage-schema.md` now describes the current generic notebook tree, visible Markdown files, `.tabs/` metadata, and asset layout as canonical.
 - Missing Markdown files, missing/corrupt trash manifests, corrupt branch manifests, corrupt/unsupported root manifests, stale revisions, conflict folders, and paused-write safeguards are covered by storage behavior and tests.
 - Settings > Data surfaces notebook folder transfer, user-settings transfer, notebook create/switch/move actions, notebook-folder health, folder path, schema/writable state, issue details, reveal folder, and retry reload actions.
 - Browser hybrid storage and Electron filesystem storage have parity coverage for the current logical app state.
@@ -69,8 +69,8 @@ Goal: clean up known workflow and editor-input rough edges before the broader vi
 
 Completed or mostly completed first-pass areas:
 
-- Tab-after-naming flow for parent tabs and sub-tabs.
-- Assignable previous/next parent-tab hotkeys, unbound by default.
+- Tab-key-after-naming flow for notes and folders.
+- Assignable previous/next note hotkeys, unbound by default.
 - Markdown input polish for blockquotes, pasted lists, and multi-cursor list commands.
 - Multi-cursor formatting support for headings, bold, italic, strikethrough, blockquotes, code blocks, list conversion, delete behavior, and Page Up/Page Down movement.
 - Normal-cursor Page Up/Page Down movement in the WYSIWYG editor.
@@ -106,8 +106,8 @@ Goal: teach workflows after those workflows are stable.
 Focus areas:
 
 - Lightweight tips surface instead of a large static manual.
-- Contextual tips for first use of domains, spaces, tabs, sub-tabs, aisles, frontmatter, and storage.
-- Workflow tip for pressing Tab after naming a domain, space, parent tab, or sub-tab once that behavior exists.
+- Contextual tips for first use of folders, notes, aisles, frontmatter, and storage.
+- Workflow tip for pressing Tab after naming a note or folder once that behavior exists.
 
 Exit criteria:
 
@@ -138,14 +138,14 @@ Goal: understand external note-app exports before committing to importer UX.
 
 Focus areas:
 
-- Collect or synthesize fixtures for Obsidian, OneNote, Apple Notes, generic Markdown folders, and generic HTML exports.
+- Collect or synthesize fixtures for Obsidian, OneNote, Apple Notes, Markdown folders/ZIPs, and generic HTML exports.
 - Define fixture expectations for Markdown conversion, image assets, nested notebooks/folders, frontmatter-like metadata, links, tags, and unsupported content.
 - Add parser spikes and tests only where the export format is stable enough to evaluate.
 - Document what can be imported losslessly, what needs review, and what should be left unsupported.
 
 Exit criteria:
 
-- Importer risk is understood before any user-facing import UI is built.
+- Importer risk is understood before expanding beyond the first user-facing Markdown import path.
 - A fixture matrix exists for the first supported importer target.
 - Import work does not weaken the current local-first storage model.
 

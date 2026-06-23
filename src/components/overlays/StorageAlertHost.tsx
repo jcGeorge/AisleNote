@@ -1,3 +1,4 @@
+import React from 'react'
 import { AppIcon } from '../icons/AppIcon'
 
 export type StorageAlert = {

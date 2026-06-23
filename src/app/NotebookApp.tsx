@@ -26,6 +26,7 @@ import type {
   FrontmatterSaveOptions,
   FrontmatterTemplate,
   FrontmatterTemplateField,
+  FindReplaceScope,
   MessagesSection,
   LinkPromptState,
   NoteAisle,
@@ -34,6 +35,7 @@ import type {
   NoteFilterSettings,
   NoteLocation,
   NoteNavigationTarget,
+  KnownNotebook,
   NotebookTreeItem,
   NewlineOperationId,
   NewlineShortcutId,
@@ -109,6 +111,9 @@ import { SharedEditorToolbar } from '../components/editor/SharedEditorToolbar'
 import { LinkPrompt } from '../components/editor/LinkPrompt'
 import { ShortcutMenu } from '../components/editor/ShortcutMenu'
 import { EditorToolbarPopovers } from '../components/editor/EditorToolbarPopovers'
+import { TagAutocompleteMenu } from '../components/editor/TagAutocompleteMenu'
+import { FindReplacePanel } from '../components/editor/FindReplacePanel'
+import { getFindReplaceShortcutMode } from '../components/editor/find-replace-shortcuts'
 import { TableControlsOverlay } from '../components/editor/TableControlsOverlay'
 import { ListReorderControlsOverlay } from '../components/editor/ListReorderControlsOverlay'
 import { ImageToolsOverlay } from '../components/editor/ImageToolsOverlay'
@@ -169,7 +174,9 @@ import {
 import { MAX_AISLE_WARNING_MESSAGE, MAX_NOTE_AISLES } from '../editor/aisle-edit-draft'
 import { parseSavedState } from '../state/app-state'
 import { createRandomId, createReservedIdAllocator } from '../state/navigation-ids'
+import { importMarkdownNotebook } from '../import/markdown-import'
 import { usePersistentAppState } from '../storage/usePersistentAppState'
+import { useStorageProfileController } from '../storage/useStorageProfileController'
 import {
   APP_THEME_IDS,
   CUSTOM_THEME_IDS,
@@ -195,7 +202,6 @@ import {
 } from '../settings/defaults'
 import {
   collectNotebookIds,
-  createNoteBodyWithAisle,
   createNotebookFolderInState,
   createNotebookNoteInState,
   deleteNotebookItemInState,
@@ -228,6 +234,12 @@ import {
   replaceFocusedAisleFromTargetNote,
 } from '../notes/notebook-note-actions'
 import {
+  applyFindReplacementToState,
+  findVisibleMatches,
+  getFindReplaceQueryError,
+  type FindReplaceMatch,
+} from '../notes/find-replace'
+import {
   buildAisleSlotKey,
   decoupleAisleSlotsInState,
   listLinkedAisleSlotsForAisleBody,
@@ -250,6 +262,8 @@ import {
   type SidebarSearchToken,
 } from '../filters/sidebar-search'
 import { normalizeTagKey } from '../tags/tag-filter'
+import { normalizeTagAutocompleteRecentKeys } from '../tags/tag-autocomplete'
+import { useTagAutocompleteController } from '../tags/useTagAutocompleteController'
 import {
   applyNotebookStructureClipboardPayload,
   buildNotebookStructureClipboardPayload,
@@ -379,6 +393,9 @@ const THEME_LABELS: Record<AppTheme, string> = {
 }
 
 const ACTIVE_TOOLBAR_LAYOUT_STORAGE_KEY = 'tabs:notebook-active-toolbar-layout:v1'
+const TAG_AUTOCOMPLETE_RECENT_STORAGE_KEY = 'tabs:tag-autocomplete-recent:v1'
+const NOTEBOOK_SETUP_APP_NAME = 'Tabs'
+const NOTEBOOK_SETUP_LOGO_SRC = './favicon.svg'
 
 const UTILITY_VIEW_MODES = ['settings', 'messages', 'about', 'trash'] as const
 type UtilityViewMode = typeof UTILITY_VIEW_MODES[number]
@@ -396,7 +413,7 @@ const SETTINGS_SECTION_TABS: Array<{ id: SettingsSection; label: string }> = [
 
 const DATA_SECTION_TABS: Array<{ id: DataSettingsSection; label: string }> = [
   { id: 'transfer', label: 'Transfer' },
-  { id: 'storage', label: 'Storage' },
+  { id: 'storage', label: 'Notebooks' },
   { id: 'trash', label: 'Trash' },
 ]
 
@@ -468,6 +485,28 @@ function saveNotebookActiveToolbarLayoutId(layoutId: string): void {
   }
 }
 
+function loadTagAutocompleteRecentKeys(): string[] {
+  try {
+    if (typeof window === 'undefined') return []
+    const raw = window.localStorage?.getItem(TAG_AUTOCOMPLETE_RECENT_STORAGE_KEY)
+    return normalizeTagAutocompleteRecentKeys(raw ? JSON.parse(raw) : [])
+  } catch {
+    return []
+  }
+}
+
+function saveTagAutocompleteRecentKeys(keys: string[]): void {
+  try {
+    if (typeof window === 'undefined') return
+    window.localStorage?.setItem(
+      TAG_AUTOCOMPLETE_RECENT_STORAGE_KEY,
+      JSON.stringify(normalizeTagAutocompleteRecentKeys(keys)),
+    )
+  } catch {
+    // Device-local tag suggestion recency should not block editing.
+  }
+}
+
 function createFrontmatterTemplateId(): string {
   return createRandomId()
 }
@@ -517,13 +556,6 @@ type ActiveNoteModel = {
   resolved: NonNullable<ReturnType<typeof resolveNoteBody>>
   linked: boolean
   folderPath: string
-}
-
-type MutableNotebookFolder = {
-  type: 'folder'
-  id: string
-  title: string
-  children: NotebookTreeItem[]
 }
 
 type NotebookAisleContextMenuState = {
@@ -661,85 +693,6 @@ function createNewAisleBody(idGenerator: () => string, markdown = ''): { aisle: 
       frontmatter: null,
       frontmatterStatus: 'none',
     },
-  }
-}
-
-function stripMarkdownExtension(fileName: string): string {
-  return fileName.replace(/\.(md|markdown)$/i, '')
-}
-
-function buildStateFromMarkdownFolder(files: Array<{ relativePath: string; markdown: string }>): AppState {
-  const baseState = parseSavedState(null)
-  const rootItems: NotebookTreeItem[] = []
-  const foldersByPath = new Map<string, MutableNotebookFolder>()
-  const noteBodies: NoteBody[] = []
-  const noteAisleBodies: NoteAisleBody[] = []
-  let activeNoteId = ''
-
-  const getFolder = (parts: string[]): MutableNotebookFolder | null => {
-    if (parts.length === 0) return null
-    let parentItems = rootItems
-    let folderPath = ''
-    let folder: MutableNotebookFolder | null = null
-    for (const part of parts) {
-      folderPath = folderPath ? `${folderPath}/${part}` : part
-      folder = foldersByPath.get(folderPath) ?? null
-      if (!folder) {
-        folder = {
-          type: 'folder',
-          id: createRandomId(),
-          title: part,
-          children: [],
-        }
-        foldersByPath.set(folderPath, folder)
-        parentItems.push(folder)
-      }
-      parentItems = folder.children
-    }
-    return folder
-  }
-
-  files
-    .map((file) => ({
-      ...file,
-      parts: file.relativePath.replace(/\\/g, '/').split('/').filter(Boolean),
-    }))
-    .filter((file) => file.parts.length > 0)
-    .sort((left, right) => left.relativePath.localeCompare(right.relativePath))
-    .forEach((file) => {
-      const fileName = file.parts[file.parts.length - 1]
-      const folder = getFolder(file.parts.slice(0, -1))
-      const parentItems = folder ? folder.children : rootItems
-      const { noteBody, aisleBody } = createNoteBodyWithAisle(file.markdown)
-      const noteId = createRandomId()
-      parentItems.push({
-        type: 'note',
-        id: noteId,
-        title: stripMarkdownExtension(fileName),
-        noteBodyId: noteBody.id,
-      })
-      activeNoteId ||= noteId
-      noteBodies.push(noteBody)
-      noteAisleBodies.push(aisleBody)
-    })
-
-  const scratchpadBodyId = baseState.scratchpad?.noteBodyId
-  const scratchpadBodies = scratchpadBodyId ? baseState.noteBodies.filter((body) => body.id === scratchpadBodyId) : []
-  const scratchpadAisleBodyIds = new Set(
-    scratchpadBodies.flatMap((body) => body.aisles.map((aisle) => aisle.aisleBodyId)),
-  )
-  const scratchpadAisleBodies = (baseState.noteAisleBodies ?? []).filter((body) => scratchpadAisleBodyIds.has(body.id))
-
-  return {
-    ...baseState,
-    notebook: {
-      ...baseState.notebook,
-      activeNoteId,
-      items: rootItems,
-      deletedItems: [],
-    },
-    noteBodies: [...noteBodies, ...scratchpadBodies],
-    noteAisleBodies: [...noteAisleBodies, ...scratchpadAisleBodies],
   }
 }
 
@@ -2072,6 +2025,7 @@ export function NotebookApp() {
   const [activeToolbarLayoutId, setActiveToolbarLayoutIdState] = useState(loadNotebookActiveToolbarLayoutId)
   const [toolbarEditorLayoutId, setToolbarEditorLayoutId] = useState(activeToolbarLayoutId)
   const [query, setQuery] = useState('')
+  const [sidebarSearchMode, setSidebarSearchMode] = useState(false)
   const [activeAisleId, setActiveAisleId] = useState('')
   const [selectedFolderId, setSelectedFolderId] = useState('')
   const [renamingTreeItemId, setRenamingTreeItemId] = useState('')
@@ -2086,8 +2040,15 @@ export function NotebookApp() {
   const [treeContextMenu, setTreeContextMenu] = useState<NotebookTreeContextMenuState | null>(null)
   const [shortcutMenu, setShortcutMenu] = useState<NotebookShortcutMenuState | null>(null)
   const [noteActionPicker, setNoteActionPicker] = useState<NoteActionPickerState | null>(null)
+  const [openNotebookActionMenuKey, setOpenNotebookActionMenuKey] = useState('')
   const [decoupleDialog, setDecoupleDialog] = useState<DecoupleDialogState | null>(null)
   const [linkPrompt, setLinkPrompt] = useState<LinkPromptState>(CLOSED_LINK_PROMPT_STATE)
+  const [findReplaceOpen, setFindReplaceOpen] = useState(false)
+  const [findReplaceFocusRequestId, setFindReplaceFocusRequestId] = useState(0)
+  const [findReplaceQuery, setFindReplaceQuery] = useState('')
+  const [findReplaceReplacement, setFindReplaceReplacement] = useState('')
+  const [findReplaceActiveIndex, setFindReplaceActiveIndex] = useState(0)
+  const [tagAutocompleteRecentKeys, setTagAutocompleteRecentKeys] = useState(loadTagAutocompleteRecentKeys)
   const [aisleEditModalOpen, setAisleEditModalOpen] = useState(false)
   const [frontmatterModal, setFrontmatterModal] = useState<NotebookFrontmatterModalState | null>(null)
   const [frontmatterDraft, setFrontmatterDraft] = useState<AppState['frontmatter']>(() => state.frontmatter)
@@ -2096,6 +2057,7 @@ export function NotebookApp() {
   const [shortcutMenuSettingsOpen, setShortcutMenuSettingsOpen] = useState(false)
   const [tableOfContentsPanels, setTableOfContentsPanels] = useState<TableOfContentsPanelsState | null>(null)
   const [expandedTrashItemId, setExpandedTrashItemId] = useState('')
+  const [runtimeVersion, setRuntimeVersion] = useState('')
   const aisleScrollRef = useRef<HTMLDivElement | null>(null)
   const workspaceRootRef = useRef<HTMLElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -2109,6 +2071,7 @@ export function NotebookApp() {
   const pendingScrollToAisleIdRef = useRef<string | null>(null)
   const pendingFocusToAisleIdRef = useRef<string | null>(null)
   const pendingNavigationTopAisleIdRef = useRef<string | null>(null)
+  const pendingFindReplaceRevealRef = useRef<FindReplaceMatch | null>(null)
   const scheduledAisleFocusScrollRef = useRef<ScheduledAisleFocusScroll>({ firstFrameId: null, followupFrameId: null })
   const navigateToNotebookLocationRef = useRef<(location: NotebookNavigationLocation) => boolean>(() => false)
   const pendingCreatedEditRef = useRef<unknown>(null)
@@ -2116,6 +2079,7 @@ export function NotebookApp() {
   const skipTreeRenameBlurItemIdRef = useRef('')
   const addAisleFromNewlineRef = useRef<((side: 'left' | 'right', aisleId: string, markdown: string) => void) | null>(null)
   const openTableOfContentsForAisleRef = useRef<((aisleId: string) => void) | null>(null)
+  const tagAutocompleteRefreshRef = useRef<(() => void) | null>(null)
   const frontmatterStateSnapshotRef = useRef(state.frontmatter)
   const skipNextTreeRenameCommitRef = useRef(false)
   const sidebarResizeRef = useRef<{
@@ -2180,6 +2144,7 @@ export function NotebookApp() {
     [noteFilterSettings, query, sidebarSearchIndexes, state],
   )
   const sidebarSearchActive = query.trim().length > 0 || sidebarSearchSelectedTokens.length > 0
+  const sidebarSearchVisible = sidebarSearchMode || sidebarSearchActive
   const noteActionEntries = useMemo(() => {
     if (!noteActionPicker) return []
     const activeNoteId = activeModel?.noteId ?? state.notebook.activeNoteId
@@ -2385,6 +2350,16 @@ export function NotebookApp() {
     },
     [mutateState],
   )
+
+  const openNotebookManagerSettings = useCallback(() => {
+    openUtilityView('settings')
+    setSettingsSection('data')
+    setDataSettingsSection('storage')
+  }, [openUtilityView, setDataSettingsSection, setSettingsSection])
+
+  useEffect(() => {
+    return window.electronAPI?.onOpenNotebookManager?.(openNotebookManagerSettings) ?? (() => undefined)
+  }, [openNotebookManagerSettings])
 
   const commitToolbarLayouts = useCallback(
     (buildNextLayouts: (layouts: AppState['ui']['toolbarLayouts']) => AppState['ui']['toolbarLayouts']) => {
@@ -2702,6 +2677,10 @@ export function NotebookApp() {
     setLinkPrompt((current) => closeLinkPromptState(current))
   }, [])
 
+  const refreshTagAutocompleteFromEditor = useCallback(() => {
+    tagAutocompleteRefreshRef.current?.()
+  }, [])
+
   const notebookEditors = useNotebookAisleEditors({
     viewMode,
     noteId: activeModel?.noteId ?? '',
@@ -2714,6 +2693,7 @@ export function NotebookApp() {
     commitAisleMarkdown,
     scheduleToolbarFormatStateSync: toolbarState.scheduleToolbarFormatStateSync,
     onNoteMentionQueryChange: handleNoteMentionQueryChange,
+    onTagAutocompleteQueryChange: refreshTagAutocompleteFromEditor,
     getAppState: () => stateRef.current,
     onOpenNoteReference: openNoteReferenceFromEditor,
     onNotebookStructurePaste: applyNotebookStructureClipboardPaste,
@@ -2725,6 +2705,25 @@ export function NotebookApp() {
     onInsertAisleFromNewline: insertAisleFromNewlineShortcut,
     externalStateLoadVersion,
   })
+
+  const updateTagAutocompleteRecentKeys = useCallback((keys: string[]) => {
+    const normalizedKeys = normalizeTagAutocompleteRecentKeys(keys)
+    setTagAutocompleteRecentKeys(normalizedKeys)
+    saveTagAutocompleteRecentKeys(normalizedKeys)
+  }, [])
+
+  const tagAutocompleteController = useTagAutocompleteController({
+    viewMode,
+    getAvailableTags: () => sidebarSearchIndexes.tags.availableOptions,
+    recentTagKeys: tagAutocompleteRecentKeys,
+    onRecentTagKeysChange: updateTagAutocompleteRecentKeys,
+    editorRef,
+    editorEventRootRef: workspaceRootRef,
+    activeAisleIdRef,
+    commitActiveEditorMarkdownNow: notebookEditors.commitActiveEditorMarkdownNow,
+    syncToolbarFormatState: toolbarState.syncToolbarFormatState,
+  })
+  tagAutocompleteRefreshRef.current = tagAutocompleteController.refreshQuery
 
   const activateEditorFromAssetTarget = useCallback(
     (target: EventTarget | null) => {
@@ -2875,6 +2874,66 @@ export function NotebookApp() {
     }
   }, [applyActiveCursorToState, notebookEditors, stateRef])
 
+  const commitNotebookBeforeStorageAction = useCallback(async () => {
+    const latest = getLatestNotebookStateFromMountedEditors()
+    await commitAppStateNow(latest.state, {
+      preferSync: true,
+      flushQueue: true,
+      trigger: 'notebook-storage-action',
+      pendingEditorCount: latest.pendingEditorCount,
+    })
+  }, [commitAppStateNow, getLatestNotebookStateFromMountedEditors])
+
+  const pushStorageToast = useCallback((message: string, tone?: ToastTone) => {
+    if (tone === 'warning' || tone === 'error') window.alert(message)
+  }, [])
+
+  const storageProfileController = useStorageProfileController({
+    pushToast: pushStorageToast,
+    beforeStorageAction: commitNotebookBeforeStorageAction,
+  })
+
+  const findReplaceMode = state.ui.findReplaceMode ?? 'find'
+  const findReplaceScope = state.ui.findReplaceScope ?? 'note'
+  const findReplaceOptions = useMemo(
+    () => ({
+      caseSensitive: state.ui.findCaseSensitive ?? false,
+      wholeWord: state.ui.findWholeWord ?? false,
+      regex: state.ui.findRegex ?? false,
+    }),
+    [state.ui.findCaseSensitive, state.ui.findRegex, state.ui.findWholeWord],
+  )
+  const findReplaceQueryError = useMemo(
+    () => getFindReplaceQueryError(findReplaceQuery, findReplaceOptions),
+    [findReplaceOptions, findReplaceQuery],
+  )
+  const findReplaceMatches = useMemo(() => {
+    if (!findReplaceOpen || !activeModel || findReplaceQueryError || !findReplaceQuery.trim()) return []
+    return findVisibleMatches(
+      state,
+      { noteId: activeModel.noteId },
+      findReplaceScope,
+      findReplaceQuery,
+      findReplaceOptions,
+    )
+  }, [
+    activeModel,
+    findReplaceOpen,
+    findReplaceOptions,
+    findReplaceQuery,
+    findReplaceQueryError,
+    findReplaceScope,
+    state,
+  ])
+
+  useEffect(() => {
+    setFindReplaceActiveIndex((current) =>
+      findReplaceMatches.length > 0 ? Math.min(current, findReplaceMatches.length - 1) : 0,
+    )
+  }, [findReplaceMatches.length])
+  const findReplaceActiveMatchIndex =
+    findReplaceMatches.length > 0 ? Math.min(findReplaceActiveIndex, findReplaceMatches.length - 1) : 0
+
   const clearNotebookNavigationTransientUi = useCallback(() => {
     setAisleContextMenu(null)
     setEditorContextMenu(null)
@@ -2957,6 +3016,143 @@ export function NotebookApp() {
     pendingNavigationTopAisleIdRef,
     activateAisleEditor: notebookEditors.activateAisleEditor,
   })
+
+  const updateFindReplaceUi = useCallback(
+    (patch: Partial<Pick<
+      AppState['ui'],
+      'findCaseSensitive' | 'findWholeWord' | 'findRegex' | 'findReplaceMode' | 'findReplaceScope'
+    >>) => {
+      mutateState((previous) => ({
+        ...previous,
+        ui: {
+          ...previous.ui,
+          ...patch,
+        },
+      }))
+    },
+    [mutateState],
+  )
+
+  const openFindReplace = useCallback(
+    (mode: 'find' | 'replace' = 'find') => {
+      if (!activeModel) return
+      const editor = editorRef.current
+      if (editor) notebookEditors.commitActiveEditorMarkdownNow(editor)
+      setViewMode('main')
+      toolbarState.closeToolbarPopovers()
+      setAisleContextMenu(null)
+      setEditorContextMenu(null)
+      setTreeContextMenu(null)
+      setShortcutMenu(null)
+      setNoteActionPicker(null)
+      setLinkPrompt(CLOSED_LINK_PROMPT_STATE)
+      setFindReplaceOpen(true)
+      setFindReplaceActiveIndex(0)
+      setFindReplaceFocusRequestId((current) => current + 1)
+      updateFindReplaceUi({
+        findReplaceMode: mode,
+        findReplaceScope: 'note',
+      })
+    },
+    [activeModel, notebookEditors, toolbarState, updateFindReplaceUi],
+  )
+
+  const closeFindReplace = useCallback(() => {
+    pendingFindReplaceRevealRef.current = null
+    setFindReplaceOpen(false)
+  }, [])
+
+  const scrollPendingFindReplaceMatch = useCallback(() => {
+    const match = pendingFindReplaceRevealRef.current
+    if (!match || viewMode !== 'main' || !activeModel || activeModel.noteId !== match.location.noteId) return false
+    if (renderedActiveAisleId !== match.aisleId || !notebookEditors.mountedAisleIds.has(match.aisleId)) return false
+    pendingFindReplaceRevealRef.current = null
+    notebookEditors.activateAisleEditor(buildAisleEditorKey(match.noteBodyId, match.aisleId), {
+      focus: true,
+      source: 'programmatic',
+    })
+    return notebookEditors.scrollToAisleRange(match.aisleId, match.markdownFrom, match.markdownTo)
+  }, [activeModel, notebookEditors, renderedActiveAisleId, viewMode])
+
+  useEffect(() => {
+    scrollPendingFindReplaceMatch()
+  }, [scrollPendingFindReplaceMatch])
+
+  const revealFindReplaceMatch = useCallback(
+    (match: FindReplaceMatch) => {
+      if (match.context.noteKind === 'scratchpad') return
+      pendingFindReplaceRevealRef.current = match
+      if (activeModel?.noteId !== match.location.noteId) {
+        applyNotebookNavigationLocation({ noteId: match.location.noteId, aisleId: match.aisleId })
+        return
+      }
+      setViewMode('main')
+      setActiveAisleId(match.aisleId)
+      scheduleAisleFocusScroll(match.noteBodyId, match.aisleId)
+      window.requestAnimationFrame(() => {
+        scrollPendingFindReplaceMatch()
+      })
+    },
+    [activeModel?.noteId, applyNotebookNavigationLocation, scheduleAisleFocusScroll, scrollPendingFindReplaceMatch],
+  )
+
+  const selectFindReplaceMatch = useCallback(
+    (index: number) => {
+      if (findReplaceMatches.length === 0) return
+      const safeIndex = ((index % findReplaceMatches.length) + findReplaceMatches.length) % findReplaceMatches.length
+      setFindReplaceActiveIndex(safeIndex)
+      revealFindReplaceMatch(findReplaceMatches[safeIndex])
+    },
+    [findReplaceMatches, revealFindReplaceMatch],
+  )
+
+  const updateFindReplaceQuery = useCallback((nextQuery: string) => {
+    setFindReplaceQuery(nextQuery)
+    setFindReplaceActiveIndex(0)
+  }, [])
+
+  const updateFindReplaceScope = useCallback(
+    (scope: FindReplaceScope) => {
+      setFindReplaceActiveIndex(0)
+      updateFindReplaceUi({ findReplaceScope: scope })
+    },
+    [updateFindReplaceUi],
+  )
+
+  const replaceFindMatches = useCallback(
+    (matchesToReplace: FindReplaceMatch[]) => {
+      if (matchesToReplace.length === 0 || findReplaceQueryError) return
+      pendingFindReplaceRevealRef.current = null
+      mutateState((previous) => {
+        const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
+        const latest = applyActiveCursorToState(applyNotebookEditorMarkdownSnapshotsToState(previous, snapshots))
+        return applyFindReplacementToState(latest, matchesToReplace, findReplaceReplacement).state
+      })
+    },
+    [
+      applyActiveCursorToState,
+      findReplaceQueryError,
+      findReplaceReplacement,
+      mutateState,
+      notebookEditors,
+    ],
+  )
+
+  useEffect(() => {
+    const handleFindReplaceShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || viewMode !== 'main' || !activeModel) return
+      const mode = getFindReplaceShortcutMode(event, isMacPlatform)
+      if (mode !== 'find') return
+      event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation()
+      openFindReplace('find')
+    }
+    window.addEventListener('keydown', handleFindReplaceShortcut, true)
+    return () => {
+      window.removeEventListener('keydown', handleFindReplaceShortcut, true)
+    }
+  }, [activeModel, isMacPlatform, openFindReplace, viewMode])
 
   const focusBoundaryFlushTimerRef = useRef<number | null>(null)
 
@@ -3073,9 +3269,25 @@ export function NotebookApp() {
     [notebookEditors, pendingCursorRestoreRef],
   )
 
+  const clearSidebarSearch = useCallback(() => {
+    setQuery('')
+    mutateState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        noteFilter: clearSidebarSearchFilter(previous.ui.noteFilter),
+      },
+    }))
+  }, [mutateState])
+
+  const closeSidebarSearchMode = useCallback(() => {
+    clearSidebarSearch()
+    setSidebarSearchMode(false)
+  }, [clearSidebarSearch])
+
   const createNoteAt = useCallback((targetParentFolderId?: string | null, targetIndex?: number) => {
     const createdRenameRef: { current: PendingCreatedTreeRename | null } = { current: null }
-    setQuery('')
+    closeSidebarSearchMode()
     mutateState((previous) => {
       const parentFolderId = targetParentFolderId === undefined
         ? selectedFolderId && findNotebookFolder(previous.notebook.items, selectedFolderId)
@@ -3105,7 +3317,7 @@ export function NotebookApp() {
     setSelectedTreeNoteIds([])
     setTreeSelectionAnchorNoteId('')
     setViewMode('main')
-  }, [beginCreatedTreeRename, mutateState, selectedFolderId])
+  }, [beginCreatedTreeRename, closeSidebarSearchMode, mutateState, selectedFolderId])
 
   const createNote = useCallback(() => createNoteAt(), [createNoteAt])
 
@@ -3113,7 +3325,7 @@ export function NotebookApp() {
     const createdRenameRef: { current: PendingCreatedTreeRename | null } = { current: null }
     const returnNoteBodyId = activeModel?.noteBody.id ?? ''
     const returnAisleId = renderedActiveAisleId
-    setQuery('')
+    closeSidebarSearchMode()
     mutateState((previous) => {
       const parentFolderId = targetParentFolderId === undefined
         ? selectedFolderId && findNotebookFolder(previous.notebook.items, selectedFolderId)
@@ -3142,7 +3354,7 @@ export function NotebookApp() {
     setSelectedTreeNoteIds([])
     setTreeSelectionAnchorNoteId('')
     setViewMode('main')
-  }, [activeModel?.noteBody.id, beginCreatedTreeRename, mutateState, renderedActiveAisleId, selectedFolderId])
+  }, [activeModel?.noteBody.id, beginCreatedTreeRename, closeSidebarSearchMode, mutateState, renderedActiveAisleId, selectedFolderId])
 
   const createFolder = useCallback(() => createFolderAt(), [createFolderAt])
 
@@ -3151,7 +3363,7 @@ export function NotebookApp() {
       window.alert('Notebook import is only available in the desktop app.')
       return
     }
-    void window.electronAPI.openNotebookImportSource().then((result) => {
+    void window.electronAPI.openNotebookImportSource().then(async (result) => {
       if (result.canceled) return
       if (!result.ok) {
         window.alert(result.error || 'Notebook import failed.')
@@ -3162,14 +3374,26 @@ export function NotebookApp() {
         setViewMode('main')
         return
       }
-      if (result.kind === 'markdown-folder') {
-        setState(buildStateFromMarkdownFolder(result.files))
+      if (result.kind === 'markdown-folder' || result.kind === 'markdown-zip') {
+        try {
+          const imported = await importMarkdownNotebook(result.files, {
+            assetRoots: result.assetRoots,
+            assets: result.kind === 'markdown-zip' ? result.assets : undefined,
+            readAsset: result.kind === 'markdown-folder' && window.electronAPI?.readFolderImportAsset
+              ? (payload) => window.electronAPI!.readFolderImportAsset!({ sourceId: result.sourceId, ...payload })
+              : undefined,
+          })
+          setState(imported.state)
+        } catch (error) {
+          window.alert(error instanceof Error ? error.message : 'Markdown import failed.')
+          return
+        }
         setViewMode('main')
         return
       }
-      window.alert('Selected file is not a schema 2 notebook or Markdown folder.')
+      window.alert('Selected file is not a Tabs notebook or Markdown import source.')
     })
-  }, [])
+  }, [setState])
 
   const exportNotebook = useCallback(() => {
     if (!window.electronAPI?.exportNotebookFolder) {
@@ -3490,6 +3714,7 @@ export function NotebookApp() {
   const activateSidebarSearchKey = useCallback(
     (kind: SidebarSearchFilterKind, key: string) => {
       if (!key) return
+      setSidebarSearchMode(true)
       mutateState((previous) => ({
         ...previous,
         ui: {
@@ -3505,6 +3730,7 @@ export function NotebookApp() {
   const activateSidebarSearchTokens = useCallback(
     (tokens: SidebarSearchToken[]) => {
       if (tokens.length <= 0) return
+      setSidebarSearchMode(true)
       mutateState((previous) => ({
         ...previous,
         ui: {
@@ -3552,17 +3778,6 @@ export function NotebookApp() {
     [mutateState],
   )
 
-  const clearSidebarSearch = useCallback(() => {
-    setQuery('')
-    mutateState((previous) => ({
-      ...previous,
-      ui: {
-        ...previous.ui,
-        noteFilter: clearSidebarSearchFilter(previous.ui.noteFilter),
-      },
-    }))
-  }, [mutateState])
-
   const openSidebarSearchResult = useCallback(
     (result: SidebarSearchResult) => {
       applyNotebookNavigationLocation({ noteId: result.noteId, aisleId: result.aisleId })
@@ -3575,7 +3790,17 @@ export function NotebookApp() {
   }, [])
 
   const focusNotesFilterFromShortcut = useCallback(() => {
+    pendingFindReplaceRevealRef.current = null
+    setFindReplaceOpen(false)
+    toolbarState.closeToolbarPopovers()
+    setAisleContextMenu(null)
+    setEditorContextMenu(null)
+    setTreeContextMenu(null)
+    setShortcutMenu(null)
+    setNoteActionPicker(null)
+    setLinkPrompt(CLOSED_LINK_PROMPT_STATE)
     setViewMode('main')
+    setSidebarSearchMode(true)
     mutateState((previous) => ({
       ...previous,
       ui: {
@@ -3587,7 +3812,15 @@ export function NotebookApp() {
       searchInputRef.current?.focus()
       searchInputRef.current?.select()
     }, 0)
-  }, [mutateState])
+  }, [mutateState, toolbarState])
+
+  const toggleSidebarSearchModeFromButton = useCallback(() => {
+    if (sidebarSearchVisible) {
+      closeSidebarSearchMode()
+      return
+    }
+    focusNotesFilterFromShortcut()
+  }, [closeSidebarSearchMode, focusNotesFilterFromShortcut, sidebarSearchVisible])
 
   const toggleFolder = useCallback(
     (folderId: string) => {
@@ -4427,6 +4660,24 @@ export function NotebookApp() {
   )
 
   useEffect(() => {
+    let canceled = false
+    const getRuntimeInfo = window.electronAPI?.getRuntimeInfo
+    if (!getRuntimeInfo) {
+      return () => {
+        canceled = true
+      }
+    }
+    void getRuntimeInfo()
+      .then((info) => {
+        if (!canceled && typeof info?.version === 'string') setRuntimeVersion(info.version)
+      })
+      .catch(() => undefined)
+    return () => {
+      canceled = true
+    }
+  }, [])
+
+  useEffect(() => {
     const closeFloatingUi = (event: PointerEvent) => {
       const target = event.target instanceof Element ? event.target : null
       if (
@@ -4595,7 +4846,7 @@ export function NotebookApp() {
       onOpenFrontmatter={() => openFrontmatterModalForAisle()}
       onOpenTableOfContents={openTableOfContents}
       onOpenAisleEditModal={() => setAisleEditModalOpen(true)}
-      onOpenFindReplace={() => undefined}
+      onOpenFindReplace={focusNotesFilterFromShortcut}
       onToggleHeading={openHeadingMenu}
       onCommand={notebookEditors.runCommand}
       onHistory={(direction) => notebookEditors.runCommand(direction)}
@@ -4639,6 +4890,55 @@ export function NotebookApp() {
     />
   ) : null
 
+  const getNotebookSelector = useCallback((notebook: KnownNotebook) => ({
+    notebookId: notebook.notebookId ?? undefined,
+    notebookPath: notebook.notebookPath,
+  }), [])
+
+  const createNotebookFromSettings = useCallback(() => {
+    const name = window.prompt('Notebook name')?.trim()
+    if (!name) return
+    void (async () => {
+      const locationPath = await storageProfileController.chooseNotebookLocation()
+      if (!locationPath) return
+      await storageProfileController.createNotebook({
+        name,
+        locationPath,
+      })
+    })()
+  }, [storageProfileController])
+
+  const renameCurrentNotebookFromSettings = useCallback(() => {
+    const currentName = storageProfileController.storageProfileStatus?.notebookName ?? ''
+    const name = window.prompt('Notebook name', currentName)?.trim()
+    if (!name || name === currentName) return
+    void storageProfileController.renameNotebook(name)
+  }, [storageProfileController])
+
+  const switchNotebookFromSettings = useCallback((notebook: KnownNotebook) => {
+    setOpenNotebookActionMenuKey('')
+    if (!notebook.available || notebook.isActive) return
+    void storageProfileController.switchNotebook(getNotebookSelector(notebook))
+  }, [getNotebookSelector, storageProfileController])
+
+  const forgetNotebookFromSettings = useCallback((notebook: KnownNotebook) => {
+    setOpenNotebookActionMenuKey('')
+    if (notebook.isActive) return
+    const confirmed = window.confirm(`Remove "${notebook.notebookName}" from the notebook list? Files stay on disk.`)
+    if (!confirmed) return
+    void storageProfileController.forgetNotebook(getNotebookSelector(notebook))
+  }, [getNotebookSelector, storageProfileController])
+
+  const deleteNotebookFromSettings = useCallback((notebook?: KnownNotebook) => {
+    setOpenNotebookActionMenuKey('')
+    void storageProfileController.deleteNotebook(notebook ? getNotebookSelector(notebook) : undefined)
+  }, [getNotebookSelector, storageProfileController])
+
+  const runCurrentNotebookAction = useCallback((action: () => void) => {
+    setOpenNotebookActionMenuKey('')
+    action()
+  }, [])
+
   const renderSegmentedTabs = <T extends string,>(
     label: string,
     tabs: Array<{ id: T; label: string }>,
@@ -4661,6 +4961,208 @@ export function NotebookApp() {
     </div>
   )
 
+  const renderNotebookManager = () => {
+    const storageProfileStatus = storageProfileController.storageProfileStatus
+    const notebookFoldersAvailable = Boolean(window.electronAPI?.getStorageProfileStatus)
+    const storageHealth =
+      storageProfileStatus?.health ?? (storageProfileStatus?.status === 'ready' ? 'healthy' : 'error')
+    const showRetry = Boolean(storageProfileStatus && (storageProfileStatus.status === 'error' || storageHealth !== 'healthy'))
+    const activeNotebookPath = storageProfileStatus?.notebookPath ?? storageProfileStatus?.profileRootPath ?? ''
+    const knownNotebooks = storageProfileStatus?.knownNotebooks ?? []
+    const notebookRows: KnownNotebook[] = knownNotebooks.length > 0
+      ? knownNotebooks
+      : storageProfileStatus && activeNotebookPath
+        ? [{
+            notebookId: storageProfileStatus.activeNotebookId ?? undefined,
+            notebookPath: activeNotebookPath,
+            notebookName: storageProfileStatus.notebookName || 'Notebook',
+            isActive: true,
+            exists: storageProfileStatus.hasProfile,
+            hasManifest: storageProfileStatus.hasProfile,
+            available: storageProfileStatus.hasProfile,
+          }]
+        : []
+
+    if (!notebookFoldersAvailable) {
+      return (
+        <div className="notebook-settings-stack">
+          <div className="notebook-manager-card">
+            <div className="notebook-manager-header">
+              <div>
+                <span className="notebook-manager-eyebrow">current notebook</span>
+                <h3>Browser notebook</h3>
+                <p className="notebook-settings-help">Browser stores notebook content in local browser storage.</p>
+              </div>
+            </div>
+            <div className="notebook-manager-meta-grid">
+              <div>
+                <span>storage</span>
+                <strong>browser local</strong>
+              </div>
+              <div>
+                <span>folder controls</span>
+                <strong>desktop only</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="notebook-settings-stack">
+        <p className="notebook-settings-help">
+          The notebook is this folder on disk. To use iCloud, Dropbox, OneDrive, or another sync service, put the notebook folder in that synced location.
+        </p>
+        <div className={`notebook-manager-card ${storageHealth === 'error' ? 'is-error' : ''} ${storageHealth === 'warning' ? 'is-warning' : ''}`.trim()}>
+          <div className="notebook-manager-header">
+            <div>
+              <span className="notebook-manager-eyebrow">current notebook</span>
+              <h3>{storageProfileStatus?.status === 'setup-required' ? 'No notebook open' : storageProfileStatus?.notebookName || 'Notebook'}</h3>
+              <code className="notebook-manager-path">{activeNotebookPath || 'Choose a notebook folder to start.'}</code>
+            </div>
+            <div className="notebook-settings-actions notebook-manager-primary-actions">
+              <button type="button" className="notebook-settings-action" onClick={createNotebookFromSettings}>
+                New Notebook
+              </button>
+              <button type="button" className="notebook-settings-action" onClick={() => void storageProfileController.openNotebook()}>
+                Open Notebook Folder
+              </button>
+            </div>
+          </div>
+          <div className="notebook-manager-meta-grid">
+            <div>
+              <span>status</span>
+              <strong>{storageProfileStatus?.status ?? 'loading'}</strong>
+            </div>
+            <div>
+              <span>health</span>
+              <strong>{storageProfileStatus ? storageHealth : 'loading'}</strong>
+            </div>
+            <div>
+              <span>writable</span>
+              <strong>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'loading'}</strong>
+            </div>
+            <div>
+              <span>schema</span>
+              <strong>{storageProfileStatus?.schemaVersion ?? 'n/a'}</strong>
+            </div>
+          </div>
+          {storageProfileStatus?.error ? (
+            <p className="notebook-manager-error">{storageProfileStatus.error}</p>
+          ) : null}
+          {(storageProfileStatus?.issues ?? []).length > 0 ? (
+            <div className="notebook-manager-issues" aria-label="notebook folder health issues">
+              {(storageProfileStatus?.issues ?? []).map((issue, index) => (
+                <p key={`${issue.code}-${issue.path ?? index}`} className={`notebook-manager-issue ${issue.severity === 'error' ? 'is-error' : 'is-warning'}`}>
+                  {issue.message}{issue.path ? ` (${issue.path})` : ''}
+                </p>
+              ))}
+            </div>
+          ) : null}
+          <div className="notebook-settings-actions">
+            <button type="button" className="notebook-settings-action" onClick={renameCurrentNotebookFromSettings} disabled={!storageProfileStatus?.activeNotebookId}>
+              Rename
+            </button>
+            <button type="button" className="notebook-settings-action" onClick={() => void storageProfileController.moveStorageProfile()} disabled={!storageProfileStatus?.activeNotebookId}>
+              Move Folder
+            </button>
+            <button type="button" className="notebook-settings-action" onClick={() => void storageProfileController.revealStorageProfile()} disabled={!activeNotebookPath}>
+              Reveal Folder
+            </button>
+            {showRetry ? (
+              <button type="button" className="notebook-settings-action" onClick={() => void storageProfileController.retryStorageProfile()}>
+                Retry
+              </button>
+            ) : null}
+            <button type="button" className="notebook-settings-action is-danger" onClick={() => deleteNotebookFromSettings()} disabled={!storageProfileStatus?.activeNotebookId}>
+              Delete Notebook
+            </button>
+          </div>
+        </div>
+        <div className="notebook-manager-list" aria-label="Remembered notebooks">
+          <div className="notebook-manager-list-header">
+            <span>Remembered notebooks</span>
+          </div>
+          {notebookRows.length === 0 ? (
+            <p className="notebook-settings-help">No notebook folders are remembered yet.</p>
+          ) : (
+            notebookRows.map((notebook) => {
+              const notebookKey = notebook.notebookId ?? notebook.notebookPath
+              const menuOpen = openNotebookActionMenuKey === notebookKey
+              return (
+                <div key={notebookKey} className={`notebook-manager-row ${notebook.isActive ? 'is-active' : ''} ${notebook.available ? '' : 'is-missing'}`.trim()}>
+                  <button
+                    type="button"
+                    className="notebook-manager-row-main"
+                    disabled={!notebook.available || notebook.isActive}
+                    onClick={() => switchNotebookFromSettings(notebook)}
+                  >
+                    <AppIcon iconId={notebook.available ? 'folderOpen' : 'folder'} className="notebook-manager-row-icon" />
+                    <span className="notebook-manager-row-copy">
+                      <strong>{notebook.notebookName}</strong>
+                      <code>{notebook.notebookPath}</code>
+                    </span>
+                    <span className="notebook-manager-row-status">
+                      {notebook.isActive ? 'current' : notebook.available ? 'available' : 'folder missing'}
+                    </span>
+                  </button>
+                  <div className="notebook-manager-row-menu">
+                    <button
+                      type="button"
+                      className="notebook-manager-kebab"
+                      aria-label={`Actions for ${notebook.notebookName}`}
+                      aria-expanded={menuOpen}
+                      onClick={() => setOpenNotebookActionMenuKey((previous) => (previous === notebookKey ? '' : notebookKey))}
+                    >
+                      <AppIcon iconId="ellipsisVertical" className="notebook-manager-kebab-icon" />
+                    </button>
+                    {menuOpen ? (
+                      <div className="notebook-manager-menu" role="menu">
+                        {!notebook.isActive && notebook.available ? (
+                          <button type="button" role="menuitem" onClick={() => switchNotebookFromSettings(notebook)}>
+                            Switch to Notebook
+                          </button>
+                        ) : null}
+                        {notebook.isActive ? (
+                          <>
+                            <button type="button" role="menuitem" onClick={() => runCurrentNotebookAction(renameCurrentNotebookFromSettings)}>
+                              Rename
+                            </button>
+                            <button type="button" role="menuitem" onClick={() => runCurrentNotebookAction(() => void storageProfileController.moveStorageProfile())}>
+                              Move Folder
+                            </button>
+                            <button type="button" role="menuitem" onClick={() => runCurrentNotebookAction(() => void storageProfileController.revealStorageProfile())}>
+                              Reveal Folder
+                            </button>
+                            {showRetry ? (
+                              <button type="button" role="menuitem" onClick={() => runCurrentNotebookAction(() => void storageProfileController.retryStorageProfile())}>
+                                Retry
+                              </button>
+                            ) : null}
+                          </>
+                        ) : (
+                          <button type="button" role="menuitem" onClick={() => forgetNotebookFromSettings(notebook)}>
+                            Remove from List
+                          </button>
+                        )}
+                        {notebook.available || notebook.isActive ? (
+                          <button type="button" role="menuitem" className="is-danger" onClick={() => deleteNotebookFromSettings(notebook)}>
+                            Delete Notebook
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+    )
+  }
+
   const renderDataSettings = () => (
     <section className="notebook-settings-section" aria-label="Data settings">
       {renderSegmentedTabs('Data settings sections', DATA_SECTION_TABS, dataSettingsSection, setDataSettingsSection)}
@@ -4675,28 +5177,11 @@ export function NotebookApp() {
             </button>
           </div>
           <p className="notebook-settings-help">
-            Import replaces the current local notebook with a Tabs notebook, notebook ZIP, or Markdown folder.
+            Import replaces the current notebook with a Tabs notebook, notebook ZIP, Markdown folder, or Markdown ZIP.
           </p>
         </div>
       ) : null}
-      {dataSettingsSection === 'storage' ? (
-        <div className="notebook-settings-stack">
-          <div className="notebook-storage-card">
-            <div>
-              <span>Notebook</span>
-              <strong>{activeModel?.folderPath ? activeModel.folderPath : 'Local notebook'}</strong>
-            </div>
-            <div>
-              <span>Storage</span>
-              <strong>{window.electronAPI ? 'Desktop app storage' : 'Browser local storage'}</strong>
-            </div>
-            <div>
-              <span>Notes</span>
-              <strong>{listSearchableNoteLocations(state).length.toLocaleString()}</strong>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {dataSettingsSection === 'storage' ? renderNotebookManager() : null}
       {dataSettingsSection === 'trash' ? (
         <div className="notebook-settings-grid">
           <label>
@@ -5559,12 +6044,52 @@ export function NotebookApp() {
     )
   }
 
+  const desktopNotebookSetupRequired = Boolean(
+    window.electronAPI?.getStorageProfileStatus &&
+      storageProfileController.storageProfileStatus?.status === 'setup-required',
+  )
+  const runtimeVersionLabel = runtimeVersion ? `Version ${runtimeVersion}` : ''
+
+  const renderNotebookSetupScreen = () => (
+    <main className="notebook-main notebook-setup-main" aria-label="Notebook setup">
+      <section className="notebook-setup-screen">
+        <div className="notebook-setup-brand" aria-label={NOTEBOOK_SETUP_APP_NAME}>
+          <img className="notebook-setup-logo" src={NOTEBOOK_SETUP_LOGO_SRC} alt="" aria-hidden="true" />
+          <h1>{NOTEBOOK_SETUP_APP_NAME}</h1>
+          {runtimeVersionLabel ? <p>{runtimeVersionLabel}</p> : null}
+        </div>
+        <div className="notebook-setup-panel">
+          <div className="notebook-setup-action-row">
+            <div className="notebook-setup-action-copy">
+              <h2>Create new notebook</h2>
+              <p>Create a new notebook under a folder.</p>
+            </div>
+            <button type="button" className="notebook-setup-action-button is-primary" onClick={createNotebookFromSettings}>
+              Create
+            </button>
+          </div>
+          <div className="notebook-setup-action-row">
+            <div className="notebook-setup-action-copy">
+              <h2>Open notebook folder</h2>
+              <p>Choose an existing Tabs notebook folder.</p>
+            </div>
+            <button type="button" className="notebook-setup-action-button" onClick={() => void storageProfileController.openNotebook()}>
+              Open
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+  )
+
   return (
     <div
       className={`app-shell notebook-shell ${getThemeClassName(state.theme)}`}
       data-theme={state.theme}
       style={rootStyle}
     >
+      {desktopNotebookSetupRequired ? renderNotebookSetupScreen() : (
+        <>
       <aside
         className={`notebook-sidebar ${state.ui.sidebarCollapsed ? 'is-collapsed' : ''}`}
         style={{ width: state.ui.sidebarCollapsed ? 48 : state.ui.sidebarWidth }}
@@ -5589,6 +6114,18 @@ export function NotebookApp() {
             >
               <AppIcon iconId="folderPlus" className="notebook-sidebar-header-icon" />
             </button>
+            <button
+              type="button"
+              className={`notebook-icon-button notebook-sidebar-header-action ${
+                sidebarSearchVisible ? 'is-active' : ''
+              }`}
+              onClick={toggleSidebarSearchModeFromButton}
+              aria-label="Search notes"
+              title="Search notes"
+              aria-pressed={sidebarSearchVisible}
+            >
+              <AppIcon iconId="search" className="notebook-sidebar-header-icon" />
+            </button>
           </div>
         ) : null}
         <button
@@ -5600,34 +6137,25 @@ export function NotebookApp() {
         >
           <AppIcon iconId="settings" className="notebook-sidebar-settings-icon" />
         </button>
-        {state.ui.sidebarCollapsed ? (
-          <button
-            className="notebook-icon-button notebook-sidebar-search-toggle"
-            type="button"
-            onClick={focusNotesFilterFromShortcut}
-            aria-label="Search notes"
-            title="Search notes"
-          >
-            <AppIcon iconId="search" className="notebook-sidebar-search-toggle-icon" />
-          </button>
+        {!state.ui.sidebarCollapsed && sidebarSearchVisible ? (
+          <SidebarSearchPanel
+            inputRef={searchInputRef}
+            query={query}
+            active={sidebarSearchActive}
+            selectedTokens={sidebarSearchSelectedTokens}
+            suggestions={sidebarSearchSuggestions}
+            resultGroups={sidebarSearchResultGroups}
+            onQueryChange={updateSidebarSearchQuery}
+            onSelectSuggestion={selectSidebarSearchSuggestion}
+            onRemoveToken={removeSidebarSearchToken}
+            onClear={clearSidebarSearch}
+            onCloseMode={closeSidebarSearchMode}
+            onOpenResult={openSidebarSearchResult}
+          />
         ) : null}
-        {!state.ui.sidebarCollapsed ? (
+        {!state.ui.sidebarCollapsed && !sidebarSearchVisible ? (
           <>
-            <SidebarSearchPanel
-              inputRef={searchInputRef}
-              query={query}
-              active={sidebarSearchActive}
-              selectedTokens={sidebarSearchSelectedTokens}
-              suggestions={sidebarSearchSuggestions}
-              resultGroups={sidebarSearchResultGroups}
-              onQueryChange={updateSidebarSearchQuery}
-              onSelectSuggestion={selectSidebarSearchSuggestion}
-              onRemoveToken={removeSidebarSearchToken}
-              onClear={clearSidebarSearch}
-              onOpenResult={openSidebarSearchResult}
-            />
-            {!sidebarSearchActive ? (
-              <div className="notebook-tree" role="tree" aria-multiselectable="true">
+            <div className="notebook-tree" role="tree" aria-multiselectable="true">
                 {state.notebook.items.map((item, itemIndex) => (
                   <TreeItemRow
                     key={item.id}
@@ -5668,8 +6196,7 @@ export function NotebookApp() {
                   }}
                   aria-hidden="true"
                 />
-              </div>
-            ) : null}
+            </div>
           </>
         ) : null}
         {!state.ui.sidebarCollapsed ? (
@@ -5844,6 +6371,58 @@ export function NotebookApp() {
                 onShowSyncedAisle={openDecoupleAisleDialog}
                 onRevealLocation={revealEditorContextLocation}
               />
+              {findReplaceOpen ? (
+                <FindReplacePanel
+                  replaceMode={findReplaceMode === 'replace'}
+                  focusRequestId={findReplaceFocusRequestId}
+                  query={findReplaceQuery}
+                  replacement={findReplaceReplacement}
+                  scope={findReplaceScope}
+                  caseSensitive={findReplaceOptions.caseSensitive}
+                  wholeWord={findReplaceOptions.wholeWord}
+                  regex={findReplaceOptions.regex}
+                  queryError={findReplaceQueryError}
+                  matches={findReplaceMatches}
+                  activeIndex={findReplaceActiveMatchIndex}
+                  onReplaceModeChange={(enabled) =>
+                    updateFindReplaceUi({ findReplaceMode: enabled ? 'replace' : 'find' })
+                  }
+                  onQueryChange={updateFindReplaceQuery}
+                  onReplacementChange={setFindReplaceReplacement}
+                  onScopeChange={updateFindReplaceScope}
+                  onCaseSensitiveChange={(checked) => {
+                    setFindReplaceActiveIndex(0)
+                    updateFindReplaceUi({ findCaseSensitive: checked })
+                  }}
+                  onWholeWordChange={(checked) => {
+                    setFindReplaceActiveIndex(0)
+                    updateFindReplaceUi({ findWholeWord: checked })
+                  }}
+                  onRegexChange={(checked) => {
+                    setFindReplaceActiveIndex(0)
+                    updateFindReplaceUi({ findRegex: checked })
+                  }}
+                  onPrevious={() => selectFindReplaceMatch(findReplaceActiveMatchIndex - 1)}
+                  onNext={() => selectFindReplaceMatch(findReplaceActiveMatchIndex + 1)}
+                  onSelectMatch={selectFindReplaceMatch}
+                  onReplaceCurrent={() => {
+                    const match = findReplaceMatches[findReplaceActiveMatchIndex]
+                    if (match) replaceFindMatches([match])
+                  }}
+                  onReplaceAll={() => replaceFindMatches(findReplaceMatches)}
+                  onClose={closeFindReplace}
+                />
+              ) : null}
+              {tagAutocompleteController.menu ? (
+                <TagAutocompleteMenu
+                  top={tagAutocompleteController.menu.top}
+                  left={tagAutocompleteController.menu.left}
+                  suggestions={tagAutocompleteController.menu.suggestions}
+                  activeIndex={tagAutocompleteController.menu.activeIndex}
+                  onHighlight={tagAutocompleteController.setActiveIndex}
+                  onChoose={tagAutocompleteController.acceptSuggestion}
+                />
+              ) : null}
               {shortcutMenu ? (
                 <ShortcutMenu
                   top={shortcutMenu.top}
@@ -5870,6 +6449,8 @@ export function NotebookApp() {
         ) : null}
         {renderUtilityShell()}
       </main>
+        </>
+      )}
       {noteActionPicker ? (
         <NotebookNoteActionPicker
           title={noteActionPicker.title}

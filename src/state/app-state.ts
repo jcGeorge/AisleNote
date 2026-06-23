@@ -253,7 +253,7 @@ function normalizeAppMessages(raw: unknown): AppMessage[] {
         status: entry.status === 'dismissed' ? 'dismissed' : entry.status === 'acknowledged' ? 'acknowledged' : 'unread',
         createdAt: normalizeTimestamp(entry.createdAt, fallbackTimestamp),
         signature: normalizeString(entry.signature, id),
-        title: normalizeString(entry.title, type === 'storage-notebook-recovered' ? 'Started local notebook' : 'Duplicate note decoupled'),
+        title: normalizeString(entry.title, type === 'storage-notebook-recovered' ? 'Recovered notebook' : 'Duplicate note decoupled'),
         body: typeof entry.body === 'string' ? entry.body : '',
         anchorPath: typeof entry.anchorPath === 'string' ? entry.anchorPath : undefined,
         decoupledPaths: normalizeStringList(entry.decoupledPaths),

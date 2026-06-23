@@ -21,6 +21,7 @@ type SidebarSearchPanelProps = {
   onSelectSuggestion: (suggestion: SidebarSearchSuggestion) => void
   onRemoveToken: (token: SidebarSearchToken) => void
   onClear: () => void
+  onCloseMode?: () => void
   onOpenResult: (result: SidebarSearchResult) => void
 }
 
@@ -104,6 +105,7 @@ export function SidebarSearchPanel({
   onSelectSuggestion,
   onRemoveToken,
   onClear,
+  onCloseMode,
   onOpenResult,
 }: SidebarSearchPanelProps) {
   const resultCount = getResultCount(resultGroups)
@@ -120,6 +122,13 @@ export function SidebarSearchPanel({
           className="notebook-search-input"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return
+            event.preventDefault()
+            event.stopPropagation()
+            if (canClear) onClear()
+            else onCloseMode?.()
+          }}
           placeholder="Search notes"
         />
         {canClear ? (

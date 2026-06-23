@@ -33,11 +33,11 @@ export function buildStorageAlerts(messages: AppMessage[], dismissedStorageAlert
           (message.failedNotebookPath !== undefined && message.failedNotebookPath === message.activeNotebookPath))
       return [{
         signature,
-        label: 'local notebook started',
-        message: 'Tabs started a local notebook because the connected notebook could not be loaded.',
+        label: 'notebook recovered',
+        message: 'Tabs reset the notebook because the folder could not be loaded.',
         actionLabel: message.failedNotebookPath && message.failedNotebookAvailable !== false
           ? localNotebookWasTheFailedFolder
-            ? 'open local notebook folder'
+            ? 'open notebook folder'
             : 'open previous notebook folder'
           : undefined,
       }]

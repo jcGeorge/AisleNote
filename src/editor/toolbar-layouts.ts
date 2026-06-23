@@ -45,7 +45,7 @@ export const TOOLBAR_TOOL_LABELS: Record<ToolbarToolId, string> = {
   frontmatter: 'Frontmatter',
   tableOfContents: 'Table of contents',
   aisles: 'Aisles',
-  findReplace: 'Find & replace',
+  findReplace: 'Search notes',
   undo: 'Undo',
   redo: 'Redo',
   heading: 'Headings',

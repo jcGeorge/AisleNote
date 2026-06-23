@@ -36,9 +36,6 @@ type DataSettingsPanelProps = {
   onSwitchNotebook: (selector: { notebookId?: string; notebookPath?: string }) => void
   onForgetNotebook: (selector: { notebookId?: string; notebookPath?: string }) => void
   onDeleteNotebook: () => void
-  onAttachNotebookSyncTarget: () => void
-  onDetachNotebookSyncTarget: () => void
-  onReconnectNotebookSyncTarget: () => void
   onMoveStorageProfile: () => void
   onRevealStorageProfile: () => void
   onRetryStorageProfile: () => void
@@ -81,7 +78,7 @@ function TransferDataSection({
         </button>
       </div>
       <p className="settings-help">
-        Import appends Tabs notebooks and Markdown folders or ZIPs into isolated notebook folders; user settings stay separate.
+        Import replaces the current notebook with a Tabs notebook, notebook ZIP, Markdown folder, or Markdown ZIP; user settings stay separate.
       </p>
       <p>app settings transfer:</p>
       <div className="settings-page-actions">
@@ -144,9 +141,6 @@ function StorageDataSection({
   onSwitchNotebook,
   onForgetNotebook,
   onDeleteNotebook,
-  onAttachNotebookSyncTarget,
-  onDetachNotebookSyncTarget,
-  onReconnectNotebookSyncTarget,
   onMoveStorageProfile,
   onRevealStorageProfile,
   onRetryStorageProfile,
@@ -160,23 +154,17 @@ function StorageDataSection({
   | 'onSwitchNotebook'
   | 'onForgetNotebook'
   | 'onDeleteNotebook'
-  | 'onAttachNotebookSyncTarget'
-  | 'onDetachNotebookSyncTarget'
-  | 'onReconnectNotebookSyncTarget'
   | 'onMoveStorageProfile'
   | 'onRevealStorageProfile'
   | 'onRetryStorageProfile'
 >) {
   const storageHealth =
-    storageProfileStatus?.health ?? (storageProfileStatus?.status === 'error' ? 'error' : 'healthy')
+    storageProfileStatus?.health ?? (storageProfileStatus?.status === 'ready' ? 'healthy' : 'error')
   const storageIssues = storageProfileStatus?.issues ?? []
   const knownNotebooks = storageProfileStatus?.knownNotebooks ?? []
   const activeNotebookPath = storageProfileStatus?.notebookPath ?? storageProfileStatus?.profileRootPath ?? ''
   const activeNotebookKey = storageProfileStatus?.activeNotebookId ?? activeNotebookPath
-  const activeLocalMirrorPath = storageProfileStatus?.localMirrorPath ?? storageProfileStatus?.profileRootPath ?? ''
-  const activeSyncTargetPath = storageProfileStatus?.syncTargetPath ?? ''
   const showRetry = Boolean(storageProfileStatus && (storageProfileStatus.status === 'error' || storageHealth !== 'healthy'))
-  const showSyncTargetControls = Boolean(storageProfileStatus?.activeNotebookId)
   const storageProfileCardClassName = [
     'storage-profile-card',
     storageHealth === 'error' ? 'is-error' : '',
@@ -212,7 +200,9 @@ function StorageDataSection({
   return (
     <>
       <p>notebook:</p>
-      <p className="settings-help">The notebook folder is the named folder that contains this notebook's manifest, notes, and assets.</p>
+      <p className="settings-help">
+        The notebook is this folder on disk. To use iCloud, Dropbox, OneDrive, or another sync service, store the notebook folder in that synced location.
+      </p>
       <div className={storageProfileCardClassName}>
         <div className="storage-profile-row">
           <label className="settings-hotkey-label" htmlFor="settings-notebook-select">current notebook</label>
@@ -238,7 +228,6 @@ function StorageDataSection({
                   notebookPath: activeNotebookPath,
                   notebookName: storageProfileStatus?.notebookName ?? 'desktop notebook unavailable',
                   notebookId: storageProfileStatus?.activeNotebookId,
-                  syncStatus: storageProfileStatus?.syncStatus,
                   available: Boolean(activeNotebookPath),
                 }]
             ).map((notebook) => (
@@ -247,10 +236,24 @@ function StorageDataSection({
                 value={notebook.notebookId ?? notebook.notebookPath}
                 disabled={!notebook.available}
               >
-                {notebook.notebookName}{notebook.available ? '' : ' (local missing)'}{notebook.syncStatus === 'offline' ? ' (offline)' : ''}
+                {notebook.notebookName}{notebook.available ? '' : ' (folder missing)'}
               </option>
             ))}
           </select>
+        </div>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">folder</span>
+          <code className="storage-profile-path">
+            {activeNotebookPath || 'desktop notebook folder unavailable'}
+          </code>
+        </div>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">status</span>
+          <span>{storageProfileStatus?.status ?? 'browser local'}</span>
+        </div>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">writable</span>
+          <span>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'browser local'}</span>
         </div>
         {storageProfileStatus?.error && <p className="settings-help storage-profile-error">{storageProfileStatus.error}</p>}
         {storageIssues.length > 0 && (
@@ -277,24 +280,14 @@ function StorageDataSection({
         <details>
           <summary>notebook details</summary>
           <div className="storage-profile-row">
-            <span className="settings-hotkey-label">local mirror</span>
+            <span className="settings-hotkey-label">folder</span>
             <code className="storage-profile-path">
-              {activeLocalMirrorPath || 'desktop notebook mirror unavailable'}
+              {activeNotebookPath || 'desktop notebook folder unavailable'}
             </code>
-          </div>
-          <div className="storage-profile-row">
-            <span className="settings-hotkey-label">sync folder</span>
-            <code className="storage-profile-path">
-              {activeSyncTargetPath || 'not attached'}
-            </code>
-          </div>
-          <div className="storage-profile-row">
-            <span className="settings-hotkey-label">sync</span>
-            <span>{storageProfileStatus?.syncStatus ?? 'local-only'}</span>
           </div>
           <div className="storage-profile-row">
             <span className="settings-hotkey-label">status</span>
-            <span>{storageProfileStatus ? (storageProfileStatus.status === 'ready' ? 'ready' : 'error') : 'browser local'}</span>
+            <span>{storageProfileStatus?.status ?? 'browser local'}</span>
           </div>
           <div className="storage-profile-row">
             <span className="settings-hotkey-label">health</span>
@@ -315,22 +308,6 @@ function StorageDataSection({
             <button type="button" className="btn btn-sm settings-action-btn" onClick={onMoveStorageProfile}>
               move folder
             </button>
-            {showSyncTargetControls && (
-              activeSyncTargetPath ? (
-                <>
-                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onReconnectNotebookSyncTarget}>
-                    reconnect
-                  </button>
-                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onDetachNotebookSyncTarget}>
-                    detach sync
-                  </button>
-                </>
-              ) : (
-                <button type="button" className="btn btn-sm settings-action-btn" onClick={onAttachNotebookSyncTarget}>
-                  attach sync folder
-                </button>
-              )
-            )}
             <button type="button" className="btn btn-sm settings-action-btn" onClick={onRevealStorageProfile}>
               open notebook folder
             </button>
@@ -354,10 +331,10 @@ function StorageDataSection({
               {knownNotebooks.map((notebook) => (
                 <div key={notebook.notebookId ?? notebook.notebookPath} className="storage-profile-row">
                   <span className="settings-hotkey-label">
-                    {notebook.notebookName}{notebook.isActive ? ' (current)' : notebook.available ? '' : ' (local missing)'}{notebook.syncStatus === 'offline' ? ' (offline)' : ''}
+                    {notebook.notebookName}{notebook.isActive ? ' (current)' : notebook.available ? '' : ' (folder missing)'}
                   </span>
                   <code className="storage-profile-path">{notebook.notebookPath}</code>
-                  {!notebook.isActive && !notebook.isDefault && (
+                  {!notebook.isActive && (
                     <button
                       type="button"
                       className="btn btn-sm settings-action-btn"

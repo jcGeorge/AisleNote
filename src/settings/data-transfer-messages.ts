@@ -2,7 +2,9 @@ type ImportNotebookSummary = {
   folders?: number
   notes?: number
   noteBodies?: number
+  importedAssets?: number
   unresolvedReferences?: number
+  missingAssets?: number
   warnings?: string[]
 }
 
@@ -24,7 +26,7 @@ export const dataTransferMessages = {
   notebookFolderExportCanceled: 'Notebook folder export canceled.',
   notebookFolderExportFailed: (message?: string) => `Notebook folder export failed: ${message ?? 'Unknown error.'}`,
   notebookFolderExported: (location?: string) => `Notebook folder exported${location ? `: ${location}` : '.'}`,
-  chooseNotebookImport: 'Choose a notebook to import.',
+  chooseNotebookImport: 'Choose a notebook or Markdown import source.',
   notebookImportCanceled: 'Notebook import canceled.',
   notebookImportFailed: (message?: string) => `Notebook import failed${message ? `: ${message}` : '.'}`,
   notebookImportCaughtError: (error: unknown) => `Notebook import failed: ${unknownMessage(error)}`,
@@ -32,14 +34,18 @@ export const dataTransferMessages = {
   notebookImportValidating: 'Validating notebook...',
   notebookImportImporting: 'Importing notebook...',
   notebookFolderImportDesktopOnly: 'Notebook folder import is available in the desktop app.',
-  markdownFolderImportDesktopOnly: 'Markdown folder import is available in the desktop app.',
+  markdownFolderImportDesktopOnly: 'Markdown import is available in the desktop app.',
   notebookImported: (summary: ImportNotebookSummary, materializedWarningCount = 0) => {
     const unresolvedText =
       summary.unresolvedReferences && summary.unresolvedReferences > 0
         ? ` ${summary.unresolvedReferences} reference(s) stayed unresolved.`
         : ''
+    const assetText =
+      summary.importedAssets && summary.importedAssets > 0 ? ` ${summary.importedAssets} asset(s) imported.` : ''
+    const missingAssetText =
+      summary.missingAssets && summary.missingAssets > 0 ? ` ${summary.missingAssets} asset(s) missing.` : ''
     const warningCount = (summary.warnings?.length ?? 0) + materializedWarningCount
-    return `Imported notebook: ${summary.folders ?? 0} folder(s), ${summary.notes ?? 0} note(s), ${summary.noteBodies ?? 0} note body record(s).${unresolvedText}${warningSuffix(warningCount)}`
+    return `Imported notebook: ${summary.folders ?? 0} folder(s), ${summary.notes ?? 0} note(s), ${summary.noteBodies ?? 0} note body record(s).${assetText}${unresolvedText}${missingAssetText}${warningSuffix(warningCount)}`
   },
   userSettingsExportBuilding: 'Building user settings export...',
   userSettingsExportCanceled: 'User settings export canceled.',

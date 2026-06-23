@@ -1,4 +1,7 @@
+import React from 'react'
 import type { TagAutocompleteSuggestion } from '../../tags/tag-autocomplete'
+
+void React
 
 type TagAutocompleteMenuProps = {
   top: number

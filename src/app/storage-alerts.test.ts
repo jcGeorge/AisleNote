@@ -8,8 +8,8 @@ const recoveryMessage: AppMessage = {
   status: 'unread',
   createdAt: '2026-06-01T00:00:00.000Z',
   signature: 'recovery-signature',
-  title: 'Started local notebook',
-  body: 'Tabs could not load the connected notebook.',
+  title: 'Recovered notebook',
+  body: 'Tabs could not load this notebook folder.',
   failedNotebookPath: '/tmp/Broken Notebook',
   activeNotebookPath: '/tmp/Default Notebook',
   activeNotebookName: 'Default Notebook',
@@ -21,8 +21,8 @@ describe('storage alerts', () => {
     expect(buildStorageAlerts([recoveryMessage])).toEqual([
       {
         signature: 'recovery-signature',
-        label: 'local notebook started',
-        message: 'Tabs started a local notebook because the connected notebook could not be loaded.',
+        label: 'notebook recovered',
+        message: 'Tabs reset the notebook because the folder could not be loaded.',
         actionLabel: 'open previous notebook folder',
       },
     ])
@@ -36,8 +36,8 @@ describe('storage alerts', () => {
     expect(buildStorageAlerts([{ ...recoveryMessage, failedNotebookAvailable: false }])).toEqual([
       {
         signature: 'recovery-signature',
-        label: 'local notebook started',
-        message: 'Tabs started a local notebook because the connected notebook could not be loaded.',
+        label: 'notebook recovered',
+        message: 'Tabs reset the notebook because the folder could not be loaded.',
         actionLabel: undefined,
       },
     ])

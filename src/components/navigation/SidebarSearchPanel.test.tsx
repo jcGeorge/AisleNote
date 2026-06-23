@@ -1,10 +1,12 @@
 import React from 'react'
+import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { SidebarSearchPanel } from './SidebarSearchPanel'
 import type { SidebarSearchResultGroup, SidebarSearchSuggestion, SidebarSearchToken } from '../../filters/sidebar-search'
 
 const noop = () => undefined
+const source = readFileSync(new URL('./SidebarSearchPanel.tsx', import.meta.url), 'utf8')
 
 const tagToken: SidebarSearchToken = {
   kind: 'tags',
@@ -167,5 +169,11 @@ describe('SidebarSearchPanel', () => {
 
     expect(html).toContain('0 results')
     expect(html).toContain('No matching notes')
+  })
+
+  it('clears active searches before closing search mode on Escape', () => {
+    expect(source).toContain("if (event.key !== 'Escape') return")
+    expect(source).toContain('if (canClear) onClear()')
+    expect(source).toContain('else onCloseMode?.()')
   })
 })

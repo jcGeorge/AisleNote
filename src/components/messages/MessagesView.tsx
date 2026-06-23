@@ -102,7 +102,7 @@ function getRecoveryFolderActionLabel(message: AppMessage) {
     message.recoveryMode === 'reset-default' &&
     (message.activeNotebookPath === undefined ||
       (message.failedNotebookPath !== undefined && message.failedNotebookPath === message.activeNotebookPath))
-  return localNotebookWasTheFailedFolder ? 'open local notebook folder' : 'open previous notebook folder'
+  return localNotebookWasTheFailedFolder ? 'open notebook folder' : 'open previous notebook folder'
 }
 
 const EDITOR_ABLATION_MODE_DESCRIPTIONS: Record<EditorAblationMode, string> = {

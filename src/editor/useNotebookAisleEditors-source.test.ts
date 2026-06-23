@@ -178,4 +178,23 @@ describe('notebook aisle editor task checkbox wiring', () => {
     expect(undoBranch).toContain('return runGuardedEditorHistory(editor, command)')
     expect(undoBranch).not.toContain('runEditorCommandOperation')
   })
+
+  it('refreshes tag autocomplete when editor query state can change', () => {
+    expect(source).toContain('onTagAutocompleteQueryChange?: () => void')
+    expect(source).toContain('const onTagAutocompleteQueryChangeRef = useRef(onTagAutocompleteQueryChange)')
+    expect(source).toContain('onTagAutocompleteQueryChangeRef.current = onTagAutocompleteQueryChange')
+    expect(source).toContain('const handleEditorQueryProbe = () => {')
+    expect(source).toContain('onTagAutocompleteQueryChangeRef.current?.()')
+    expect(source).toContain("root.addEventListener('keyup', handleEditorQueryProbe)")
+    expect(source).toContain("root.addEventListener('mouseup', handleEditorQueryProbe)")
+    expect(source).toContain("root.removeEventListener('keyup', handleEditorQueryProbe)")
+    expect(source).toContain("root.removeEventListener('mouseup', handleEditorQueryProbe)")
+    expect(source.match(/onTagAutocompleteQueryChangeRef\.current\?\.\(\)/g) ?? []).toHaveLength(2)
+  })
+
+  it('exposes range scrolling for find result navigation', () => {
+    expect(source).toContain('const scrollToAisleRange = useCallback')
+    expect(source).toContain('return meta ? scrollToRange(meta.editor, from, to) : false')
+    expect(source).toContain('scrollToAisleRange,')
+  })
 })

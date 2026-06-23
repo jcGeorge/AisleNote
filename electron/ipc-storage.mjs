@@ -12,7 +12,6 @@ import {
   writeImageAssetToProfile,
 } from './app-state-storage.mjs'
 import {
-  getDefaultStorageProfileRoot,
   getStorageProfileNotebookName,
   validateNotebookName,
 } from './storage-profile.mjs'
@@ -22,8 +21,6 @@ import {
   createProfileFromNotebookLibrary,
   getActiveNotebookRecord,
   initializeNotebookLibrary,
-  normalizeNotebookSyncFiles,
-  reconcileNotebookMirrorWithTarget,
   removeNotebookRecord,
   setActiveNotebookId,
   upsertNotebookRecord,
@@ -71,14 +68,12 @@ function attachMainProcessSaveMetrics(result, metrics) {
 
 function createKnownNotebookStatus(userDataPath, activeProfileRootPath, notebookPath) {
   const normalizedNotebookPath = path.resolve(notebookPath)
-  const defaultProfileRootPath = getDefaultStorageProfileRoot(userDataPath)
   const exists = existsSync(normalizedNotebookPath)
   const hasManifest = existsSync(path.join(getHybridStorageRoot(normalizedNotebookPath), 'manifest.json'))
   return {
     notebookPath: normalizedNotebookPath,
     notebookName: getStorageProfileNotebookName(normalizedNotebookPath),
     isActive: path.resolve(activeProfileRootPath) === normalizedNotebookPath,
-    isDefault: normalizedNotebookPath === defaultProfileRootPath,
     exists,
     hasManifest,
     available: exists && hasManifest,
@@ -88,22 +83,14 @@ function createKnownNotebookStatus(userDataPath, activeProfileRootPath, notebook
 function createKnownNotebookStatuses(profile) {
   if (Array.isArray(profile.notebooks)) {
     return profile.notebooks.map((notebook) => {
-      const localMirrorPath = path.resolve(notebook.localMirrorPath)
-      const notebookPath = path.resolve(notebook.syncTargetPath ?? notebook.localMirrorPath)
-      const exists = existsSync(localMirrorPath)
-      const hasManifest = existsSync(path.join(getHybridStorageRoot(localMirrorPath), 'manifest.json'))
-      const syncTargetExists = notebook.syncTargetPath ? existsSync(notebook.syncTargetPath) : false
+      const notebookPath = path.resolve(notebook.notebookPath)
+      const exists = existsSync(notebookPath)
+      const hasManifest = existsSync(path.join(getHybridStorageRoot(notebookPath), 'manifest.json'))
       return {
         notebookId: notebook.id,
         notebookPath,
-        notebookName: notebook.name,
-        localMirrorPath,
-        syncTargetPath: notebook.syncTargetPath,
-        syncStatus: notebook.syncStatus,
-        syncPending: Boolean(notebook.syncPending),
-        syncTargetExists,
+        notebookName: getStorageProfileNotebookName(notebookPath),
         isActive: profile.notebookId === notebook.id,
-        isDefault: false,
         exists,
         hasManifest,
         available: exists && hasManifest,
@@ -116,57 +103,43 @@ function createKnownNotebookStatuses(profile) {
 
 function createStorageStatus({ profile, coordinator, event = 'ready', error = null, recovery = null }) {
   const loadResult = coordinator.getLoadResult()
+  if (profile.setupRequired) {
+    return {
+      status: 'setup-required',
+      health: 'warning',
+      issues: loadResult.issues ?? [{
+        code: 'notebook-setup-required',
+        severity: 'warning',
+        message: 'Create a notebook or open an existing notebook to start saving.',
+      }],
+      event,
+      profileRootPath: '',
+      activeNotebookId: null,
+      notebookPath: '',
+      notebookName: '',
+      hasProfile: false,
+      canWrite: false,
+      source: 'empty',
+      schemaVersion: null,
+      conflicts: [],
+      revision: loadResult.revision ?? 0,
+      error: error ?? 'Create a notebook or open an existing notebook to start saving.',
+      knownNotebooks: createKnownNotebookStatuses(profile),
+      ...(recovery ? { recovery } : {}),
+    }
+  }
   const hasProfile = !profile.setupRequired && existsSync(getHybridStorageRoot(profile.profileRootPath))
   const notebookPath = profile.notebookPath || getHybridStorageRoot(profile.profileRootPath)
-  const syncStatus = profile.syncStatus ?? (profile.syncTargetPath ? 'synced' : 'local-only')
-  const syncIssue =
-    syncStatus === 'offline'
-      ? [{
-          code: 'sync-target-offline',
-          severity: 'warning',
-          path: profile.syncTargetPath,
-          message: 'Sync folder is unavailable. Local changes will be kept in the local mirror.',
-        }]
-      : syncStatus === 'pending'
-        ? [{
-            code: 'sync-pending',
-            severity: 'warning',
-            path: profile.syncTargetPath,
-            message: 'Sync is pending. Local changes are saved in the local mirror.',
-          }]
-        : syncStatus === 'warning'
-          ? [{
-              code: 'sync-warning',
-              severity: 'warning',
-              path: profile.syncTargetPath,
-              message: 'Sync completed with warnings. Local changes were kept where needed.',
-            }]
-          : syncStatus === 'error'
-            ? [{
-                code: 'sync-error',
-                severity: 'warning',
-                path: profile.syncTargetPath,
-                message: profile.lastSyncError ?? 'Sync failed. Local changes are saved in the local mirror.',
-              }]
-            : []
-  const health =
-    loadResult.ok && syncIssue.length > 0
-      ? 'warning'
-      : loadResult.health ?? (loadResult.ok ? 'healthy' : 'error')
+  const health = loadResult.health ?? (loadResult.ok ? 'healthy' : 'error')
   return {
     status: loadResult.ok ? 'ready' : 'error',
     health,
-    issues: [...(loadResult.issues ?? []), ...syncIssue],
+    issues: loadResult.issues ?? [],
     event,
     profileRootPath: profile.profileRootPath,
     activeNotebookId: profile.notebookId ?? null,
     notebookPath,
     notebookName: profile.notebookName || getStorageProfileNotebookName(profile.profileRootPath),
-    localMirrorPath: profile.localMirrorPath || profile.profileRootPath,
-    syncTargetPath: profile.syncTargetPath,
-    syncStatus,
-    syncPending: Boolean(profile.syncPending),
-    isDefault: profile.isDefault,
     hasProfile,
     canWrite: coordinator.canWriteAppState(),
     source: loadResult.source,
@@ -238,7 +211,6 @@ function resolveProfileAssetPath(profileRootPath, payload) {
 
 export function resolvePreferredNotebookRevealPath({
   profileRootPath,
-  syncTargetPath,
   payload,
   resolvePath,
 }) {
@@ -249,7 +221,6 @@ export function resolvePreferredNotebookRevealPath({
     if (!roots.includes(resolvedRootPath)) roots.push(resolvedRootPath)
   }
 
-  if (syncTargetPath && existsSync(syncTargetPath)) addRoot(syncTargetPath)
   addRoot(profileRootPath)
 
   let fallback = null
@@ -267,13 +238,7 @@ export function resolvePreferredNotebookRevealPath({
 }
 
 export function reconcileNotebookLibraryForStartup(userDataPath, library) {
-  const activeRecord = getActiveNotebookRecord(library)
-  if (!activeRecord?.syncTargetPath) return { library, reconciliation: null }
-  const reconciliation = reconcileNotebookMirrorWithTarget(activeRecord)
-  return {
-    library: upsertNotebookRecord(userDataPath, library, reconciliation.record ?? activeRecord, { activate: true }),
-    reconciliation,
-  }
+  return { library, reconciliation: null }
 }
 
 function createRecoveryIssueSummary(loadResult, failedNotebookPath = null) {
@@ -313,15 +278,8 @@ function createBlankNotebookState(messages = []) {
 function createRecoveryMessage(recovery) {
   const issueSummary = Array.isArray(recovery?.issueSummary) ? recovery.issueSummary : []
   const timestamp = new Date().toISOString()
-  const failedLocalNotebook =
-    typeof recovery?.failedNotebookPath === 'string' &&
-    typeof recovery?.activeNotebookPath === 'string' &&
-    path.resolve(recovery.failedNotebookPath) === path.resolve(recovery.activeNotebookPath)
-  const body = failedLocalNotebook
-    ? 'Tabs could not load the local notebook, so it reset the local notebook on this device.'
-    : 'Tabs could not load the connected notebook, so it stopped using that folder and returned to the local notebook on this device. The original folder was left untouched.'
   const details = [
-    body,
+    'Tabs could not load this notebook folder, so it reset the notebook in that folder.',
     recovery.failedNotebookPath ? `Failed folder: ${recovery.failedNotebookPath}` : '',
     recovery.backupNotebookPath ? `Backup folder: ${recovery.backupNotebookPath}` : '',
     issueSummary.length > 0 ? `Issue summary: ${issueSummary.join(' ')}` : '',
@@ -331,8 +289,8 @@ function createRecoveryMessage(recovery) {
     type: STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE,
     status: 'unread',
     createdAt: timestamp,
-    signature: `storage-notebook-recovered:${timestamp}:${recovery.failedNotebookPath ?? 'local'}`,
-    title: 'Started local notebook',
+    signature: `storage-notebook-recovered:${timestamp}:${recovery.failedNotebookPath ?? 'notebook'}`,
+    title: 'Recovered notebook',
     body: details.join('\n'),
     failedNotebookPath: recovery.failedNotebookPath,
     failedNotebookAvailable: recovery.failedNotebookAvailable,
@@ -438,10 +396,6 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     event,
     updatedAt: new Date().toISOString(),
   })
-  const getSyncFilesFromSaveResult = (saveResult, fallback = []) => {
-    const syncFiles = normalizeNotebookSyncFiles(saveResult?.storageFiles)
-    return syncFiles.length > 0 ? syncFiles : normalizeNotebookSyncFiles(fallback)
-  }
   const loadNotebookResult = (profileRootPath) => {
     if (profile?.setupRequired) {
       return {
@@ -464,12 +418,12 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
         serializedState: null,
         source: result.source,
         health: 'error',
-        error: 'Notebook local mirror is missing.',
+        error: 'Notebook folder is missing.',
         issues: [{
-          code: 'missing-local-mirror',
+          code: 'missing-notebook-folder',
           severity: 'error',
           path: profileRootPath,
-          message: 'Notebook local mirror is missing.',
+          message: 'Notebook folder is missing.',
         }],
       }
     }
@@ -484,49 +438,6 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     refreshProfileFromLibrary()
     return getActiveNotebookRecord(notebookLibrary)
   }
-  const syncActiveNotebookTarget = (record, serializedState, localMirrorPath) => {
-    if (!record) return null
-    if (!record.syncTargetPath) {
-      return updateActiveNotebookRecord({
-        ...record,
-        syncStatus: 'local-only',
-        syncPending: false,
-        lastSyncError: undefined,
-      })
-    }
-    if (!existsSync(record.syncTargetPath)) {
-      return updateActiveNotebookRecord({
-        ...record,
-        syncStatus: 'offline',
-        syncPending: true,
-        lastSyncError: 'Sync target is unavailable.',
-      })
-    }
-    try {
-      const syncSaveResult = saveAppState(record.syncTargetPath, serializedState, {
-        userDataPath,
-        userSettingsRoot: userDataPath,
-        notebookId: record.id,
-        assetSourceRoot: localMirrorPath,
-        syncMetadata: createSyncMetadata('local-save-synced'),
-      })
-      return updateActiveNotebookRecord({
-        ...record,
-        syncStatus: 'synced',
-        syncPending: false,
-        syncFiles: getSyncFilesFromSaveResult(syncSaveResult, record.syncFiles),
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: undefined,
-      })
-    } catch (error) {
-      return updateActiveNotebookRecord({
-        ...record,
-        syncStatus: 'error',
-        syncPending: true,
-        lastSyncError: error instanceof Error ? error.message : 'Sync target could not be written.',
-      })
-    }
-  }
   const saveNotebookState = (profileRootPath, serializedState, options = {}) => {
     const activeRecord = getActiveNotebookRecord(notebookLibrary)
     const saveResult = saveAppState(profileRootPath, serializedState, {
@@ -536,7 +447,6 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       notebookId: activeRecord?.id,
       syncMetadata: activeRecord ? createSyncMetadata('local-save') : undefined,
     })
-    if (activeRecord) syncActiveNotebookTarget(activeRecord, serializedState, profileRootPath)
     const syncResult = adoptUserSettingsLocationResult(
       writeUserSettingsLocationFromState(userDataPath, userSettingsLocation, serializedState),
     )
@@ -602,6 +512,15 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     console.info?.(`[tabs:storage] ${event}`)
   }
 
+  const requireActiveNotebook = (actionDescription = 'perform this action') => {
+    if (!profile.setupRequired && profile.profileRootPath) return null
+    return {
+      ok: false,
+      error: `Create or open a notebook before you ${actionDescription}.`,
+      status,
+    }
+  }
+
   const isInsidePath = (parentPath, candidatePath) => {
     const relative = path.relative(parentPath, candidatePath)
     return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative))
@@ -624,9 +543,6 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     if (stats.isSymbolicLink() || !stats.isDirectory()) {
       return { ok: false, error: 'Notebook location must be a normal folder.' }
     }
-    if (isInsidePath(profile.profileRootPath, resolvedPath)) {
-      return { ok: false, error: 'Choose a location outside the active notebook folder.' }
-    }
     return { ok: true, locationPath: resolvedPath }
   }
 
@@ -635,10 +551,13 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     if (!validation.ok) return validation
     const locationValidation = validateNotebookLocationPath(locationPath)
     if (!locationValidation.ok) return locationValidation
+    const profileRootPath = path.join(locationValidation.locationPath, validation.name)
+    const nesting = validateNotebookFolderNesting(profileRootPath)
+    if (!nesting.ok) return nesting
     return {
       ok: true,
       name: validation.name,
-      profileRootPath: path.join(locationValidation.locationPath, validation.name),
+      profileRootPath,
     }
   }
 
@@ -660,6 +579,23 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
   }
 
+  const validateNotebookFolderNesting = (notebookPath, options = {}) => {
+    const targetPath = path.resolve(notebookPath)
+    const ignoreNotebookId = typeof options.ignoreNotebookId === 'string' ? options.ignoreNotebookId : ''
+    for (const record of notebookLibrary.notebooks) {
+      if (ignoreNotebookId && record.id === ignoreNotebookId) continue
+      const existingPath = path.resolve(record.notebookPath)
+      if (targetPath === existingPath) continue
+      if (isInsidePath(existingPath, targetPath) || isInsidePath(targetPath, existingPath)) {
+        return {
+          ok: false,
+          error: 'Notebook folders cannot be nested. Links and settings are local to each notebook folder.',
+        }
+      }
+    }
+    return { ok: true }
+  }
+
   const resolveMoveProfileRootCandidate = (selectedProfileRootPath) => {
     const selected = inspectProfileRootCandidate(selectedProfileRootPath)
     if (selected.targetHasProfile || !selected.targetHasEntries || selected.targetResult.ok) return selected
@@ -668,100 +604,11 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     )
   }
 
-  const createRecoveryMetadata = (failedProfile, failedResult, mode) => {
-    const activeNotebookPath = getDefaultStorageProfileRoot(userDataPath)
-    const failedNotebookAvailable = existsSync(failedProfile.profileRootPath)
-    return {
-      event: 'notebook-auto-recovered',
-      mode,
-      failedNotebookPath: failedProfile.profileRootPath,
-      failedNotebookName: getStorageProfileNotebookName(failedProfile.profileRootPath),
-      failedNotebookAvailable,
-      activeNotebookPath,
-      activeNotebookName: getStorageProfileNotebookName(activeNotebookPath),
-      originalError: failedResult?.error ?? 'Existing app state could not be loaded.',
-      issueSummary: createRecoveryIssueSummary(failedResult, failedProfile.profileRootPath),
-      issues: Array.isArray(failedResult?.issues) ? failedResult.issues : [],
-      createdAt: new Date().toISOString(),
-    }
-  }
-
-  const persistRecoveredDefaultNotebook = (serializedState, replaceExisting) => {
-    watcher?.markAppWrite()
-    saveNotebookState(getDefaultStorageProfileRoot(userDataPath), serializedState, {
-      userDataPath,
-      userSettingsRoot: userDataPath,
-      replaceExisting,
-    })
-    watcher?.markAppWrite()
-  }
-
-  const loadRecoveredDefaultNotebook = (recovery) => {
-    updateStatus('notebook-recovery-error', 'Automatic local notebook recovery is disabled.', { recovery })
-    return { ok: false, result: coordinator.getLoadResult() }
-  }
-
-  const recoverActiveNotebookLoadFailure = (failedResult, trigger = 'startup-error') => {
+  const markActiveNotebookLoadFailure = (failedResult, trigger = 'startup-error') => {
     logExternalStorageEvent(trigger)
-    const activeRecord = getActiveNotebookRecord(notebookLibrary)
-    if (!activeRecord) {
-      updateStatus('profile-error', failedResult?.error ?? 'Notebook local mirror could not be loaded.')
-      startWatcher()
-      return false
-    }
-
-    const failedProfile = { ...profile }
-    try {
-      const recoveryBase = createRecoveryMetadata(failedProfile, failedResult, 'reset-default')
-      const backupNotebookPath = moveNotebookFolderToBackup(activeRecord.localMirrorPath)
-      const recovery = {
-        ...recoveryBase,
-        failedNotebookAvailable: backupNotebookPath ? true : recoveryBase.failedNotebookAvailable,
-        ...(backupNotebookPath ? { backupNotebookPath } : {}),
-      }
-      const serializedState = appendRecoveryMessage(JSON.stringify(createBlankNotebookState()), recovery)
-
-      watcher?.markAppWrite()
-      saveAppState(activeRecord.localMirrorPath, serializedState, {
-        userDataPath,
-        userSettingsRoot: userDataPath,
-        notebookId: activeRecord.id,
-        replaceExisting: true,
-        syncMetadata: createSyncMetadata('local-recovered'),
-      })
-      watcher?.markAppWrite()
-
-      notebookLibrary = upsertNotebookRecord(userDataPath, notebookLibrary, {
-        ...activeRecord,
-        syncStatus: activeRecord.syncTargetPath ? 'pending' : 'local-only',
-        syncPending: Boolean(activeRecord.syncTargetPath),
-        lastSyncError: activeRecord.syncTargetPath ? 'Local mirror was reset and needs to sync.' : undefined,
-      }, { activate: true })
-      refreshProfileFromLibrary()
-
-      const result = coordinator.reloadProfileRoot(activeRecord.localMirrorPath, {
-        requireSerializedState: true,
-        detectAppSaveEcho: false,
-      })
-      if (!result.ok) {
-        updateStatus('notebook-recovery-error', result.error ?? 'Local notebook could not be recovered.', { recovery })
-        startWatcher()
-        return false
-      }
-
-      updateStatus('notebook-auto-recovered', null, { recovery })
-      broadcastAppStateUpdate({
-        serializedState: result.serializedState,
-        revision: result.revision,
-      })
-      startWatcher()
-      return true
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Local notebook could not be recovered.'
-      updateStatus('notebook-recovery-error', message)
-      startWatcher()
-      return false
-    }
+    updateStatus('profile-error', failedResult?.error ?? 'Notebook folder could not be loaded.')
+    startWatcher()
+    return false
   }
 
   const retryThenRecoverActiveNotebook = (failedResult, trigger = 'startup-error') => {
@@ -780,18 +627,21 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       startWatcher()
       return true
     }
-    return recoverActiveNotebookLoadFailure(retryResult ?? failedResult, trigger)
+    return markActiveNotebookLoadFailure(retryResult ?? failedResult, trigger)
   }
 
   const getWatchedNotebookRoots = () => {
-    const roots = [profile.profileRootPath]
-    if (profile.syncTargetPath && existsSync(profile.syncTargetPath)) roots.push(profile.syncTargetPath)
-    return roots
+    if (profile.setupRequired) return []
+    return [profile.profileRootPath]
   }
 
-  const reloadLocalMirrorAfterSync = (event = 'external-loaded') => {
+  const reloadNotebookFolder = (event = 'external-loaded') => {
+    if (profile.setupRequired) {
+      updateStatus('notebook-setup-required', 'Create a notebook or open an existing notebook to start saving.')
+      return false
+    }
     const previousSerializedState = coordinator.getSerializedState()
-    const result = measureSlowMainOperation('local mirror reload', () =>
+    const result = measureSlowMainOperation('notebook folder reload', () =>
       coordinator.reloadProfileRoot(profile.profileRootPath, {
         requireSerializedState: previousSerializedState !== null,
         detectAppSaveEcho: false,
@@ -808,44 +658,26 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       watcher?.reset()
       return true
     }
-    updateStatus('profile-error', result.error ?? 'Notebook local mirror could not be loaded.')
+    updateStatus('profile-error', result.error ?? 'Notebook folder could not be loaded.')
     watcher?.reset()
     return false
   }
 
   const reconcileActiveNotebookFromSyncTarget = () => {
-    const activeRecord = getActiveNotebookRecord(notebookLibrary)
-    if (!activeRecord?.syncTargetPath) return false
-    const reconciliation = reconcileNotebookMirrorWithTarget(activeRecord)
-    notebookLibrary = upsertNotebookRecord(userDataPath, notebookLibrary, reconciliation.record, { activate: true })
-    refreshProfileFromLibrary()
-    if (!reconciliation.ok) {
-      updateStatus('external-error', reconciliation.error ?? 'Notebook sync failed.')
-      watcher?.reset()
-      return true
-    }
-    if (reconciliation.record?.syncStatus === 'offline') {
-      updateStatus('sync-target-offline')
-      watcher?.reset()
-      return true
-    }
-    logExternalStorageEvent(reconciliation.changed ? 'external-loaded' : 'external-echo-ignored')
-    reloadLocalMirrorAfterSync(reconciliation.warning ? 'external-conflict' : 'external-loaded')
-    return true
+    return false
   }
 
   const reconcileActiveNotebookAfterLocalWrite = (event = 'saved') => {
-    const activeRecord = getActiveNotebookRecord(notebookLibrary)
-    if (!activeRecord?.syncTargetPath) return undefined
-    const reconciliation = reconcileNotebookMirrorWithTarget(activeRecord)
-    notebookLibrary = upsertNotebookRecord(userDataPath, notebookLibrary, reconciliation.record, { activate: true })
-    refreshProfileFromLibrary()
-    updateStatus(reconciliation.ok ? event : 'notebook-sync-error', reconciliation.ok ? null : reconciliation.error)
-    return reconciliation.warning
+    updateStatus(event)
+    return undefined
   }
 
   const startWatcher = () => {
     watcher?.close()
+    if (profile.setupRequired) {
+      watcher = null
+      return
+    }
     watcher = createStorageProfileWatcher({
       getProfileRootPath: () => profile.profileRootPath,
       getProfileRootPaths: getWatchedNotebookRoots,
@@ -956,6 +788,10 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   }
 
   const reloadActiveProfileForSettingsChange = (event = 'settings-sync-loaded') => {
+    if (profile.setupRequired) {
+      updateStatus('notebook-setup-required', 'Create a notebook or open an existing notebook to start saving.')
+      return coordinator.getLoadResult()
+    }
     const result = coordinator.reloadProfileRoot(profile.profileRootPath, {
       requireSerializedState: coordinator.getSerializedState() !== null,
       detectAppSaveEcho: false,
@@ -1012,8 +848,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   const switchToProfileRoot = (profileRootPath, event = 'profile-changed', options = {}) => {
     const normalizedProfileRootPath = path.resolve(profileRootPath)
     const record = notebookLibrary.notebooks.find((candidate) =>
-      path.resolve(candidate.localMirrorPath) === normalizedProfileRootPath ||
-      (candidate.syncTargetPath && path.resolve(candidate.syncTargetPath) === normalizedProfileRootPath)
+      path.resolve(candidate.notebookPath) === normalizedProfileRootPath
     )
     if (!record) return { ok: false, status, error: 'Notebook is not in the library.' }
     return switchToNotebookRecord(record, event, options)
@@ -1025,35 +860,16 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     const profileRootPath = requestedNotebookPath ? path.resolve(requestedNotebookPath) : ''
     const record = notebookLibrary.notebooks.find((candidate) =>
       candidate.id === requestedNotebookId ||
-      (profileRootPath && path.resolve(candidate.localMirrorPath) === profileRootPath) ||
-      (profileRootPath && candidate.syncTargetPath && path.resolve(candidate.syncTargetPath) === profileRootPath)
+      (profileRootPath && path.resolve(candidate.notebookPath) === profileRootPath)
     ) ?? (options.defaultActive === true ? getActiveNotebookRecord(notebookLibrary) : null)
     if (!record) return { ok: false, error: 'Notebook is not in the notebook library.' }
     return { ok: true, record }
   }
 
-  const getNotebookSyncTargetPathFromPayload = async (payload = {}, title = 'Choose sync folder') => {
-    const candidate =
-      typeof payload?.syncTargetPath === 'string' ? payload.syncTargetPath :
-        typeof payload?.notebookPath === 'string' ? payload.notebookPath :
-          typeof payload?.locationPath === 'string' ? payload.locationPath :
-            ''
-    if (candidate.trim()) return { ok: true, profileRootPath: path.resolve(candidate) }
-    if (!dialog || typeof dialog.showOpenDialog !== 'function') {
-      return { ok: false, error: 'Folder selection is unavailable.' }
-    }
-    const selection = await dialog.showOpenDialog({
-      title,
-      properties: ['openDirectory', 'createDirectory'],
-    })
-    if (selection.canceled || !selection.filePaths?.[0]) return { canceled: true, status }
-    return { ok: true, profileRootPath: path.resolve(selection.filePaths[0]) }
-  }
-
   const getCurrentSerializedStateForRecord = (record) => {
     const currentSerializedState = coordinator.getSerializedState()
     if (record.id === profile.notebookId && typeof currentSerializedState === 'string') return currentSerializedState
-    const loadResult = loadAppStateResult(record.localMirrorPath, { userSettingsRoot: userDataPath })
+    const loadResult = loadAppStateResult(record.notebookPath, { userSettingsRoot: userDataPath })
     return loadResult.ok && typeof loadResult.serializedState === 'string' ? loadResult.serializedState : null
   }
 
@@ -1074,108 +890,40 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     return result
   }
 
-  const ensureNotebookSyncTargetWritable = (record, profileRootPath) => {
-    const target = inspectProfileRootCandidate(profileRootPath)
-    if (isInsidePath(record.localMirrorPath, target.profileRootPath) || isInsidePath(target.profileRootPath, record.localMirrorPath)) {
-      return { ok: false, error: 'Sync folder must be outside the local mirror.' }
-    }
-    if (!target.targetHasProfile && target.targetHasEntries && !target.targetResult.ok) {
-      return { ok: false, error: 'Notebook folder must be empty or contain manifest.json.' }
-    }
-    if (target.targetHasProfile && !target.targetResult.ok) {
-      return { ok: false, error: 'This folder contains Tabs data that could not be loaded.' }
-    }
-    const targetNotebookId = typeof target.targetResult?.notebookId === 'string' ? target.targetResult.notebookId : ''
-    if (targetNotebookId && targetNotebookId !== record.id) {
-      return { ok: false, error: 'This folder belongs to a different notebook.' }
-    }
-    return { ok: true, target }
-  }
-
-  const attachRecordToSyncTarget = async (record, profileRootPath, event = 'notebook-sync-target-attached') => {
-    const validation = ensureNotebookSyncTargetWritable(record, profileRootPath)
-    if (!validation.ok) return { ok: false, error: validation.error, status }
-    const serializedState = getCurrentSerializedStateForRecord(record)
-    if (serializedState === null) return { ok: false, error: 'Notebook local mirror could not be loaded.', status }
-
-    try {
-      let syncFiles = record.syncFiles
-      if (!validation.target.targetHasProfile || validation.target.targetResult.serializedState === null) {
-        const saveResult = saveAppState(profileRootPath, serializedState, {
-          userDataPath,
-          userSettingsRoot: userDataPath,
-          notebookId: record.id,
-          assetSourceRoot: getHybridStorageRoot(record.localMirrorPath),
-          syncMetadata: createSyncMetadata('sync-target-attached'),
-        })
-        syncFiles = getSyncFilesFromSaveResult(saveResult, syncFiles)
-      } else if (!validation.target.targetResult.notebookId) {
-        const saveResult = saveAppState(profileRootPath, validation.target.targetResult.serializedState, {
-          userDataPath,
-          userSettingsRoot: userDataPath,
-          notebookId: record.id,
-          assetSourceRoot: getHybridStorageRoot(profileRootPath),
-          syncMetadata: createSyncMetadata('schema-upgraded'),
-        })
-        syncFiles = getSyncFilesFromSaveResult(saveResult, syncFiles)
-      }
-
-      notebookLibrary = upsertNotebookRecord(userDataPath, notebookLibrary, {
-        ...record,
-        syncTargetPath: path.resolve(profileRootPath),
-        syncStatus: 'synced',
-        syncPending: false,
-        syncFiles,
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: undefined,
-      }, { activate: record.id === notebookLibrary.activeNotebookId })
-
-      const updatedRecord = notebookLibrary.notebooks.find((candidate) => candidate.id === record.id)
-      if (updatedRecord?.syncTargetPath && validation.target.targetHasProfile) {
-        const reconciliation = reconcileNotebookMirrorWithTarget(updatedRecord)
-        notebookLibrary = upsertNotebookRecord(userDataPath, notebookLibrary, reconciliation.record, {
-          activate: record.id === notebookLibrary.activeNotebookId,
-        })
-        if (!reconciliation.ok) {
-          refreshProfileFromLibrary()
-          updateStatus('notebook-sync-error', reconciliation.error ?? 'Notebook sync failed.')
-          return { ok: false, error: reconciliation.error ?? 'Notebook sync failed.', status }
-        }
-        if (record.id === notebookLibrary.activeNotebookId) reloadAfterNotebookLibraryChange(event)
-        else {
-          refreshProfileFromLibrary()
-          updateStatus(event)
-        }
-        return { ok: true, status, warning: reconciliation.warning }
-      }
-
-      if (record.id === notebookLibrary.activeNotebookId) reloadAfterNotebookLibraryChange(event)
-      else {
-        refreshProfileFromLibrary()
-        updateStatus(event)
-      }
-      return { ok: true, status }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Sync folder could not be attached.'
-      updateStatus('notebook-sync-error', message)
-      return { ok: false, error: message, status }
-    }
-  }
-
   const renameNotebook = async (_event, payload = {}) => {
     const validation = validateNotebookName(payload?.name)
     if (!validation.ok) return { ok: false, error: validation.error, status }
     try {
       const activeRecord = getActiveNotebookRecord(notebookLibrary)
       if (!activeRecord) return { ok: false, error: 'No active notebook is available.', status }
+      const currentPath = path.resolve(activeRecord.notebookPath)
+      const nextPath = path.join(path.dirname(currentPath), validation.name)
+      if (currentPath === nextPath) return { ok: true, status }
+      if (existsSync(nextPath)) {
+        return { ok: false, error: 'A folder with that notebook name already exists.', status }
+      }
+      const nesting = validateNotebookFolderNesting(nextPath, { ignoreNotebookId: activeRecord.id })
+      if (!nesting.ok) return { ok: false, error: nesting.error, status }
+      watcher?.close()
+      renameSync(currentPath, nextPath)
       notebookLibrary = upsertNotebookRecord(userDataPath, notebookLibrary, {
         ...activeRecord,
-        name: validation.name,
+        notebookPath: nextPath,
       }, { activate: true })
       refreshProfileFromLibrary()
-      updateStatus('notebook-renamed')
+      const result = coordinator.reloadProfileRoot(nextPath, {
+        requireSerializedState: true,
+        detectAppSaveEcho: false,
+      })
+      updateStatus(result.ok ? 'notebook-renamed' : 'profile-error', result.ok ? null : result.error)
       startWatcher()
-      return { ok: true, status }
+      if (result.ok && typeof result.serializedState === 'string') {
+        broadcastAppStateUpdate({
+          serializedState: result.serializedState,
+          revision: result.revision,
+        })
+      }
+      return { ok: result.ok, status, error: result.ok ? undefined : result.error }
     } catch (error) {
       updateStatus('notebook-rename-error', error instanceof Error ? error.message : 'Notebook folder could not be renamed.')
       return {
@@ -1202,16 +950,20 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   }
 
   const replaceProfileWithCurrentData = async (profileRootPath, event = null, options = {}) => {
+    const normalizedProfileRootPath = path.resolve(profileRootPath)
+    const activeRecord = getActiveNotebookRecord(notebookLibrary)
+    const nesting = validateNotebookFolderNesting(normalizedProfileRootPath, {
+      ignoreNotebookId: activeRecord?.id,
+    })
+    if (!nesting.ok) return { ok: false, error: nesting.error, status }
     const serializedState = await getCurrentSerializedStateForProfileMove(event)
     if (serializedState === null) {
       return { ok: false, error: 'Current app state is not ready to move.', status }
     }
-    const activeRecord = getActiveNotebookRecord(notebookLibrary)
     if (!activeRecord) {
       try {
         const record = createNotebookRecord(userDataPath, {
-          name: getStorageProfileNotebookName(profileRootPath),
-          syncTargetPath: profileRootPath,
+          notebookPath: normalizedProfileRootPath,
           serializedState,
         })
         notebookLibrary = upsertNotebookRecord(userDataPath, notebookLibrary, record, { activate: true })
@@ -1225,32 +977,38 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
         }
       }
     }
-    const previousSyncTargetPath = activeRecord.syncTargetPath
+    const previousNotebookPath = activeRecord.notebookPath
     try {
-      const syncSaveResult = saveAppState(profileRootPath, serializedState, {
+      saveAppState(normalizedProfileRootPath, serializedState, {
         userDataPath,
         userSettingsRoot: userDataPath,
         notebookId: activeRecord.id,
         replaceExisting: true,
-        assetSourceRoot: getHybridStorageRoot(activeRecord.localMirrorPath),
-        syncMetadata: createSyncMetadata('sync-target-moved'),
+        assetSourceRoot: getHybridStorageRoot(activeRecord.notebookPath),
+        syncMetadata: createSyncMetadata('notebook-moved'),
       })
       notebookLibrary = upsertNotebookRecord(userDataPath, notebookLibrary, {
         ...activeRecord,
-        syncTargetPath: path.resolve(profileRootPath),
-        syncStatus: 'synced',
-        syncPending: false,
-        syncFiles: getSyncFilesFromSaveResult(syncSaveResult, activeRecord.syncFiles),
-        lastSyncedAt: new Date().toISOString(),
-        lastSyncError: undefined,
+        notebookPath: normalizedProfileRootPath,
       }, { activate: true })
       refreshProfileFromLibrary()
-      updateStatus('profile-moved')
+      const result = coordinator.reloadProfileRoot(normalizedProfileRootPath, {
+        requireSerializedState: true,
+        detectAppSaveEcho: false,
+      })
+      updateStatus(result.ok ? 'profile-moved' : 'profile-error', result.ok ? null : result.error)
       startWatcher()
-      if (options.trashSource !== true || !previousSyncTargetPath || previousSyncTargetPath === profileRootPath) {
+      if (result.ok && typeof result.serializedState === 'string') {
+        broadcastAppStateUpdate({
+          serializedState: result.serializedState,
+          revision: result.revision,
+        })
+      }
+      if (!result.ok) return { ok: false, error: result.error ?? 'Notebook folder could not be loaded.', status }
+      if (options.trashSource !== true || !previousNotebookPath || previousNotebookPath === normalizedProfileRootPath) {
         return { ok: true, status }
       }
-      const warning = await maybeTrashSourceProfileRoot(previousSyncTargetPath)
+      const warning = await maybeTrashSourceProfileRoot(previousNotebookPath)
       if (warning) return { ok: true, status, warning }
       return { ok: true, status: updateStatus('profile-moved') }
     } catch (error) {
@@ -1263,6 +1021,9 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   }
 
   const chooseProfileRoot = async (mode, event = null) => {
+    if (profile.setupRequired) {
+      return { ok: false, error: 'Create or open a notebook before moving its folder.', status }
+    }
     if (!dialog || typeof dialog.showOpenDialog !== 'function') {
       return { ok: false, error: 'Folder selection is unavailable.', status }
     }
@@ -1370,7 +1131,16 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     if (selection.canceled || !selection.filePaths?.[0]) return { canceled: true, status }
 
     const profileRootPath = path.resolve(selection.filePaths[0])
-    if (profileRootPath === profile.syncTargetPath || profileRootPath === profile.profileRootPath) return { ok: true, status }
+    if (profileRootPath === profile.profileRootPath) return { ok: true, status }
+    const nesting = validateNotebookFolderNesting(profileRootPath)
+    if (!nesting.ok) return { ok: false, error: nesting.error, status }
+    if (!existsSync(path.join(getHybridStorageRoot(profileRootPath), 'manifest.json'))) {
+      return {
+        ok: false,
+        error: 'This folder is not a Tabs notebook. Use Markdown import for Markdown or Obsidian folders.',
+        status,
+      }
+    }
 
     const openResult = createNotebookRecordFromExistingFolder(userDataPath, profileRootPath)
     if (!openResult.ok) {
@@ -1394,8 +1164,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     const profileRootPath = requestedNotebookPath ? path.resolve(requestedNotebookPath) : ''
     const record = notebookLibrary.notebooks.find((candidate) =>
       candidate.id === requestedNotebookId ||
-      (profileRootPath && path.resolve(candidate.localMirrorPath) === profileRootPath) ||
-      (profileRootPath && candidate.syncTargetPath && path.resolve(candidate.syncTargetPath) === profileRootPath)
+      (profileRootPath && path.resolve(candidate.notebookPath) === profileRootPath)
     )
     if (!record) return { ok: false, error: 'Notebook is not in the notebook library.', status }
     if (record.id === profile.notebookId) return { ok: true, status }
@@ -1408,8 +1177,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     const profileRootPath = requestedNotebookPath ? path.resolve(requestedNotebookPath) : ''
     const record = notebookLibrary.notebooks.find((candidate) =>
       candidate.id === requestedNotebookId ||
-      (profileRootPath && path.resolve(candidate.localMirrorPath) === profileRootPath) ||
-      (profileRootPath && candidate.syncTargetPath && path.resolve(candidate.syncTargetPath) === profileRootPath)
+      (profileRootPath && path.resolve(candidate.notebookPath) === profileRootPath)
     )
     if (!record) return { ok: false, error: 'Notebook is not in the notebook library.', status }
     if (record.id === notebookLibrary.activeNotebookId) {
@@ -1437,9 +1205,6 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   }
 
   const createNotebook = async (_event, payload = {}) => {
-    if (typeof payload?.serializedState !== 'string' || payload.serializedState.trim().length === 0) {
-      return { ok: false, error: 'Blank notebook state is invalid.', status }
-    }
     const target = buildNotebookTargetPath(payload?.locationPath, payload?.name)
     if (!target.ok) return { ok: false, error: target.error, status }
     if (existsSync(target.profileRootPath)) {
@@ -1452,9 +1217,8 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
 
     try {
       const record = createNotebookRecord(userDataPath, {
-        name: target.name,
-        syncTargetPath: target.profileRootPath,
-        serializedState: payload.serializedState,
+        notebookPath: target.profileRootPath,
+        serializedState: JSON.stringify(createBlankNotebookState()),
       })
       notebookLibrary = upsertNotebookRecord(userDataPath, notebookLibrary, record, { activate: true })
       refreshProfileFromLibrary()
@@ -1468,52 +1232,6 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
   }
 
-  const resetLocalNotebookToBlank = async () => {
-    const serializedState = JSON.stringify(createBlankNotebookState())
-    const activeRecord = getActiveNotebookRecord(notebookLibrary)
-    if (!activeRecord) return { ok: false, error: 'No active notebook is available.', status }
-
-    try {
-      watcher?.markAppWrite()
-      saveAppState(activeRecord.localMirrorPath, serializedState, {
-        userDataPath,
-        userSettingsRoot: userDataPath,
-        notebookId: activeRecord.id,
-        replaceExisting: true,
-        syncMetadata: createSyncMetadata('local-reset'),
-      })
-      watcher?.markAppWrite()
-
-      notebookLibrary = upsertNotebookRecord(userDataPath, notebookLibrary, {
-        ...activeRecord,
-        syncStatus: activeRecord.syncTargetPath ? 'pending' : 'local-only',
-        syncPending: Boolean(activeRecord.syncTargetPath),
-      }, { activate: true })
-      refreshProfileFromLibrary()
-
-      const result = coordinator.reloadProfileRoot(activeRecord.localMirrorPath, {
-        requireSerializedState: true,
-        detectAppSaveEcho: false,
-      })
-      if (!result.ok) {
-        updateStatus('notebook-reset-error', result.error ?? 'Local notebook could not be reset.')
-        return { ok: false, error: result.error ?? 'Local notebook could not be reset.', status }
-      }
-
-      updateStatus('notebook-reset-local')
-      startWatcher()
-      broadcastAppStateUpdate({
-        serializedState: result.serializedState,
-        revision: result.revision,
-      })
-      return { ok: true, status }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Local notebook could not be reset.'
-      updateStatus('notebook-reset-error', message)
-      return { ok: false, error: message, status }
-    }
-  }
-
   const deleteNotebook = async (_event, payload = {}) => {
     const resolution = resolveNotebookRecordFromPayload(payload, { defaultActive: true })
     if (!resolution.ok) return { ok: false, error: resolution.error, status }
@@ -1522,45 +1240,28 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       return { ok: false, error: 'Moving notebooks to Trash is unavailable.', status }
     }
 
-    let trashSyncTarget = payload?.trashSyncTarget === true
     if (dialog?.showMessageBox && payload?.skipConfirmation !== true) {
-      const buttons = record.syncTargetPath
-        ? ['Trash local mirror only', 'Trash local mirror and sync folder', 'Cancel']
-        : ['Trash notebook', 'Cancel']
+      const buttons = ['Trash notebook', 'Cancel']
       const choice = await dialog.showMessageBox({
         type: 'warning',
         buttons,
-        cancelId: buttons.length - 1,
+        cancelId: 1,
         defaultId: 0,
         message: 'Delete notebook?',
-        detail: record.syncTargetPath
-          ? 'Tabs will remove this notebook from the library and move its local mirror to Trash. The attached sync folder is kept unless you choose to Trash it too.'
-          : 'Tabs will remove this notebook from the library and move its local mirror to Trash.',
+        detail: 'Tabs will remove this notebook from the list and move its folder to Trash.',
       })
-      if (choice.response === buttons.length - 1) return { canceled: true, status }
-      trashSyncTarget = record.syncTargetPath ? choice.response === 1 : false
+      if (choice.response === 1) return { canceled: true, status }
     }
 
     try {
-      if (existsSync(record.localMirrorPath)) {
-        await shell.trashItem(record.localMirrorPath)
+      if (existsSync(record.notebookPath)) {
+        await shell.trashItem(record.notebookPath)
       }
     } catch (error) {
       return {
         ok: false,
-        error: error instanceof Error ? error.message : 'Notebook local mirror could not be moved to Trash.',
+        error: error instanceof Error ? error.message : 'Notebook folder could not be moved to Trash.',
         status,
-      }
-    }
-
-    let warning
-    if (trashSyncTarget && record.syncTargetPath && existsSync(record.syncTargetPath)) {
-      try {
-        await shell.trashItem(record.syncTargetPath)
-      } catch (error) {
-        warning = error instanceof Error && error.message
-          ? `Sync folder was kept because it could not be moved to Trash: ${error.message}`
-          : 'Sync folder was kept because it could not be moved to Trash.'
       }
     }
 
@@ -1577,74 +1278,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       updateStatus('notebook-setup-required', 'Create a notebook or open an existing notebook to start saving.')
       startWatcher()
     }
-    return { ok: true, status, warning }
-  }
-
-  const attachNotebookSyncTarget = async (_event, payload = {}) => {
-    const resolution = resolveNotebookRecordFromPayload(payload, { defaultActive: true })
-    if (!resolution.ok) return { ok: false, error: resolution.error, status }
-    const selection = await getNotebookSyncTargetPathFromPayload(payload, 'Attach sync folder')
-    if (selection.canceled) return selection
-    if (!selection.ok) return { ok: false, error: selection.error, status }
-    return attachRecordToSyncTarget(resolution.record, selection.profileRootPath, 'notebook-sync-target-attached')
-  }
-
-  const detachNotebookSyncTarget = async (_event, payload = {}) => {
-    const resolution = resolveNotebookRecordFromPayload(payload, { defaultActive: true })
-    if (!resolution.ok) return { ok: false, error: resolution.error, status }
-    const record = resolution.record
-    notebookLibrary = upsertNotebookRecord(userDataPath, notebookLibrary, {
-      ...record,
-      syncTargetPath: undefined,
-      syncStatus: 'local-only',
-      syncPending: false,
-      lastSyncError: undefined,
-    }, { activate: record.id === notebookLibrary.activeNotebookId })
-    refreshProfileFromLibrary()
-    updateStatus('notebook-sync-target-detached')
-    startWatcher()
     return { ok: true, status }
-  }
-
-  const reconnectNotebookSyncTarget = async (_event, payload = {}) => {
-    const resolution = resolveNotebookRecordFromPayload(payload, { defaultActive: true })
-    if (!resolution.ok) return { ok: false, error: resolution.error, status }
-    const record = resolution.record
-    const explicitPath =
-      typeof payload?.syncTargetPath === 'string' && payload.syncTargetPath.trim()
-        ? payload.syncTargetPath
-        : typeof payload?.notebookPath === 'string' && payload.notebookPath.trim()
-          ? payload.notebookPath
-          : ''
-    if (!explicitPath && record.syncTargetPath && existsSync(record.syncTargetPath)) {
-      const target = inspectProfileRootCandidate(record.syncTargetPath)
-      if (!target.targetHasProfile || target.targetResult.serializedState === null) {
-        return attachRecordToSyncTarget(record, record.syncTargetPath, 'notebook-sync-target-reconnected')
-      }
-      const reconciliation = reconcileNotebookMirrorWithTarget(record)
-      notebookLibrary = upsertNotebookRecord(userDataPath, notebookLibrary, reconciliation.record, {
-        activate: record.id === notebookLibrary.activeNotebookId,
-      })
-      if (!reconciliation.ok) {
-        refreshProfileFromLibrary()
-        updateStatus('notebook-sync-error', reconciliation.error ?? 'Notebook sync failed.')
-        return { ok: false, error: reconciliation.error ?? 'Notebook sync failed.', status }
-      }
-      if (record.id === notebookLibrary.activeNotebookId) reloadAfterNotebookLibraryChange('notebook-sync-target-reconnected')
-      else {
-        refreshProfileFromLibrary()
-        updateStatus('notebook-sync-target-reconnected')
-      }
-      return { ok: true, status, warning: reconciliation.warning }
-    }
-
-    const selection = await getNotebookSyncTargetPathFromPayload(
-      { ...payload, syncTargetPath: explicitPath },
-      'Reconnect sync folder',
-    )
-    if (selection.canceled) return selection
-    if (!selection.ok) return { ok: false, error: selection.error, status }
-    return attachRecordToSyncTarget(record, selection.profileRootPath, 'notebook-sync-target-reconnected')
   }
 
   const chooseUserSettingsFolder = async (event = null) => {
@@ -1815,14 +1449,8 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     updateStatus('notebook-setup-required', 'Create a notebook or open an existing notebook to start saving.')
     startWatcher()
   } else if (!initialLoadResult.ok) {
-    recoverActiveNotebookLoadFailure(initialLoadResult, 'startup-error')
+    markActiveNotebookLoadFailure(initialLoadResult, 'startup-error')
   } else {
-    if (startupReconciliation.reconciliation && !startupReconciliation.reconciliation.ok) {
-      updateStatus('notebook-sync-error', startupReconciliation.reconciliation.error ?? 'Notebook sync failed.')
-    } else if (startupReconciliation.reconciliation?.changed) {
-      logExternalStorageEvent(startupReconciliation.reconciliation.warning ? 'external-conflict' : 'external-loaded')
-      updateStatus(startupReconciliation.reconciliation.warning ? 'external-conflict' : 'external-loaded')
-    }
     startWatcher()
   }
 
@@ -1857,16 +1485,11 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   ipcMain.handle?.('get-user-settings-location-status', async () => userSettingsLocationStatus)
   ipcMain.handle?.('choose-notebook-location', chooseNotebookLocation)
   ipcMain.handle?.('create-notebook', createNotebook)
-  ipcMain.handle?.('reset-local-notebook-to-blank', resetLocalNotebookToBlank)
   ipcMain.handle?.('rename-notebook', renameNotebook)
   ipcMain.handle?.('open-notebook', openNotebook)
   ipcMain.handle?.('switch-notebook', switchNotebook)
   ipcMain.handle?.('forget-notebook', forgetNotebook)
   ipcMain.handle?.('delete-notebook', deleteNotebook)
-  ipcMain.handle?.('attach-notebook-sync-target', attachNotebookSyncTarget)
-  ipcMain.handle?.('detach-notebook-sync-target', detachNotebookSyncTarget)
-  ipcMain.handle?.('reconnect-notebook-sync-target', reconnectNotebookSyncTarget)
-  ipcMain.handle?.('choose-storage-folder', async (event) => chooseProfileRoot('choose', event))
   ipcMain.handle?.('move-storage-profile', async (event) => chooseProfileRoot('move', event))
   ipcMain.handle?.('choose-user-settings-folder', chooseUserSettingsFolder)
   ipcMain.handle?.('reset-user-settings-folder', resetUserSettingsFolder)
@@ -1880,6 +1503,8 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     return error ? { ok: false, error } : { ok: true }
   })
   ipcMain.handle?.('reveal-storage-profile', async () => {
+    const setupBlocked = requireActiveNotebook('reveal its folder')
+    if (setupBlocked) return { ok: false, error: setupBlocked.error }
     if (!shell || typeof shell.openPath !== 'function') {
       return { ok: false, error: 'Reveal is unavailable.' }
     }
@@ -1908,23 +1533,8 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     return error ? { ok: false, error } : { ok: true }
   })
   ipcMain.handle?.('retry-storage-profile', async () => {
-    const activeRecord = getActiveNotebookRecord(notebookLibrary)
-    if (activeRecord?.syncTargetPath) {
-      const reconciliation = reconcileNotebookMirrorWithTarget(activeRecord)
-      notebookLibrary = upsertNotebookRecord(userDataPath, notebookLibrary, reconciliation.record, { activate: true })
-      refreshProfileFromLibrary()
-      if (!reconciliation.ok) {
-        updateStatus('retry-error', reconciliation.error ?? 'Notebook sync failed.')
-        return { ok: false, status, error: reconciliation.error ?? 'Notebook sync failed.' }
-      }
-      const reload = reloadLocalMirrorAfterSync(reconciliation.warning ? 'external-conflict' : 'retry-loaded')
-      return {
-        ok: reload,
-        status,
-        warning: reconciliation.warning,
-        error: reload ? undefined : status.error,
-      }
-    }
+    const setupBlocked = requireActiveNotebook('reload it')
+    if (setupBlocked) return setupBlocked
     const storageSnapshot = measureSlowMainOperation('storage content fingerprint read', () =>
       computeStorageContentSnapshot(profile.profileRootPath),
     )
@@ -1950,6 +1560,8 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     return { ok: result.ok, status, error: result.ok ? undefined : result.error }
   })
   ipcMain.handle?.('import-image-asset', async (_event, payload = {}) => {
+    const setupBlocked = requireActiveNotebook('import assets')
+    if (setupBlocked) return { ok: false, error: setupBlocked.error }
     try {
       const rawBytes = payload?.bytes
       if (!(rawBytes instanceof ArrayBuffer) && !ArrayBuffer.isView(rawBytes)) {
@@ -1962,14 +1574,16 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       watcher?.markAppWrite()
       const result = writeImageAssetToProfile(profile.profileRootPath, bytes, getImageExtensionFromImportPayload(payload))
       watcher?.markAppWrite()
-      const warning = reconcileActiveNotebookAfterLocalWrite('asset-imported')
-      return { ok: true, ...result, ...(warning ? { warning } : {}) }
+      reconcileActiveNotebookAfterLocalWrite('asset-imported')
+      return { ok: true, ...result }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : 'Image asset could not be imported.' }
     }
   })
 
   ipcMain.handle?.('import-asset', async (_event, payload = {}) => {
+    const setupBlocked = requireActiveNotebook('import assets')
+    if (setupBlocked) return { ok: false, error: setupBlocked.error }
     try {
       const rawBytes = payload?.bytes
       if (!(rawBytes instanceof ArrayBuffer) && !ArrayBuffer.isView(rawBytes)) {
@@ -1982,14 +1596,16 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       watcher?.markAppWrite()
       const result = writeAssetToProfile(profile.profileRootPath, bytes, getAssetExtensionFromImportPayload(payload))
       watcher?.markAppWrite()
-      const warning = reconcileActiveNotebookAfterLocalWrite('asset-imported')
-      return { ok: true, ...result, ...(warning ? { warning } : {}) }
+      reconcileActiveNotebookAfterLocalWrite('asset-imported')
+      return { ok: true, ...result }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : 'Asset could not be imported.' }
     }
   })
 
   ipcMain.handle?.('open-asset', async (_event, payload = {}) => {
+    const setupBlocked = requireActiveNotebook('open assets')
+    if (setupBlocked) return { ok: false, error: setupBlocked.error }
     if (!shell || typeof shell.openPath !== 'function') return { ok: false, error: 'Asset opening is unavailable.' }
     try {
       const resolved = resolveProfileAssetPath(profile.profileRootPath, payload)
@@ -2002,6 +1618,8 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   })
 
   ipcMain.handle?.('reveal-asset', async (_event, payload = {}) => {
+    const setupBlocked = requireActiveNotebook('reveal assets')
+    if (setupBlocked) return { ok: false, error: setupBlocked.error }
     if (!shell || typeof shell.showItemInFolder !== 'function') {
       return { ok: false, error: 'Asset reveal is unavailable.' }
     }
@@ -2017,13 +1635,14 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   })
 
   ipcMain.handle?.('reveal-note-location', async (_event, payload = {}) => {
+    const setupBlocked = requireActiveNotebook('reveal note files')
+    if (setupBlocked) return { ok: false, error: setupBlocked.error }
     if (!shell || typeof shell.showItemInFolder !== 'function') {
       return { ok: false, error: 'Note reveal is unavailable.' }
     }
     try {
       const resolved = resolvePreferredNotebookRevealPath({
         profileRootPath: profile.profileRootPath,
-        syncTargetPath: profile.syncTargetPath,
         payload,
         resolvePath: resolveNoteLocationRevealPath,
       })
@@ -2036,13 +1655,14 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   })
 
   ipcMain.handle?.('reveal-notebook-item-location', async (_event, payload = {}) => {
+    const setupBlocked = requireActiveNotebook('reveal notebook items')
+    if (setupBlocked) return { ok: false, error: setupBlocked.error }
     if (!shell || typeof shell.showItemInFolder !== 'function') {
       return { ok: false, error: 'Notebook item reveal is unavailable.' }
     }
     try {
       const resolved = resolvePreferredNotebookRevealPath({
         profileRootPath: profile.profileRootPath,
-        syncTargetPath: profile.syncTargetPath,
         payload,
         resolvePath: resolveNotebookItemLocationRevealPath,
       })
@@ -2055,6 +1675,8 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   })
 
   ipcMain.handle?.('read-asset', async (_event, payload = {}) => {
+    const setupBlocked = requireActiveNotebook('read assets')
+    if (setupBlocked) return { ok: false, error: setupBlocked.error }
     try {
       const resolved = resolveProfileAssetPath(profile.profileRootPath, payload)
       if (!resolved.ok) return { ok: false, error: resolved.error }
@@ -2075,7 +1697,6 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     getProfileRootPath: () => profile.profileRootPath,
     getStorageProfileStatus: () => status,
     getUserSettingsLocationStatus: () => userSettingsLocationStatus,
-    resetLocalNotebookToBlank,
     resetUserSettingsToDefaults,
     saveRendererAppState: saveRevisionedState,
     scanStorageProfile: () => watcher?.scan(),

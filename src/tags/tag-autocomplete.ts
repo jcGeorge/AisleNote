@@ -1,6 +1,7 @@
 import { normalizeTagLabel } from './tags.js'
 
-export const TAG_AUTOCOMPLETE_RECENT_LIMIT = 8
+export const TAG_AUTOCOMPLETE_SUGGESTION_LIMIT = 7
+export const TAG_AUTOCOMPLETE_RECENT_LIMIT = TAG_AUTOCOMPLETE_SUGGESTION_LIMIT
 export const TAG_AUTOCOMPLETE_RECENT_STORAGE_LIMIT = 32
 export const TAG_AUTOCOMPLETE_CONTAINS_MIN_QUERY_LENGTH = 3
 
@@ -108,31 +109,50 @@ export function getTagAutocompleteSuggestions(
   })
 
   const queryKey = normalizeTagAutocompleteKey(query)
+  const tags = Array.from(tagsByKey.values())
   if (queryKey) {
-    if (tagsByKey.has(queryKey)) return []
-
-    const tags = Array.from(tagsByKey.values())
-    const prefixSuggestions = sortSuggestionsAz(
-      tags
-        .filter((tag) => tag.key.startsWith(queryKey))
-        .map(toSuggestion),
-    )
-    if (queryKey.length < TAG_AUTOCOMPLETE_CONTAINS_MIN_QUERY_LENGTH) return prefixSuggestions
+    const exactSuggestion = tagsByKey.get(queryKey)
+    const prefixSuggestions = [
+      ...(exactSuggestion ? [toSuggestion(exactSuggestion)] : []),
+      ...sortSuggestionsAz(
+        tags
+          .filter((tag) => tag.key !== queryKey && tag.key.startsWith(queryKey))
+          .map(toSuggestion),
+      ),
+    ]
+    if (queryKey.length < TAG_AUTOCOMPLETE_CONTAINS_MIN_QUERY_LENGTH) {
+      return prefixSuggestions.length === 1 && exactSuggestion
+        ? []
+        : prefixSuggestions.slice(0, TAG_AUTOCOMPLETE_SUGGESTION_LIMIT)
+    }
 
     const prefixKeys = new Set(prefixSuggestions.map((suggestion) => suggestion.key))
-    const containsSuggestions = sortSuggestionsAz(
-      tags
-        .filter((tag) => !prefixKeys.has(tag.key) && tag.key.includes(queryKey))
-        .map(toSuggestion),
-    )
-    return [...prefixSuggestions, ...containsSuggestions]
+    const suggestions = [
+      ...prefixSuggestions,
+      ...sortSuggestionsAz(
+        tags
+          .filter((tag) => !prefixKeys.has(tag.key) && tag.key.includes(queryKey))
+          .map(toSuggestion),
+      ),
+    ]
+    return suggestions.length === 1 && exactSuggestion
+      ? []
+      : suggestions.slice(0, TAG_AUTOCOMPLETE_SUGGESTION_LIMIT)
   }
 
-  return normalizeTagAutocompleteRecentKeys(recentKeys)
+  const recentSuggestions = normalizeTagAutocompleteRecentKeys(recentKeys)
     .map((key) => tagsByKey.get(key))
     .filter((tag): tag is TagFilterTagSummary => Boolean(tag))
-    .slice(0, TAG_AUTOCOMPLETE_RECENT_LIMIT)
     .map(toSuggestion)
+  const recentSuggestionKeys = new Set(recentSuggestions.map((suggestion) => suggestion.key))
+  return [
+    ...recentSuggestions,
+    ...sortSuggestionsAz(
+      tags
+        .filter((tag) => !recentSuggestionKeys.has(tag.key))
+        .map(toSuggestion),
+    ),
+  ].slice(0, TAG_AUTOCOMPLETE_SUGGESTION_LIMIT)
 }
 
 export function getTagAutocompleteKeyboardAction(

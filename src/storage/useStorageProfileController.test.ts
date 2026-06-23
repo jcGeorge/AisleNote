@@ -9,7 +9,6 @@ function storageStatus(event: string, overrides: Partial<StorageProfileStatus> =
     profileRootPath: '/tmp/tabs',
     notebookPath: '/tmp/tabs',
     notebookName: 'tabs',
-    isDefault: true,
     hasProfile: true,
     canWrite: true,
     ...overrides,
@@ -41,6 +40,22 @@ describe('notebook folder status toasts', () => {
             activeNotebookName: 'Default Notebook',
             createdAt: '2026-06-01T00:00:00.000Z',
           },
+        }),
+      ),
+    ).toBeNull()
+  })
+
+  it('does not show a toast while notebook setup is required', () => {
+    expect(
+      getStorageProfileStatusToast(
+        storageStatus('notebook-setup-required', {
+          status: 'setup-required',
+          profileRootPath: '',
+          notebookPath: '',
+          notebookName: '',
+          activeNotebookId: null,
+          hasProfile: false,
+          canWrite: false,
         }),
       ),
     ).toBeNull()

@@ -358,7 +358,10 @@ export function collectFindReplaceLocations(
   currentLocation: NoteLocation,
   scope: FindReplaceScope,
 ): FindReplaceLocation[] {
-  return appendScratchpadFindReplaceLocation(state, collectNormalFindReplaceLocations(state, currentLocation, scope))
+  const locations = collectNormalFindReplaceLocations(state, currentLocation, scope)
+  return scope === 'notebook' || isScratchpadFindLocation(currentLocation)
+    ? appendScratchpadFindReplaceLocation(state, locations)
+    : locations
 }
 
 export function findVisibleMatches(

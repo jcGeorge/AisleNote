@@ -26,16 +26,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getUserSettingsLocationStatus: () => ipcRenderer.invoke('get-user-settings-location-status'),
   chooseNotebookLocation: () => ipcRenderer.invoke('choose-notebook-location'),
   createNotebook: (payload) => ipcRenderer.invoke('create-notebook', payload),
-  resetLocalNotebookToBlank: () => ipcRenderer.invoke('reset-local-notebook-to-blank'),
   renameNotebook: (payload) => ipcRenderer.invoke('rename-notebook', payload),
   openNotebook: () => ipcRenderer.invoke('open-notebook'),
   switchNotebook: (payload) => ipcRenderer.invoke('switch-notebook', payload),
   forgetNotebook: (payload) => ipcRenderer.invoke('forget-notebook', payload),
   deleteNotebook: (payload) => ipcRenderer.invoke('delete-notebook', payload),
-  attachNotebookSyncTarget: (payload) => ipcRenderer.invoke('attach-notebook-sync-target', payload),
-  detachNotebookSyncTarget: (payload) => ipcRenderer.invoke('detach-notebook-sync-target', payload),
-  reconnectNotebookSyncTarget: (payload) => ipcRenderer.invoke('reconnect-notebook-sync-target', payload),
-  chooseStorageFolder: () => ipcRenderer.invoke('choose-storage-folder'),
   moveStorageProfile: () => ipcRenderer.invoke('move-storage-profile'),
   chooseUserSettingsFolder: () => ipcRenderer.invoke('choose-user-settings-folder'),
   resetUserSettingsFolder: () => ipcRenderer.invoke('reset-user-settings-folder'),
@@ -49,6 +44,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const listener = (_event, payload) => handler(payload)
     ipcRenderer.on('storage-profile-status-updated', listener)
     return () => ipcRenderer.removeListener('storage-profile-status-updated', listener)
+  },
+  onOpenNotebookManager: (handler) => {
+    const listener = () => handler()
+    ipcRenderer.on('open-notebook-manager', listener)
+    return () => ipcRenderer.removeListener('open-notebook-manager', listener)
   },
   onUserSettingsLocationStatusUpdated: (handler) => {
     const listener = (_event, payload) => handler(payload)

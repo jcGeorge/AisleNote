@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeImage, protocol, shell } from 'electron'
+import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeImage, protocol, screen, shell } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerClipboardIpc } from './ipc-clipboard.mjs'
@@ -10,6 +10,7 @@ import { registerDiagnosticIpc } from './ipc-diagnostics.mjs'
 import { configureEditorSpellcheckerForWindow, createEditorContextMenuIpc } from './editor-context-menu.mjs'
 import { finishCloseAfterFlush } from './quit-flow.mjs'
 import { createNoopUpdateService } from './update-service.mjs'
+import { loadWindowState, saveWindowState, watchWindowState } from './window-state.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -44,6 +45,43 @@ function openAppWindow() {
   if (!storageSession) return focusExistingWindow()
   createWindow(storageSession)
   return true
+}
+
+function focusWindow(window) {
+  if (!window || window.isDestroyed()) return false
+  if (window.isMinimized()) {
+    window.restore()
+  }
+  window.show()
+  window.focus()
+  return true
+}
+
+function sendOpenNotebookManagerToWindow(window) {
+  if (!window || window.isDestroyed()) return
+  const sendNavigationEvent = () => {
+    if (!window.isDestroyed()) {
+      window.webContents.send('open-notebook-manager')
+    }
+  }
+  if (window.webContents.isLoadingMainFrame()) {
+    window.webContents.once('did-finish-load', () => setTimeout(sendNavigationEvent, 100))
+    return
+  }
+  sendNavigationEvent()
+}
+
+function openNotebookManager() {
+  const existingWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+  if (existingWindow && !existingWindow.isDestroyed()) {
+    focusWindow(existingWindow)
+    sendOpenNotebookManagerToWindow(existingWindow)
+    return
+  }
+  if (!storageSession) return
+  const window = createWindow(storageSession)
+  focusWindow(window)
+  sendOpenNotebookManagerToWindow(window)
 }
 
 function isExternalWebUrl(value) {
@@ -91,25 +129,7 @@ async function confirmAndResetUserSettings(window = BrowserWindow.getFocusedWind
   }
 }
 
-async function confirmAndResetLocalNotebook(window = BrowserWindow.getFocusedWindow()) {
-  if (!storageSession?.resetLocalNotebookToBlank) return
-  const confirmation = await dialog.showMessageBox(window ?? undefined, {
-    type: 'warning',
-    buttons: ['Reset local notebook', 'Cancel'],
-    cancelId: 1,
-    defaultId: 1,
-    message: 'Reset local notebook to blank?',
-    detail:
-      'This deletes the local notebook stored on this device and switches Tabs back to a blank local notebook. Connected notebook folders are not modified.',
-  })
-  if (confirmation.response !== 0) return
-  const result = await storageSession.resetLocalNotebookToBlank()
-  if (!result?.ok) {
-    dialog.showErrorBox('Local notebook reset failed', result?.error ?? 'Local notebook could not be reset.')
-  }
-}
-
-function installApplicationMenu({ onNewWindow, onResetUserSettings, onResetLocalNotebook }) {
+function installApplicationMenu({ onNewWindow, onOpenNotebook, onResetUserSettings }) {
   const isMac = process.platform === 'darwin'
   if (!isMac) {
     Menu.setApplicationMenu(null)
@@ -133,15 +153,15 @@ function installApplicationMenu({ onNewWindow, onResetUserSettings, onResetLocal
           accelerator: 'CommandOrControl+N',
           click: onNewWindow,
         },
+        {
+          label: 'Open Notebook',
+          click: onOpenNotebook,
+        },
         { type: 'separator' },
         {
           label: 'Reset User Settings to Defaults',
           accelerator: 'CommandOrControl+Alt+Shift+R',
           click: onResetUserSettings,
-        },
-        {
-          label: 'Reset Local Notebook to Blank',
-          click: onResetLocalNotebook,
         },
       ],
     },
@@ -230,11 +250,18 @@ function isResetUserSettingsShortcut(input) {
 }
 
 function createWindow(storageSession) {
-  const window = new BrowserWindow({
+  const userDataPath = app.getPath('userData')
+  const defaultWindowBounds = {
     width: 1200,
     height: 800,
     minWidth: 900,
     minHeight: 640,
+  }
+  const restoredWindowState = loadWindowState(userDataPath, screen, defaultWindowBounds)
+  const window = new BrowserWindow({
+    ...restoredWindowState.bounds,
+    minWidth: defaultWindowBounds.minWidth,
+    minHeight: defaultWindowBounds.minHeight,
     backgroundColor: '#0b1220',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -243,6 +270,10 @@ function createWindow(storageSession) {
       spellcheck: true,
     },
   })
+  watchWindowState(userDataPath, window)
+  if (restoredWindowState.isMaximized) {
+    window.maximize()
+  }
   let allowImmediateClose = false
   let closeFlushInProgress = false
 
@@ -271,6 +302,7 @@ function createWindow(storageSession) {
   window.on('close', (event) => {
     if (allowImmediateClose || window.isDestroyed()) return
 
+    saveWindowState(userDataPath, window)
     event.preventDefault()
     if (closeFlushInProgress) return
     closeFlushInProgress = true
@@ -335,8 +367,8 @@ if (!gotSingleInstanceLock) {
     registerImageAssetProtocol({ protocol, storageSession })
     installApplicationMenu({
       onNewWindow: openAppWindow,
+      onOpenNotebook: openNotebookManager,
       onResetUserSettings: () => confirmAndResetUserSettings(),
-      onResetLocalNotebook: () => confirmAndResetLocalNotebook(),
     })
     registerFileIpc({ ipcMain, dialog, storageSession })
     registerClipboardIpc({ ipcMain, clipboard, nativeImage })

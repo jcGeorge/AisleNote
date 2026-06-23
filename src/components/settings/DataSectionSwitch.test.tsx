@@ -1,3 +1,4 @@
+import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { DataSectionSwitch } from './DataSectionSwitch'
@@ -12,7 +13,7 @@ describe('DataSectionSwitch', () => {
     expect(html).toContain('role="radiogroup" aria-labelledby="settings-data-section-label"')
     expect(html).toContain('aria-checked="false" class="settings-segmented-option ">transfer</button>')
     expect(html).not.toContain('>settings</button>')
-    expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">notebook</button>')
+    expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">notebooks</button>')
     expect(html).toContain('aria-checked="false" class="settings-segmented-option ">trash</button>')
   })
 })

@@ -141,6 +141,7 @@ type UseNotebookAisleEditorsOptions = {
   commitAisleMarkdown: (aisleBodyId: string, markdown: string) => void
   scheduleToolbarFormatStateSync: () => void
   onNoteMentionQueryChange?: (query: NoteMentionQuery | null, anchor: { top: number; left: number } | null) => void
+  onTagAutocompleteQueryChange?: () => void
   getAppState?: () => AppState
   onOpenNoteReference?: (target: NoteLocation) => void
   onNotebookStructurePaste?: (payload: NotebookStructureClipboardPayload, aisleId: string) => boolean
@@ -302,6 +303,7 @@ export function useNotebookAisleEditors({
   commitAisleMarkdown,
   scheduleToolbarFormatStateSync,
   onNoteMentionQueryChange,
+  onTagAutocompleteQueryChange,
   getAppState,
   onOpenNoteReference,
   onNotebookStructurePaste,
@@ -338,6 +340,7 @@ export function useNotebookAisleEditors({
   const onOpenTableOfContentsRef = useRef(onOpenTableOfContents)
   const onOpenUrlLinkPromptRef = useRef(onOpenUrlLinkPrompt)
   const onInsertAisleFromNewlineRef = useRef(onInsertAisleFromNewline)
+  const onTagAutocompleteQueryChangeRef = useRef(onTagAutocompleteQueryChange)
   const runNewlineOperationForEditorRef = useRef<
     ((editor: Editor, aisleId: string, operation: NewlineOperationId) => boolean) | null
   >(null)
@@ -350,6 +353,7 @@ export function useNotebookAisleEditors({
   onOpenTableOfContentsRef.current = onOpenTableOfContents
   onOpenUrlLinkPromptRef.current = onOpenUrlLinkPrompt
   onInsertAisleFromNewlineRef.current = onInsertAisleFromNewline
+  onTagAutocompleteQueryChangeRef.current = onTagAutocompleteQueryChange
   externalStateLoadVersionRef.current = externalStateLoadVersion
 
   const aisleIds = useMemo(() => aisles.map((aisle) => aisle.id), [aisles])
@@ -902,8 +906,9 @@ export function useNotebookAisleEditors({
       ]
 
       const handleFocus = () => setActiveEditor(aisle.id)
-      const handleMentionProbe = () => {
+      const handleEditorQueryProbe = () => {
         if (editor) notifyNoteMentionQueryChange(editor)
+        onTagAutocompleteQueryChangeRef.current?.()
       }
       const handlePointerDown = () => {
         setRecentRetainedAisleIds((current) => [
@@ -1003,8 +1008,8 @@ export function useNotebookAisleEditors({
       root.addEventListener('keydown', handleKeyDown, true)
       root.addEventListener('beforeinput', handleBeforeInput, true)
       root.addEventListener('click', handleLinkClick, true)
-      root.addEventListener('keyup', handleMentionProbe)
-      root.addEventListener('mouseup', handleMentionProbe)
+      root.addEventListener('keyup', handleEditorQueryProbe)
+      root.addEventListener('mouseup', handleEditorQueryProbe)
 
       const cleanupFns: Array<() => void> = [
         () => root.removeEventListener('focusin', handleFocus),
@@ -1013,8 +1018,8 @@ export function useNotebookAisleEditors({
         () => root.removeEventListener('keydown', handleKeyDown, true),
         () => root.removeEventListener('beforeinput', handleBeforeInput, true),
         () => root.removeEventListener('click', handleLinkClick, true),
-        () => root.removeEventListener('keyup', handleMentionProbe),
-        () => root.removeEventListener('mouseup', handleMentionProbe),
+        () => root.removeEventListener('keyup', handleEditorQueryProbe),
+        () => root.removeEventListener('mouseup', handleEditorQueryProbe),
       ]
 
       try {
@@ -1058,6 +1063,7 @@ export function useNotebookAisleEditors({
               commitEditorMarkdown(meta, editor, source)
               scheduleToolbarFormatStateSync()
               notifyNoteMentionQueryChange(editor)
+              onTagAutocompleteQueryChangeRef.current?.()
             },
             focus: handleFocus,
           },
@@ -1752,6 +1758,11 @@ export function useNotebookAisleEditors({
     return scrollToRange(meta.editor, link.from, link.to)
   }, [getAisleById, getEditorMetaForAisle, getTableOfContentsLinksForAisle])
 
+  const scrollToAisleRange = useCallback((aisleId: string, from: number, to: number) => {
+    const meta = getEditorMetaForAisle(aisleId)
+    return meta ? scrollToRange(meta.editor, from, to) : false
+  }, [getEditorMetaForAisle])
+
   return {
     activeEditorAisleIdRef,
     mountedAisleIds,
@@ -1778,5 +1789,6 @@ export function useNotebookAisleEditors({
     getTableOfContentsLinksForAisle,
     scrollToAisleHeading,
     scrollToAisleTableOfContentsLink,
+    scrollToAisleRange,
   }
 }

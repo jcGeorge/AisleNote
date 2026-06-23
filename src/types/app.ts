@@ -529,26 +529,18 @@ export type StorageProfileRecovery = {
   createdAt: string
 }
 
-export type NotebookSyncStatus = 'local-only' | 'synced' | 'pending' | 'offline' | 'warning' | 'error'
-
 export type KnownNotebook = {
   notebookId?: string | null
   notebookPath: string
   notebookName: string
-  localMirrorPath?: string
-  syncTargetPath?: string
-  syncStatus?: NotebookSyncStatus
-  syncPending?: boolean
-  syncTargetExists?: boolean
   isActive: boolean
-  isDefault: boolean
   exists: boolean
   hasManifest: boolean
   available: boolean
 }
 
 export type StorageProfileStatus = {
-  status: 'ready' | 'error'
+  status: 'ready' | 'error' | 'setup-required'
   health?: 'healthy' | 'warning' | 'error'
   issues?: StorageProfileIssue[]
   event?: string
@@ -556,11 +548,6 @@ export type StorageProfileStatus = {
   activeNotebookId?: string | null
   notebookPath: string
   notebookName: string
-  localMirrorPath?: string
-  syncTargetPath?: string
-  syncStatus?: NotebookSyncStatus
-  syncPending?: boolean
-  isDefault: boolean
   hasProfile: boolean
   canWrite: boolean
   source?: 'hybrid' | 'empty'

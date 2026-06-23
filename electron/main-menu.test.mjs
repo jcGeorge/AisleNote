@@ -33,10 +33,26 @@ describe('electron application menu', () => {
     expect(mainSource).toContain('confirmAndResetUserSettings(window)')
   })
 
-  it('keeps a native local-notebook reset escape path outside rendered settings UI', () => {
-    expect(mainSource).toContain('Reset Local Notebook to Blank')
-    expect(mainSource).toContain('confirmAndResetLocalNotebook')
-    expect(mainSource).toContain('resetLocalNotebookToBlank')
+  it('does not expose the old native default-notebook reset path', () => {
+    expect(mainSource).not.toContain('Reset Notebook to Blank')
+    expect(mainSource).not.toContain('confirmAndResetLocalNotebook')
+    expect(mainSource).not.toContain('resetLocalNotebookToBlank')
+  })
+
+  it('routes Open Notebook to the renderer notebook manager instead of a folder picker', () => {
+    expect(mainSource).toContain("label: 'Open Notebook'")
+    expect(mainSource).toContain('openNotebookManager')
+    expect(mainSource).toContain("window.webContents.send('open-notebook-manager')")
+    expect(mainSource).not.toContain("label: 'Open Notebook',\n          click: () => dialog.showOpenDialog")
+  })
+
+  it('wires persisted window bounds into native window creation', () => {
+    expect(mainSource).toContain("import { loadWindowState, saveWindowState, watchWindowState } from './window-state.mjs'")
+    expect(mainSource).toContain('const restoredWindowState = loadWindowState(userDataPath, screen, defaultWindowBounds)')
+    expect(mainSource).toContain('...restoredWindowState.bounds')
+    expect(mainSource).toContain('watchWindowState(userDataPath, window)')
+    expect(mainSource).toContain('saveWindowState(userDataPath, window)')
+    expect(mainSource).toContain('window.maximize()')
   })
 
   it('leaves Command+W available to the renderer tab/aisle delete shortcut', () => {

@@ -105,11 +105,10 @@ describe('Electron app state store', () => {
   it('unblocks saves after a storage profile switch reports ready', () => {
     let statusHandler:
       | ((status: {
-          status: 'ready' | 'error'
+          status: 'ready' | 'error' | 'setup-required'
           profileRootPath: string
           notebookPath: string
           notebookName: string
-          isDefault: boolean
           hasProfile: boolean
           canWrite: boolean
           revision?: number
@@ -148,7 +147,6 @@ describe('Electron app state store', () => {
       profileRootPath: '/tmp/tabs',
       notebookPath: '/tmp/tabs',
       notebookName: 'tabs',
-      isDefault: false,
       hasProfile: false,
       canWrite: true,
       revision: 0,
