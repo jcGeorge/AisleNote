@@ -20,7 +20,9 @@
     "build:electron": "npm run build && npm run electron",
     "build:electron:mac": "npm run build && npm run electron:mac",
     "build:electron:windows": "npm run build && npm run electron:windows",
+    "package:mac": "npm run build && electron-builder --mac",
     "package:win": "npm run build && electron-builder --win portable --x64",
+    "package:linux": "npm run build && electron-builder --linux --x64",
     "start:mac": "npm run build:electron:mac",
     "start:windows": "npm run build:electron:windows",
     "dev:electron": "npm run electron:dev",
@@ -43,6 +45,7 @@
       "dist/**/*",
       "electron/**/*.mjs",
       "electron/preload.cjs",
+      "build/icon.png",
       "src/markdown/*.js",
       "src/storage/*.js",
       "src/settings/*.js",
@@ -51,7 +54,11 @@
       "package.json",
       "!**/*.test.*"
     ],
+    "mac": {
+      "icon": "build/icon.icns"
+    },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "portable",
@@ -60,6 +67,9 @@
           ]
         }
       ]
+    },
+    "linux": {
+      "icon": "build/icons"
     },
     "portable": {
       "artifactName": "${productName}-${version}-${arch}-portable.${ext}"

@@ -249,6 +249,11 @@ function isResetUserSettingsShortcut(input) {
   return process.platform === 'darwin' ? Boolean(input.meta && !input.control) : Boolean(input.control && !input.meta)
 }
 
+function getWindowIconPath() {
+  if (process.platform === 'darwin') return undefined
+  return path.join(app.getAppPath(), 'build', 'icon.png')
+}
+
 function createWindow(storageSession) {
   const userDataPath = app.getPath('userData')
   const defaultWindowBounds = {
@@ -258,11 +263,13 @@ function createWindow(storageSession) {
     minHeight: 640,
   }
   const restoredWindowState = loadWindowState(userDataPath, screen, defaultWindowBounds)
+  const windowIconPath = getWindowIconPath()
   const window = new BrowserWindow({
     ...restoredWindowState.bounds,
     minWidth: defaultWindowBounds.minWidth,
     minHeight: defaultWindowBounds.minHeight,
     backgroundColor: '#0b1220',
+    ...(windowIconPath ? { icon: windowIconPath } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
