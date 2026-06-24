@@ -18,6 +18,7 @@ import {
   renameNotebookItem,
   replaceNotebookNoteBodyId,
   restoreDeletedNotebookItemInState,
+  sortNotebookItemsInScope,
 } from './notebook'
 
 function idSequence(ids: string[]) {
@@ -28,7 +29,7 @@ function idSequence(ids: string[]) {
 function createState(): AppState {
   const defaults = createDefaultNotebookState(idSequence(['body-1', 'aisle-body-1', 'aisle-1', 'note-1']))
   return {
-    theme: 'dawn',
+    theme: 'cheese',
     notebook: defaults.notebook,
     messages: [],
     toastHistory: [],
@@ -211,6 +212,166 @@ describe('notebook tree helpers', () => {
 
     const blockedDescendant = moveNotebookItem(nestedFolderResult.state.notebook, 'folder-1', 'folder-2', 0)
     expect(blockedDescendant.items).toEqual(nestedFolderResult.state.notebook.items)
+  })
+
+  it('sorts root items by name without sorting folder descendants', () => {
+    const state = createState()
+    const notebook = {
+      ...state.notebook,
+      items: [
+        {
+          type: 'folder' as const,
+          id: 'folder-work',
+          title: 'Work',
+          children: [
+            { type: 'note' as const, id: 'note-z', title: 'Zulu', noteBodyId: 'body-z' },
+            { type: 'note' as const, id: 'note-a-nested', title: 'Alpha nested', noteBodyId: 'body-a-nested' },
+          ],
+        },
+        { type: 'note' as const, id: 'note-alpha', title: 'Alpha', noteBodyId: 'body-alpha' },
+      ],
+    }
+
+    const sorted = sortNotebookItemsInScope(notebook, null, 'alpha-asc', state.noteBodies)
+    const folder = sorted.items.find((item) => item.id === 'folder-work')
+
+    expect(sorted.items.map((item) => item.id)).toEqual(['note-alpha', 'folder-work'])
+    expect(folder?.type === 'folder' ? folder.children.map((item) => item.id) : []).toEqual([
+      'note-z',
+      'note-a-nested',
+    ])
+  })
+
+  it('sorts only the selected folder direct children', () => {
+    const state = createState()
+    const notebook = {
+      ...state.notebook,
+      items: [
+        { type: 'note' as const, id: 'note-root', title: 'Root', noteBodyId: 'body-root' },
+        {
+          type: 'folder' as const,
+          id: 'folder-project',
+          title: 'Project',
+          children: [
+            {
+              type: 'folder' as const,
+              id: 'folder-nested',
+              title: 'Nested',
+              children: [{ type: 'note' as const, id: 'note-beta', title: 'Beta', noteBodyId: 'body-beta' }],
+            },
+            { type: 'note' as const, id: 'note-delta', title: 'Delta', noteBodyId: 'body-delta' },
+            { type: 'note' as const, id: 'note-alpha', title: 'Alpha', noteBodyId: 'body-alpha' },
+          ],
+        },
+      ],
+    }
+
+    const sorted = sortNotebookItemsInScope(notebook, 'folder-project', 'alpha-asc', state.noteBodies)
+    const project = sorted.items.find((item) => item.id === 'folder-project')
+    const nested = project?.type === 'folder'
+      ? project.children.find((item) => item.id === 'folder-nested')
+      : null
+
+    expect(sorted.items.map((item) => item.id)).toEqual(['note-root', 'folder-project'])
+    expect(project?.type === 'folder' ? project.children.map((item) => item.id) : []).toEqual([
+      'note-alpha',
+      'note-delta',
+      'folder-nested',
+    ])
+    expect(nested?.type === 'folder' ? nested.children.map((item) => item.id) : []).toEqual(['note-beta'])
+  })
+
+  it('sorts notes by note body modified timestamps', () => {
+    const state = createState()
+    const notebook = {
+      ...state.notebook,
+      items: [
+        { type: 'note' as const, id: 'note-old', title: 'Old', noteBodyId: 'body-old' },
+        { type: 'note' as const, id: 'note-missing', title: 'Missing', noteBodyId: 'body-missing' },
+        { type: 'note' as const, id: 'note-new', title: 'New', noteBodyId: 'body-new' },
+      ],
+    }
+    const noteBodies = [
+      { id: 'body-old', createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-02T00:00:00.000Z', aisles: [] },
+      { id: 'body-new', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z', aisles: [] },
+    ]
+
+    const sorted = sortNotebookItemsInScope(notebook, null, 'updated-desc', noteBodies)
+
+    expect(sorted.items.map((item) => item.id)).toEqual(['note-new', 'note-old', 'note-missing'])
+  })
+
+  it('uses descendant note dates for folder date sorts', () => {
+    const state = createState()
+    const notebook = {
+      ...state.notebook,
+      items: [
+        {
+          type: 'folder' as const,
+          id: 'folder-old',
+          title: 'Old folder',
+          children: [
+            { type: 'note' as const, id: 'note-later-created', title: 'Later', noteBodyId: 'body-later-created' },
+            { type: 'note' as const, id: 'note-earlier-created', title: 'Earlier', noteBodyId: 'body-earlier-created' },
+          ],
+        },
+        { type: 'note' as const, id: 'note-middle', title: 'Middle', noteBodyId: 'body-middle' },
+        {
+          type: 'folder' as const,
+          id: 'folder-new',
+          title: 'New folder',
+          children: [
+            {
+              type: 'folder' as const,
+              id: 'folder-nested',
+              title: 'Nested',
+              children: [{ type: 'note' as const, id: 'note-newest', title: 'Newest', noteBodyId: 'body-newest' }],
+            },
+          ],
+        },
+      ],
+    }
+    const noteBodies = [
+      { id: 'body-later-created', createdAt: '2022-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', aisles: [] },
+      { id: 'body-earlier-created', createdAt: '2020-01-01T00:00:00.000Z', updatedAt: '2023-01-01T00:00:00.000Z', aisles: [] },
+      { id: 'body-middle', createdAt: '2021-01-01T00:00:00.000Z', updatedAt: '2025-01-01T00:00:00.000Z', aisles: [] },
+      { id: 'body-newest', createdAt: '2023-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', aisles: [] },
+    ]
+
+    const createdSorted = sortNotebookItemsInScope(notebook, null, 'created-asc', noteBodies)
+    const updatedSorted = sortNotebookItemsInScope(notebook, null, 'updated-desc', noteBodies)
+
+    expect(createdSorted.items.map((item) => item.id)).toEqual(['folder-old', 'note-middle', 'folder-new'])
+    expect(updatedSorted.items.map((item) => item.id)).toEqual(['folder-new', 'note-middle', 'folder-old'])
+  })
+
+  it('keeps empty and missing-date items stable after dated items', () => {
+    const state = createState()
+    const notebook = {
+      ...state.notebook,
+      items: [
+        { type: 'folder' as const, id: 'folder-empty', title: 'Empty', children: [] },
+        { type: 'note' as const, id: 'note-missing', title: 'Missing', noteBodyId: 'body-missing' },
+        { type: 'note' as const, id: 'note-dated-b', title: 'Dated B', noteBodyId: 'body-dated-b' },
+        { type: 'note' as const, id: 'note-invalid', title: 'Invalid', noteBodyId: 'body-invalid' },
+        { type: 'note' as const, id: 'note-dated-a', title: 'Dated A', noteBodyId: 'body-dated-a' },
+      ],
+    }
+    const noteBodies = [
+      { id: 'body-dated-b', createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z', aisles: [] },
+      { id: 'body-invalid', createdAt: 'not a date', updatedAt: 'not a date', aisles: [] },
+      { id: 'body-dated-a', createdAt: '2023-01-01T00:00:00.000Z', updatedAt: '2023-01-01T00:00:00.000Z', aisles: [] },
+    ]
+
+    const sorted = sortNotebookItemsInScope(notebook, null, 'created-asc', noteBodies)
+
+    expect(sorted.items.map((item) => item.id)).toEqual([
+      'note-dated-a',
+      'note-dated-b',
+      'folder-empty',
+      'note-missing',
+      'note-invalid',
+    ])
   })
 
   it('moves deleted items to trash, falls back active note, and restores to original index', () => {

@@ -1,6 +1,6 @@
 export const DEFAULT_AUTO_REMOVE_DAYS = 7
 
-const THEMES = new Set(['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3'])
+const THEMES = new Set(['dark', 'light', 'cheese', 'custom1', 'custom2', 'custom3'])
 
 export function isRecord(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)

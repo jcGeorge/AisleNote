@@ -229,7 +229,7 @@
   }
 
   .custom-theme-slot {
-    grid-template-columns: minmax(6.5rem, 1fr) 2.35rem minmax(5.25rem, 0.55fr);
+    grid-template-columns: minmax(6.5rem, 1fr) var(--custom-theme-color-size, 2.4rem) minmax(5.25rem, 0.55fr);
   }
 
   .custom-theme-color-picker {
@@ -238,12 +238,10 @@
 
   .custom-theme-color-input {
     grid-column: 2;
-    min-height: 2.4rem;
   }
 
   .custom-theme-swatch-button {
     grid-column: 2;
-    min-height: 2.4rem;
   }
 
   .custom-theme-hex-input {

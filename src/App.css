@@ -8,7 +8,7 @@
 @import './styles/overlays.css';
 @import './styles/settings.css';
 @import './styles/themes/light.css';
-@import './styles/themes/dawn.css';
+@import './styles/themes/cheese.css';
 @import './styles/responsive.css';
 
 .app-shell small {
@@ -247,6 +247,15 @@
   color: var(--app-text-bright);
 }
 
+.notebook-icon-button:focus,
+.notebook-trash-actions button:focus,
+.notebook-empty-state button:focus,
+.notebook-settings-action:focus {
+  border-color: var(--notebook-action-accent);
+  background: var(--notebook-sidebar-active-bg);
+  color: var(--notebook-sidebar-active-text);
+}
+
 .notebook-icon-button {
   width: 32px;
   min-width: 32px;
@@ -264,8 +273,13 @@
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
+.notebook-sidebar .notebook-icon-button:focus {
+  border-color: transparent;
+  background: var(--notebook-sidebar-active-bg);
+  color: var(--notebook-sidebar-active-text);
+}
+
 .notebook-sidebar .notebook-icon-button:focus-visible {
-  background: var(--notebook-control-hover-bg);
   outline: 2px solid var(--notebook-action-accent);
   outline-offset: 2px;
 }
@@ -303,6 +317,7 @@
 
 .notebook-sidebar .notebook-sidebar-toggle,
 .notebook-sidebar .notebook-sidebar-toggle:hover,
+.notebook-sidebar .notebook-sidebar-toggle:focus,
 .notebook-sidebar .notebook-sidebar-toggle:focus-visible,
 .notebook-sidebar .notebook-sidebar-toggle:active {
   border-color: transparent;
@@ -984,6 +999,12 @@
 .notebook-utility-tabs button:hover {
   background: var(--notebook-control-hover-bg);
   color: var(--app-text-bright);
+}
+
+.notebook-utility-tabs button:focus {
+  border-color: var(--notebook-action-accent);
+  background: var(--notebook-sidebar-active-bg);
+  color: var(--notebook-sidebar-active-text);
 }
 
 @keyframes zoomHudFadeIn {

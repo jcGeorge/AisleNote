@@ -39,6 +39,8 @@ describe('NotebookApp sidebar search wiring', () => {
     expect(source).toContain('onClick={toggleSidebarSearchModeFromButton}')
     expect(source.match(/closeSidebarSearchMode\(\)/g)?.length).toBeGreaterThanOrEqual(3)
     expect(source).toContain('onCloseMode={closeSidebarSearchMode}')
+    expect(source).toContain('onClearButtonClick={closeSidebarSearchMode}')
+    expect(source).toContain('if (query.trim().length <= 0 && !hasSidebarSearchFilterKeys(nextFilter)) shouldCloseSearchMode = true')
     expect(source).toContain("activateSidebarSearchKey('synced', key)")
     expect(source).toContain("activateSidebarSearchKey('tags', key)")
     expect(source).toContain("activateSidebarSearchKey('frontmatter', getFrontmatterTemplateFilterKey(templateId))")

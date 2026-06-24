@@ -12,7 +12,7 @@
 ## Themes
 
 - Default values live in `base.css`.
-- `themes/light.css` and `themes/dawn.css` should override the semantic token values, not repeat hard-coded values inside selector rules.
+- `themes/light.css` and `themes/cheese.css` should override the semantic token values, not repeat hard-coded values inside selector rules.
 - Keep `--monet-editor-*` as compatibility aliases only. New CSS should use `--editor-*`.
 
 ## Hard-Coded Values

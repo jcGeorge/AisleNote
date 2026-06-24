@@ -9,7 +9,7 @@ const baseCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)),
 const editorShellCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../styles/editor-shell.css'), 'utf8')
 const settingsCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../styles/settings.css'), 'utf8')
 const lightCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../styles/themes/light.css'), 'utf8')
-const dawnCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../styles/themes/dawn.css'), 'utf8')
+const cheeseCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../styles/themes/cheese.css'), 'utf8')
 
 describe('notebook settings access', () => {
   it('renders explicit settings entry points for expanded and collapsed sidebars', () => {
@@ -104,8 +104,8 @@ describe('notebook settings access', () => {
     expect(baseCssSource).toContain('--settings-range-thumb-hover-bg: var(--app-primary-hover);')
     expect(lightCssSource).toContain('--settings-range-thumb-hover-bg: #355f92;')
     expect(lightCssSource).toContain('--settings-range-value-text: var(--app-text-heading);')
-    expect(dawnCssSource).toContain('--settings-range-thumb-hover-bg: color-mix(in srgb, var(--custom-palette-primary) 84%, var(--custom-palette-text));')
-    expect(dawnCssSource).toContain('--settings-range-value-text: var(--app-text-heading);')
+    expect(cheeseCssSource).toContain('--settings-range-thumb-hover-bg: color-mix(in srgb, var(--custom-palette-primary) 84%, var(--custom-palette-text));')
+    expect(cheeseCssSource).toContain('--settings-range-value-text: var(--app-text-heading);')
     expect(baseCssSource).not.toContain('--settings-range-value-text: var(--custom-palette-primary);')
     expect(baseCssSource).not.toContain('--settings-range-value-text: var(--app-primary);')
   })
@@ -146,10 +146,10 @@ describe('notebook settings access', () => {
     expect(editorShellCssSource).toContain('outline: 2px solid var(--note-aisle-resize-focus-outline);')
     expect(baseCssSource).toContain('--note-aisle-resize-hover-bg: var(--app-primary-border);')
     expect(lightCssSource).toContain('--note-aisle-resize-hover-bg: #607da4;')
-    expect(dawnCssSource).toContain('--note-aisle-resize-bg: var(--app-border);')
-    expect(dawnCssSource).toContain('--note-aisle-resize-border: transparent;')
-    expect(dawnCssSource).toContain('--note-aisle-resize-hover-bg: color-mix(in srgb, var(--custom-palette-primary) 72%, var(--custom-theme-sidebar));')
-    expect(dawnCssSource).toContain('--note-aisle-resize-hover-border: transparent;')
+    expect(cheeseCssSource).toContain('--note-aisle-resize-bg: var(--app-border);')
+    expect(cheeseCssSource).toContain('--note-aisle-resize-border: transparent;')
+    expect(cheeseCssSource).toContain('--note-aisle-resize-hover-bg: color-mix(in srgb, var(--custom-palette-primary) 72%, var(--custom-theme-sidebar));')
+    expect(cheeseCssSource).toContain('--note-aisle-resize-hover-border: transparent;')
   })
 
   it('derives editor toolbar colors from the sidebar palette for every palette theme', () => {
@@ -157,6 +157,6 @@ describe('notebook settings access', () => {
     expect(baseCssSource).toContain('var(--custom-theme-sidebar, var(--custom-palette-surface)) 70%')
     expect(baseCssSource).toContain('--editor-toolbar-active-bg: var(--custom-palette-primary);')
     expect(baseCssSource).toContain('--editor-toolbar-button-bg: color-mix(')
-    expect(dawnCssSource).not.toContain('--editor-toolbar-bg: var(--custom-theme-sidebar);')
+    expect(cheeseCssSource).not.toContain('--editor-toolbar-bg: var(--custom-theme-sidebar);')
   })
 })

@@ -9,7 +9,7 @@ import type {
 
 export type BuiltInAppTheme = Exclude<AppTheme, CustomThemeId>
 
-export const BUILT_IN_THEME_IDS: BuiltInAppTheme[] = ['dark', 'light', 'dawn']
+export const BUILT_IN_THEME_IDS: BuiltInAppTheme[] = ['dark', 'light', 'cheese']
 export const CUSTOM_THEME_IDS: CustomThemeId[] = ['custom1', 'custom2', 'custom3']
 export const DEFAULT_CUSTOM_THEME_ID: CustomThemeId = 'custom1'
 export const APP_THEME_IDS: AppTheme[] = [...BUILT_IN_THEME_IDS, ...CUSTOM_THEME_IDS]
@@ -83,8 +83,8 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     tagBg: '#d4e1f3',
     sidebar: '#e6edf6',
   },
-  dawn: {
-    canvas: '#e2bc69',
+  cheese: {
+    canvas: '#ead890',
     page: '#f1d58a',
     surface: '#ecd8ac',
     surfaceRaised: '#ead4a9',
@@ -233,7 +233,7 @@ export function getCustomThemePaletteSeedMatch(
 
 export function getThemeClassName(theme: AppTheme): string {
   if (theme === 'light') return 'theme-light theme-palette-derived'
-  if (theme === 'dawn') return 'theme-dawn theme-palette-derived'
+  if (theme === 'cheese') return 'theme-cheese theme-palette-derived'
   if (isCustomTheme(theme)) return 'theme-custom-derived theme-palette-derived'
   return 'theme-dark theme-palette-derived'
 }

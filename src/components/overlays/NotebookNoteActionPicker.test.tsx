@@ -91,6 +91,29 @@ describe('NotebookNoteActionPicker', () => {
     expect(html).toContain('note preview')
   })
 
+  it('uses the selected note action list when rendering choices', () => {
+    const html = renderToStaticMarkup(
+      <NotebookNoteActionPicker
+        title="Select note"
+        entries={entries}
+        query="alp"
+        showSearchInput={false}
+        showHeader={false}
+        initialSelectedNoteId="note-1"
+        actions={['note-link', 'note-preview', 'independent-copy', 'synced-copy']}
+        getActionsForNote={() => ['note-link']}
+        onQueryChange={vi.fn()}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(html).toContain('note link')
+    expect(html).not.toContain('note preview')
+    expect(html).not.toContain('independent copy')
+    expect(html).not.toContain('synced copy')
+  })
+
   it('chooses the aisle step only for multi-aisle note previews', () => {
     expect(getNotebookNoteActionPickerActionIntent('note-preview', 0)).toBe('run-action')
     expect(getNotebookNoteActionPickerActionIntent('note-preview', 1)).toBe('run-action')

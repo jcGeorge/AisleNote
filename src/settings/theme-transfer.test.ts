@@ -67,10 +67,10 @@ describe('theme transfer helpers', () => {
 
   it('rejects a palette nested in app state ui settings', () => {
     const result = parseThemeSettingsImport(JSON.stringify({
-      theme: 'dawn',
+      theme: 'cheese',
       ui: {
         themePalettes: {
-          dawn: {
+          cheese: {
             ...DEFAULT_CUSTOM_THEME_PALETTE,
             primary: '#654321',
           },

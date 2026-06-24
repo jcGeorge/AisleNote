@@ -165,7 +165,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),
@@ -179,7 +179,7 @@ describe('Electron app state store', () => {
 
     const store = createAppStateStore()
 
-    expect(store.load()).toBe('{"theme":"dawn"}')
+    expect(store.load()).toBe('{"theme":"cheese"}')
     store.save('{"theme":"light"}')
     expect(saveAppState).toHaveBeenCalledWith({
       serializedState: '{"theme":"light"}',
@@ -199,7 +199,7 @@ describe('Electron app state store', () => {
         }),
         saveAppState: saveAppState.mockReturnValue({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           revision: 1,
         }),
       },
@@ -208,9 +208,9 @@ describe('Electron app state store', () => {
     const store = createAppStateStore()
 
     expect(store.load()).toBeNull()
-    store.save('{"theme":"dawn"}')
+    store.save('{"theme":"cheese"}')
     expect(saveAppState).toHaveBeenCalledWith({
-      serializedState: '{"theme":"dawn"}',
+      serializedState: '{"theme":"cheese"}',
       baseRevision: 0,
     })
   })
@@ -227,7 +227,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),
@@ -238,7 +238,7 @@ describe('Electron app state store', () => {
 
     const store = createAppStateStore()
 
-    expect(store.load()).toBe('{"theme":"dawn"}')
+    expect(store.load()).toBe('{"theme":"cheese"}')
     store.save('{"theme":"light"}')
     store.save('{"theme":"dark"}')
     await store.flush?.()
@@ -274,7 +274,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),
@@ -285,7 +285,7 @@ describe('Electron app state store', () => {
 
     const store = createAppStateStore()
 
-    expect(store.load()).toBe('{"theme":"dawn"}')
+    expect(store.load()).toBe('{"theme":"cheese"}')
     store.save('{"theme":"light"}')
     await Promise.resolve()
     await Promise.resolve()
@@ -308,7 +308,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),
@@ -319,9 +319,9 @@ describe('Electron app state store', () => {
 
     const store = createAppStateStore()
 
-    expect(store.load()).toBe('{"theme":"dawn"}')
-    store.save('{"theme":"dawn"}')
-    store.save('{"theme":"dawn"}', { preferSync: true })
+    expect(store.load()).toBe('{"theme":"cheese"}')
+    store.save('{"theme":"cheese"}')
+    store.save('{"theme":"cheese"}', { preferSync: true })
     await store.flush?.()
 
     expect(saveAppState).not.toHaveBeenCalled()
@@ -338,7 +338,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),
@@ -348,7 +348,7 @@ describe('Electron app state store', () => {
 
     const store = createAppStateStore()
 
-    expect(store.load()).toBe('{"theme":"dawn"}')
+    expect(store.load()).toBe('{"theme":"cheese"}')
     store.save('{"theme":"light"}', { preferSync: true })
 
     expect(saveAppState).toHaveBeenCalledWith({
@@ -409,7 +409,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),
@@ -422,7 +422,7 @@ describe('Electron app state store', () => {
 
     const store = createAppStateStore()
 
-    expect(store.load()).toBe('{"theme":"dawn"}')
+    expect(store.load()).toBe('{"theme":"cheese"}')
     store.save('{"theme":"light"}', {
       preferSync: true,
       trigger: 'test-trigger',
@@ -465,7 +465,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),
@@ -478,7 +478,7 @@ describe('Electron app state store', () => {
 
     const store = createAppStateStore()
 
-    expect(store.load()).toBe('{"theme":"dawn"}')
+    expect(store.load()).toBe('{"theme":"cheese"}')
     store.save('{"theme":"light"}', { preferSync: true, trigger: 'fast-save' })
     await Promise.resolve()
 
@@ -505,7 +505,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),
@@ -516,7 +516,7 @@ describe('Electron app state store', () => {
 
     const store = createAppStateStore()
 
-    expect(store.load()).toBe('{"theme":"dawn"}')
+    expect(store.load()).toBe('{"theme":"cheese"}')
     store.save('{"theme":"stale"}')
     await Promise.resolve()
     await Promise.resolve()
@@ -539,7 +539,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),

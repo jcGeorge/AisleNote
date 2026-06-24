@@ -44,6 +44,7 @@ import type {
   ShortcutId,
   TableControlTargetMode,
   TableOfContentsScope,
+  TabSortMode,
   ToolbarToolId,
   TipId,
   ToastTone,
@@ -79,8 +80,8 @@ import {
 } from '../frontmatter/frontmatter-state'
 import {
   buildNoteLocationKey,
-  filterNoteSearchEntries,
 } from '../notes/note-locations'
+import { filterNoteActionPickerEntries, getNoteActionPickerActionsForNote } from './note-action-picker-entries'
 import { buildAisleEditorKey, getAisleIdFromAisleEditorKey } from '../editor/aisle-editor'
 import { shouldClearPendingCursorRestoreForAisleActivation } from '../editor/aisle-activation'
 import {
@@ -139,7 +140,14 @@ import { MessagesView } from '../components/messages/MessagesView'
 import { TrashMarkdownPreview } from '../components/trash/TrashMarkdownPreview'
 import { ToolbarSettingsPanel } from '../components/settings/ToolbarSettingsPanel'
 import { ShortcutMenuSettingsPanel } from '../components/settings/ShortcutMenuSettingsPanel'
-import { clampContextMenuPosition, type MenuPosition, type MenuSize, type MenuViewport } from '../components/overlays/context-menu-position'
+import {
+  clampContextMenuPosition,
+  getSubmenuPosition,
+  type MenuPosition,
+  type MenuRect,
+  type MenuSize,
+  type MenuViewport,
+} from '../components/overlays/context-menu-position'
 import { useEditorToolbarState } from '../editor/useEditorToolbarState'
 import { useNotebookAisleEditors } from '../editor/useNotebookAisleEditors'
 import { useImageTools } from '../editor/useImageTools'
@@ -222,6 +230,7 @@ import {
   moveNotebookItems,
   renameNotebookItem,
   restoreDeletedNotebookItemInState,
+  sortNotebookItemsInScope,
 } from '../state/notebook'
 import {
   NotebookNoteActionPicker,
@@ -400,7 +409,7 @@ function revealNotebookTreeForCreatedItem(
 const THEME_LABELS: Record<AppTheme, string> = {
   dark: 'Dark',
   light: 'Light',
-  dawn: 'Dawn',
+  cheese: 'Cheese',
   custom1: 'Custom 1',
   custom2: 'Custom 2',
   custom3: 'Custom 3',
@@ -468,6 +477,15 @@ const TABLE_TARGET_OPTIONS: Array<{ id: TableControlTargetMode; label: string }>
 const TABLE_OF_CONTENTS_SCOPE_OPTIONS: Array<{ id: TableOfContentsScope; label: string }> = [
   { id: 'all-aisles', label: 'All aisles' },
   { id: 'focused-aisle', label: 'Current aisle' },
+]
+
+const NOTEBOOK_TREE_SORT_OPTIONS: Array<{ id: TabSortMode; label: string }> = [
+  { id: 'alpha-asc', label: 'Name ascending' },
+  { id: 'alpha-desc', label: 'Name descending' },
+  { id: 'updated-asc', label: 'Modified ascending' },
+  { id: 'updated-desc', label: 'Modified descending' },
+  { id: 'created-asc', label: 'Created ascending' },
+  { id: 'created-desc', label: 'Created descending' },
 ]
 
 const SETTINGS_SECTION_SET = new Set<SettingsSection>(SETTINGS_SECTION_TABS.map((tab) => tab.id))
@@ -836,13 +854,20 @@ type NotebookTreeDropTarget = {
   position: NotebookTreeDropPosition
 }
 
-type NotebookTreeContextMenuState = {
-  x: number
-  y: number
-  itemId: string
-  itemType: NotebookTreeItem['type']
-  itemTitle: string
-}
+type NotebookTreeContextMenuState =
+  | {
+      kind: 'root'
+      x: number
+      y: number
+    }
+  | {
+      kind: 'item'
+      x: number
+      y: number
+      itemId: string
+      itemType: NotebookTreeItem['type']
+      itemTitle: string
+    }
 
 type NotebookTreeNoteSelectionMode = 'replace' | 'toggle' | 'range'
 type NotebookTreeRenameCommitSource = 'enter' | 'blur' | 'tab'
@@ -892,6 +917,17 @@ function getNotebookMenuElementSize(element: HTMLElement): MenuSize {
   return {
     width: rect.width,
     height: rect.height,
+  }
+}
+
+function toNotebookMenuRect(rect: DOMRect): MenuRect {
+  return {
+    x: rect.left,
+    y: rect.top,
+    width: rect.width,
+    height: rect.height,
+    right: rect.right,
+    bottom: rect.bottom,
   }
 }
 
@@ -984,6 +1020,73 @@ function getNotebookTreeRangeNoteIds(noteIds: string[], anchorNoteId: string, ta
   return noteIds.slice(startIndex, endIndex + 1)
 }
 
+function NotebookTreeContextMenuButton({
+  children,
+  className = '',
+  onClick,
+}: {
+  children: React.ReactNode
+  className?: string
+  onClick: () => void
+}) {
+  return (
+    <button type="button" className={`tab-context-delete ${className}`.trim()} onClick={onClick}>
+      {children}
+    </button>
+  )
+}
+
+function NotebookTreeContextMenuSeparator() {
+  return <div className="tab-context-separator" role="separator" />
+}
+
+function NotebookTreeContextSubMenu({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const [panelPosition, setPanelPosition] = useState<MenuPosition>({ left: -9999, top: -9999 })
+
+  const updatePanelPosition = useCallback(() => {
+    const trigger = triggerRef.current
+    const panel = panelRef.current
+    if (!trigger || !panel) return
+    setPanelPosition(
+      getSubmenuPosition(
+        toNotebookMenuRect(trigger.getBoundingClientRect()),
+        getNotebookMenuElementSize(panel),
+        getNotebookMenuViewportSize(),
+      ),
+    )
+  }, [])
+
+  return (
+    <div className="tab-context-submenu" onPointerEnter={updatePanelPosition} onFocus={updatePanelPosition}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="tab-context-delete tab-context-submenu-trigger"
+        aria-haspopup="menu"
+      >
+        {label}
+        <span aria-hidden="true">›</span>
+      </button>
+      <div
+        ref={panelRef}
+        className="tab-context-submenu-panel"
+        role="menu"
+        style={{ top: `${panelPosition.top}px`, left: `${panelPosition.left}px` }}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
 function NotebookTreeContextMenu({
   menu,
   revealLabel,
@@ -991,6 +1094,7 @@ function NotebookTreeContextMenu({
   onClose,
   onCreateNote,
   onCreateFolder,
+  onSort,
   onReveal,
   onRename,
   onDelete,
@@ -1001,6 +1105,7 @@ function NotebookTreeContextMenu({
   onClose: () => void
   onCreateNote: () => void
   onCreateFolder: () => void
+  onSort: (sortMode: TabSortMode) => void
   onReveal: () => void
   onRename: () => void
   onDelete: () => void
@@ -1033,7 +1138,8 @@ function NotebookTreeContextMenu({
     action()
     onClose()
   }
-  const deleteLabel = menu.itemType === 'folder' ? 'Delete folder' : 'Delete note'
+  const isItemMenu = menu.kind === 'item'
+  const deleteLabel = isItemMenu && menu.itemType === 'folder' ? 'Delete folder' : 'Delete note'
 
   return (
     <div
@@ -1044,28 +1150,39 @@ function NotebookTreeContextMenu({
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
     >
-      <button type="button" className="tab-context-delete" onClick={() => runAction(onCreateNote)}>
+      <NotebookTreeContextMenuButton onClick={() => runAction(onCreateNote)}>
         New note
-      </button>
-      <button type="button" className="tab-context-delete" onClick={() => runAction(onCreateFolder)}>
+      </NotebookTreeContextMenuButton>
+      <NotebookTreeContextMenuButton onClick={() => runAction(onCreateFolder)}>
         New folder
-      </button>
-      <div className="tab-context-separator" role="separator" />
-      <button type="button" className="tab-context-delete" onClick={() => runAction(onRename)}>
-        Rename
-      </button>
-      <button type="button" className="tab-context-delete" onClick={() => runAction(onDelete)}>
-        {deleteLabel}
-      </button>
-      <button
-        type="button"
-        className={`tab-context-delete ${canReveal ? '' : 'is-disabled'}`.trim()}
-        aria-disabled={canReveal ? undefined : 'true'}
-        disabled={!canReveal}
-        onClick={() => runAction(onReveal)}
-      >
-        {revealLabel}
-      </button>
+      </NotebookTreeContextMenuButton>
+      <NotebookTreeContextSubMenu label="Sort">
+        {NOTEBOOK_TREE_SORT_OPTIONS.map((option) => (
+          <NotebookTreeContextMenuButton key={option.id} onClick={() => runAction(() => onSort(option.id))}>
+            {option.label}
+          </NotebookTreeContextMenuButton>
+        ))}
+      </NotebookTreeContextSubMenu>
+      {isItemMenu ? (
+        <>
+          <NotebookTreeContextMenuSeparator />
+          <NotebookTreeContextMenuButton onClick={() => runAction(onRename)}>
+            Rename
+          </NotebookTreeContextMenuButton>
+          <NotebookTreeContextMenuButton onClick={() => runAction(onDelete)}>
+            {deleteLabel}
+          </NotebookTreeContextMenuButton>
+          <button
+            type="button"
+            className={`tab-context-delete ${canReveal ? '' : 'is-disabled'}`.trim()}
+            aria-disabled={canReveal ? undefined : 'true'}
+            disabled={!canReveal}
+            onClick={() => runAction(onReveal)}
+          >
+            {revealLabel}
+          </button>
+        </>
+      ) : null}
     </div>
   )
 }
@@ -1252,6 +1369,7 @@ function TreeItemRow({
           event.stopPropagation()
           clearLongPress()
           onOpenContextMenu({
+            kind: 'item',
             x: event.clientX,
             y: event.clientY,
             itemId: item.id,
@@ -2774,12 +2892,16 @@ export function NotebookApp() {
   const noteActionEntries = useMemo(() => {
     if (!noteActionPicker) return []
     const activeNoteId = activeNotebookModel?.noteId ?? state.notebook.activeNoteId
-    return filterNoteSearchEntries(
-      notebookIndexContext.locations.filter((entry) => entry.noteId !== activeNoteId),
-      noteActionPicker.query,
-      12,
-    )
+    return filterNoteActionPickerEntries(notebookIndexContext.locations, noteActionPicker.query, {
+      actions: noteActionPicker.actions,
+      activeNoteId,
+      limit: 12,
+    })
   }, [activeNotebookModel?.noteId, notebookIndexContext, noteActionPicker, state.notebook.activeNoteId])
+  const getNoteActionPickerActionsForNoteId = useCallback((noteId: string): NotebookNoteActionPickerAction[] => {
+    const activeNoteId = activeNotebookModel?.noteId ?? state.notebook.activeNoteId
+    return getNoteActionPickerActionsForNote(noteActionPicker?.actions ?? [], noteId, activeNoteId)
+  }, [activeNotebookModel?.noteId, noteActionPicker?.actions, state.notebook.activeNoteId])
   const getNoteActionPickerAislesForNote = useCallback((noteId: string): NotebookNoteActionPickerAisleOption[] => {
     const note = findNotebookNote(state.notebook.items, noteId)?.note
     const noteBody = note ? state.noteBodies.find((body) => body.id === note.noteBodyId) : null
@@ -2918,7 +3040,7 @@ export function NotebookApp() {
       setDraggingTreeNoteIds([])
       setTreeDropTarget(null)
     }
-    if (treeContextMenu && !findNotebookItem(state.notebook.items, treeContextMenu.itemId)) {
+    if (treeContextMenu?.kind === 'item' && !findNotebookItem(state.notebook.items, treeContextMenu.itemId)) {
       setTreeContextMenu(null)
     }
   }, [draggingTreeItemId, renamingTreeItemId, state.notebook.items, treeContextMenu])
@@ -4241,6 +4363,21 @@ export function NotebookApp() {
     [toolbarState],
   )
 
+  const openRootTreeContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const target = event.target instanceof Element ? event.target : null
+      if (target?.closest('.notebook-tree-row, .tab-context-menu')) return
+      event.preventDefault()
+      event.stopPropagation()
+      openTreeContextMenu({
+        kind: 'root',
+        x: event.clientX,
+        y: event.clientY,
+      })
+    },
+    [openTreeContextMenu],
+  )
+
   const deleteItem = useCallback(
     (itemId: string) => {
       mutateState((previous) => deleteNotebookItemInState(previous, itemId))
@@ -4249,13 +4386,19 @@ export function NotebookApp() {
   )
 
   const renameTreeContextItem = useCallback(() => {
-    if (!treeContextMenu) return
+    if (!treeContextMenu || treeContextMenu.kind !== 'item') return
     const entry = findNotebookItem(stateRef.current.notebook.items, treeContextMenu.itemId)
     startTreeRename(treeContextMenu.itemId, entry?.item.title ?? treeContextMenu.itemTitle)
   }, [startTreeRename, stateRef, treeContextMenu])
 
   const getTreeContextCreateTarget = useCallback((): { parentFolderId: string | null; index: number } | null => {
     if (!treeContextMenu) return null
+    if (treeContextMenu.kind === 'root') {
+      return {
+        parentFolderId: null,
+        index: stateRef.current.notebook.items.length,
+      }
+    }
     const entry = findNotebookItem(stateRef.current.notebook.items, treeContextMenu.itemId)
     if (!entry) return null
     if (entry.item.type === 'folder') {
@@ -4270,6 +4413,17 @@ export function NotebookApp() {
     }
   }, [stateRef, treeContextMenu])
 
+  const getTreeContextSortParentFolderId = useCallback(
+    (items: NotebookTreeItem[]): string | null | undefined => {
+      if (!treeContextMenu) return undefined
+      if (treeContextMenu.kind === 'root') return null
+      const entry = findNotebookItem(items, treeContextMenu.itemId)
+      if (!entry) return undefined
+      return entry.item.type === 'folder' ? entry.item.id : entry.parentFolderId
+    },
+    [treeContextMenu],
+  )
+
   const createTreeContextNote = useCallback(() => {
     const target = getTreeContextCreateTarget()
     if (!target) return
@@ -4282,13 +4436,35 @@ export function NotebookApp() {
     createFolderAt(target.parentFolderId, target.index)
   }, [createFolderAt, getTreeContextCreateTarget])
 
-  const deleteTreeContextItem = useCallback(() => {
+  const sortTreeContextScope = useCallback((sortMode: TabSortMode) => {
     if (!treeContextMenu) return
+    const dateSort =
+      sortMode === 'created-asc' ||
+      sortMode === 'created-desc' ||
+      sortMode === 'updated-asc' ||
+      sortMode === 'updated-desc'
+    const snapshots = dateSort ? notebookEditors.getMountedEditorMarkdownSnapshots() : []
+    mutateState((previous) => {
+      const snapshotState = dateSort ? applyNotebookEditorMarkdownSnapshotsToState(previous, snapshots) : previous
+      const parentFolderId = getTreeContextSortParentFolderId(snapshotState.notebook.items)
+      if (parentFolderId === undefined) return snapshotState
+      const notebook = sortNotebookItemsInScope(
+        snapshotState.notebook,
+        parentFolderId,
+        sortMode,
+        snapshotState.noteBodies,
+      )
+      return notebook === snapshotState.notebook ? snapshotState : { ...snapshotState, notebook }
+    })
+  }, [getTreeContextSortParentFolderId, mutateState, notebookEditors, treeContextMenu])
+
+  const deleteTreeContextItem = useCallback(() => {
+    if (!treeContextMenu || treeContextMenu.kind !== 'item') return
     deleteItem(treeContextMenu.itemId)
   }, [deleteItem, treeContextMenu])
 
   const revealTreeContextItem = useCallback(() => {
-    if (!treeContextMenu) return
+    if (!treeContextMenu || treeContextMenu.kind !== 'item') return
     const revealNotebookItemLocation = window.electronAPI?.revealNotebookItemLocation
     if (typeof revealNotebookItemLocation !== 'function') {
       window.alert('Could not reveal notebook item.')
@@ -4440,15 +4616,21 @@ export function NotebookApp() {
 
   const removeSidebarSearchToken = useCallback(
     (token: SidebarSearchToken) => {
-      mutateState((previous) => ({
-        ...previous,
-        ui: {
-          ...previous.ui,
-          noteFilter: removeSidebarSearchFilterToken(previous.ui.noteFilter, token),
-        },
-      }))
+      let shouldCloseSearchMode = false
+      mutateState((previous) => {
+        const nextFilter = removeSidebarSearchFilterToken(previous.ui.noteFilter, token)
+        if (query.trim().length <= 0 && !hasSidebarSearchFilterKeys(nextFilter)) shouldCloseSearchMode = true
+        return {
+          ...previous,
+          ui: {
+            ...previous.ui,
+            noteFilter: nextFilter,
+          },
+        }
+      })
+      if (shouldCloseSearchMode) setSidebarSearchMode(false)
     },
-    [mutateState],
+    [mutateState, query],
   )
 
   const openSidebarSearchResult = useCallback(
@@ -6833,6 +7015,7 @@ export function NotebookApp() {
             onSelectSuggestion={selectSidebarSearchSuggestion}
             onRemoveToken={removeSidebarSearchToken}
             onClear={clearSidebarSearch}
+            onClearButtonClick={closeSidebarSearchMode}
             onCloseMode={closeSidebarSearchMode}
             onOpenResult={openSidebarSearchResult}
           />
@@ -6845,6 +7028,7 @@ export function NotebookApp() {
               role="tree"
               aria-multiselectable="true"
               onScroll={handleNotebookTreeScroll}
+              onContextMenu={openRootTreeContextMenu}
             >
                 {useVirtualizedNotebookTree ? (
                   <div
@@ -7212,6 +7396,7 @@ export function NotebookApp() {
           onQueryChange={updateNoteActionPickerQuery}
           onSubmitUrl={submitUrlLink}
           onAction={handleNoteActionPickerAction}
+          getActionsForNote={getNoteActionPickerActionsForNoteId}
           getAislesForNote={getNoteActionPickerAislesForNote}
           onClose={closeNoteActionPicker}
         />
@@ -7254,6 +7439,7 @@ export function NotebookApp() {
         onClose={() => setTreeContextMenu(null)}
         onCreateNote={createTreeContextNote}
         onCreateFolder={createTreeContextFolder}
+        onSort={sortTreeContextScope}
         onReveal={revealTreeContextItem}
         onRename={renameTreeContextItem}
         onDelete={deleteTreeContextItem}

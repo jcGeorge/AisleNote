@@ -27,7 +27,7 @@ afterEach(() => {
 
 function appState(markdown = 'markdown') {
   return {
-    theme: 'dawn',
+    theme: 'cheese',
     notebook: {
       activeNoteId: 'note-root',
       items: [{ type: 'note', id: 'note-root', title: 'Inbox', noteBodyId: 'body-root' }],

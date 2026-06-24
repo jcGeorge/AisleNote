@@ -27,7 +27,7 @@ const template: FrontmatterTemplate = {
 
 function createState(): AppState {
   return {
-    theme: 'dawn',
+    theme: 'cheese',
     notebook: {
       activeNoteId: 'note-1',
       items: [

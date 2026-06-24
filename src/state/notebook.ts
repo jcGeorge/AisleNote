@@ -8,6 +8,7 @@ import type {
   NotebookNote,
   NotebookState,
   NotebookTreeItem,
+  TabSortMode,
 } from '../types/app'
 import { cloneNoteBodyAsIndependentCopy } from '../notes/aisle-body-state'
 import { createRandomId, createReservedIdAllocator, type IdGenerator } from './navigation-ids'
@@ -302,6 +303,140 @@ function updateFolderChildren(
   })
 
   return { items: nextItems, changed }
+}
+
+const NOTEBOOK_ITEM_TITLE_COLLATOR = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: 'base',
+})
+
+type NotebookSortDirection = 'asc' | 'desc'
+type NotebookDateSortField = 'createdAt' | 'updatedAt'
+type NotebookSortDescriptor =
+  | { kind: 'title'; direction: NotebookSortDirection }
+  | { kind: 'date'; direction: NotebookSortDirection; field: NotebookDateSortField }
+
+function getNotebookSortDescriptor(sortMode: TabSortMode): NotebookSortDescriptor {
+  switch (sortMode) {
+    case 'alpha-asc':
+      return { kind: 'title', direction: 'asc' }
+    case 'alpha-desc':
+      return { kind: 'title', direction: 'desc' }
+    case 'created-asc':
+      return { kind: 'date', direction: 'asc', field: 'createdAt' }
+    case 'created-desc':
+      return { kind: 'date', direction: 'desc', field: 'createdAt' }
+    case 'updated-asc':
+      return { kind: 'date', direction: 'asc', field: 'updatedAt' }
+    case 'updated-desc':
+      return { kind: 'date', direction: 'desc', field: 'updatedAt' }
+  }
+}
+
+function normalizeNotebookSortTimestamp(value: string | undefined): number | null {
+  if (!value) return null
+  const timestamp = new Date(value).getTime()
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+function getNotebookItemDateSortValue(
+  item: NotebookTreeItem,
+  field: NotebookDateSortField,
+  noteBodiesById: Map<string, NoteBody>,
+): number | null {
+  if (item.type === 'note') {
+    return normalizeNotebookSortTimestamp(noteBodiesById.get(item.noteBodyId)?.[field])
+  }
+
+  let folderTimestamp: number | null = null
+  walkNotebookItems(item.children, ({ item: child }) => {
+    if (child.type !== 'note') return undefined
+    const childTimestamp = normalizeNotebookSortTimestamp(noteBodiesById.get(child.noteBodyId)?.[field])
+    if (childTimestamp === null) return undefined
+    if (folderTimestamp === null) {
+      folderTimestamp = childTimestamp
+      return undefined
+    }
+    folderTimestamp = field === 'createdAt'
+      ? Math.min(folderTimestamp, childTimestamp)
+      : Math.max(folderTimestamp, childTimestamp)
+    return undefined
+  })
+  return folderTimestamp
+}
+
+function sortNotebookSiblingItems(
+  items: NotebookTreeItem[],
+  sortMode: TabSortMode,
+  noteBodiesById: Map<string, NoteBody>,
+): NotebookTreeItem[] {
+  const descriptor = getNotebookSortDescriptor(sortMode)
+  const sortedItems = items
+    .map((item, index) => ({
+      item,
+      index,
+      dateValue: descriptor.kind === 'date'
+        ? getNotebookItemDateSortValue(item, descriptor.field, noteBodiesById)
+        : null,
+    }))
+    .sort((left, right) => {
+      let comparison = 0
+      if (descriptor.kind === 'title') {
+        comparison = NOTEBOOK_ITEM_TITLE_COLLATOR.compare(left.item.title, right.item.title)
+        if (descriptor.direction === 'desc') comparison *= -1
+      } else {
+        const leftDateValue = left.dateValue
+        const rightDateValue = right.dateValue
+        const leftMissing = leftDateValue === null
+        const rightMissing = rightDateValue === null
+        if (leftMissing || rightMissing) {
+          comparison = leftMissing === rightMissing ? 0 : leftMissing ? 1 : -1
+        } else {
+          comparison = leftDateValue - rightDateValue
+          if (descriptor.direction === 'desc') comparison *= -1
+        }
+      }
+      return comparison || left.index - right.index
+    })
+    .map(({ item }) => item)
+
+  return sortedItems.every((item, index) => item === items[index]) ? items : sortedItems
+}
+
+export function sortNotebookItemsInScope(
+  notebook: NotebookState,
+  parentFolderId: string | null,
+  sortMode: TabSortMode,
+  noteBodies: NoteBody[],
+): NotebookState {
+  const noteBodiesById = new Map(noteBodies.map((body) => [body.id, body]))
+  if (parentFolderId === null) {
+    const sortedItems = sortNotebookSiblingItems(notebook.items, sortMode, noteBodiesById)
+    return sortedItems === notebook.items ? notebook : { ...notebook, items: sortedItems }
+  }
+
+  let changed = false
+  const sortFolderChildren = (items: NotebookTreeItem[]): NotebookTreeItem[] => {
+    let childChanged = false
+    const nextItems = items.map((item): NotebookTreeItem => {
+      if (item.type !== 'folder') return item
+      if (item.id === parentFolderId) {
+        const sortedChildren = sortNotebookSiblingItems(item.children, sortMode, noteBodiesById)
+        if (sortedChildren === item.children) return item
+        changed = true
+        childChanged = true
+        return { ...item, children: sortedChildren }
+      }
+      const children = sortFolderChildren(item.children)
+      if (children === item.children) return item
+      childChanged = true
+      return { ...item, children }
+    })
+    return childChanged ? nextItems : items
+  }
+
+  const items = sortFolderChildren(notebook.items)
+  return changed ? { ...notebook, items } : notebook
 }
 
 function removeNotebookItem(

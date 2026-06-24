@@ -176,4 +176,9 @@ describe('SidebarSearchPanel', () => {
     expect(source).toContain('if (canClear) onClear()')
     expect(source).toContain('else onCloseMode?.()')
   })
+
+  it('lets the clear button close search mode without changing text-edit behavior', () => {
+    expect(source).toContain('onClearButtonClick?: () => void')
+    expect(source).toContain('onClick={onClearButtonClick ?? onClear}')
+  })
 })

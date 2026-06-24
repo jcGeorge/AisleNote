@@ -114,6 +114,7 @@ export function NotebookNoteActionPicker({
   onSubmitUrl,
   onAction,
   onClose,
+  getActionsForNote = () => actions,
   getAislesForNote = () => [],
 }: {
   title: string
@@ -134,6 +135,7 @@ export function NotebookNoteActionPicker({
     options?: NotebookNoteActionPickerActionOptions,
   ) => void
   onClose: () => void
+  getActionsForNote?: (noteId: string) => NotebookNoteActionPickerAction[]
   getAislesForNote?: (noteId: string) => NotebookNoteActionPickerAisleOption[]
 }) {
   const [highlightedIndex, setHighlightedIndex] = useState(0)
@@ -146,6 +148,10 @@ export function NotebookNoteActionPicker({
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.noteId === selectedNoteId) ?? null,
     [entries, selectedNoteId],
+  )
+  const selectedActions = useMemo(
+    () => (selectedEntry ? getActionsForNote(selectedEntry.noteId) : actions),
+    [actions, getActionsForNote, selectedEntry],
   )
   const previewAisleOptions = useMemo(
     () => (selectedEntry && previewAisleNoteId === selectedEntry.noteId ? getAislesForNote(selectedEntry.noteId) : []),
@@ -221,10 +227,10 @@ export function NotebookNoteActionPicker({
   )
 
   const runHighlightedAction = useCallback(() => {
-    if (!selectedEntry || actions.length <= 0) return
-    const action = actions[Math.max(0, Math.min(highlightedActionIndex, actions.length - 1))]
+    if (!selectedEntry || selectedActions.length <= 0) return
+    const action = selectedActions[Math.max(0, Math.min(highlightedActionIndex, selectedActions.length - 1))]
     if (action) runAction(action, selectedEntry.noteId)
-  }, [actions, highlightedActionIndex, runAction, selectedEntry])
+  }, [highlightedActionIndex, runAction, selectedActions, selectedEntry])
 
   const insertSelectedPreviewAisle = useCallback(() => {
     if (!selectedEntry) return
@@ -238,7 +244,7 @@ export function NotebookNoteActionPicker({
       const intent = getNotebookNoteActionPickerKeyboardIntent({
         key: event.key,
         activeRegion,
-        hasSelectedEntry: Boolean(selectedEntry),
+        hasSelectedEntry: Boolean(selectedEntry && selectedActions.length > 0),
       })
       if (!intent) return false
 
@@ -260,7 +266,9 @@ export function NotebookNoteActionPicker({
         return true
       }
       if (intent === 'next-action') {
-        setHighlightedActionIndex((current) => (actions.length > 0 ? Math.min(actions.length - 1, current + 1) : 0))
+        setHighlightedActionIndex((current) =>
+          selectedActions.length > 0 ? Math.min(selectedActions.length - 1, current + 1) : 0,
+        )
         return true
       }
       if (intent === 'previous-action') {
@@ -273,7 +281,7 @@ export function NotebookNoteActionPicker({
       }
       return false
     },
-    [actions.length, activeRegion, chooseHighlighted, entries.length, onClose, runHighlightedAction, selectedEntry],
+    [activeRegion, chooseHighlighted, entries.length, onClose, runHighlightedAction, selectedActions.length, selectedEntry],
   )
 
   useEffect(() => {
@@ -390,14 +398,14 @@ export function NotebookNoteActionPicker({
             <p className="notebook-note-action-empty">No matching notes</p>
           )}
         </div>
-        {selectedEntry && (
+        {selectedEntry && selectedActions.length > 0 && (
           <div className="notebook-note-action-choices" aria-label={`Actions for ${selectedEntry.noteName}`}>
             <div>
               <strong>{selectedEntry.noteName}</strong>
               <small>{selectedEntry.label}</small>
             </div>
             <div className="notebook-note-action-choice-row">
-              {actions.map((action, index) => (
+              {selectedActions.map((action, index) => (
                 <button
                   key={action}
                   type="button"

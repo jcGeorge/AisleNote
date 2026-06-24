@@ -21,6 +21,7 @@ type SidebarSearchPanelProps = {
   onSelectSuggestion: (suggestion: SidebarSearchSuggestion) => void
   onRemoveToken: (token: SidebarSearchToken) => void
   onClear: () => void
+  onClearButtonClick?: () => void
   onCloseMode?: () => void
   onOpenResult: (result: SidebarSearchResult) => void
 }
@@ -105,6 +106,7 @@ export function SidebarSearchPanel({
   onSelectSuggestion,
   onRemoveToken,
   onClear,
+  onClearButtonClick,
   onCloseMode,
   onOpenResult,
 }: SidebarSearchPanelProps) {
@@ -137,7 +139,7 @@ export function SidebarSearchPanel({
             className="notebook-sidebar-search-clear"
             aria-label="Clear search"
             data-app-tooltip="Clear search"
-            onClick={onClear}
+            onClick={onClearButtonClick ?? onClear}
           >
             <AppIcon iconId="x" className="notebook-sidebar-search-clear-icon" />
           </button>

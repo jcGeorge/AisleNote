@@ -37,6 +37,13 @@
   color: var(--rail-control-hover-text, var(--rail-control-text, currentColor));
 }
 
+.rail-control:focus,
+.tab-btn:focus {
+  border-color: var(--rail-control-selected-border, var(--rail-control-border, transparent)) !important;
+  background: var(--rail-control-selected-bg, var(--rail-control-bg, transparent)) !important;
+  color: var(--rail-control-selected-text, var(--rail-control-text, currentColor)) !important;
+}
+
 .rail-control.is-selected,
 .rail-control.is-active,
 .rail-control[aria-selected='true'],

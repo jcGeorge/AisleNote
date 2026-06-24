@@ -9,7 +9,7 @@ import {
 
 function currentSettingsJson() {
   return stringifyPortableAppSettings({
-    theme: 'dawn',
+    theme: 'cheese',
     hotkeys: {
       shortcuts: {
         openSettings: 'Ctrl+,',
@@ -65,7 +65,7 @@ describe('portable app settings parsing', () => {
     expect(result).toMatchObject({
       ok: true,
       settings: {
-        theme: 'dawn',
+        theme: 'cheese',
         hotkeys: {
           shortcuts: {
             openSettings: 'Ctrl+,',
@@ -87,7 +87,7 @@ describe('portable app settings parsing', () => {
 
   it('round-trips portable note filter settings', () => {
     const settings = parsePortableAppSettingsJson(JSON.stringify({
-      theme: 'dawn',
+      theme: 'cheese',
       hotkeys: {},
       ui: {
         noteFilter: {
@@ -120,7 +120,7 @@ describe('portable app settings parsing', () => {
 
   it('drops removed theme palette slots from portable settings', () => {
     const settings = parsePortableAppSettingsJson(JSON.stringify({
-      theme: 'dawn',
+      theme: 'cheese',
       hotkeys: {},
       ui: {
         themePalettes: {
@@ -158,7 +158,7 @@ describe('portable app settings parsing', () => {
       '',
       '[]',
       JSON.stringify({ foo: 'bar' }),
-      JSON.stringify({ theme: 'dawn', hotkeys: {}, settings: {} }),
+      JSON.stringify({ theme: 'cheese', hotkeys: {}, settings: {} }),
       JSON.stringify({
         type: 'aislenote.app-settings',
         settings: JSON.parse(currentSettingsJson()),
@@ -184,7 +184,7 @@ describe('portable app settings parsing', () => {
 
   it('fills missing command shortcuts when only newline shortcuts are present', () => {
     const settings = parsePortableAppSettingsJson(JSON.stringify({
-      theme: 'dawn',
+      theme: 'cheese',
       hotkeys: {
         newlineShortcuts: {
           shortcuts: {
@@ -224,7 +224,7 @@ describe('portable app settings parsing', () => {
   it('normalizes split-file hotkeys before hydrating app state', () => {
     const syncedSettings = buildSyncedSettingsFromSplitFiles({
       appSettings: {
-        theme: 'dawn',
+        theme: 'cheese',
         hotkeys: {
           newlineShortcuts: {
             menuOperations: ['blockQuote'],

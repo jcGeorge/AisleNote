@@ -161,6 +161,12 @@
   color: var(--settings-section-tab-hover-text);
 }
 
+.settings-section-tab:focus {
+  border-color: var(--settings-section-tab-active-border);
+  background: var(--settings-section-tab-active-bg);
+  color: var(--settings-section-tab-active-text);
+}
+
 .settings-section-tab.is-active {
   border-color: var(--settings-section-tab-active-border);
   background: var(--settings-section-tab-active-bg);
@@ -196,6 +202,8 @@
 .settings-action-btn:focus,
 .settings-action-btn:focus-visible {
   border-color: var(--settings-action-hover-border) !important;
+  background: var(--settings-section-tab-active-bg) !important;
+  color: var(--settings-section-tab-active-text) !important;
   box-shadow: var(--settings-action-focus-shadow) !important;
 }
 
@@ -685,6 +693,11 @@
 .settings-segmented-option:hover {
   color: var(--theme-switch-option-hover-text);
   background: var(--theme-switch-option-hover-bg);
+}
+
+.settings-segmented-option:focus {
+  background: var(--settings-segmented-option-selected-bg);
+  color: var(--settings-segmented-option-selected-text);
 }
 
 .settings-segmented-option.is-selected {
@@ -1352,8 +1365,9 @@
 }
 
 .custom-theme-slot {
+  --custom-theme-color-size: 2.4rem;
   display: grid;
-  grid-template-columns: minmax(5.35rem, 0.8fr) 2.35rem minmax(5.1rem, 1fr);
+  grid-template-columns: minmax(5.35rem, 0.8fr) var(--custom-theme-color-size) minmax(5.1rem, 1fr);
   align-items: center;
   gap: 0.3rem;
   min-width: 0;
@@ -1373,22 +1387,21 @@
 }
 
 .custom-theme-swatch-button {
-  width: 2.35rem;
-  height: 2.15rem;
-  padding: 0.12rem;
-  border: 1px solid var(--settings-control-border);
+  width: var(--custom-theme-color-size, 2.4rem);
+  height: var(--custom-theme-color-size, 2.4rem);
+  padding: 0;
+  border: 0;
   border-radius: 0.42rem;
-  background: var(--settings-control-bg);
+  background: transparent;
   cursor: pointer;
 }
 
-.custom-theme-swatch-button:hover {
+.custom-theme-swatch-button:hover .custom-theme-swatch-preview {
   border-color: var(--settings-control-focus-border);
 }
 
 .custom-theme-swatch-button:focus {
   outline: none;
-  border-color: var(--settings-control-focus-border);
 }
 
 .custom-theme-swatch-button:focus-visible {
@@ -1399,28 +1412,56 @@
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: 0.28rem;
+  border-radius: 0.42rem;
+  border: 1px solid var(--settings-control-border);
   background: var(--custom-color-picker-selected);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-control-border) 72%, transparent);
 }
 
 .custom-theme-color-input {
-  width: 2.35rem;
-  height: 2.15rem;
-  min-width: 2.35rem;
-  padding: 0.12rem;
-  border: 1px solid var(--settings-control-border);
+  width: var(--custom-theme-color-size, 2.4rem);
+  height: var(--custom-theme-color-size, 2.4rem);
+  min-width: var(--custom-theme-color-size, 2.4rem);
+  padding: 0;
+  border: 0;
   border-radius: 0.42rem;
-  background: var(--settings-control-bg);
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
   cursor: pointer;
+  overflow: hidden;
 }
 
-.custom-theme-color-input:hover {
+.custom-theme-color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.custom-theme-color-input::-webkit-color-swatch {
+  border: 1px solid var(--settings-control-border);
+  border-radius: 0.42rem;
+}
+
+.custom-theme-color-input::-moz-color-swatch {
+  border: 1px solid var(--settings-control-border);
+  border-radius: 0.42rem;
+}
+
+.custom-theme-color-input:hover::-webkit-color-swatch {
+  border-color: var(--settings-control-focus-border);
+}
+
+.custom-theme-color-input:hover::-moz-color-swatch {
   border-color: var(--settings-control-focus-border);
 }
 
 .custom-theme-color-input:focus {
   outline: none;
+}
+
+.custom-theme-color-input:focus::-webkit-color-swatch {
+  border-color: var(--settings-control-focus-border);
+}
+
+.custom-theme-color-input:focus::-moz-color-swatch {
   border-color: var(--settings-control-focus-border);
 }
 
@@ -1571,6 +1612,7 @@
 }
 
 .custom-theme-hex-input {
+  height: var(--custom-theme-color-size, 2.4rem);
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   text-transform: lowercase;
@@ -1600,6 +1642,12 @@
 
 .settings-shortcut-btn:hover {
   background: var(--settings-shortcut-hover-bg);
+}
+
+.settings-shortcut-btn:focus {
+  border-color: var(--settings-section-tab-active-border);
+  background: var(--settings-section-tab-active-bg);
+  color: var(--settings-section-tab-active-text);
 }
 
 .settings-shortcut-btn.is-recording {

@@ -24,7 +24,7 @@ function withTempDir(run) {
   }
 }
 
-function serializedAppState(theme = 'dawn') {
+function serializedAppState(theme = 'cheese') {
   return JSON.stringify({
     theme,
     hotkeys: { shortcuts: {} },
@@ -64,7 +64,7 @@ describe('user settings location storage', () => {
           source: 'local-cache',
         },
       })
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dawn')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dark')
     }))
 
   it('loads valid cloud settings into the local cache', () =>
@@ -96,7 +96,7 @@ describe('user settings location storage', () => {
       const missingRoot = path.join(root, 'missing-cloud-settings')
       const invalidRoot = path.join(root, 'invalid-cloud-settings')
       mkdirSync(path.join(invalidRoot, 'settings'), { recursive: true })
-      writeFileSync(path.join(invalidRoot, 'settings', 'app-settings.json'), '{"theme":"dawn"}\n', 'utf8')
+      writeFileSync(path.join(invalidRoot, 'settings', 'app-settings.json'), '{"theme":"cheese"}\n', 'utf8')
       writeUserSettingsLocationConfig(userDataPath, missingRoot)
 
       const missingRefresh = refreshLocalUserSettingsFromLocation(userDataPath, resolveUserSettingsLocation(userDataPath))
@@ -123,7 +123,7 @@ describe('user settings location storage', () => {
         isDefault: true,
       })
       expect(existsSync(path.join(userDataPath, USER_SETTINGS_LOCATION_CONFIG_FILE))).toBe(false)
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dawn')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dark')
 
       expect(refreshLocalUserSettingsFromLocation(userDataPath, createUserSettingsLocation(userDataPath, invalidRoot)))
         .toMatchObject({
@@ -177,8 +177,8 @@ describe('user settings location storage', () => {
           syncStatus: 'synced',
         },
       })
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('dawn')
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dawn')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('dark')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dark')
     }))
 
   it('recreates a missing cloud settings file from current settings', () =>
@@ -235,8 +235,8 @@ describe('user settings location storage', () => {
           syncStatus: 'synced',
         },
       })
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dawn')
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('dawn')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dark')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('dark')
     }))
 
   it('detaches a deleted settings root during reset to defaults', () =>
@@ -262,7 +262,7 @@ describe('user settings location storage', () => {
           source: 'local-cache',
         },
       })
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dawn')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dark')
       expect(existsSync(settingsRootPath)).toBe(false)
       expect(existsSync(path.join(userDataPath, USER_SETTINGS_LOCATION_CONFIG_FILE))).toBe(false)
     }))

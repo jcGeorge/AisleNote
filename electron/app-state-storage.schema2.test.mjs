@@ -28,7 +28,7 @@ afterEach(() => {
 
 function appState(overrides = {}) {
   return {
-    theme: 'dawn',
+    theme: 'cheese',
     notebook: {
       activeNoteId: 'note-root',
       items: [
@@ -272,7 +272,7 @@ describe('schema 2 app-state storage', () => {
       settingsSection: 'data',
     }
     const notebookB = appState()
-    notebookB.theme = 'dawn'
+    notebookB.theme = 'cheese'
     notebookB.ui = {
       ...notebookB.ui,
       sidebarWidth: 444,

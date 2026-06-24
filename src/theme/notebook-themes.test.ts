@@ -77,12 +77,12 @@ describe('notebook theme palettes', () => {
     expect([light.canvas, light.surface, light.surfaceRaised, light.sidebar]).not.toContain('#ffffff')
   })
 
-  it('uses a warm sunrise Dawn palette as the canvas seed', () => {
-    expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.canvas).toBe('#e2bc69')
-    expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.surface).toBe('#ecd8ac')
-    expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.surfaceRaised).toBe('#ead4a9')
-    expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.sidebar).toBe('#e3cb68')
-    expect(getThemePaletteForTheme('dawn', {}).canvas).toBe('#e2bc69')
+  it('uses a warm sunrise Cheese palette as the canvas seed', () => {
+    expect(BUILT_IN_THEME_PALETTE_SEEDS.cheese.canvas).toBe('#ead890')
+    expect(BUILT_IN_THEME_PALETTE_SEEDS.cheese.surface).toBe('#ecd8ac')
+    expect(BUILT_IN_THEME_PALETTE_SEEDS.cheese.surfaceRaised).toBe('#ead4a9')
+    expect(BUILT_IN_THEME_PALETTE_SEEDS.cheese.sidebar).toBe('#e3cb68')
+    expect(getThemePaletteForTheme('cheese', {}).canvas).toBe('#ead890')
   })
 
   it('uses theme-specific tag background defaults', () => {
@@ -159,7 +159,7 @@ describe('notebook theme palettes', () => {
 
   it('keeps built-in classes while enabling palette-derived tokens', () => {
     expect(getThemeClassName('light')).toBe('theme-light theme-palette-derived')
-    expect(getThemeClassName('dawn')).toBe('theme-dawn theme-palette-derived')
+    expect(getThemeClassName('cheese')).toBe('theme-cheese theme-palette-derived')
     expect(getThemeClassName('custom1')).toBe('theme-custom-derived theme-palette-derived')
   })
 })

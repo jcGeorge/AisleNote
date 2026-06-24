@@ -133,7 +133,7 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
 
 const MIN_AISLE_WIDTH_PX = 160
 const MAX_AISLE_WIDTH_PX = 1200
-const THEME_PALETTE_IDS = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
+const THEME_PALETTE_IDS = ['dark', 'light', 'cheese', 'custom1', 'custom2', 'custom3']
 const CUSTOM_THEME_IDS = ['custom1', 'custom2', 'custom3']
 const CUSTOM_THEME_PALETTE_SLOTS = [
   'canvas',
@@ -152,7 +152,7 @@ const CUSTOM_THEME_PALETTE_SLOTS = [
   'sidebar',
 ]
 const DATA_SETTINGS_SECTIONS = ['transfer', 'storage', 'trash']
-const CURRENT_APP_SETTING_THEME_IDS = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
+const CURRENT_APP_SETTING_THEME_IDS = ['dark', 'light', 'cheese', 'custom1', 'custom2', 'custom3']
 
 function optionalString(value, fallback) {
   return typeof value === 'string' ? value : fallback

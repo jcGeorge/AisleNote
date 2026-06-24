@@ -1,5 +1,5 @@
 export type CustomThemeId = 'custom1' | 'custom2' | 'custom3'
-export type AppTheme = 'dark' | 'light' | 'dawn' | CustomThemeId
+export type AppTheme = 'dark' | 'light' | 'cheese' | CustomThemeId
 export type ViewMode = 'main' | 'trash' | 'settings' | 'messages' | 'about'
 
 export type NotebookTreeItem = NotebookFolder | NotebookNote

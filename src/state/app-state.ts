@@ -38,7 +38,7 @@ import {
 } from '../settings/defaults'
 import { normalizeHotkeySettings } from '../hotkeys/shortcuts'
 
-const APP_THEMES: AppTheme[] = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
+const APP_THEMES: AppTheme[] = ['dark', 'light', 'cheese', 'custom1', 'custom2', 'custom3']
 const MAX_NORMALIZED_TOAST_HISTORY_ENTRIES = 70
 export const AUTO_PURGE_DAY_MS = 24 * 60 * 60 * 1000
 
