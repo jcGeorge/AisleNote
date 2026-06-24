@@ -84,6 +84,7 @@ import {
 import { filterNoteActionPickerEntries, getNoteActionPickerActionsForNote } from './note-action-picker-entries'
 import { buildAisleEditorKey, getAisleIdFromAisleEditorKey } from '../editor/aisle-editor'
 import { shouldClearPendingCursorRestoreForAisleActivation } from '../editor/aisle-activation'
+import { isHeadingCollapsed, setHeadingCollapsed } from '../editor/heading-collapse-state'
 import {
   DEFAULT_TOOLBAR_LAYOUT_ID,
   createCustomToolbarLayout,
@@ -3341,6 +3342,55 @@ export function NotebookApp() {
     [mutateState],
   )
 
+  const toggleHeadingCollapse = useCallback(
+    (noteBodyId: string, aisleId: string, headingKey: string) => {
+      if (!noteBodyId || !aisleId || !headingKey) return
+      mutateState((previous) => {
+        const nextCollapsed = !isHeadingCollapsed(previous.ui.headingCollapseState, noteBodyId, aisleId, headingKey)
+        const nextHeadingCollapseState = setHeadingCollapsed(
+          previous.ui.headingCollapseState,
+          noteBodyId,
+          aisleId,
+          headingKey,
+          nextCollapsed,
+        )
+        if (nextHeadingCollapseState === previous.ui.headingCollapseState) return previous
+        return {
+          ...previous,
+          ui: {
+            ...previous.ui,
+            headingCollapseState: nextHeadingCollapseState,
+          },
+        }
+      })
+    },
+    [mutateState],
+  )
+
+  const expandHeadingCollapse = useCallback(
+    (noteBodyId: string, aisleId: string, headingKey: string) => {
+      if (!noteBodyId || !aisleId || !headingKey) return
+      mutateState((previous) => {
+        const nextHeadingCollapseState = setHeadingCollapsed(
+          previous.ui.headingCollapseState,
+          noteBodyId,
+          aisleId,
+          headingKey,
+          false,
+        )
+        if (nextHeadingCollapseState === previous.ui.headingCollapseState) return previous
+        return {
+          ...previous,
+          ui: {
+            ...previous.ui,
+            headingCollapseState: nextHeadingCollapseState,
+          },
+        }
+      })
+    },
+    [mutateState],
+  )
+
   const handleNoteMentionQueryChange = useCallback((mention: NoteMentionQuery | null, anchor: NotebookNoteActionPickerAnchor | null) => {
     void anchor
     setNoteActionPicker((current) => {
@@ -3466,6 +3516,9 @@ export function NotebookApp() {
     editorRef,
     commitAisleMarkdown,
     scheduleToolbarFormatStateSync: toolbarState.scheduleToolbarFormatStateSync,
+    headingCollapseState: state.ui.headingCollapseState,
+    onToggleHeadingCollapse: toggleHeadingCollapse,
+    onExpandHeadingCollapse: expandHeadingCollapse,
     onNoteMentionQueryChange: handleNoteMentionQueryChange,
     onTagAutocompleteQueryChange: refreshTagAutocompleteFromEditor,
     getAppState: () => stateRef.current,

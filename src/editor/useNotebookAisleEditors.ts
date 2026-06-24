@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObjec
 import { Editor } from '@toast-ui/editor'
 import { TextSelection } from 'prosemirror-state'
 import { createCodeBlockControlsPlugin } from './code-block-controls'
+import { headingCollapsePlugin } from './heading-collapse-plugin'
+import { getCollapsedHeadingKeysForAisle } from './heading-collapse-state'
 import {
   annotationLinePlugin,
   blockIndentPlugin,
@@ -92,7 +94,16 @@ import {
   type NotebookEditorMarkdownSnapshot,
 } from '../app/notebook-editor-persistence'
 import type { AisleActivationSource } from './aisle-activation'
-import type { AppState, LinkPromptState, NewlineOperationId, NoteLocation, ResolvedNoteAisle, ToastTone, ViewMode } from '../types/app'
+import type {
+  AppState,
+  HeadingCollapseState,
+  LinkPromptState,
+  NewlineOperationId,
+  NoteLocation,
+  ResolvedNoteAisle,
+  ToastTone,
+  ViewMode,
+} from '../types/app'
 
 export type NotebookEditorClipboardAction = 'cut' | 'copy' | 'paste' | 'pastePlainText'
 export type NotebookEditorClipboardPasteAction = Extract<NotebookEditorClipboardAction, 'paste' | 'pastePlainText'>
@@ -140,6 +151,9 @@ type UseNotebookAisleEditorsOptions = {
   editorRef: MutableRefObject<Editor | null>
   commitAisleMarkdown: (aisleBodyId: string, markdown: string) => void
   scheduleToolbarFormatStateSync: () => void
+  headingCollapseState: HeadingCollapseState
+  onToggleHeadingCollapse: (noteBodyId: string, aisleId: string, headingKey: string) => void
+  onExpandHeadingCollapse: (noteBodyId: string, aisleId: string, headingKey: string) => void
   onNoteMentionQueryChange?: (query: NoteMentionQuery | null, anchor: { top: number; left: number } | null) => void
   onTagAutocompleteQueryChange?: () => void
   getAppState?: () => AppState
@@ -304,6 +318,9 @@ export function useNotebookAisleEditors({
   editorRef,
   commitAisleMarkdown,
   scheduleToolbarFormatStateSync,
+  headingCollapseState,
+  onToggleHeadingCollapse,
+  onExpandHeadingCollapse,
   onNoteMentionQueryChange,
   onTagAutocompleteQueryChange,
   getAppState,
@@ -329,6 +346,7 @@ export function useNotebookAisleEditors({
   const pendingAppStateCommitTimerRef = useRef<number | null>(null)
   const pendingAppStateCommitMaxWaitTimerRef = useRef<number | null>(null)
   const externalStateLoadVersionRef = useRef(externalStateLoadVersion)
+  const headingCollapseStateRef = useRef(headingCollapseState)
   const externalReconciledVersionByAisleBodyRef = useRef<Map<string, number>>(new Map())
   const userEditedExternalVersionByAisleBodyRef = useRef<Map<string, number>>(new Map())
   const editorMarkdownRevisionRef = useRef(0)
@@ -360,6 +378,7 @@ export function useNotebookAisleEditors({
   onInsertAisleFromNewlineRef.current = onInsertAisleFromNewline
   onTagAutocompleteQueryChangeRef.current = onTagAutocompleteQueryChange
   externalStateLoadVersionRef.current = externalStateLoadVersion
+  headingCollapseStateRef.current = headingCollapseState
 
   const aisleIds = useMemo(() => aisles.map((aisle) => aisle.id), [aisles])
   const aisleIdsKey = aisleIds.join('\n')
@@ -388,6 +407,12 @@ export function useNotebookAisleEditors({
     const editorKey = buildAisleEditorKey(noteBodyIdRef.current, aisleId)
     return editorMetaRef.current.get(editorKey) ?? null
   }, [])
+
+  const getMarkdownForAisle = useCallback((aisleId: string) => {
+    const aisle = getAisleById(aisleId)
+    if (!aisle) return ''
+    return lastMarkdownByAisleBodyRef.current.get(aisle.aisleBodyId) ?? aisle.markdown
+  }, [getAisleById])
 
   const nextEditorMarkdownRevision = useCallback(() => {
     editorMarkdownRevisionRef.current += 1
@@ -1001,6 +1026,17 @@ export function useNotebookAisleEditors({
         highlightPlugin,
         codeBlockBacktickShortcutPlugin,
         terminalBlockLandingPlugin,
+        (context: any) =>
+          headingCollapsePlugin(context, {
+            aisleId: aisle.id,
+            getCollapsedHeadingKeys: (targetAisleId) =>
+              getCollapsedHeadingKeysForAisle(headingCollapseStateRef.current, noteBodyIdRef.current, targetAisleId),
+            getMarkdown: getMarkdownForAisle,
+            onToggleHeading: (targetAisleId, headingKey) =>
+              onToggleHeadingCollapse(noteBodyIdRef.current, targetAisleId, headingKey),
+            onExpandHeading: (targetAisleId, headingKey) =>
+              onExpandHeadingCollapse(noteBodyIdRef.current, targetAisleId, headingKey),
+          }),
         createMediaLinkPlugin,
         createNotePreviewPlugin({
           getAppState,
@@ -1232,10 +1268,13 @@ export function useNotebookAisleEditors({
     commitActiveEditorMarkdownNow,
     commitEditorMarkdown,
     destroyEditor,
+    getMarkdownForAisle,
     mountedAisleIds,
     nextEditorMarkdownRevision,
     noteBodyId,
     onNotebookStructurePaste,
+    onExpandHeadingCollapse,
+    onToggleHeadingCollapse,
     replaceMountedEditorMarkdown,
     restoreEditorDisplayWhenReady,
     runGuardedEditorHistory,
@@ -1243,6 +1282,15 @@ export function useNotebookAisleEditors({
     takeMatchingLocalStateEcho,
     viewMode,
   ])
+
+  useEffect(() => {
+    if (viewMode !== 'main' || !noteBodyId) return
+    editorMetaRef.current.forEach((meta) => {
+      const view = getWysiwygView(meta.editor)
+      if (!view?.state?.tr || typeof view.dispatch !== 'function') return
+      view.dispatch(view.state.tr.setMeta('headingCollapseRefresh', true).setMeta('addToHistory', false))
+    })
+  }, [viewMode, noteBodyId, headingCollapseState])
 
   const registerAislePaneRoot = useCallback((aisleId: string, node: HTMLElement | null) => {
     if (!node) {

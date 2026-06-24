@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   HEADING_COLLAPSE_PRESERVED_GAP_CLASS,
   HEADING_COLLAPSE_KEY_ATTRIBUTE,
@@ -70,6 +70,59 @@ function plainEnterEvent(overrides: Partial<KeyboardEvent> = {}) {
   } as KeyboardEvent
 }
 
+function installPointerDomGlobals(headingKey: string) {
+  vi.useFakeTimers()
+
+  class FakeTextNode {}
+  class FakeHeadingElement {
+    closest() {
+      return this
+    }
+
+    getAttribute(attribute: string) {
+      return attribute === HEADING_COLLAPSE_KEY_ATTRIBUTE ? headingKey : null
+    }
+  }
+
+  const heading = new FakeHeadingElement()
+  const root = {
+    contains: (candidate: unknown) => candidate === heading,
+  }
+
+  vi.stubGlobal('Element', FakeHeadingElement)
+  vi.stubGlobal('HTMLElement', FakeHeadingElement)
+  vi.stubGlobal('Text', FakeTextNode)
+  vi.stubGlobal('window', {
+    setTimeout: globalThis.setTimeout,
+    clearTimeout: globalThis.clearTimeout,
+  })
+
+  return {
+    heading: heading as unknown as HTMLElement,
+    root: root as HTMLElement,
+  }
+}
+
+function pointerEvent(target: EventTarget, overrides: Partial<PointerEvent> = {}) {
+  return {
+    button: 0,
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    pointerId: 1,
+    clientX: 12,
+    clientY: 18,
+    target,
+    ...overrides,
+  } as PointerEvent
+}
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
+
 class FakePlugin {
   spec: Record<string, unknown>
 
@@ -118,6 +171,9 @@ function buildPlugin(options: {
     }>
     handleDOMEvents: {
       keydown: (view: { state: ReturnType<typeof stateWithSelection> }, event: KeyboardEvent) => boolean
+      pointerdown: (view: { dom: HTMLElement }, event: PointerEvent) => boolean
+      pointermove: (view: unknown, event: PointerEvent) => boolean
+      pointerup: (view: unknown, event: PointerEvent) => boolean
     }
   }
 }
@@ -230,6 +286,83 @@ describe('heading collapse plugin', () => {
 
     expect(handled).toBe(false)
     expect(expandCalls).toEqual([])
+  })
+
+  it('toggles a heading after a primary left-pointer long press', () => {
+    const doc = docForBlocks([{ type: 'heading', text: 'Subject', level: 2, size: 9 }])
+    const headingKey = firstHeadingKey(doc)
+    const toggleCalls: string[][] = []
+    const props = buildPlugin({
+      collapsedKeys: new Set(),
+      onExpandHeading: () => undefined,
+      onToggleHeading: (aisleId, key) => toggleCalls.push([aisleId, key]),
+    })
+    const { root, heading } = installPointerDomGlobals(headingKey)
+
+    const handled = props.handleDOMEvents.pointerdown({ dom: root }, pointerEvent(heading))
+    vi.advanceTimersByTime(499)
+
+    expect(handled).toBe(false)
+    expect(toggleCalls).toEqual([])
+
+    vi.advanceTimersByTime(1)
+
+    expect(toggleCalls).toEqual([['aisle-a', headingKey]])
+  })
+
+  it('cancels heading collapse when the pointer is released before the long press', () => {
+    const doc = docForBlocks([{ type: 'heading', text: 'Subject', level: 2, size: 9 }])
+    const headingKey = firstHeadingKey(doc)
+    const toggleCalls: string[][] = []
+    const props = buildPlugin({
+      collapsedKeys: new Set(),
+      onExpandHeading: () => undefined,
+      onToggleHeading: (aisleId, key) => toggleCalls.push([aisleId, key]),
+    })
+    const { root, heading } = installPointerDomGlobals(headingKey)
+
+    props.handleDOMEvents.pointerdown({ dom: root }, pointerEvent(heading))
+    vi.advanceTimersByTime(250)
+    props.handleDOMEvents.pointerup(null, pointerEvent(heading))
+    vi.advanceTimersByTime(500)
+
+    expect(toggleCalls).toEqual([])
+  })
+
+  it('cancels heading collapse when pointer movement exceeds the long-press threshold', () => {
+    const doc = docForBlocks([{ type: 'heading', text: 'Subject', level: 2, size: 9 }])
+    const headingKey = firstHeadingKey(doc)
+    const toggleCalls: string[][] = []
+    const props = buildPlugin({
+      collapsedKeys: new Set(),
+      onExpandHeading: () => undefined,
+      onToggleHeading: (aisleId, key) => toggleCalls.push([aisleId, key]),
+    })
+    const { root, heading } = installPointerDomGlobals(headingKey)
+
+    props.handleDOMEvents.pointerdown({ dom: root }, pointerEvent(heading))
+    props.handleDOMEvents.pointermove(null, pointerEvent(heading, { clientX: 19, clientY: 18 }))
+    vi.advanceTimersByTime(500)
+
+    expect(toggleCalls).toEqual([])
+  })
+
+  it('ignores modified and non-primary heading pointer presses', () => {
+    const doc = docForBlocks([{ type: 'heading', text: 'Subject', level: 2, size: 9 }])
+    const headingKey = firstHeadingKey(doc)
+    const toggleCalls: string[][] = []
+    const props = buildPlugin({
+      collapsedKeys: new Set(),
+      onExpandHeading: () => undefined,
+      onToggleHeading: (aisleId, key) => toggleCalls.push([aisleId, key]),
+    })
+    const { root, heading } = installPointerDomGlobals(headingKey)
+
+    props.handleDOMEvents.pointerdown({ dom: root }, pointerEvent(heading, { metaKey: true }))
+    props.handleDOMEvents.pointerdown({ dom: root }, pointerEvent(heading, { button: 2 }))
+    vi.advanceTimersByTime(500)
+
+    expect(toggleCalls).toEqual([])
   })
 
   it('preserves markdown blank-line gaps before the boundary heading', () => {

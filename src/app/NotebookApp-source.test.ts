@@ -107,6 +107,21 @@ describe('NotebookApp tag autocomplete wiring', () => {
   })
 })
 
+describe('NotebookApp heading collapse wiring', () => {
+  it('persists heading collapse state through the notebook editor hook', () => {
+    expect(source).toContain("import { isHeadingCollapsed, setHeadingCollapsed } from '../editor/heading-collapse-state'")
+    expect(source).toContain('const toggleHeadingCollapse = useCallback')
+    expect(source).toContain('const nextCollapsed = !isHeadingCollapsed(previous.ui.headingCollapseState, noteBodyId, aisleId, headingKey)')
+    expect(source).toContain('const nextHeadingCollapseState = setHeadingCollapsed(')
+    expect(source).toContain('headingCollapseState: nextHeadingCollapseState')
+    expect(source).toContain('const expandHeadingCollapse = useCallback')
+    expect(source).toContain('headingKey,\n          false,')
+    expect(source).toContain('headingCollapseState: state.ui.headingCollapseState')
+    expect(source).toContain('onToggleHeadingCollapse: toggleHeadingCollapse')
+    expect(source).toContain('onExpandHeadingCollapse: expandHeadingCollapse')
+  })
+})
+
 describe('NotebookApp large notebook performance wiring', () => {
   it('builds sidebar search indexes from narrow notebook index dependencies instead of whole app state', () => {
     expect(source).toContain("import { createNotebookIndexContext } from '../filters/notebook-index-context'")

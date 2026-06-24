@@ -224,3 +224,28 @@ describe('notebook aisle editor task checkbox wiring', () => {
     expect(source).toContain('scrollToAisleRange,')
   })
 })
+
+describe('notebook aisle editor heading collapse wiring', () => {
+  it('installs the heading collapse plugin with persisted collapse state', () => {
+    expect(source).toContain("import { headingCollapsePlugin } from './heading-collapse-plugin'")
+    expect(source).toContain("import { getCollapsedHeadingKeysForAisle } from './heading-collapse-state'")
+    expect(source).toContain('headingCollapseState: HeadingCollapseState')
+    expect(source).toContain('onToggleHeadingCollapse: (noteBodyId: string, aisleId: string, headingKey: string) => void')
+    expect(source).toContain('onExpandHeadingCollapse: (noteBodyId: string, aisleId: string, headingKey: string) => void')
+    expect(source).toContain('const headingCollapseStateRef = useRef(headingCollapseState)')
+    expect(source).toContain('headingCollapseStateRef.current = headingCollapseState')
+    expect(source).toContain('headingCollapsePlugin(context, {')
+    expect(source).toContain('getCollapsedHeadingKeysForAisle(headingCollapseStateRef.current, noteBodyIdRef.current, targetAisleId)')
+    expect(source).toContain('getMarkdown: getMarkdownForAisle')
+    expect(source).toContain('onToggleHeadingCollapse(noteBodyIdRef.current, targetAisleId, headingKey)')
+    expect(source).toContain('onExpandHeadingCollapse(noteBodyIdRef.current, targetAisleId, headingKey)')
+  })
+
+  it('refreshes mounted editor decorations after heading collapse state changes', () => {
+    expect(source).toMatch(
+      /useEffect\(\(\) => {\s*if \(viewMode !== 'main' \|\| !noteBodyId\) return\s*editorMetaRef\.current\.forEach\(\(meta\) => {\s*const view = getWysiwygView\(meta\.editor\)/,
+    )
+    expect(source).toContain("view.dispatch(view.state.tr.setMeta('headingCollapseRefresh', true).setMeta('addToHistory', false))")
+    expect(source).toContain('}, [viewMode, noteBodyId, headingCollapseState])')
+  })
+})
