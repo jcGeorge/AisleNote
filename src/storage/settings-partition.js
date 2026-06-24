@@ -123,7 +123,7 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   dataSettingsSection: 'transfer',
   visualsSettingsSection: 'theming',
   noteFontScale: 1,
-  toolbarButtonScale: 1,
+  toolbarButtonScale: 1.2,
   noteCursorLocations: {},
   headingCollapseState: {},
   aisleWidths: {},

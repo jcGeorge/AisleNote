@@ -140,7 +140,6 @@ import { MessagesView } from '../components/messages/MessagesView'
 import { TrashMarkdownPreview } from '../components/trash/TrashMarkdownPreview'
 import { ToolbarSettingsPanel } from '../components/settings/ToolbarSettingsPanel'
 import { ShortcutMenuSettingsPanel } from '../components/settings/ShortcutMenuSettingsPanel'
-import { CustomThemeColorPicker } from '../components/settings/CustomThemeColorPicker'
 import { clampContextMenuPosition, type MenuPosition, type MenuSize, type MenuViewport } from '../components/overlays/context-menu-position'
 import { useEditorToolbarState } from '../editor/useEditorToolbarState'
 import { useNotebookAisleEditors } from '../editor/useNotebookAisleEditors'
@@ -187,6 +186,7 @@ import {
   CUSTOM_THEME_IDS,
   CUSTOM_THEME_PALETTE_LABELS,
   CUSTOM_THEME_PALETTE_SLOTS,
+  copyThemePaletteToCustomPalette,
   getCustomThemePaletteSeed,
   getThemePaletteForTheme,
   getThemePaletteVariables,
@@ -1869,22 +1869,12 @@ function isSixDigitHexDraft(value: string): boolean {
 }
 
 function CustomThemePaletteSlotRow({
-  slot,
   label,
   value,
-  fallbackValue,
-  isPickerOpen,
-  onTogglePicker,
-  onClosePicker,
   onChange,
 }: {
-  slot: CustomThemePaletteSlot
   label: string
   value: string
-  fallbackValue: string
-  isPickerOpen: boolean
-  onTogglePicker: () => void
-  onClosePicker: () => void
   onChange: (value: string) => void
 }) {
   const [hexDraft, setHexDraft] = useState(value)
@@ -1927,15 +1917,12 @@ function CustomThemePaletteSlotRow({
   return (
     <div className="custom-theme-slot">
       <span className="custom-theme-slot-label">{label}</span>
-      <CustomThemeColorPicker
-        slotId={slot}
-        label={label}
+      <input
+        className="custom-theme-color-input"
+        type="color"
         value={value}
-        fallbackValue={fallbackValue}
-        isOpen={isPickerOpen}
-        onToggle={onTogglePicker}
-        onClose={onClosePicker}
-        onChange={onChange}
+        aria-label={`${label} color picker`}
+        onChange={(event) => onChange(event.target.value)}
       />
       <input
         className="settings-text-input custom-theme-hex-input"
@@ -1968,18 +1955,14 @@ function NotebookThemeSettings({
 }) {
   const selectedCustomTheme = state.ui.selectedCustomTheme ?? 'custom1'
   const selectedPalette = getThemePaletteForTheme(state.theme, state.ui.themePalettes)
-  const selectedPaletteSeed = getCustomThemePaletteSeed(state.theme)
+  const canCopyActiveThemeToSelectedCustomPalette = state.theme !== selectedCustomTheme
   const noteFontScale = clampNoteFontScale(state.ui.noteFontScale)
-  const toolbarButtonScale = clampToolbarButtonScale(state.ui.toolbarButtonScale ?? 1)
-  const [openPaletteSlot, setOpenPaletteSlot] = useState<CustomThemePaletteSlot | null>(null)
+  const defaultToolbarButtonScale = DEFAULT_UI_SETTINGS.toolbarButtonScale ?? 1.2
+  const toolbarButtonScale = clampToolbarButtonScale(state.ui.toolbarButtonScale ?? defaultToolbarButtonScale)
   const previewScaleStyle = {
     '--note-font-scale': String(noteFontScale),
     '--toolbar-button-scale': String(toolbarButtonScale),
   } as CSSProperties
-
-  useEffect(() => {
-    setOpenPaletteSlot(null)
-  }, [state.theme])
 
   const updateTheme = (theme: AppTheme) => {
     onMutateState((previous) => ({
@@ -1995,7 +1978,6 @@ function NotebookThemeSettings({
   const updateSelectedCustomTheme = (themeId: CustomThemeId) => {
     onMutateState((previous) => ({
       ...previous,
-      theme: isCustomTheme(previous.theme) ? themeId : previous.theme,
       ui: {
         ...previous.ui,
         selectedCustomTheme: themeId,
@@ -2042,6 +2024,21 @@ function NotebookThemeSettings({
     })
   }
 
+  const copyActiveThemeToSelectedCustomPalette = () => {
+    if (!canCopyActiveThemeToSelectedCustomPalette) return
+    onMutateState((previous) => {
+      const targetTheme = previous.ui.selectedCustomTheme ?? 'custom1'
+      if (previous.theme === targetTheme) return previous
+      return {
+        ...previous,
+        ui: {
+          ...previous.ui,
+          themePalettes: copyThemePaletteToCustomPalette(previous.ui.themePalettes, previous.theme, targetTheme),
+        },
+      }
+    })
+  }
+
   const updateUiScale = (key: 'noteFontScale' | 'toolbarButtonScale', value: number) => {
     const nextValue = key === 'noteFontScale' ? clampNoteFontScale(value) : clampToolbarButtonScale(value)
     onMutateState((previous) => ({
@@ -2055,7 +2052,7 @@ function NotebookThemeSettings({
 
   return (
     <section className="notebook-settings-section" aria-label="Visual theme settings">
-      <div className="notebook-settings-grid">
+      <div className="settings-theme-copy-row">
         <label>
           Active theme
           <select value={state.theme} onChange={(event) => updateTheme(event.target.value as AppTheme)}>
@@ -2066,6 +2063,14 @@ function NotebookThemeSettings({
             ))}
           </select>
         </label>
+        <button
+          type="button"
+          className="notebook-settings-action settings-theme-copy-button"
+          disabled={!canCopyActiveThemeToSelectedCustomPalette}
+          onClick={copyActiveThemeToSelectedCustomPalette}
+        >
+          Copy to
+        </button>
         <label>
           Custom palette
           <select
@@ -2079,6 +2084,8 @@ function NotebookThemeSettings({
             ))}
           </select>
         </label>
+      </div>
+      <div className="notebook-settings-grid">
         <label>
           Note font scale
           <div className="settings-slider-wrap">
@@ -2100,7 +2107,7 @@ function NotebookThemeSettings({
           </div>
         </label>
         <label>
-          Toolbar button scale
+          Icon scale
           <div className="settings-slider-wrap">
             <input
               id="toolbar-button-scale"
@@ -2215,13 +2222,8 @@ function NotebookThemeSettings({
         {CUSTOM_THEME_PALETTE_SLOTS.map((slot) => (
           <CustomThemePaletteSlotRow
             key={slot}
-            slot={slot}
             label={CUSTOM_THEME_PALETTE_LABELS[slot]}
             value={selectedPalette[slot]}
-            fallbackValue={selectedPaletteSeed[slot]}
-            isPickerOpen={openPaletteSlot === slot}
-            onTogglePicker={() => setOpenPaletteSlot((current) => (current === slot ? null : slot))}
-            onClosePicker={() => setOpenPaletteSlot((current) => (current === slot ? null : current))}
             onChange={(value) => updatePaletteSlot(slot, value)}
           />
         ))}
@@ -2281,6 +2283,7 @@ export function NotebookApp() {
   const [tableOfContentsPanels, setTableOfContentsPanels] = useState<TableOfContentsPanelsState | null>(null)
   const [expandedTrashItemId, setExpandedTrashItemId] = useState('')
   const [runtimeVersion, setRuntimeVersion] = useState('')
+  const [zoomHudPercent, setZoomHudPercent] = useState<number | null>(null)
   const aisleScrollRef = useRef<HTMLDivElement | null>(null)
   const workspaceRootRef = useRef<HTMLElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -2306,6 +2309,7 @@ export function NotebookApp() {
   const tagAutocompleteRefreshRef = useRef<(() => void) | null>(null)
   const frontmatterStateSnapshotRef = useRef(state.frontmatter)
   const skipNextTreeRenameCommitRef = useRef(false)
+  const zoomHudTimeoutRef = useRef<number | null>(null)
   const sidebarResizeRef = useRef<{
     pointerId: number
     startClientX: number
@@ -2323,6 +2327,27 @@ export function NotebookApp() {
 
   useEffect(() => () => {
     cancelScheduledAisleFocusScroll(scheduledAisleFocusScrollRef.current, window)
+  }, [])
+
+  useEffect(() => {
+    const clearZoomHudTimeout = () => {
+      if (zoomHudTimeoutRef.current === null) return
+      window.clearTimeout(zoomHudTimeoutRef.current)
+      zoomHudTimeoutRef.current = null
+    }
+    const unsubscribe = window.electronAPI?.onAppZoomChanged?.((payload) => {
+      if (!Number.isFinite(payload?.percent)) return
+      setZoomHudPercent(Math.round(payload.percent))
+      clearZoomHudTimeout()
+      zoomHudTimeoutRef.current = window.setTimeout(() => {
+        setZoomHudPercent(null)
+        zoomHudTimeoutRef.current = null
+      }, 1400)
+    })
+    return () => {
+      clearZoomHudTimeout()
+      unsubscribe?.()
+    }
   }, [])
 
   const toolbarState = useEditorToolbarState({
@@ -2422,14 +2447,15 @@ export function NotebookApp() {
         .map((aisle) => aisle.id),
     )
   }, [activeModel, state])
+  const defaultToolbarButtonScale = DEFAULT_UI_SETTINGS.toolbarButtonScale ?? 1.2
   const rootStyle = useMemo(
     () =>
       ({
         ...getThemePaletteVariables(state),
         '--note-font-scale': String(state.ui.noteFontScale),
-        '--toolbar-button-scale': String(state.ui.toolbarButtonScale ?? 1),
+        '--toolbar-button-scale': String(state.ui.toolbarButtonScale ?? defaultToolbarButtonScale),
       }) as CSSProperties,
-    [state],
+    [defaultToolbarButtonScale, state],
   )
   const toolbarLayout = useMemo(
     () => resolveToolbarLayout(state.ui.toolbarLayouts, activeToolbarLayoutId),
@@ -6749,6 +6775,11 @@ export function NotebookApp() {
       </main>
         </>
       )}
+      {zoomHudPercent !== null ? (
+        <div className="app-zoom-hud" role="status" aria-live="polite" aria-label={`Zoom ${zoomHudPercent}%`}>
+          {zoomHudPercent}%
+        </div>
+      ) : null}
       {noteActionPicker ? (
         <NotebookNoteActionPicker
           title={noteActionPicker.title}

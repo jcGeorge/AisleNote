@@ -110,12 +110,28 @@ describe('notebook settings access', () => {
     expect(baseCssSource).not.toContain('--settings-range-value-text: var(--app-primary);')
   })
 
+  it('adds a no-op guarded copy-to control for selected custom palettes', () => {
+    expect(notebookAppSource).toContain('copyActiveThemeToSelectedCustomPalette')
+    expect(notebookAppSource).toContain('canCopyActiveThemeToSelectedCustomPalette = state.theme !== selectedCustomTheme')
+    expect(notebookAppSource).toContain('copyThemePaletteToCustomPalette(previous.ui.themePalettes, previous.theme, targetTheme)')
+    expect(notebookAppSource).toContain('if (previous.theme === targetTheme) return previous')
+    expect(notebookAppSource).toContain('className="notebook-settings-action settings-theme-copy-button"')
+    expect(notebookAppSource).toContain('disabled={!canCopyActiveThemeToSelectedCustomPalette}')
+    expect(notebookAppSource).toContain('Copy to')
+    expect(notebookAppSource).not.toContain('theme: isCustomTheme(previous.theme) ? themeId : previous.theme,')
+    expect(settingsCssSource).toContain('.settings-theme-copy-row')
+    expect(settingsCssSource).toContain('.settings-theme-copy-button.notebook-settings-action')
+  })
+
   it('uses theme-specific aisle resize affordance colors', () => {
     expect(editorShellCssSource).toContain('background: var(--note-aisle-resize-bg);')
     expect(editorShellCssSource).toContain('background: var(--note-aisle-resize-hover-bg);')
     expect(editorShellCssSource).toContain('outline: 2px solid var(--note-aisle-resize-focus-outline);')
     expect(baseCssSource).toContain('--note-aisle-resize-hover-bg: var(--app-primary-border);')
     expect(lightCssSource).toContain('--note-aisle-resize-hover-bg: #607da4;')
+    expect(dawnCssSource).toContain('--note-aisle-resize-bg: var(--app-border);')
+    expect(dawnCssSource).toContain('--note-aisle-resize-border: transparent;')
     expect(dawnCssSource).toContain('--note-aisle-resize-hover-bg: color-mix(in srgb, var(--custom-palette-secondary) 72%, var(--custom-theme-sidebar));')
+    expect(dawnCssSource).toContain('--note-aisle-resize-hover-border: transparent;')
   })
 })

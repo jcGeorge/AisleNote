@@ -70,7 +70,7 @@ export const DEFAULT_CUSTOM_THEME_PALETTE: CustomThemePalette = {
   warning: '#d9a441',
   success: '#2fb36d',
   tagText: '#06141a',
-  tagBg: '#22d3ee',
+  tagBg: '#8fd1dc',
   tooltipPrimary: '#c8d0e1',
   tooltipSecondary: '#6f7f98',
   sidebar: '#0f1b32',
@@ -117,7 +117,7 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     tooltipPrimary: '#30475a',
     tooltipSecondary: '#65594a',
     sidebar: '#e3cb68',
-    sidebarAccent: '#e3cb68',
+    sidebarAccent: '#3f715d',
   },
 }
 
@@ -131,6 +131,7 @@ export const CUSTOM_THEME_PALETTE_SEEDS: Record<CustomThemeId, CustomThemePalett
     surfaceRaised: '#202b42',
     primary: '#14b8a6',
     secondary: '#f59e0b',
+    tagBg: '#83ecd2',
     sidebarAccent: '#14b8a6',
   },
   custom3: {
@@ -141,6 +142,7 @@ export const CUSTOM_THEME_PALETTE_SEEDS: Record<CustomThemeId, CustomThemePalett
     surfaceRaised: '#332a3a',
     primary: '#d946ef',
     secondary: '#22c55e',
+    tagBg: '#d574e2',
     sidebarAccent: '#d946ef',
   },
 }
@@ -219,6 +221,16 @@ export function setThemePaletteOverride(
     ...(themePalettes ?? {}),
     [theme]: { ...palette },
   }
+}
+
+export function copyThemePaletteToCustomPalette(
+  themePalettes: ThemePaletteOverrides | null | undefined,
+  sourceTheme: AppTheme,
+  targetTheme: CustomThemeId,
+): ThemePaletteOverrides {
+  const sourcePalette = getThemePaletteForTheme(sourceTheme, themePalettes)
+  const targetPalette = normalizeCustomThemePalette(sourcePalette, getCustomThemePaletteSeed(targetTheme))
+  return setThemePaletteOverride(themePalettes, targetTheme, targetPalette)
 }
 
 export function removeThemePaletteOverride(

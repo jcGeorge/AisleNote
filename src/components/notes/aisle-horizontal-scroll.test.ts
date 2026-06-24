@@ -27,11 +27,13 @@ function createHorizontalScrollFixture({
   viewportWidth,
   paneLeftInViewport,
   paneWidth,
+  computedStyle = {},
 }: {
   scrollLeft: number
   viewportWidth: number
   paneLeftInViewport: number
   paneWidth: number
+  computedStyle?: Record<string, string>
 }) {
   const pane = {
     dataset: { aisleId: 'target' },
@@ -43,6 +45,13 @@ function createHorizontalScrollFixture({
     scrollLeft,
     clientWidth: viewportWidth,
     scrollWidth: 2000,
+    ownerDocument: {
+      defaultView: {
+        getComputedStyle: () => ({
+          getPropertyValue: (property: string) => computedStyle[property] ?? '',
+        }),
+      },
+    },
     getBoundingClientRect: () => createRect(0, viewportWidth),
     querySelectorAll: () => [pane],
   } as unknown as HTMLElement
@@ -184,6 +193,23 @@ describe('horizontal aisle pane scroll reveal', () => {
     })
 
     expect(scrollAislePaneIntoHorizontalView(scrollNode, 'target', { alignmentMargin: 24 })).toBe(true)
+
+    expect(scrollNode.scrollLeft).toBe(108)
+  })
+
+  it('uses scroll padding for focused alignment without layout padding', () => {
+    const scrollNode = createHorizontalScrollFixture({
+      scrollLeft: 0,
+      viewportWidth: 900,
+      paneLeftInViewport: 504,
+      paneWidth: 480,
+      computedStyle: {
+        'scroll-padding-inline-start': '24px',
+        'padding-inline-start': '0px',
+      },
+    })
+
+    expect(scrollAislePaneIntoHorizontalView(scrollNode, 'target')).toBe(true)
 
     expect(scrollNode.scrollLeft).toBe(108)
   })

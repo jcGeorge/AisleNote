@@ -305,7 +305,6 @@ export function CustomThemeColorPicker({
             />
           </label>
           <div className="custom-color-picker-hex-row">
-            <span className="custom-color-picker-preview-swatch" aria-hidden="true" />
             <span className="custom-color-picker-hex-label">hex</span>
             <input
               ref={hexInputRef}

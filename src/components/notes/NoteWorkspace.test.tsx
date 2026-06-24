@@ -410,13 +410,17 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('aria-label="Scroll aisles horizontally"')
   })
 
-  it('reserves inline gutters for split aisle table selectors and focused aisle alignment', () => {
+  it('keeps split aisle alignment gutters out of the first aisle layout', () => {
     expect(editorShellCss).toContain('--note-aisle-leading-gutter: 1.5rem;')
     expect(editorShellCss).toContain('.note-aisles-shell.is-split .note-aisle-scroll')
-    expect(editorShellCss).toContain('padding-inline-start: var(--note-aisle-leading-gutter);')
     expect(editorShellCss).toContain('padding-inline-end: var(--note-aisle-leading-gutter);')
+    expect(editorShellCss).toContain('scroll-padding-inline-start: var(--note-aisle-leading-gutter);')
+    expect(editorShellCss).toContain('scroll-padding-inline-end: var(--note-aisle-leading-gutter);')
+    expect(editorShellCss).not.toMatch(/^\s*padding-inline-start: var\(--note-aisle-leading-gutter\);/m)
     expect(responsiveCss).toContain('padding-inline-start: 0 !important;')
     expect(responsiveCss).toContain('padding-inline-end: 0 !important;')
+    expect(responsiveCss).toContain('scroll-padding-inline-start: 0 !important;')
+    expect(responsiveCss).toContain('scroll-padding-inline-end: 0 !important;')
   })
 
   it('renders resize handles for split aisles', () => {

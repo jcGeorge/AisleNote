@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   BUILT_IN_THEME_PALETTE_SEEDS,
+  CUSTOM_THEME_PALETTE_SEEDS,
   CUSTOM_THEME_PALETTE_SLOTS,
   DEFAULT_CUSTOM_THEME_PALETTE,
+  copyThemePaletteToCustomPalette,
   getThemeClassName,
   getThemePaletteForTheme,
   getThemePaletteVariables,
@@ -77,8 +79,57 @@ describe('notebook theme palettes', () => {
     expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.canvas).toBe('#e2bc69')
     expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.surfaceRaised).toBe('#ead4a9')
     expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.sidebar).toBe('#e3cb68')
-    expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.sidebarAccent).toBe('#e3cb68')
+    expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.sidebarAccent).toBe('#3f715d')
     expect(getThemePaletteForTheme('dawn', {}).canvas).toBe('#e2bc69')
+  })
+
+  it('uses theme-specific tag background defaults', () => {
+    expect(getThemePaletteForTheme('dark', {}).tagBg).toBe('#8fd1dc')
+    expect(getThemePaletteForTheme('custom1', {}).tagBg).toBe('#8fd1dc')
+    expect(getThemePaletteForTheme('custom2', {}).tagBg).toBe('#83ecd2')
+    expect(getThemePaletteForTheme('custom3', {}).tagBg).toBe('#d574e2')
+  })
+
+  it('copies a resolved built-in palette to a selected custom palette', () => {
+    const lightOverride = {
+      ...BUILT_IN_THEME_PALETTE_SEEDS.light,
+      primary: '#123456',
+      tagBg: '#abcdef',
+    }
+    const custom3Override = {
+      ...CUSTOM_THEME_PALETTE_SEEDS.custom3,
+      secondary: '#654321',
+    }
+    const nextPalettes = copyThemePaletteToCustomPalette(
+      {
+        light: lightOverride,
+        custom3: custom3Override,
+      },
+      'light',
+      'custom2',
+    )
+
+    expect(nextPalettes.custom2).toEqual(lightOverride)
+    expect(nextPalettes.light).toEqual(lightOverride)
+    expect(nextPalettes.custom3).toEqual(custom3Override)
+  })
+
+  it('copies a resolved custom palette override to another selected custom palette', () => {
+    const custom1Override = {
+      ...CUSTOM_THEME_PALETTE_SEEDS.custom1,
+      canvas: '#010203',
+      primary: '#040506',
+    }
+    const nextPalettes = copyThemePaletteToCustomPalette(
+      {
+        custom1: custom1Override,
+      },
+      'custom1',
+      'custom3',
+    )
+
+    expect(nextPalettes.custom3).toEqual(custom1Override)
+    expect(nextPalettes.custom1).toEqual(custom1Override)
   })
 
   it('emits palette variables for built-in theme overrides', () => {

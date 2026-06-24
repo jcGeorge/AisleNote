@@ -696,6 +696,21 @@
   align-items: center;
 }
 
+.settings-theme-copy-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 0.7rem;
+  margin-bottom: 0.8rem;
+}
+
+.settings-theme-copy-button.notebook-settings-action {
+  align-self: end;
+  min-width: 5.7rem;
+  margin-top: 0;
+  white-space: nowrap;
+}
+
 .theme-selection-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(7.2rem, auto);
@@ -1364,6 +1379,30 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-control-border) 72%, transparent);
 }
 
+.custom-theme-color-input {
+  width: 2.35rem;
+  height: 2.15rem;
+  min-width: 2.35rem;
+  padding: 0.12rem;
+  border: 1px solid var(--settings-control-border);
+  border-radius: 0.42rem;
+  background: var(--settings-control-bg);
+  cursor: pointer;
+}
+
+.custom-theme-color-input:hover {
+  border-color: var(--settings-control-focus-border);
+}
+
+.custom-theme-color-input:focus {
+  outline: none;
+  border-color: var(--settings-control-focus-border);
+}
+
+.custom-theme-color-input:focus-visible {
+  box-shadow: var(--settings-action-focus-shadow, 0 0 0 0.2rem rgba(95, 137, 220, 0.22));
+}
+
 .custom-color-picker-panel {
   position: fixed;
   z-index: 30;
@@ -1483,17 +1522,9 @@
 
 .custom-color-picker-hex-row {
   display: grid;
-  grid-template-columns: 2rem minmax(2.2rem, auto) minmax(0, 1fr) minmax(4.1rem, auto);
+  grid-template-columns: minmax(2.2rem, auto) minmax(0, 1fr) minmax(4.1rem, auto);
   align-items: center;
   gap: 0.5rem;
-}
-
-.custom-color-picker-preview-swatch {
-  width: 2rem;
-  height: 1.45rem;
-  border: 1px solid var(--settings-control-border);
-  border-radius: 0.34rem;
-  background: var(--custom-color-picker-selected);
 }
 
 .custom-color-picker-hex-input {

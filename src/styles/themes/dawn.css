@@ -188,13 +188,13 @@
   --editor-pre-bg: var(--editor-code-bg);
   --editor-pre-border: var(--editor-border);
   --editor-tooltip-shadow: 0 4px 14px rgba(91, 63, 42, 0.18);
-  --note-aisle-resize-bg: #bf9c7e;
-  --note-aisle-resize-border: rgba(241, 213, 138, 0.82);
+  --note-aisle-resize-bg: var(--app-border);
+  --note-aisle-resize-border: transparent;
   --note-aisle-resize-shadow:
     0 0 0 1px rgba(150, 102, 44, 0.16),
     0 0.16rem 0.36rem rgba(91, 63, 42, 0.14);
   --note-aisle-resize-hover-bg: #a77957;
-  --note-aisle-resize-hover-border: #e9c98c;
+  --note-aisle-resize-hover-border: transparent;
   --note-aisle-resize-focus-outline: #3f715d;
 
   --task-reorder-source-bg: rgba(63, 113, 93, 0.1);
@@ -255,13 +255,13 @@
   --settings-range-thumb-bg: var(--custom-palette-primary);
   --settings-range-thumb-hover-bg: color-mix(in srgb, var(--custom-palette-primary) 84%, var(--custom-palette-text));
   --settings-range-thumb-hover-border: color-mix(in srgb, var(--custom-palette-primary) 72%, var(--custom-palette-text));
-  --note-aisle-resize-bg: color-mix(in srgb, var(--custom-theme-sidebar) 66%, var(--custom-palette-border));
-  --note-aisle-resize-border: color-mix(in srgb, var(--custom-palette-page) 70%, transparent);
+  --note-aisle-resize-bg: var(--app-border);
+  --note-aisle-resize-border: transparent;
   --note-aisle-resize-shadow:
     0 0 0 1px color-mix(in srgb, var(--custom-palette-border) 24%, transparent),
     0 0.16rem 0.36rem color-mix(in srgb, var(--custom-palette-canvas) 24%, transparent);
   --note-aisle-resize-hover-bg: color-mix(in srgb, var(--custom-palette-secondary) 72%, var(--custom-theme-sidebar));
-  --note-aisle-resize-hover-border: color-mix(in srgb, var(--custom-palette-page) 74%, var(--custom-palette-secondary));
+  --note-aisle-resize-hover-border: transparent;
   --note-aisle-resize-focus-outline: var(--custom-palette-primary);
   --monet-editor-toolbar-bg: var(--editor-toolbar-bg);
   --monet-editor-toolbar-hover-bg: var(--editor-toolbar-hover-bg);

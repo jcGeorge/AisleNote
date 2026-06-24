@@ -96,7 +96,7 @@ export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
     },
   },
   noteFontScale: 1,
-  toolbarButtonScale: 1,
+  toolbarButtonScale: 1.2,
   settingsSection: DEFAULT_SETTINGS_SECTION,
   dataSettingsSection: DEFAULT_DATA_SETTINGS_SECTION,
   visualsSettingsSection: DEFAULT_VISUALS_SETTINGS_SECTION,

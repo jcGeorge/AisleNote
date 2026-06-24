@@ -50,6 +50,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('open-notebook-manager', listener)
     return () => ipcRenderer.removeListener('open-notebook-manager', listener)
   },
+  onAppZoomChanged: (handler) => {
+    const listener = (_event, payload) => handler(payload)
+    ipcRenderer.on('app-zoom-changed', listener)
+    return () => ipcRenderer.removeListener('app-zoom-changed', listener)
+  },
   onUserSettingsLocationStatusUpdated: (handler) => {
     const listener = (_event, payload) => handler(payload)
     ipcRenderer.on('user-settings-location-status-updated', listener)

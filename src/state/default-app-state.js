@@ -121,7 +121,7 @@ export function createDefaultAppState(options = {}) {
       tableDeleteTargetMode: 'active-cell',
       tableOfContentsScope: 'all-aisles',
       noteFontScale: 1,
-      toolbarButtonScale: 1,
+      toolbarButtonScale: 1.2,
       settingsSection: 'data',
       dataSettingsSection: 'storage',
       visualsSettingsSection: 'theming',

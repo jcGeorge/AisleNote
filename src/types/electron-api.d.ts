@@ -286,6 +286,12 @@ type OpenDiagnosticsFolderResult =
       error?: string
     }
 
+type AppZoomChangedPayload = {
+  zoomLevel: number
+  zoomFactor: number
+  percent: number
+}
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -358,6 +364,7 @@ declare global {
         { ok: true; status: StorageProfileStatus; warning?: string } | { ok: false; error?: string; status: StorageProfileStatus }
       >
       onOpenNotebookManager?: (handler: () => void) => () => void
+      onAppZoomChanged?: (handler: (payload: AppZoomChangedPayload) => void) => () => void
       onStorageProfileStatusUpdated?: (handler: (payload: StorageProfileStatus) => void) => () => void
       onUserSettingsLocationStatusUpdated?: (handler: (payload: UserSettingsLocationStatus) => void) => () => void
       exportNotebookFolder?: (payload: { serializedState: string }) => Promise<ExportNotebookFolderResult>

@@ -198,7 +198,7 @@
   --editor-popup-bg: #0f1b32;
   --editor-link-text: #9bbcff;
   --editor-tag-text: #06141a;
-  --editor-tag-bg: #22d3ee;
+  --editor-tag-bg: #8fd1dc;
   --editor-tooltip-bg: #0f1b32;
   --editor-tooltip-border: #2f4672;
   --editor-tooltip-text: #dce9ff;
@@ -318,7 +318,7 @@
   --custom-palette-warning: var(--custom-theme-warning, #d9a441);
   --custom-palette-success: var(--custom-theme-success, #2fb36d);
   --custom-palette-tag-text: var(--custom-theme-tag-text, #06141a);
-  --custom-palette-tag-bg: var(--custom-theme-tag-bg, #22d3ee);
+  --custom-palette-tag-bg: var(--custom-theme-tag-bg, #8fd1dc);
   --custom-palette-tooltip-primary: var(--custom-theme-tooltip-primary, #c8d0e1);
   --custom-palette-tooltip-secondary: var(--custom-theme-tooltip-secondary, #6f7f98);
 

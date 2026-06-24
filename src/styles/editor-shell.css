@@ -1191,8 +1191,9 @@
 }
 
 .note-aisles-shell.is-split .note-aisle-scroll {
-  padding-inline-start: var(--note-aisle-leading-gutter);
   padding-inline-end: var(--note-aisle-leading-gutter);
+  scroll-padding-inline-start: var(--note-aisle-leading-gutter);
+  scroll-padding-inline-end: var(--note-aisle-leading-gutter);
 }
 
 .note-aisle-scroll::-webkit-scrollbar {

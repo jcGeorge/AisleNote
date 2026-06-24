@@ -62,14 +62,24 @@ function getMaxScrollLeft(scrollWidth: number | undefined, viewportWidth: number
     : Number.POSITIVE_INFINITY
 }
 
-function getScrollNodeInlineStartPadding(scrollNode: HTMLElement) {
+function parseCssLength(value: string) {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function getScrollNodeInlineStartAlignmentMargin(scrollNode: HTMLElement) {
   const view = scrollNode.ownerDocument?.defaultView
   if (!view?.getComputedStyle) return 0
   const style = view.getComputedStyle(scrollNode)
+  const scrollPadding =
+    parseCssLength(style.getPropertyValue('scroll-padding-inline-start')) ??
+    parseCssLength(style.getPropertyValue('scroll-padding-left'))
+  if (scrollPadding !== null) return Math.max(0, scrollPadding)
+
   return Math.max(
     0,
-    Number.parseFloat(style.paddingInlineStart || '') ||
-      Number.parseFloat(style.paddingLeft || '') ||
+    parseCssLength(style.getPropertyValue('padding-inline-start')) ??
+      parseCssLength(style.getPropertyValue('padding-left')) ??
       0,
   )
 }
@@ -237,7 +247,7 @@ export function scrollAislePaneIntoHorizontalView(
   }
 
   const paneLeft = scrollNode.scrollLeft + paneRect.left - scrollRect.left
-  const alignmentMargin = options.alignmentMargin ?? getScrollNodeInlineStartPadding(scrollNode)
+  const alignmentMargin = options.alignmentMargin ?? getScrollNodeInlineStartAlignmentMargin(scrollNode)
   const nextScrollLeft = getScrollLeftToRevealHorizontalPane({
     currentScrollLeft: scrollNode.scrollLeft,
     viewportWidth: scrollNode.clientWidth,

@@ -33,6 +33,23 @@ describe('electron application menu', () => {
     expect(mainSource).toContain('confirmAndResetUserSettings(window)')
   })
 
+  it('routes native zoom commands through the app zoom notifier', () => {
+    expect(mainSource).toContain('APP_ZOOM_LEVEL_STEP = 0.5')
+    expect(mainSource).toContain("window.webContents.send('app-zoom-changed'")
+    expect(mainSource).toContain('getAppZoomPayload(window.webContents)')
+    expect(mainSource).toContain('getZoomShortcutAction(input)')
+    expect(mainSource).toContain('applyAppZoom(window, zoomAction)')
+    expect(mainSource).toContain("label: 'Actual Size'")
+    expect(mainSource).toContain("accelerator: 'CommandOrControl+0'")
+    expect(mainSource).toContain("label: 'Zoom In'")
+    expect(mainSource).toContain("accelerator: 'CommandOrControl+Plus'")
+    expect(mainSource).toContain("label: 'Zoom Out'")
+    expect(mainSource).toContain("accelerator: 'CommandOrControl+-'")
+    expect(mainSource).not.toContain("{ role: 'resetZoom' }")
+    expect(mainSource).not.toContain("{ role: 'zoomIn' }")
+    expect(mainSource).not.toContain("{ role: 'zoomOut' }")
+  })
+
   it('does not expose the old native default-notebook reset path', () => {
     expect(mainSource).not.toContain('Reset Notebook to Blank')
     expect(mainSource).not.toContain('confirmAndResetLocalNotebook')

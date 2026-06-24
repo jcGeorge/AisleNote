@@ -18,6 +18,9 @@ const gotSingleInstanceLock = app.requestSingleInstanceLock()
 let quitRequested = false
 let storageSession = null
 let editorContextMenuIpc = null
+const APP_ZOOM_LEVEL_STEP = 0.5
+const APP_ZOOM_MIN_LEVEL = -6
+const APP_ZOOM_MAX_LEVEL = 6
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -112,6 +115,43 @@ function sendMultilineShortcut(direction) {
   sendMultilineShortcutToWindow(BrowserWindow.getFocusedWindow(), direction)
 }
 
+function clampAppZoomLevel(zoomLevel) {
+  if (!Number.isFinite(zoomLevel)) return 0
+  return Math.min(APP_ZOOM_MAX_LEVEL, Math.max(APP_ZOOM_MIN_LEVEL, zoomLevel))
+}
+
+function getAppZoomPayload(webContents) {
+  const zoomLevel = webContents.getZoomLevel()
+  const zoomFactor = webContents.getZoomFactor()
+  return {
+    zoomLevel,
+    zoomFactor,
+    percent: Math.round(zoomFactor * 100),
+  }
+}
+
+function sendAppZoomChanged(window) {
+  if (!window || window.isDestroyed()) return
+  window.webContents.send('app-zoom-changed', getAppZoomPayload(window.webContents))
+}
+
+function applyAppZoom(window, action) {
+  if (!window || window.isDestroyed()) return
+  const webContents = window.webContents
+  if (action === 'reset') {
+    webContents.setZoomLevel(0)
+    sendAppZoomChanged(window)
+    return
+  }
+  const direction = action === 'in' ? 1 : -1
+  webContents.setZoomLevel(clampAppZoomLevel(webContents.getZoomLevel() + direction * APP_ZOOM_LEVEL_STEP))
+  sendAppZoomChanged(window)
+}
+
+function zoomFocusedWindow(action) {
+  applyAppZoom(BrowserWindow.getFocusedWindow(), action)
+}
+
 async function confirmAndResetUserSettings(window = BrowserWindow.getFocusedWindow()) {
   if (!storageSession?.resetUserSettingsToDefaults) return
   const confirmation = await dialog.showMessageBox(window ?? undefined, {
@@ -195,7 +235,27 @@ function installApplicationMenu({ onNewWindow, onOpenNotebook, onResetUserSettin
     },
     {
       label: 'View',
-      submenu: [{ role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }],
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        {
+          label: 'Actual Size',
+          accelerator: 'CommandOrControl+0',
+          click: () => zoomFocusedWindow('reset'),
+        },
+        {
+          label: 'Zoom In',
+          accelerator: 'CommandOrControl+Plus',
+          click: () => zoomFocusedWindow('in'),
+        },
+        {
+          label: 'Zoom Out',
+          accelerator: 'CommandOrControl+-',
+          click: () => zoomFocusedWindow('out'),
+        },
+      ],
     },
     {
       label: 'Window',
@@ -249,6 +309,18 @@ function isResetUserSettingsShortcut(input) {
   return process.platform === 'darwin' ? Boolean(input.meta && !input.control) : Boolean(input.control && !input.meta)
 }
 
+function getZoomShortcutAction(input) {
+  if (input.type !== 'keyDown') return null
+  const key = typeof input.key === 'string' ? input.key.toLowerCase() : ''
+  const code = typeof input.code === 'string' ? input.code.toLowerCase() : ''
+  const hasModifier = process.platform === 'darwin' ? input.meta && !input.control : input.control && !input.meta
+  if (!hasModifier || input.alt) return null
+  if (key === '+' || key === '=' || code === 'equal' || code === 'numpadadd') return 'in'
+  if (key === '-' || key === '_' || code === 'minus' || code === 'numpadsubtract') return 'out'
+  if (key === '0' || key === ')' || code === 'digit0' || code === 'numpad0') return 'reset'
+  return null
+}
+
 function getWindowIconPath() {
   if (process.platform === 'darwin') return undefined
   return path.join(app.getAppPath(), 'build', 'icon.png')
@@ -285,6 +357,14 @@ function createWindow(storageSession) {
   let closeFlushInProgress = false
 
   window.webContents.on('before-input-event', (event, input) => {
+    if (process.platform !== 'darwin') {
+      const zoomAction = getZoomShortcutAction(input)
+      if (zoomAction) {
+        event.preventDefault()
+        applyAppZoom(window, zoomAction)
+        return
+      }
+    }
     if (isResetUserSettingsShortcut(input)) {
       event.preventDefault()
       void confirmAndResetUserSettings(window)
