@@ -1613,7 +1613,9 @@
 
 .custom-theme-hex-input {
   height: var(--custom-theme-color-size, 2.4rem);
+  width: min(7.25rem, 100%);
   min-width: 0;
+  justify-self: start;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   text-transform: lowercase;
 }

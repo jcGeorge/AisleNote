@@ -33,6 +33,10 @@ function createNoteBodyWithAisle(markdown = '', idGenerator = createDefaultId) {
   }
 }
 
+export const DEFAULT_SCRATCHPAD_MARKDOWN = `## About Scratchpad
+
+Scratchpad is a quick place to capture temporary notes, loose thoughts, and anything you want close at hand before deciding where it belongs. Keep it messy, clear it out, or move pieces into your notebook when they become permanent.`
+
 export const DEFAULT_SHORTCUTS = {
   openSettings: 'mod+,',
   toggleNotesTrash: 'mod+shift+backspace',
@@ -66,7 +70,7 @@ export const DEFAULT_NEWLINE_SHORTCUT_SETTINGS = {
 export function createDefaultAppState(options = {}) {
   const idGenerator = typeof options.idGenerator === 'function' ? options.idGenerator : createDefaultId
   const welcome = createNoteBodyWithAisle('', idGenerator)
-  const scratchpad = createNoteBodyWithAisle('', idGenerator)
+  const scratchpad = createNoteBodyWithAisle(DEFAULT_SCRATCHPAD_MARKDOWN, idGenerator)
   const welcomeNote = {
     type: 'note',
     id: idGenerator(),

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getAisleMarkdown } from '../notes/note-markdown'
+import { DEFAULT_SCRATCHPAD_MARKDOWN } from '../state/default-app-state.js'
 import { findNotebookNote } from '../state/notebook'
 import { buildMarkdownImportState, importMarkdownNotebook, type MarkdownImportAssetPayload } from './markdown-import'
 
@@ -52,6 +53,11 @@ describe('Markdown folder import', () => {
     }
     expect(result.state.notebook.activeNoteId).toBe(result.sources[0]?.noteId)
     expect(result.state.scratchpad?.noteBodyId).toBeTruthy()
+    const scratchpadBody = result.state.noteBodies.find((body) => body.id === result.state.scratchpad?.noteBodyId)
+    const scratchpadAisle = scratchpadBody?.aisles[0]
+    expect(scratchpadAisle ? getAisleMarkdown(scratchpadAisle, result.state.noteAisleBodies) : '').toBe(
+      DEFAULT_SCRATCHPAD_MARKDOWN,
+    )
     expect(result.summary).toMatchObject({ folders: 2, notes: 3, noteBodies: 3 })
   })
 

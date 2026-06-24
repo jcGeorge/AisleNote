@@ -233,7 +233,7 @@
 .aisle-editor-preview-fallback .aislenote-tag-token,
 .aisle-edit-preview .aislenote-tag-token {
   color: var(--editor-tag-text, #06141a) !important;
-  background: var(--editor-tag-bg, #8fd1dc) !important;
+  background: var(--editor-tag-bg, #e5c552) !important;
   border: 0 !important;
   border-radius: 0.28em !important;
   padding: 0.02em 0.22em !important;
@@ -266,27 +266,27 @@
 .aisle-edit-preview .aislenote-tag-token.aislenote-tag-jump-target {
   animation: aislenote-tag-jump-glow 1.4s ease-out;
   box-shadow:
-    0 0 0 0.1em color-mix(in srgb, var(--editor-tag-bg, #8fd1dc) 42%, transparent),
-    0 0 0.72em color-mix(in srgb, var(--editor-tag-bg, #8fd1dc) 62%, transparent) !important;
+    0 0 0 0.1em color-mix(in srgb, var(--editor-tag-bg, #e5c552) 42%, transparent),
+    0 0 0.72em color-mix(in srgb, var(--editor-tag-bg, #e5c552) 62%, transparent) !important;
 }
 
 @keyframes aislenote-tag-jump-glow {
   0% {
     box-shadow:
-      0 0 0 0 color-mix(in srgb, var(--editor-tag-bg, #8fd1dc) 0%, transparent),
-      0 0 0 color-mix(in srgb, var(--editor-tag-bg, #8fd1dc) 0%, transparent);
+      0 0 0 0 color-mix(in srgb, var(--editor-tag-bg, #e5c552) 0%, transparent),
+      0 0 0 color-mix(in srgb, var(--editor-tag-bg, #e5c552) 0%, transparent);
   }
 
   18% {
     box-shadow:
-      0 0 0 0.12em color-mix(in srgb, var(--editor-tag-bg, #8fd1dc) 58%, transparent),
-      0 0 0.78em color-mix(in srgb, var(--editor-tag-bg, #8fd1dc) 70%, transparent);
+      0 0 0 0.12em color-mix(in srgb, var(--editor-tag-bg, #e5c552) 58%, transparent),
+      0 0 0.78em color-mix(in srgb, var(--editor-tag-bg, #e5c552) 70%, transparent);
   }
 
   100% {
     box-shadow:
-      0 0 0 0.34em color-mix(in srgb, var(--editor-tag-bg, #8fd1dc) 0%, transparent),
-      0 0 0.24em color-mix(in srgb, var(--editor-tag-bg, #8fd1dc) 0%, transparent);
+      0 0 0 0.34em color-mix(in srgb, var(--editor-tag-bg, #e5c552) 0%, transparent),
+      0 0 0.24em color-mix(in srgb, var(--editor-tag-bg, #e5c552) 0%, transparent);
   }
 }
 
@@ -296,7 +296,7 @@
   .aisle-editor-preview-fallback .aislenote-tag-token.aislenote-tag-jump-target,
   .aisle-edit-preview .aislenote-tag-token.aislenote-tag-jump-target {
     animation: none;
-    box-shadow: 0 0 0 0.12em color-mix(in srgb, var(--editor-tag-bg, #8fd1dc) 58%, transparent) !important;
+    box-shadow: 0 0 0 0.12em color-mix(in srgb, var(--editor-tag-bg, #e5c552) 58%, transparent) !important;
   }
 }
 

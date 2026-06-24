@@ -198,7 +198,7 @@
   --editor-popup-bg: #0f1b32;
   --editor-link-text: #9bbcff;
   --editor-tag-text: #06141a;
-  --editor-tag-bg: #8fd1dc;
+  --editor-tag-bg: #e5c552;
   --editor-tooltip-bg: #0f1b32;
   --editor-tooltip-border: #2f4672;
   --editor-tooltip-text: #dce9ff;
@@ -317,7 +317,7 @@
   --custom-palette-warning: var(--custom-theme-warning, #d9a441);
   --custom-palette-success: var(--custom-theme-success, #2fb36d);
   --custom-palette-tag-text: var(--custom-theme-tag-text, #06141a);
-  --custom-palette-tag-bg: var(--custom-theme-tag-bg, #8fd1dc);
+  --custom-palette-tag-bg: var(--custom-theme-tag-bg, #e5c552);
 
   --app-bg: var(--custom-palette-canvas);
   --app-page-bg: radial-gradient(

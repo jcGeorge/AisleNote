@@ -61,7 +61,7 @@ export const DEFAULT_CUSTOM_THEME_PALETTE: CustomThemePalette = {
   warning: '#d9a441',
   success: '#2fb36d',
   tagText: '#06141a',
-  tagBg: '#8fd1dc',
+  tagBg: '#e5c552',
   sidebar: '#0f1b32',
 }
 
@@ -96,7 +96,7 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     warning: '#a96f1f',
     success: '#3f7a5e',
     tagText: '#243047',
-    tagBg: '#f2d47f',
+    tagBg: '#f0c142',
     sidebar: '#e3cb68',
   },
 }

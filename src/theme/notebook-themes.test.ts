@@ -86,8 +86,9 @@ describe('notebook theme palettes', () => {
   })
 
   it('uses theme-specific tag background defaults', () => {
-    expect(getThemePaletteForTheme('dark', {}).tagBg).toBe('#8fd1dc')
-    expect(getThemePaletteForTheme('custom1', {}).tagBg).toBe('#8fd1dc')
+    expect(getThemePaletteForTheme('dark', {}).tagBg).toBe('#e5c552')
+    expect(getThemePaletteForTheme('cheese', {}).tagBg).toBe('#f0c142')
+    expect(getThemePaletteForTheme('custom1', {}).tagBg).toBe('#e5c552')
     expect(getThemePaletteForTheme('custom2', {}).tagBg).toBe('#83ecd2')
     expect(getThemePaletteForTheme('custom3', {}).tagBg).toBe('#d574e2')
   })
