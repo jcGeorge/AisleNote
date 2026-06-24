@@ -1103,26 +1103,37 @@
   color: var(--editor-heading-choice-active-text);
 }
 
-.note-shared-toolbar {
+.note-shared-toolbar.toastui-editor-toolbar {
   --editor-toolbar-spacer-width: 0.9rem;
   position: relative;
   z-index: 18;
   flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 100%;
+  height: auto !important;
   min-height: var(--editor-toolbar-min-height);
   border-bottom: 1px solid var(--app-border);
+  border-radius: 0 !important;
   background: var(--editor-toolbar-bg);
-  padding: 0.125rem 0.25rem;
+  background-clip: padding-box;
+  box-shadow: inset 0 -1px 0 var(--app-border);
+  padding: 0 !important;
   overflow: visible;
 }
 
 .note-shared-toolbar .app-shared-editor-toolbar {
+  box-sizing: border-box !important;
   display: flex !important;
   align-items: center !important;
   flex-wrap: wrap !important;
   column-gap: 0 !important;
   row-gap: 0.15rem !important;
   width: 100% !important;
-  border-bottom: 0 !important;
+  min-width: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  overflow: visible !important;
 }
 
 .note-shared-toolbar .toastui-editor-toolbar-group {
@@ -1290,8 +1301,8 @@
   top: 70%;
   right: 0;
   z-index: 35;
-  width: 1.4rem;
-  height: 4.4rem;
+  width: var(--resize-handle-width, calc(1.4rem + 2px));
+  height: var(--resize-handle-height, calc(4.4rem + 4px));
   padding: 0;
   border: 0;
   border-radius: 999px;
@@ -1306,26 +1317,24 @@
 }
 
 .note-aisle-resize-capsule {
-  width: 0.34rem;
-  height: 3rem;
-  border: 1px solid color-mix(in srgb, var(--app-surface) 35%, transparent);
+  width: var(--resize-handle-capsule-width, calc(0.34rem + 2px));
+  height: var(--resize-handle-capsule-height, calc(3rem + 4px));
+  border: 1px solid var(--note-aisle-resize-border);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--app-border) 78%, var(--app-surface));
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--app-bg) 28%, transparent),
-    0 0.12rem 0.35rem color-mix(in srgb, var(--app-bg) 30%, transparent);
+  background: var(--note-aisle-resize-bg);
+  box-shadow: var(--note-aisle-resize-shadow);
   pointer-events: none;
 }
 
 .note-aisle-resize-btn:hover .note-aisle-resize-capsule,
 .note-aisle-resize-btn:focus-visible .note-aisle-resize-capsule,
 .note-aisle-resize-btn:active .note-aisle-resize-capsule {
-  background: var(--app-primary-border);
-  border-color: color-mix(in srgb, var(--app-primary-border) 35%, var(--app-surface));
+  background: var(--note-aisle-resize-hover-bg);
+  border-color: var(--note-aisle-resize-hover-border);
 }
 
 .note-aisle-resize-btn:focus-visible {
-  outline: 2px solid var(--app-primary-border);
+  outline: 2px solid var(--note-aisle-resize-focus-outline);
   outline-offset: 0.08rem;
 }
 

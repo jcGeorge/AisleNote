@@ -19,8 +19,14 @@
   --notebook-sidebar-control-size: 36px;
   --notebook-sidebar-control-icon-size: 20px;
   --notebook-sidebar-control-gap: 8px;
+  --notebook-sidebar-utility-control-gap: 4px;
+  --notebook-sidebar-control-group-gap: 2px;
   --notebook-sidebar-control-inset-block: 10px;
   --notebook-sidebar-control-inset-inline: 6px;
+  --resize-handle-width: calc(1.4rem + 2px);
+  --resize-handle-height: calc(4.4rem + 4px);
+  --resize-handle-capsule-width: calc(0.34rem + 2px);
+  --resize-handle-capsule-height: calc(3rem + 4px);
   --notebook-sidebar-bg: var(--app-surface);
   --notebook-sidebar-accent: var(--app-primary);
   --notebook-sidebar-active-bg: var(--action-chip-selected-bg);
@@ -37,6 +43,12 @@
   overflow: hidden;
   color: var(--app-text);
   background: var(--app-bg);
+}
+
+.app-shell.notebook-shell,
+.app-shell.notebook-shell.theme-palette-derived {
+  --editor-toolbar-icon-primary: var(--notebook-control-text);
+  --editor-toolbar-icon-secondary: var(--notebook-control-text);
 }
 
 .notebook-shell.theme-palette-derived {
@@ -65,30 +77,46 @@
 
 .notebook-sidebar-resize-handle {
   position: absolute;
-  z-index: 4;
-  top: 0;
-  right: -5px;
-  width: 10px;
-  height: 100%;
+  z-index: 6;
+  top: 70%;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--resize-handle-width);
+  height: var(--resize-handle-height);
   padding: 0;
   border: 0;
+  border-radius: 999px;
   background: transparent;
-  cursor: col-resize;
+  color: var(--app-text-muted);
+  transform: translate(50%, -50%);
+  cursor: ew-resize;
+  touch-action: none;
 }
 
-.notebook-sidebar-resize-handle::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 4px;
-  width: 1px;
-  height: 100%;
-  background: transparent;
+.notebook-sidebar-resize-capsule {
+  width: var(--resize-handle-capsule-width);
+  height: var(--resize-handle-capsule-height);
+  border: 1px solid color-mix(in srgb, var(--notebook-sidebar-bg) 35%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-border) 78%, var(--notebook-sidebar-bg));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--app-bg) 28%, transparent),
+    0 0.12rem 0.35rem color-mix(in srgb, var(--app-bg) 30%, transparent);
+  pointer-events: none;
 }
 
-.notebook-sidebar-resize-handle:hover::before,
-.notebook-sidebar-resize-handle:focus-visible::before {
+.notebook-sidebar-resize-handle:hover .notebook-sidebar-resize-capsule,
+.notebook-sidebar-resize-handle:focus-visible .notebook-sidebar-resize-capsule,
+.notebook-sidebar-resize-handle:active .notebook-sidebar-resize-capsule {
   background: var(--notebook-sidebar-accent);
+  border-color: color-mix(in srgb, var(--notebook-sidebar-accent) 35%, var(--notebook-sidebar-bg));
+}
+
+.notebook-sidebar-resize-handle:focus-visible {
+  outline: 2px solid var(--notebook-sidebar-accent);
+  outline-offset: 0.08rem;
 }
 
 .notebook-sidebar-header {
@@ -101,8 +129,9 @@
       var(--notebook-sidebar-control-size)
       + var(--notebook-sidebar-control-size)
       + var(--notebook-sidebar-control-size)
-      + var(--notebook-sidebar-control-gap)
-      + var(--notebook-sidebar-control-gap)
+      + var(--notebook-sidebar-utility-control-gap)
+      + var(--notebook-sidebar-utility-control-gap)
+      + var(--notebook-sidebar-control-group-gap)
       + var(--notebook-sidebar-control-inset-inline)
     )
     var(--notebook-sidebar-control-inset-block)
@@ -200,9 +229,9 @@
   right: calc(
     var(--notebook-sidebar-control-inset-inline)
     + var(--notebook-sidebar-control-size)
-    + var(--notebook-sidebar-control-gap)
+    + var(--notebook-sidebar-utility-control-gap)
     + var(--notebook-sidebar-control-size)
-    + var(--notebook-sidebar-control-gap)
+    + var(--notebook-sidebar-utility-control-gap)
   );
   top: var(--notebook-sidebar-control-inset-block);
   z-index: 5;
@@ -216,7 +245,7 @@
   right: calc(
     var(--notebook-sidebar-control-inset-inline)
     + var(--notebook-sidebar-control-size)
-    + var(--notebook-sidebar-control-gap)
+    + var(--notebook-sidebar-utility-control-gap)
   );
   top: var(--notebook-sidebar-control-inset-block);
   z-index: 5;
@@ -995,8 +1024,8 @@
 .notebook-setup-main {
   width: 100%;
   min-height: 100vh;
-  background: #1e1e1e;
-  color: #f5f5f5;
+  background: var(--app-page-bg);
+  color: var(--app-text);
 }
 
 .notebook-setup-screen {
@@ -1023,7 +1052,7 @@
 
 .notebook-setup-brand h1 {
   margin: 0;
-  color: #ffffff;
+  color: var(--app-text-heading);
   font-size: 2rem;
   font-weight: 760;
   line-height: 1.1;
@@ -1031,7 +1060,7 @@
 
 .notebook-setup-brand p {
   margin: 0;
-  color: #b8b8b8;
+  color: var(--app-text-muted);
   font-size: var(--ui-font-sm);
 }
 
@@ -1039,10 +1068,10 @@
   display: grid;
   width: min(448px, 100%);
   padding: 18px 20px;
-  border: 1px solid #2f2f2f;
+  border: 1px solid var(--app-border-muted);
   border-radius: 8px;
-  background: #252525;
-  box-shadow: 0 18px 60px rgb(0 0 0 / 26%);
+  background: var(--app-surface-raised);
+  box-shadow: var(--app-shadow-popover);
 }
 
 .notebook-setup-action-row {
@@ -1052,7 +1081,7 @@
   gap: 18px;
   min-height: 72px;
   padding: 10px 0;
-  border-bottom: 1px solid #373737;
+  border-bottom: 1px solid var(--app-border-muted);
 }
 
 .notebook-setup-action-row:last-child {
@@ -1067,7 +1096,7 @@
 
 .notebook-setup-action-copy h2 {
   margin: 0;
-  color: #f2f2f2;
+  color: var(--app-text-heading);
   font-size: var(--ui-font-md);
   font-weight: 720;
   line-height: 1.25;
@@ -1075,7 +1104,7 @@
 
 .notebook-setup-action-copy p {
   margin: 0;
-  color: #c2c2c2;
+  color: var(--app-text-muted);
   font-size: var(--ui-font-sm);
   line-height: 1.35;
 }
@@ -1084,10 +1113,10 @@
   min-width: 100px;
   min-height: 34px;
   padding: 7px 14px;
-  border: 1px solid #444;
+  border: 1px solid var(--settings-action-border);
   border-radius: 6px;
-  background: #3a3a3a;
-  color: #f4f4f4;
+  background: var(--settings-action-bg);
+  color: var(--settings-action-text);
   font: inherit;
   font-weight: 650;
   cursor: pointer;
@@ -1095,20 +1124,22 @@
 
 .notebook-setup-action-button:hover,
 .notebook-setup-action-button:focus-visible {
-  border-color: #565656;
-  background: #454545;
+  border-color: var(--settings-action-hover-border);
+  background: var(--settings-action-hover-bg);
+  color: var(--settings-action-hover-text);
 }
 
 .notebook-setup-action-button.is-primary {
-  border-color: #8957e5;
-  background: #8957e5;
-  color: #ffffff;
+  border-color: var(--modal-primary-border);
+  background: var(--modal-primary-bg);
+  color: var(--modal-primary-text);
 }
 
 .notebook-setup-action-button.is-primary:hover,
 .notebook-setup-action-button.is-primary:focus-visible {
-  border-color: #9b70ef;
-  background: #9b70ef;
+  border-color: var(--modal-primary-hover-border);
+  background: var(--modal-primary-hover-bg);
+  color: var(--modal-primary-text);
 }
 
 .notebook-manager-card.is-error {

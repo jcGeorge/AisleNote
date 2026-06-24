@@ -561,6 +561,37 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
   }
 
+  const buildNotebookTargetPathFromProfileRoot = (profileRootPath) => {
+    const targetPath = typeof profileRootPath === 'string' ? path.resolve(profileRootPath) : ''
+    const validation = validateNotebookName(path.basename(targetPath))
+    if (!validation.ok) return validation
+    const locationValidation = validateNotebookLocationPath(path.dirname(targetPath))
+    if (!locationValidation.ok) return locationValidation
+    const nesting = validateNotebookFolderNesting(targetPath)
+    if (!nesting.ok) return nesting
+    return {
+      ok: true,
+      name: validation.name,
+      profileRootPath: targetPath,
+    }
+  }
+
+  const chooseNotebookTargetPath = async () => {
+    if (!dialog || typeof dialog.showSaveDialog !== 'function') {
+      return { ok: false, error: 'Notebook creation is unavailable.' }
+    }
+    const selection = await dialog.showSaveDialog({
+      title: 'Create notebook',
+      defaultPath: 'AisleNote Notebook',
+      buttonLabel: 'Create',
+      nameFieldLabel: 'Notebook name',
+      message: 'Choose where to create the new AisleNote notebook folder.',
+      properties: ['createDirectory', 'showOverwriteConfirmation'],
+    })
+    if (selection.canceled || !selection.filePath) return { canceled: true }
+    return buildNotebookTargetPathFromProfileRoot(selection.filePath)
+  }
+
   const notebookDirectoryHasEntries = (profileRootPath) => {
     try {
       return existsSync(profileRootPath) && readdirSync(profileRootPath).length > 0
@@ -1205,7 +1236,12 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   }
 
   const createNotebook = async (_event, payload = {}) => {
-    const target = buildNotebookTargetPath(payload?.locationPath, payload?.name)
+    const hasDirectTarget =
+      typeof payload?.name === 'string' || typeof payload?.locationPath === 'string'
+    const target = hasDirectTarget
+      ? buildNotebookTargetPath(payload?.locationPath, payload?.name)
+      : await chooseNotebookTargetPath()
+    if (target.canceled) return { canceled: true, status }
     if (!target.ok) return { ok: false, error: target.error, status }
     if (existsSync(target.profileRootPath)) {
       return {

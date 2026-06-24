@@ -245,6 +245,52 @@ describe('notebook folder IPC operations', () => {
     expect(forgotten.status.knownNotebooks.map((notebook) => notebook.notebookName)).toEqual(['Christianity'])
   })
 
+  it('creates a notebook from the native create dialog target path', async () => {
+    const root = tempRoot()
+    const userDataPath = path.join(root, 'user-data')
+    const notebooksRoot = path.join(root, 'notebooks')
+    const notebookPath = path.join(notebooksRoot, 'Daily Notes')
+    mkdirSync(userDataPath, { recursive: true })
+    mkdirSync(notebooksRoot, { recursive: true })
+    const dialog = {
+      showSaveDialog: vi.fn(async () => ({ canceled: false, filePath: notebookPath })),
+    }
+    const { ipcMain } = createStorageSession(userDataPath, { dialog })
+
+    const created = await callHandler(ipcMain, 'create-notebook')
+
+    expect(dialog.showSaveDialog).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Create notebook',
+      buttonLabel: 'Create',
+      properties: expect.arrayContaining(['createDirectory', 'showOverwriteConfirmation']),
+    }))
+    expect(created.ok).toBe(true)
+    expect(created.status.notebookName).toBe('Daily Notes')
+    expect(created.status.notebookPath).toBe(notebookPath)
+    expect(existsSync(path.join(notebookPath, 'manifest.json'))).toBe(true)
+  })
+
+  it('leaves setup state unchanged when native notebook creation is canceled', async () => {
+    const root = tempRoot()
+    const userDataPath = path.join(root, 'user-data')
+    mkdirSync(userDataPath, { recursive: true })
+    const dialog = {
+      showSaveDialog: vi.fn(async () => ({ canceled: true })),
+    }
+    const { ipcMain } = createStorageSession(userDataPath, { dialog })
+
+    const created = await callHandler(ipcMain, 'create-notebook')
+
+    expect(created).toMatchObject({
+      canceled: true,
+      status: {
+        status: 'setup-required',
+        notebookPath: '',
+        canWrite: false,
+      },
+    })
+  })
+
   it('renames the underlying notebook folder and updates the remembered path', async () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')

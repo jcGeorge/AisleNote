@@ -50,6 +50,24 @@ describe('NotebookApp sidebar search wiring', () => {
   })
 })
 
+describe('NotebookApp sidebar resize handle', () => {
+  it('uses an explicit capsule handle with double-click reset', () => {
+    expect(source).toContain('const resetSidebarWidth = useCallback')
+    expect(source).toContain('sidebarWidth: clampSidebarWidth(DEFAULT_UI_SETTINGS.sidebarWidth)')
+    expect(source).toContain('className="notebook-sidebar-resize-handle"')
+    expect(source).toContain('data-app-tooltip="Drag to resize. Double click to reset."')
+    expect(source).toContain('onDoubleClick={resetSidebarWidth}')
+    expect(source).toContain('className="notebook-sidebar-resize-capsule"')
+    expect(appCss).toContain('--resize-handle-width: calc(1.4rem + 2px);')
+    expect(appCss).toContain('--resize-handle-height: calc(4.4rem + 4px);')
+    expect(appCss).toContain('--resize-handle-capsule-width: calc(0.34rem + 2px);')
+    expect(appCss).toContain('--resize-handle-capsule-height: calc(3rem + 4px);')
+    expect(appCss).toContain('.notebook-sidebar-resize-handle {\n  position: absolute;\n  z-index: 6;\n  top: 70%;')
+    expect(appCss).toContain('.notebook-sidebar-resize-capsule')
+    expect(appCss).not.toContain('.notebook-sidebar-resize-handle::before')
+  })
+})
+
 describe('NotebookApp tag autocomplete wiring', () => {
   it('connects editor tag autocomplete to the existing tag index and menu', () => {
     expect(source).toContain("import { TagAutocompleteMenu } from '../components/editor/TagAutocompleteMenu'")
@@ -120,12 +138,13 @@ describe('NotebookApp notebook manager wiring', () => {
     expect(source).not.toContain('serializedState: getSerializedStateForStorageAction')
   })
 
-  it('uses setup-specific Obsidian-style startup styling', () => {
+  it('uses setup-specific theme-aware startup styling', () => {
     expect(appCss).toContain('.notebook-setup-brand')
     expect(appCss).toContain('.notebook-setup-action-row')
     expect(appCss).toContain('.notebook-setup-action-button.is-primary')
-    expect(appCss).toContain('background: #1e1e1e')
-    expect(appCss).toContain('background: #252525')
+    expect(appCss).toContain('background: var(--app-page-bg)')
+    expect(appCss).toContain('background: var(--app-surface-raised)')
+    expect(appCss).toContain('border: 1px solid var(--app-border-muted)')
   })
 
   it('subscribes to the Electron Open Notebook menu navigation event', () => {

@@ -44,6 +44,7 @@ import type {
   ShortcutId,
   TableControlTargetMode,
   TableOfContentsScope,
+  ToolbarToolId,
   TipId,
   ToastTone,
   ViewMode,
@@ -91,6 +92,7 @@ import {
   getDefaultToolbarLayout,
   getDuplicateToolbarLayoutName,
   getNextCoolbarToolbarLayoutName,
+  getToolbarGroupClassName,
   getToolbarLayouts,
   insertToolbarLayoutItemAtIndex,
   isProtectedToolbarLayoutId,
@@ -108,6 +110,8 @@ import { resetAisleWidthForLocation, setAisleWidthForLocation } from '../notes/a
 import { NoteWorkspace } from '../components/notes/NoteWorkspace'
 import { scrollAislePaneIntoHorizontalView } from '../components/notes/aisle-horizontal-scroll'
 import { SharedEditorToolbar } from '../components/editor/SharedEditorToolbar'
+import { ToolbarToolVisual } from '../components/editor/ToolbarToolVisual'
+import { ToolbarToolIcon } from '../components/editor/ToolbarToolIcon'
 import { LinkPrompt } from '../components/editor/LinkPrompt'
 import { ShortcutMenu } from '../components/editor/ShortcutMenu'
 import { EditorToolbarPopovers } from '../components/editor/EditorToolbarPopovers'
@@ -136,6 +140,7 @@ import { MessagesView } from '../components/messages/MessagesView'
 import { TrashMarkdownPreview } from '../components/trash/TrashMarkdownPreview'
 import { ToolbarSettingsPanel } from '../components/settings/ToolbarSettingsPanel'
 import { ShortcutMenuSettingsPanel } from '../components/settings/ShortcutMenuSettingsPanel'
+import { CustomThemeColorPicker } from '../components/settings/CustomThemeColorPicker'
 import { clampContextMenuPosition, type MenuPosition, type MenuSize, type MenuViewport } from '../components/overlays/context-menu-position'
 import { useEditorToolbarState } from '../editor/useEditorToolbarState'
 import { useNotebookAisleEditors } from '../editor/useNotebookAisleEditors'
@@ -199,6 +204,7 @@ import {
   DEFAULT_UI_SETTINGS,
   clampNoteFontScale,
   clampToolbarButtonScale,
+  normalizeHexColor,
 } from '../settings/defaults'
 import {
   collectNotebookIds,
@@ -289,7 +295,7 @@ import { openExternalWebUrl } from '../notes/external-links'
 
 void React
 
-const SIDEBAR_MIN_WIDTH = 220
+const SIDEBAR_MIN_WIDTH = 212
 const SIDEBAR_MAX_WIDTH = 520
 const NOTEBOOK_FOCUS_BOUNDARY_FLUSH_DELAY_MS = 60
 
@@ -1858,6 +1864,101 @@ function getRangeProgressStyle(value: number, min: number, max: number): CSSProp
   } as CSSProperties
 }
 
+function isSixDigitHexDraft(value: string): boolean {
+  return /^#?[0-9a-f]{6}$/i.test(value.trim())
+}
+
+function CustomThemePaletteSlotRow({
+  slot,
+  label,
+  value,
+  fallbackValue,
+  isPickerOpen,
+  onTogglePicker,
+  onClosePicker,
+  onChange,
+}: {
+  slot: CustomThemePaletteSlot
+  label: string
+  value: string
+  fallbackValue: string
+  isPickerOpen: boolean
+  onTogglePicker: () => void
+  onClosePicker: () => void
+  onChange: (value: string) => void
+}) {
+  const [hexDraft, setHexDraft] = useState(value)
+
+  useEffect(() => {
+    setHexDraft(value)
+  }, [value])
+
+  const commitHexDraft = (rawValue: string): boolean => {
+    const normalized = normalizeHexColor(rawValue)
+    if (!normalized) return false
+    setHexDraft(normalized)
+    onChange(normalized)
+    return true
+  }
+
+  const handleHexDraftChange = (rawValue: string) => {
+    setHexDraft(rawValue)
+    if (isSixDigitHexDraft(rawValue)) commitHexDraft(rawValue)
+  }
+
+  const handleHexDraftBlur = () => {
+    if (commitHexDraft(hexDraft)) return
+    setHexDraft(value)
+  }
+
+  const handleHexDraftKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setHexDraft(value)
+      event.currentTarget.blur()
+      return
+    }
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    if (commitHexDraft(hexDraft)) return
+    setHexDraft(value)
+  }
+
+  return (
+    <div className="custom-theme-slot">
+      <span className="custom-theme-slot-label">{label}</span>
+      <CustomThemeColorPicker
+        slotId={slot}
+        label={label}
+        value={value}
+        fallbackValue={fallbackValue}
+        isOpen={isPickerOpen}
+        onToggle={onTogglePicker}
+        onClose={onClosePicker}
+        onChange={onChange}
+      />
+      <input
+        className="settings-text-input custom-theme-hex-input"
+        type="text"
+        value={hexDraft}
+        spellCheck={false}
+        inputMode="text"
+        autoComplete="off"
+        aria-label={`${label} hex value`}
+        onChange={(event) => handleHexDraftChange(event.target.value)}
+        onBlur={handleHexDraftBlur}
+        onKeyDown={handleHexDraftKeyDown}
+      />
+    </div>
+  )
+}
+
+const VISUALS_THEME_TOOLBAR_PREVIEW_GROUPS: ToolbarToolId[][] = [
+  ['copy', 'frontmatter', 'tableOfContents', 'aisles', 'findReplace'],
+  ['heading', 'bold', 'italic', 'highlight', 'strike'],
+  ['taskList', 'table'],
+]
+
 function NotebookThemeSettings({
   state,
   onMutateState,
@@ -1867,8 +1968,18 @@ function NotebookThemeSettings({
 }) {
   const selectedCustomTheme = state.ui.selectedCustomTheme ?? 'custom1'
   const selectedPalette = getThemePaletteForTheme(state.theme, state.ui.themePalettes)
+  const selectedPaletteSeed = getCustomThemePaletteSeed(state.theme)
   const noteFontScale = clampNoteFontScale(state.ui.noteFontScale)
   const toolbarButtonScale = clampToolbarButtonScale(state.ui.toolbarButtonScale ?? 1)
+  const [openPaletteSlot, setOpenPaletteSlot] = useState<CustomThemePaletteSlot | null>(null)
+  const previewScaleStyle = {
+    '--note-font-scale': String(noteFontScale),
+    '--toolbar-button-scale': String(toolbarButtonScale),
+  } as CSSProperties
+
+  useEffect(() => {
+    setOpenPaletteSlot(null)
+  }, [state.theme])
 
   const updateTheme = (theme: AppTheme) => {
     onMutateState((previous) => ({
@@ -2009,35 +2120,110 @@ function NotebookThemeSettings({
           </div>
         </label>
       </div>
-      <div className="notebook-theme-preview" aria-label="Theme preview">
-        <div className="notebook-theme-preview-sidebar">
-          <span />
-          <strong>Notebook</strong>
-          <button type="button">Active note</button>
-          <button type="button">Folder item</button>
-        </div>
-        <div className="notebook-theme-preview-editor">
-          <div className="notebook-theme-preview-toolbar">
-            <span />
-            <span />
-            <span />
-          </div>
-          <div className="notebook-theme-preview-page">
-            <strong>Editor surface</strong>
-            <p>Markdown, aisle overlays, and menus inherit the active theme tokens.</p>
+      <div className="visuals-theme-preview" aria-label="Theme preview">
+        <div className="visuals-preview-canvas" style={previewScaleStyle}>
+          <aside className="visuals-preview-sidebar" aria-label="Preview notebook tree">
+            <div className="visuals-preview-tree" aria-hidden="true">
+              <div className="visuals-preview-tree-row is-folder">
+                <AppIcon iconId="folderOpen" className="visuals-preview-tree-icon" />
+                <span className="visuals-preview-tree-title">Product work</span>
+              </div>
+              <div className="visuals-preview-tree-row is-note is-selected">
+                <span className="visuals-preview-tree-title">Launch checklist</span>
+              </div>
+              <div className="visuals-preview-tree-row is-note">
+                <span className="visuals-preview-tree-title">Customer calls</span>
+              </div>
+            </div>
+          </aside>
+          <div className="visuals-preview-workspace">
+            <div className="visuals-preview-toolbar note-shared-toolbar toastui-editor-toolbar" aria-label="Preview note toolbar">
+              <div className="toastui-editor-defaultUI-toolbar app-shared-editor-toolbar">
+                {VISUALS_THEME_TOOLBAR_PREVIEW_GROUPS.map((group, groupIndex) => {
+                  const previewItems = group.map((toolId) => ({
+                    id: `visuals-preview-tool-${toolId}`,
+                    type: 'tool' as const,
+                    toolId,
+                  }))
+
+                  return (
+                    <div
+                      key={`visuals-preview-toolbar-group-${groupIndex}`}
+                      className={`visuals-preview-toolbar-group ${getToolbarGroupClassName(previewItems)}`}
+                    >
+                      {previewItems.map((item) => (
+                        <ToolbarToolVisual
+                          key={item.id}
+                          toolId={item.toolId}
+                          iconOnlyTextTools
+                          tooltipsDisabled
+                          buttonProps={{
+                            className: 'visuals-preview-toolbar-tool',
+                            disabled: true,
+                            tabIndex: -1,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="visuals-preview-panel">
+              <div className="visuals-preview-note-header">
+                <div className="visuals-preview-note-title">
+                  <strong>Launch checklist</strong>
+                </div>
+                <div className="visuals-preview-note-actions" aria-label="Preview aisle indicators">
+                  <button
+                    type="button"
+                    className="note-aisle-action-btn note-aisle-link-btn visuals-preview-note-action"
+                    aria-label="Synced duplicate"
+                    disabled
+                    tabIndex={-1}
+                  >
+                    <ToolbarToolIcon toolId="link" className="note-aisle-link-icon" />
+                  </button>
+                  <button
+                    type="button"
+                    className="note-aisle-action-btn note-aisle-frontmatter-btn visuals-preview-note-action"
+                    aria-label="Frontmatter"
+                    disabled
+                    tabIndex={-1}
+                  >
+                    <span className="frontmatter-toolbar-icon note-aisle-frontmatter-icon" aria-hidden="true">fm</span>
+                  </button>
+                </div>
+              </div>
+              <article className="visuals-preview-editor-sample toastui-editor-contents">
+                <h3 className="visuals-preview-heading">Release brief</h3>
+                <p className="visuals-preview-tag-line">
+                  Scope tagged <span className="aislenote-tag-token">#launch</span> and{' '}
+                  <span className="aislenote-tag-token">#customer</span>
+                </p>
+                <ul className="visuals-preview-list">
+                  <li>Lock the announcement copy after legal review.</li>
+                  <li>Attach launch images and confirm captions.</li>
+                  <li>Publish support notes before the release window.</li>
+                </ul>
+              </article>
+            </div>
           </div>
         </div>
       </div>
-      <div className="notebook-palette-editor" aria-label="Active theme palette editor">
+      <div className="custom-theme-grid" aria-label="Active theme palette editor">
         {CUSTOM_THEME_PALETTE_SLOTS.map((slot) => (
-          <label key={slot}>
-            {CUSTOM_THEME_PALETTE_LABELS[slot]}
-            <input
-              type="color"
-              value={selectedPalette[slot]}
-              onChange={(event) => updatePaletteSlot(slot, event.target.value)}
-            />
-          </label>
+          <CustomThemePaletteSlotRow
+            key={slot}
+            slot={slot}
+            label={CUSTOM_THEME_PALETTE_LABELS[slot]}
+            value={selectedPalette[slot]}
+            fallbackValue={selectedPaletteSeed[slot]}
+            isPickerOpen={openPaletteSlot === slot}
+            onTogglePicker={() => setOpenPaletteSlot((current) => (current === slot ? null : slot))}
+            onClosePicker={() => setOpenPaletteSlot((current) => (current === slot ? null : current))}
+            onChange={(value) => updatePaletteSlot(slot, value)}
+          />
         ))}
       </div>
       <button type="button" className="notebook-settings-action" onClick={resetSelectedPalette}>
@@ -4937,6 +5123,21 @@ export function NotebookApp() {
     }
   }, [])
 
+  const resetSidebarWidth = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      mutateState((previous) => ({
+        ...previous,
+        ui: {
+          ...previous.ui,
+          sidebarWidth: clampSidebarWidth(DEFAULT_UI_SETTINGS.sidebarWidth),
+        },
+      }))
+    },
+    [mutateState],
+  )
+
   const toolbar = activeModel ? (
     <SharedEditorToolbar
       layout={toolbarLayout}
@@ -5000,16 +5201,7 @@ export function NotebookApp() {
   }), [])
 
   const createNotebookFromSettings = useCallback(() => {
-    const name = window.prompt('Notebook name')?.trim()
-    if (!name) return
-    void (async () => {
-      const locationPath = await storageProfileController.chooseNotebookLocation()
-      if (!locationPath) return
-      await storageProfileController.createNotebook({
-        name,
-        locationPath,
-      })
-    })()
+    void storageProfileController.createNotebook()
   }, [storageProfileController])
 
   const renameCurrentNotebookFromSettings = useCallback(() => {
@@ -6002,7 +6194,9 @@ export function NotebookApp() {
     <section className="notebook-utility-content notebook-settings-panel" aria-label="Settings">
       {renderSegmentedTabs('Settings sections', SETTINGS_SECTION_TABS, settingsSection, setSettingsSection)}
       {settingsSection === 'data' ? renderDataSettings() : null}
-      {settingsSection === 'visuals' ? <NotebookThemeSettings state={state} onMutateState={mutateState} /> : null}
+      {settingsSection === 'visuals' ? (
+        <NotebookThemeSettings state={state} onMutateState={mutateState} />
+      ) : null}
       {settingsSection === 'toolbar' ? renderToolbarSettings() : null}
       {settingsSection === 'hotkeys' ? renderHotkeySettings() : null}
       {settingsSection === 'shortcuts' ? renderShortcutSettings() : null}
@@ -6176,7 +6370,7 @@ export function NotebookApp() {
         <>
       <aside
         className={`notebook-sidebar ${state.ui.sidebarCollapsed ? 'is-collapsed' : ''}`}
-        style={{ width: state.ui.sidebarCollapsed ? 48 : state.ui.sidebarWidth }}
+        style={{ width: state.ui.sidebarCollapsed ? 48 : clampSidebarWidth(state.ui.sidebarWidth) }}
       >
         {!state.ui.sidebarCollapsed ? (
           <div className="notebook-sidebar-header" aria-label="Notebook actions">
@@ -6305,11 +6499,15 @@ export function NotebookApp() {
             className="notebook-sidebar-resize-handle"
             aria-label="Resize sidebar"
             title="Resize sidebar"
+            data-app-tooltip="Drag to resize. Double click to reset."
             onPointerDown={startSidebarResize}
             onPointerMove={updateSidebarResize}
             onPointerUp={finishSidebarResize}
             onPointerCancel={finishSidebarResize}
-          />
+            onDoubleClick={resetSidebarWidth}
+          >
+            <span className="notebook-sidebar-resize-capsule" aria-hidden="true" />
+          </button>
         ) : null}
         <button
           className="notebook-icon-button notebook-sidebar-toggle"

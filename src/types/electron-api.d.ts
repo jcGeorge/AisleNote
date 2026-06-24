@@ -328,7 +328,7 @@ declare global {
         | { ok: true; locationPath: string }
         | { ok: false; error: string }
       >
-      createNotebook?: (payload: { name: string; locationPath: string }) => Promise<StorageProfileActionResult>
+      createNotebook?: (payload?: { name: string; locationPath: string }) => Promise<StorageProfileActionResult>
       renameNotebook?: (payload: { name: string }) => Promise<StorageProfileActionResult>
       openNotebook?: () => Promise<StorageProfileActionResult>
       switchNotebook?: (payload: NotebookSelectorPayload) => Promise<StorageProfileActionResult>

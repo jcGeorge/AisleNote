@@ -76,7 +76,7 @@ export const MAX_AUTO_REMOVE_DAYS = 365
 export const DEFAULT_UI_SETTINGS: AppState['ui'] = {
   ...DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
   sidebarCollapsed: false,
-  sidebarWidth: 280,
+  sidebarWidth: 212,
   collapsedFolderIds: [],
   noteFilter: {
     active: false,

@@ -106,7 +106,7 @@ export function createDefaultAppState(options = {}) {
     },
     ui: {
       sidebarCollapsed: false,
-      sidebarWidth: 280,
+      sidebarWidth: 212,
       collapsedFolderIds: [],
       findCaseSensitive: false,
       findWholeWord: false,

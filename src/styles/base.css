@@ -93,7 +93,10 @@
   --settings-hotkey-label-text: #dbe8ff;
   --settings-range-value-text: var(--app-text-heading);
   --settings-range-track-bg: color-mix(in srgb, var(--settings-control-border) 72%, var(--settings-control-bg));
+  --settings-range-track-hover-bg: color-mix(in srgb, var(--settings-range-track-bg) 76%, var(--app-primary-border));
   --settings-range-thumb-bg: var(--app-primary);
+  --settings-range-thumb-hover-bg: var(--app-primary-hover);
+  --settings-range-thumb-hover-border: var(--app-primary-border);
   --settings-switch-bg: var(--app-surface);
   --settings-switch-border: #5f759f;
   --settings-switch-thumb-bg: color-mix(in srgb, var(--settings-switch-bg) 72%, var(--settings-switch-border));
@@ -226,6 +229,14 @@
   --editor-pre-border: #1f2a3d;
   --editor-tooltip-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
   --editor-floating-action-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  --note-aisle-resize-bg: color-mix(in srgb, var(--app-border) 78%, var(--app-surface));
+  --note-aisle-resize-border: color-mix(in srgb, var(--app-surface) 35%, transparent);
+  --note-aisle-resize-shadow:
+    0 0 0 1px color-mix(in srgb, var(--app-bg) 28%, transparent),
+    0 0.12rem 0.35rem color-mix(in srgb, var(--app-bg) 30%, transparent);
+  --note-aisle-resize-hover-bg: var(--app-primary-border);
+  --note-aisle-resize-hover-border: color-mix(in srgb, var(--app-primary-border) 35%, var(--app-surface));
+  --note-aisle-resize-focus-outline: var(--app-primary-border);
 
   --task-reorder-source-bg: rgba(111, 160, 255, 0.08);
   --task-reorder-source-shadow: inset 0 0 0 1px rgba(111, 160, 255, 0.16);
@@ -372,10 +383,13 @@
   --settings-section-tab-hover-text: var(--app-text-bright);
   --settings-section-tab-active-bg: var(--custom-palette-primary);
   --settings-section-tab-active-border: var(--app-primary-border);
-  --settings-section-tab-active-text: var(--app-text-bright);
+  --settings-section-tab-active-text: #ffffff;
   --settings-divider-bg: var(--app-border);
   --settings-hotkey-label-text: var(--app-text-heading);
   --settings-range-value-text: var(--app-text-heading);
+  --settings-range-track-hover-bg: color-mix(in srgb, var(--settings-range-track-bg) 76%, var(--app-primary-border));
+  --settings-range-thumb-hover-bg: var(--app-primary-hover);
+  --settings-range-thumb-hover-border: var(--app-primary-border);
   --settings-switch-bg: var(--app-surface);
   --settings-switch-border: color-mix(in srgb, var(--custom-palette-border) 62%, var(--custom-palette-text));
   --settings-switch-focus-border: var(--custom-palette-primary);
@@ -389,7 +403,7 @@
   --theme-switch-option-hover-bg: color-mix(in srgb, var(--custom-palette-primary) 14%, var(--custom-palette-surface));
   --theme-switch-option-hover-text: var(--app-text-bright);
   --theme-switch-option-selected-bg: var(--custom-palette-primary);
-  --theme-switch-option-selected-text: var(--app-text-bright);
+  --theme-switch-option-selected-text: #ffffff;
   --settings-shortcut-bg: var(--app-surface);
   --settings-shortcut-text: var(--app-text-bright);
   --settings-shortcut-border: color-mix(in srgb, var(--custom-palette-border) 74%, var(--custom-palette-canvas));
@@ -429,7 +443,7 @@
   --action-chip-text: var(--app-text-soft);
   --action-chip-bg: color-mix(in srgb, var(--custom-palette-surface) 86%, var(--custom-palette-primary));
   --action-chip-selected-border: var(--app-primary-border);
-  --action-chip-selected-text: var(--app-text-bright);
+  --action-chip-selected-text: #ffffff;
   --action-chip-selected-bg: var(--custom-palette-primary);
   --danger-action-border: color-mix(in srgb, var(--custom-palette-danger) 72%, var(--custom-palette-border));
   --danger-action-text: color-mix(in srgb, var(--custom-palette-danger) 36%, var(--app-text));
@@ -454,7 +468,7 @@
   --modal-cancel-hover-text: var(--app-text-bright);
   --modal-cancel-hover-border: var(--app-primary-border);
   --modal-cancel-hover-bg: color-mix(in srgb, var(--custom-palette-primary) 14%, transparent);
-  --modal-primary-text: var(--app-text-bright);
+  --modal-primary-text: #ffffff;
   --modal-primary-border: var(--app-primary-border);
   --modal-primary-bg: var(--custom-palette-primary);
   --modal-primary-hover-bg: var(--app-primary-hover);
@@ -511,6 +525,14 @@
   --editor-pre-border: color-mix(in srgb, var(--custom-palette-border) 58%, var(--custom-palette-canvas));
   --editor-tooltip-shadow: 0 4px 12px color-mix(in srgb, var(--custom-palette-canvas) 36%, transparent);
   --editor-floating-action-shadow: 0 8px 18px color-mix(in srgb, var(--custom-palette-canvas) 28%, transparent);
+  --note-aisle-resize-bg: color-mix(in srgb, var(--app-border) 78%, var(--app-surface));
+  --note-aisle-resize-border: color-mix(in srgb, var(--app-surface) 35%, transparent);
+  --note-aisle-resize-shadow:
+    0 0 0 1px color-mix(in srgb, var(--custom-palette-canvas) 28%, transparent),
+    0 0.12rem 0.35rem color-mix(in srgb, var(--custom-palette-canvas) 30%, transparent);
+  --note-aisle-resize-hover-bg: var(--app-primary-border);
+  --note-aisle-resize-hover-border: color-mix(in srgb, var(--app-primary-border) 35%, var(--app-surface));
+  --note-aisle-resize-focus-outline: var(--app-primary-border);
 
   --task-reorder-source-bg: color-mix(in srgb, var(--custom-palette-primary) 8%, transparent);
   --task-reorder-source-shadow: inset 0 0 0 1px color-mix(in srgb, var(--custom-palette-primary) 16%, transparent);

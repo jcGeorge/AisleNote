@@ -1,7 +1,10 @@
+import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { getPickerPanelPlacement } from '../../settings/color-utils'
 import { CustomThemeColorPicker } from './CustomThemeColorPicker'
+
+void React
 
 function renderPicker(isOpen: boolean) {
   return renderToStaticMarkup(
@@ -35,6 +38,7 @@ describe('CustomThemeColorPicker', () => {
     expect(html).toContain('aria-label="primary saturation and darkness"')
     expect(html).toContain('aria-label="primary hue"')
     expect(html).toContain('aria-label="primary picker hex value"')
+    expect(html).toContain('custom-color-picker-hex-label">hex</span>')
     expect(html).toContain('aria-label="copy primary hex"')
     expect(html).toContain('#2f67de')
   })

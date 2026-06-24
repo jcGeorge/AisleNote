@@ -1,3 +1,4 @@
+import * as React from 'react'
 import {
   useEffect,
   useLayoutEffect,
@@ -18,6 +19,8 @@ import {
   type HsvColor,
 } from '../../settings/color-utils'
 import { normalizeHexColor } from '../../settings/defaults'
+
+void React
 
 type CustomThemeColorPickerProps = {
   slotId: string
@@ -55,6 +58,7 @@ export function CustomThemeColorPicker({
   const rootRef = useRef<HTMLDivElement | null>(null)
   const buttonRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
+  const hexInputRef = useRef<HTMLInputElement | null>(null)
   const copyStatusResetRef = useRef<number | null>(null)
   const panelAnchorRef = useRef<{ x: number; y: number } | null>(null)
   const [hsv, setHsv] = useState<HsvColor>(() => hexToHsv(value, fallbackValue))
@@ -110,6 +114,15 @@ export function CustomThemeColorPicker({
       window.removeEventListener('resize', updatePanelPlacement)
       window.removeEventListener('scroll', updatePanelPlacement, true)
     }
+  }, [isOpen])
+
+  useLayoutEffect(() => {
+    if (!isOpen || !hexInputRef.current) return undefined
+    const frame = window.requestAnimationFrame(() => {
+      hexInputRef.current?.focus()
+      hexInputRef.current?.select()
+    })
+    return () => window.cancelAnimationFrame(frame)
   }, [isOpen])
 
   useEffect(() => {
@@ -293,12 +306,15 @@ export function CustomThemeColorPicker({
           </label>
           <div className="custom-color-picker-hex-row">
             <span className="custom-color-picker-preview-swatch" aria-hidden="true" />
+            <span className="custom-color-picker-hex-label">hex</span>
             <input
+              ref={hexInputRef}
               className="settings-text-input custom-color-picker-hex-input"
               type="text"
               value={hexDraft}
               spellCheck={false}
               inputMode="text"
+              autoComplete="off"
               aria-label={`${label} picker hex value`}
               onChange={(event) => handleHexDraftChange(event.target.value)}
               onBlur={handleHexDraftBlur}

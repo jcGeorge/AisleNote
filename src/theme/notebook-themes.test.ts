@@ -63,9 +63,22 @@ describe('notebook theme palettes', () => {
     expect(overrides.light?.surface).toBe('#222222')
   })
 
-  it('uses the visible Dawn outer background as the canvas seed', () => {
-    expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.canvas).toBe('#776238')
-    expect(getThemePaletteForTheme('dawn', {}).canvas).toBe('#776238')
+  it('uses cool off-white neutrals for the Light palette seed', () => {
+    const light = BUILT_IN_THEME_PALETTE_SEEDS.light
+
+    expect(light.canvas).toBe('#f2f5fa')
+    expect(light.page).toBe('#dfe7f2')
+    expect(light.surface).toBe('#f7f9fc')
+    expect(light.surfaceRaised).toBe('#f3f6fb')
+    expect([light.canvas, light.surface, light.surfaceRaised, light.sidebar]).not.toContain('#ffffff')
+  })
+
+  it('uses a warm sunrise Dawn palette as the canvas seed', () => {
+    expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.canvas).toBe('#e2bc69')
+    expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.surfaceRaised).toBe('#ead4a9')
+    expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.sidebar).toBe('#e3cb68')
+    expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.sidebarAccent).toBe('#e3cb68')
+    expect(getThemePaletteForTheme('dawn', {}).canvas).toBe('#e2bc69')
   })
 
   it('emits palette variables for built-in theme overrides', () => {

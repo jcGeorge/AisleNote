@@ -78,6 +78,19 @@
     grid-template-columns: 1fr;
   }
 
+  .visuals-preview-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--app-border);
+  }
+
+  .visuals-preview-note-header {
+    display: grid;
+  }
+
+  .visuals-preview-note-stats {
+    justify-content: flex-start;
+  }
+
   .settings-slider-wrap {
     gap: 0.5rem;
   }
@@ -113,6 +126,13 @@
 
   .settings-toolbar-preview .app-shared-editor-toolbar,
   .settings-toolbar-icon-box .app-shared-editor-toolbar {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex-wrap: wrap !important;
+    align-content: flex-start !important;
+  }
+
+  .visuals-preview-toolbar.note-shared-toolbar .app-shared-editor-toolbar {
     width: 100% !important;
     min-width: 0 !important;
     flex-wrap: wrap !important;

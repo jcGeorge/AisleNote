@@ -1,59 +1,59 @@
 /* Light theme overrides */
 .theme-light {
-  --app-bg: #ffffff;
-  --app-page-bg: radial-gradient(circle at 20% 0%, #f0f5fd 0%, #e8eef8 45%);
-  --app-surface: #ffffff;
-  --app-surface-raised: #ffffff;
-  --app-border: #c8d4e8;
-  --app-border-muted: #d2dbe9;
+  --app-bg: #f2f5fa;
+  --app-page-bg: radial-gradient(circle at 20% 0%, #edf3fb 0%, #dfe7f2 48%);
+  --app-surface: #f7f9fc;
+  --app-surface-raised: #f3f6fb;
+  --app-border: #b9c8dd;
+  --app-border-muted: #c7d2e2;
   --app-text: #1a2538;
   --app-text-bright: #1d2a44;
   --app-text-strong: #1a2538;
   --app-text-heading: #1a2538;
   --app-text-soft: #2e4468;
-  --app-text-muted: #41587d;
-  --app-text-subtle: #536d95;
+  --app-text-muted: #3f5578;
+  --app-text-subtle: #4f668b;
   --app-primary: #2f67de;
   --app-primary-hover: #2f6de0;
   --app-primary-action: #3f7df0;
   --app-primary-border: #5f8fe8;
   --app-primary-border-strong: #5f8fe8;
-  --app-shadow-popover: 0 8px 20px rgba(20, 45, 86, 0.16);
-  --app-shadow-toast: 0 12px 32px rgba(28, 45, 78, 0.16);
+  --app-shadow-popover: 0 8px 20px rgba(20, 45, 86, 0.18);
+  --app-shadow-toast: 0 12px 32px rgba(28, 45, 78, 0.18);
 
-  --nav-rail-bg: #eef4fb;
+  --nav-rail-bg: #e6edf6;
   --nav-rail-border: rgba(134, 157, 195, 0.24);
   --menu-button-text: #1d2a44;
-  --menu-bg: #ffffff;
-  --menu-border: #c8d4e8;
+  --menu-bg: #f3f6fb;
+  --menu-border: #b9c8dd;
   --menu-item-text: #1d2a44;
-  --menu-item-hover-bg: #ecf3ff;
+  --menu-item-hover-bg: #e5edfb;
   --workflow-warning-border: rgba(208, 141, 141, 0.56);
   --workflow-warning-bg: rgba(255, 238, 238, 0.96);
   --workflow-warning-text: #7a2a2a;
-  --action-chip-border: #b8cae6;
+  --action-chip-border: #aebfda;
   --action-chip-text: #214572;
-  --action-chip-bg: #f6f9ff;
+  --action-chip-bg: #edf3fb;
   --action-chip-selected-border: #5e8fea;
   --action-chip-selected-text: #ffffff;
   --action-chip-selected-bg: #3f7be8;
   --danger-action-border: #dc3848;
   --danger-action-text: #8d2433;
 
-  --settings-control-bg: #ffffff;
+  --settings-control-bg: #f3f6fb;
   --settings-control-text: #1a2538;
-  --settings-control-border: #c0cee4;
-  --settings-control-focus-border: #c0cee4;
+  --settings-control-border: #b4c4dc;
+  --settings-control-focus-border: #b4c4dc;
   --settings-select-focus-border: #5f8fe8;
   --settings-field-suffix-text: #2f4264;
-  --settings-help-text: #536d95;
+  --settings-help-text: #4f668b;
   --settings-page-bg: var(--app-page-bg);
-  --settings-card-bg: #ffffff;
-  --settings-card-border: #c8d4e8;
+  --settings-card-bg: #f7f9fc;
+  --settings-card-border: #b9c8dd;
   --settings-card-text: #1d2a44;
-  --settings-card-body-text: #41587d;
-  --settings-section-tab-bg: #edf3fb;
-  --settings-section-tab-border: #b8c9e4;
+  --settings-card-body-text: #3f5578;
+  --settings-section-tab-bg: #e9eff7;
+  --settings-section-tab-border: #adbed8;
   --settings-section-tab-text: #244368;
   --settings-section-tab-hover-bg: #e0eafd;
   --settings-section-tab-hover-text: #18365d;
@@ -63,12 +63,17 @@
   --settings-divider-bg: #c7d3e5;
   --settings-hotkey-label-text: #1f3960;
   --settings-range-value-text: var(--app-text-heading);
-  --settings-switch-bg: #ffffff;
+  --settings-range-track-bg: #bac7d9;
+  --settings-range-track-hover-bg: #a9bbd2;
+  --settings-range-thumb-bg: #426fa8;
+  --settings-range-thumb-hover-bg: #355f92;
+  --settings-range-thumb-hover-border: #2c527f;
+  --settings-switch-bg: #f3f6fb;
   --settings-switch-border: #a5b7d4;
   --settings-switch-focus-border: #a5b7d4;
   --settings-switch-checked-bg: #2f67de;
   --settings-switch-checked-border: #2f67de;
-  --theme-switch-bg: #e8f0fb;
+  --theme-switch-bg: #e5edf7;
   --theme-switch-border: #9bb6de;
   --theme-switch-option-text: #315179;
   --theme-switch-option-hover-bg: #dbe8f9;
@@ -81,24 +86,24 @@
   --settings-shortcut-hover-bg: #dbe8f9;
   --settings-shortcut-recording-border: #9bb6de;
   --settings-shortcut-recording-shadow: #6f94e6;
-  --settings-action-bg: #ffffff;
+  --settings-action-bg: #f3f6fb;
   --settings-action-text: #244368;
   --settings-action-border: #a8bbd9;
   --settings-action-hover-bg: #edf3ff;
   --settings-action-hover-text: #173052;
   --settings-action-hover-border: #7f9fce;
   --settings-action-focus-shadow: 0 0 0 0.2rem rgba(95, 137, 220, 0.18);
-  --settings-action-disabled-bg: #f4f7fb;
+  --settings-action-disabled-bg: #eef3f8;
   --settings-action-disabled-text: #8da0bd;
   --settings-action-disabled-border: #d1dbea;
 
-  --toast-bg: rgba(255, 255, 255, 0.96);
+  --toast-bg: rgba(247, 249, 252, 0.96);
   --toast-border: #c4d2e8;
   --toast-text: #1a2538;
   --toast-shadow: var(--app-shadow-toast);
 
-  --context-menu-bg: #ffffff;
-  --context-menu-border: #c8d4e8;
+  --context-menu-bg: #f7f9fc;
+  --context-menu-border: #b9c8dd;
   --context-menu-shadow: var(--app-shadow-popover);
   --context-menu-item-text: #1d2a44;
   --context-menu-item-hover-bg: rgba(53, 103, 193, 0.12);
@@ -114,14 +119,14 @@
   --app-danger-disabled-text: #9f7a75;
   --app-danger-disabled-border: #d7aaa2;
   --app-danger-disabled-bg: #e8c9c3;
-  --modal-bg: #ffffff;
-  --modal-border: #c8d4e8;
+  --modal-bg: #f7f9fc;
+  --modal-border: #b9c8dd;
   --modal-text: #1d2a44;
-  --modal-body-text: #41587d;
+  --modal-body-text: #3f5578;
   --modal-muted-text: #2e4468;
   --modal-cancel-text: #2b466f;
   --modal-cancel-border: #9eb5da;
-  --modal-cancel-bg: #f7faff;
+  --modal-cancel-bg: #eef3fa;
   --modal-cancel-hover-text: #1d3558;
   --modal-cancel-hover-border: #7f9fce;
   --modal-cancel-hover-bg: #edf3ff;
@@ -131,15 +136,15 @@
   --modal-primary-hover-bg: #2f6de0;
   --modal-primary-hover-border: #245ab2;
 
-  --editor-bg: #ffffff;
-  --editor-panel-bg: #f5f8fd;
+  --editor-bg: #f2f5fa;
+  --editor-panel-bg: #e9eff7;
   --editor-shell-bg: var(--editor-panel-bg);
   --editor-trash-home-bg: var(--editor-panel-bg);
-  --editor-toolbar-bg: #f4f7fc;
+  --editor-toolbar-bg: #e8eef7;
   --editor-toolbar-hover-bg: #e5eeff;
   --editor-toolbar-hover-border: #aec2e4;
   --editor-toolbar-active-bg: #cfe0ff;
-  --editor-border: #d2dbe9;
+  --editor-border: #c1ccdc;
   --editor-border-strong: #8eaee0;
   --editor-text: #1a2538;
   --editor-muted-text: #5b6982;
@@ -149,12 +154,12 @@
   --editor-blockquote-bg: transparent;
   --editor-selection-bg: rgba(47, 103, 222, 0.22);
   --editor-code-bg: #121826;
-  --editor-popup-bg: #ffffff;
+  --editor-popup-bg: #f7f9fc;
   --editor-link-text: #2f67de;
   --editor-tag-text: #f8fafc;
   --editor-tag-bg: #0f766e;
-  --editor-tooltip-bg: #ffffff;
-  --editor-tooltip-border: #c8d4e8;
+  --editor-tooltip-bg: #f7f9fc;
+  --editor-tooltip-border: #b9c8dd;
   --editor-tooltip-text: #1a2538;
   --editor-caret: #1a2538;
   --editor-annotation-text: #4a5f82;
@@ -165,32 +170,40 @@
   --editor-heading-choice-active-marker: #3f7df0;
   --editor-heading-choice-active-text: #173760;
   --editor-list-marker-opacity: 0.92;
-  --editor-popup-input-bg: #ffffff;
+  --editor-popup-input-bg: #f3f6fb;
   --editor-popup-input-border: #c0cee4;
   --editor-popup-input-focus-border: #5f89dc;
-  --editor-table-selection-bg: #ffffff;
+  --editor-table-selection-bg: #f3f6fb;
   --editor-table-selection-border: #ced9eb;
-  --editor-table-cell-bg: #f7faff;
+  --editor-table-cell-bg: #eef3fa;
   --editor-table-cell-border: #c7d5ea;
   --editor-table-description-text: #233452;
   --editor-hr-line: rgba(108, 116, 128, 0.92);
   --editor-hr-opacity: 1;
   --editor-tooltip-shadow: 0 4px 12px rgba(20, 45, 86, 0.16);
+  --note-aisle-resize-bg: #9fb1c9;
+  --note-aisle-resize-border: rgba(247, 249, 252, 0.86);
+  --note-aisle-resize-shadow:
+    0 0 0 1px rgba(79, 103, 139, 0.12),
+    0 0.12rem 0.35rem rgba(20, 45, 86, 0.12);
+  --note-aisle-resize-hover-bg: #607da4;
+  --note-aisle-resize-hover-border: #d5e0ef;
+  --note-aisle-resize-focus-outline: #426fa8;
 
   --task-reorder-source-bg: rgba(63, 125, 240, 0.08);
   --task-reorder-source-shadow: inset 0 0 0 1px rgba(63, 125, 240, 0.14);
   --task-reorder-target-bg: rgba(63, 125, 240, 0.08);
   --task-reorder-target-shadow: inset 0 0 0 1px rgba(63, 125, 240, 0.14);
   --task-reorder-ghost-border: rgba(63, 125, 240, 0.52);
-  --task-reorder-ghost-bg: rgba(255, 255, 255, 0.96);
+  --task-reorder-ghost-bg: rgba(247, 249, 252, 0.96);
   --task-reorder-ghost-text: #17243a;
   --task-reorder-ghost-shadow: 0 12px 28px rgba(27, 47, 83, 0.2), 0 0 0 1px rgba(63, 125, 240, 0.12);
   --task-reorder-marker: #2f67de;
 
   --link-prompt-border: #b7c9e3;
-  --link-prompt-bg: rgba(244, 248, 254, 0.98);
+  --link-prompt-bg: rgba(239, 244, 251, 0.98);
   --link-prompt-input-border: #9eb8dc;
-  --link-prompt-input-bg: #ffffff;
+  --link-prompt-input-bg: #f3f6fb;
   --link-prompt-input-text: #1f3d66;
   --link-prompt-btn-border: #8aaad6;
   --link-prompt-btn-bg: #dbe9fb;
@@ -214,8 +227,8 @@
 
 .theme-light .trash-home-actions .btn-outline-light {
   color: #1d355d !important;
-  background: #ffffff !important;
-  border-color: #b8c9e3 !important;
+  background: var(--settings-action-bg) !important;
+  border-color: var(--settings-action-border) !important;
 }
 
 .theme-light .trash-home-actions .btn-outline-light:hover {

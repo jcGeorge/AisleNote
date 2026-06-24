@@ -117,9 +117,9 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     return null
   }
 
-  const createNotebook = async ({ name, locationPath }: CreateNotebookPayload) => {
+  const createNotebook = async (payload?: CreateNotebookPayload) => {
     await beforeStorageActionRef.current?.()
-    const result = await window.electronAPI?.createNotebook?.({ name, locationPath })
+    const result = await window.electronAPI?.createNotebook?.(payload)
     if (!result) {
       pushToastRef.current('New notebook is only available in the desktop app.', 'warning')
       return false

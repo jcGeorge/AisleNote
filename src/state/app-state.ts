@@ -369,7 +369,7 @@ export function normalizeAppState(raw: unknown): AppState {
       })
     : []
 
-  const sidebarWidth = normalizeNumber(isRecord(raw.ui) ? raw.ui.sidebarWidth : undefined, fallback.ui.sidebarWidth, 220, 520)
+  const sidebarWidth = normalizeNumber(isRecord(raw.ui) ? raw.ui.sidebarWidth : undefined, fallback.ui.sidebarWidth, 212, 520)
   const ui = isRecord(raw.ui) ? raw.ui : {}
   const selectedCustomTheme =
     typeof ui.selectedCustomTheme === 'string' && CUSTOM_THEME_IDS.includes(ui.selectedCustomTheme as CustomThemeId)
