@@ -167,8 +167,8 @@
   --editor-caret: #243047;
   --editor-annotation-text: #615342;
   --editor-terminal-caret: rgba(63, 113, 93, 0.88);
-  --editor-toolbar-icon-primary: #30475a;
-  --editor-toolbar-icon-secondary: #65594a;
+  --editor-toolbar-icon-primary: var(--app-text-heading);
+  --editor-toolbar-icon-secondary: var(--app-text-soft);
   --editor-heading-choice-active-bg: #f0dfc3;
   --editor-heading-choice-active-marker: #3f715d;
   --editor-heading-choice-active-text: #1e2a41;
@@ -260,7 +260,7 @@
   --note-aisle-resize-shadow:
     0 0 0 1px color-mix(in srgb, var(--custom-palette-border) 24%, transparent),
     0 0.16rem 0.36rem color-mix(in srgb, var(--custom-palette-canvas) 24%, transparent);
-  --note-aisle-resize-hover-bg: color-mix(in srgb, var(--custom-palette-secondary) 72%, var(--custom-theme-sidebar));
+  --note-aisle-resize-hover-bg: color-mix(in srgb, var(--custom-palette-primary) 72%, var(--custom-theme-sidebar));
   --note-aisle-resize-hover-border: transparent;
   --note-aisle-resize-focus-outline: var(--custom-palette-primary);
   --monet-editor-toolbar-bg: var(--editor-toolbar-bg);

@@ -135,6 +135,22 @@ const MIN_AISLE_WIDTH_PX = 160
 const MAX_AISLE_WIDTH_PX = 1200
 const THEME_PALETTE_IDS = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
 const CUSTOM_THEME_IDS = ['custom1', 'custom2', 'custom3']
+const CUSTOM_THEME_PALETTE_SLOTS = [
+  'canvas',
+  'page',
+  'surface',
+  'surfaceRaised',
+  'text',
+  'mutedText',
+  'border',
+  'primary',
+  'danger',
+  'warning',
+  'success',
+  'tagText',
+  'tagBg',
+  'sidebar',
+]
 const DATA_SETTINGS_SECTIONS = ['transfer', 'storage', 'trash']
 const CURRENT_APP_SETTING_THEME_IDS = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
 
@@ -439,7 +455,12 @@ function normalizeThemePalettes(value) {
   if (!isRecord(value)) return DEFAULT_SYNCED_UI_SETTINGS.themePalettes
   const themePalettes = {}
   THEME_PALETTE_IDS.forEach((theme) => {
-    if (isRecord(value[theme])) themePalettes[theme] = value[theme]
+    if (!isRecord(value[theme])) return
+    const palette = {}
+    CUSTOM_THEME_PALETTE_SLOTS.forEach((slot) => {
+      if (Object.prototype.hasOwnProperty.call(value[theme], slot)) palette[slot] = value[theme][slot]
+    })
+    themePalettes[theme] = palette
   })
   return themePalettes
 }

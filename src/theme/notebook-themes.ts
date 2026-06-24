@@ -23,16 +23,12 @@ export const CUSTOM_THEME_PALETTE_SLOTS: CustomThemePaletteSlot[] = [
   'mutedText',
   'border',
   'primary',
-  'secondary',
   'danger',
   'warning',
   'success',
   'tagText',
   'tagBg',
-  'tooltipPrimary',
-  'tooltipSecondary',
   'sidebar',
-  'sidebarAccent',
 ]
 
 export const CUSTOM_THEME_PALETTE_LABELS: Record<CustomThemePaletteSlot, string> = {
@@ -44,16 +40,12 @@ export const CUSTOM_THEME_PALETTE_LABELS: Record<CustomThemePaletteSlot, string>
   mutedText: 'Muted text',
   border: 'Border',
   primary: 'Primary',
-  secondary: 'Secondary',
   danger: 'Danger',
   warning: 'Warning',
   success: 'Success',
   tagText: 'Tag text',
   tagBg: 'Tag background',
-  tooltipPrimary: 'Tooltip primary',
-  tooltipSecondary: 'Tooltip secondary',
   sidebar: 'Sidebar',
-  sidebarAccent: 'Sidebar accent',
 }
 
 export const DEFAULT_CUSTOM_THEME_PALETTE: CustomThemePalette = {
@@ -65,16 +57,12 @@ export const DEFAULT_CUSTOM_THEME_PALETTE: CustomThemePalette = {
   mutedText: '#9fb3d7',
   border: '#2f4672',
   primary: '#2f67de',
-  secondary: '#1f9b67',
   danger: '#963442',
   warning: '#d9a441',
   success: '#2fb36d',
   tagText: '#06141a',
   tagBg: '#8fd1dc',
-  tooltipPrimary: '#c8d0e1',
-  tooltipSecondary: '#6f7f98',
   sidebar: '#0f1b32',
-  sidebarAccent: '#2f67de',
 }
 
 export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePalette> = {
@@ -88,16 +76,12 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     mutedText: '#4f668b',
     border: '#b9c8dd',
     primary: '#2f67de',
-    secondary: '#297b63',
     danger: '#a33c4a',
     warning: '#b98220',
     success: '#26885f',
     tagText: '#1a2538',
     tagBg: '#d4e1f3',
-    tooltipPrimary: '#2f4e75',
-    tooltipSecondary: '#667a98',
     sidebar: '#e6edf6',
-    sidebarAccent: '#3f7df0',
   },
   dawn: {
     canvas: '#e2bc69',
@@ -108,16 +92,12 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
     mutedText: '#615342',
     border: '#b18450',
     primary: '#3f715d',
-    secondary: '#b96f43',
     danger: '#a8554d',
     warning: '#a96f1f',
     success: '#3f7a5e',
     tagText: '#243047',
     tagBg: '#f2d47f',
-    tooltipPrimary: '#30475a',
-    tooltipSecondary: '#65594a',
     sidebar: '#e3cb68',
-    sidebarAccent: '#3f715d',
   },
 }
 
@@ -130,9 +110,7 @@ export const CUSTOM_THEME_PALETTE_SEEDS: Record<CustomThemeId, CustomThemePalett
     surface: '#172033',
     surfaceRaised: '#202b42',
     primary: '#14b8a6',
-    secondary: '#f59e0b',
     tagBg: '#83ecd2',
-    sidebarAccent: '#14b8a6',
   },
   custom3: {
     ...DEFAULT_CUSTOM_THEME_PALETTE,
@@ -141,9 +119,7 @@ export const CUSTOM_THEME_PALETTE_SEEDS: Record<CustomThemeId, CustomThemePalett
     surface: '#261f2c',
     surfaceRaised: '#332a3a',
     primary: '#d946ef',
-    secondary: '#22c55e',
     tagBg: '#d574e2',
-    sidebarAccent: '#d946ef',
   },
 }
 
@@ -275,16 +251,12 @@ export function getThemePaletteVariables(
     '--custom-theme-muted-text': palette.mutedText,
     '--custom-theme-border': palette.border,
     '--custom-theme-primary': palette.primary,
-    '--custom-theme-secondary': palette.secondary,
     '--custom-theme-danger': palette.danger,
     '--custom-theme-warning': palette.warning,
     '--custom-theme-success': palette.success,
     '--custom-theme-tag-text': palette.tagText,
     '--custom-theme-tag-bg': palette.tagBg,
-    '--custom-theme-tooltip-primary': palette.tooltipPrimary,
-    '--custom-theme-tooltip-secondary': palette.tooltipSecondary,
     '--custom-theme-sidebar': palette.sidebar,
-    '--custom-theme-sidebar-accent': palette.sidebarAccent,
   }
 }
 

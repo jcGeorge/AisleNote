@@ -23,29 +23,31 @@ describe('notebook theme palettes', () => {
       'mutedText',
       'border',
       'primary',
-      'secondary',
       'danger',
       'warning',
       'success',
       'tagText',
       'tagBg',
-      'tooltipPrimary',
-      'tooltipSecondary',
       'sidebar',
-      'sidebarAccent',
     ])
   })
 
-  it('normalizes supported custom palette settings without carrying unknown slots', () => {
+  it('normalizes supported custom palette settings without carrying removed or unknown slots', () => {
     const palette = normalizeCustomThemePalette({
       ...DEFAULT_CUSTOM_THEME_PALETTE,
       primary: 'ABCDEF',
+      secondary: '#112233',
+      tooltipPrimary: '#ccddee',
+      tooltipSecondary: '#667788',
       sidebarAccent: '#123456',
       unsupportedSlot: '#ff0000',
     })
 
     expect(palette.primary).toBe('#abcdef')
-    expect(palette.sidebarAccent).toBe('#123456')
+    expect('secondary' in palette).toBe(false)
+    expect('tooltipPrimary' in palette).toBe(false)
+    expect('tooltipSecondary' in palette).toBe(false)
+    expect('sidebarAccent' in palette).toBe(false)
     expect('unsupportedSlot' in palette).toBe(false)
   })
 
@@ -79,7 +81,6 @@ describe('notebook theme palettes', () => {
     expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.canvas).toBe('#e2bc69')
     expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.surfaceRaised).toBe('#ead4a9')
     expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.sidebar).toBe('#e3cb68')
-    expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.sidebarAccent).toBe('#3f715d')
     expect(getThemePaletteForTheme('dawn', {}).canvas).toBe('#e2bc69')
   })
 
@@ -98,7 +99,7 @@ describe('notebook theme palettes', () => {
     }
     const custom3Override = {
       ...CUSTOM_THEME_PALETTE_SEEDS.custom3,
-      secondary: '#654321',
+      warning: '#654321',
     }
     const nextPalettes = copyThemePaletteToCustomPalette(
       {
@@ -149,6 +150,10 @@ describe('notebook theme palettes', () => {
 
     expect(variables['--custom-theme-canvas']).toBe('#112233')
     expect(variables['--custom-theme-primary']).toBe('#445566')
+    expect(variables).not.toHaveProperty('--custom-theme-secondary')
+    expect(variables).not.toHaveProperty('--custom-theme-tooltip-primary')
+    expect(variables).not.toHaveProperty('--custom-theme-tooltip-secondary')
+    expect(variables).not.toHaveProperty('--custom-theme-sidebar-accent')
   })
 
   it('keeps built-in classes while enabling palette-derived tokens', () => {

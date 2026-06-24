@@ -40,6 +40,7 @@ describe('theme transfer helpers', () => {
       tagBg: '#ddeeff',
       tooltipPrimary: '#ccddee',
       tooltipSecondary: '#667788',
+      sidebarAccent: '#123456',
     }), DEFAULT_CUSTOM_THEME_PALETTE)
 
     expect(result).toEqual({
@@ -47,13 +48,21 @@ describe('theme transfer helpers', () => {
       palette: {
         ...DEFAULT_CUSTOM_THEME_PALETTE,
         primary: '#aabbcc',
-        secondary: '#112233',
         tagBg: '#ddeeff',
-        tooltipPrimary: '#ccddee',
-        tooltipSecondary: '#667788',
       },
-      importedSlots: ['primary', 'secondary', 'tagBg', 'tooltipPrimary', 'tooltipSecondary'],
+      importedSlots: ['primary', 'tagBg'],
     })
+  })
+
+  it('rejects imports containing only removed palette slots', () => {
+    const result = parseThemeSettingsImport(JSON.stringify({
+      secondary: '#112233',
+      tooltipPrimary: '#ccddee',
+      tooltipSecondary: '#667788',
+      sidebarAccent: '#123456',
+    }), DEFAULT_CUSTOM_THEME_PALETTE)
+
+    expect(result).toEqual({ ok: false, error: 'No theme colors found.' })
   })
 
   it('rejects a palette nested in app state ui settings', () => {

@@ -118,6 +118,41 @@ describe('portable app settings parsing', () => {
     })
   })
 
+  it('drops removed theme palette slots from portable settings', () => {
+    const settings = parsePortableAppSettingsJson(JSON.stringify({
+      theme: 'dawn',
+      hotkeys: {},
+      ui: {
+        themePalettes: {
+          custom1: {
+            primary: '#123456',
+            secondary: '#112233',
+            tooltipPrimary: '#ccddee',
+            tooltipSecondary: '#667788',
+            sidebarAccent: '#abcdef',
+          },
+        },
+      },
+    }))
+
+    expect(settings).toMatchObject({
+      ok: true,
+      settings: {
+        themePalettes: {
+          custom1: {
+            primary: '#123456',
+          },
+        },
+      },
+    })
+    if (settings.ok) {
+      expect(settings.settings.themePalettes.custom1).not.toHaveProperty('secondary')
+      expect(settings.settings.themePalettes.custom1).not.toHaveProperty('tooltipPrimary')
+      expect(settings.settings.themePalettes.custom1).not.toHaveProperty('tooltipSecondary')
+      expect(settings.settings.themePalettes.custom1).not.toHaveProperty('sidebarAccent')
+    }
+  })
+
   it('rejects files that do not match the current app-settings structure', () => {
     const invalidSamples = [
       '',

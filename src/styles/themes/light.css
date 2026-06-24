@@ -164,8 +164,8 @@
   --editor-caret: #1a2538;
   --editor-annotation-text: #4a5f82;
   --editor-terminal-caret: rgba(95, 127, 181, 0.86);
-  --editor-toolbar-icon-primary: #555555;
-  --editor-toolbar-icon-secondary: #9aa3b2;
+  --editor-toolbar-icon-primary: var(--app-text-heading);
+  --editor-toolbar-icon-secondary: var(--app-text-soft);
   --editor-heading-choice-active-bg: #dbe8ff;
   --editor-heading-choice-active-marker: #3f7df0;
   --editor-heading-choice-active-text: #173760;

@@ -205,8 +205,8 @@
   --editor-caret: #e9ecef;
   --editor-annotation-text: #c7d5ed;
   --editor-terminal-caret: rgba(134, 168, 232, 0.86);
-  --editor-toolbar-icon-primary: #c8d0e1;
-  --editor-toolbar-icon-secondary: #6f7f98;
+  --editor-toolbar-icon-primary: var(--app-text-heading);
+  --editor-toolbar-icon-secondary: var(--app-text-soft);
   --editor-heading-choice-active-bg: #22406d;
   --editor-heading-choice-active-marker: #6fa0ff;
   --editor-heading-choice-active-text: #f4f8ff;
@@ -313,14 +313,11 @@
   --custom-palette-muted-text: var(--custom-theme-muted-text, #9fb3d7);
   --custom-palette-border: var(--custom-theme-border, #2f4672);
   --custom-palette-primary: var(--custom-theme-primary, #2f67de);
-  --custom-palette-secondary: var(--custom-theme-secondary, #1f9b67);
   --custom-palette-danger: var(--custom-theme-danger, #963442);
   --custom-palette-warning: var(--custom-theme-warning, #d9a441);
   --custom-palette-success: var(--custom-theme-success, #2fb36d);
   --custom-palette-tag-text: var(--custom-theme-tag-text, #06141a);
   --custom-palette-tag-bg: var(--custom-theme-tag-bg, #8fd1dc);
-  --custom-palette-tooltip-primary: var(--custom-theme-tooltip-primary, #c8d0e1);
-  --custom-palette-tooltip-secondary: var(--custom-theme-tooltip-secondary, #6f7f98);
 
   --app-bg: var(--custom-palette-canvas);
   --app-page-bg: radial-gradient(
@@ -503,8 +500,8 @@
   --editor-caret: var(--custom-palette-text);
   --editor-annotation-text: var(--app-text-muted);
   --editor-terminal-caret: color-mix(in srgb, var(--custom-palette-primary) 74%, transparent);
-  --editor-toolbar-icon-primary: var(--custom-palette-tooltip-primary);
-  --editor-toolbar-icon-secondary: var(--custom-palette-tooltip-secondary);
+  --editor-toolbar-icon-primary: var(--app-text-heading);
+  --editor-toolbar-icon-secondary: var(--app-text-soft);
   --editor-heading-choice-active-bg: color-mix(in srgb, var(--custom-palette-primary) 28%, var(--custom-palette-surface));
   --editor-heading-choice-active-marker: var(--custom-palette-primary);
   --editor-heading-choice-active-text: var(--app-text-bright);

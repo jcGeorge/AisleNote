@@ -359,16 +359,12 @@ export type CustomThemePaletteSlot =
   | 'mutedText'
   | 'border'
   | 'primary'
-  | 'secondary'
   | 'danger'
   | 'warning'
   | 'success'
   | 'tagText'
   | 'tagBg'
-  | 'tooltipPrimary'
-  | 'tooltipSecondary'
   | 'sidebar'
-  | 'sidebarAccent'
 
 export type CustomThemePalette = Record<CustomThemePaletteSlot, string>
 export type ThemePaletteOverrides = Partial<Record<AppTheme, CustomThemePalette>>

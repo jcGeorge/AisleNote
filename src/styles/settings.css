@@ -1000,7 +1000,7 @@
 
 .visuals-preview-canvas {
   --visuals-preview-border: var(--app-border);
-  --visuals-preview-primary: var(--notebook-sidebar-accent, var(--app-primary));
+  --visuals-preview-primary: var(--notebook-action-accent, var(--app-primary));
   --visuals-preview-panel-bg: var(--editor-bg);
   --visuals-preview-text: var(--editor-text);
   --visuals-preview-muted-text: var(--editor-muted-text);
