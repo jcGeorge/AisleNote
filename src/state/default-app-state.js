@@ -75,7 +75,7 @@ export function createDefaultAppState(options = {}) {
   }
 
   return {
-    theme: 'dawn',
+    theme: 'dark',
     notebook: {
       activeNoteId: welcomeNote.id,
       items: [welcomeNote],

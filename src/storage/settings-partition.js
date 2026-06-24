@@ -620,6 +620,7 @@ export function applyPortableAppSettings(appState, rawSettings) {
     theme: syncedSettings.theme,
     hotkeys: syncedSettings.hotkeys,
     ui: {
+      ...currentUi,
       ...syncedSettings.ui,
       noteCursorLocations: isRecord(currentUi.noteCursorLocations)
         ? currentUi.noteCursorLocations

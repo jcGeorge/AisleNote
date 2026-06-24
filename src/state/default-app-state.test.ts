@@ -7,6 +7,7 @@ describe('default app state', () => {
     const state = createDefaultAppState()
 
     expect(state.notebook.items[0]).toMatchObject({ type: 'note', title: 'Welcome' })
+    expect(state.theme).toBe('dark')
     expect(state.noteAisleBodies[0]).toMatchObject({ markdown: '' })
     expect(state.ui).not.toHaveProperty('scratchpadAisleLimit')
     expect(state.ui).not.toHaveProperty('trashDeleteForRealRequiresConfirmation')

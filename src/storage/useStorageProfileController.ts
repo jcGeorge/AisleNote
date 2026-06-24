@@ -16,6 +16,10 @@ type NotebookSelectorPayload = {
   notebookPath?: string
 }
 
+type RenameNotebookPayload = NotebookSelectorPayload & {
+  name: string
+}
+
 type NotebookDeletePayload = NotebookSelectorPayload & {
   skipConfirmation?: boolean
 }
@@ -52,24 +56,51 @@ export function getStorageProfileStatusToast(nextStatus: StorageProfileStatus): 
   return null
 }
 
+export function hasActiveNotebookForStorageAction(status: StorageProfileStatus | null | undefined): boolean {
+  return Boolean(
+    status &&
+      status.status === 'ready' &&
+      status.canWrite &&
+      status.activeNotebookId &&
+      status.notebookPath,
+  )
+}
+
+export function notebookSelectorTargetsActiveNotebook(
+  status: StorageProfileStatus | null | undefined,
+  selector: NotebookSelectorPayload = {},
+): boolean {
+  if (!hasActiveNotebookForStorageAction(status)) return false
+  const notebookId = typeof selector.notebookId === 'string' ? selector.notebookId.trim() : ''
+  const notebookPath = typeof selector.notebookPath === 'string' ? selector.notebookPath.trim() : ''
+  if (!notebookId && !notebookPath) return true
+  return notebookId === status?.activeNotebookId || notebookPath === status?.notebookPath
+}
+
 export function useStorageProfileController({ pushToast, beforeStorageAction }: UseStorageProfileControllerParams) {
   const [storageProfileStatus, setStorageProfileStatus] = useState<StorageProfileStatus | null>(null)
+  const storageProfileStatusRef = useRef<StorageProfileStatus | null>(null)
   const pushToastRef = useRef(pushToast)
   const beforeStorageActionRef = useRef(beforeStorageAction)
 
+  storageProfileStatusRef.current = storageProfileStatus
   pushToastRef.current = pushToast
   beforeStorageActionRef.current = beforeStorageAction
 
   useEffect(() => {
     let disposed = false
     const applyStorageProfileStatus = (nextStatus: StorageProfileStatus) => {
+      storageProfileStatusRef.current = nextStatus
       setStorageProfileStatus(nextStatus)
       const toast = getStorageProfileStatusToast(nextStatus)
       if (toast) pushToastRef.current(toast.message, toast.tone, toast.durationMs)
     }
 
     void window.electronAPI?.getStorageProfileStatus?.().then((status) => {
-      if (!disposed && status) setStorageProfileStatus(status)
+      if (!disposed && status) {
+        storageProfileStatusRef.current = status
+        setStorageProfileStatus(status)
+      }
     })
     const unsubscribe =
       window.electronAPI?.onStorageProfileStatusUpdated?.((status) => {
@@ -83,6 +114,7 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
 
   const handleStorageProfileResult = (result: StorageProfileActionResult, successMessage: string) => {
     if ('status' in result && result.status) {
+      storageProfileStatusRef.current = result.status
       setStorageProfileStatus(result.status)
     }
     if ('canceled' in result && result.canceled) return false
@@ -101,6 +133,14 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     return false
   }
 
+  const commitActiveNotebookBeforeStorageAction = async (selector?: NotebookSelectorPayload) => {
+    const status = storageProfileStatusRef.current
+    const shouldCommit = selector
+      ? notebookSelectorTargetsActiveNotebook(status, selector)
+      : hasActiveNotebookForStorageAction(status)
+    if (shouldCommit) await beforeStorageActionRef.current?.()
+  }
+
   const chooseNotebookLocation = async () => {
     const result = await window.electronAPI?.chooseNotebookLocation?.()
     if (!result) {
@@ -117,8 +157,8 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     return null
   }
 
-  const createNotebook = async (payload?: CreateNotebookPayload) => {
-    await beforeStorageActionRef.current?.()
+  const createNotebook = async (payload: CreateNotebookPayload) => {
+    await commitActiveNotebookBeforeStorageAction()
     const result = await window.electronAPI?.createNotebook?.(payload)
     if (!result) {
       pushToastRef.current('New notebook is only available in the desktop app.', 'warning')
@@ -127,9 +167,9 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     return handleStorageProfileResult(result, 'New notebook created.')
   }
 
-  const renameNotebook = async (name: string) => {
-    await beforeStorageActionRef.current?.()
-    const result = await window.electronAPI?.renameNotebook?.({ name })
+  const renameNotebook = async (name: string, selector: NotebookSelectorPayload) => {
+    await commitActiveNotebookBeforeStorageAction(selector)
+    const result = await window.electronAPI?.renameNotebook?.({ ...selector, name } satisfies RenameNotebookPayload)
     if (!result) {
       pushToastRef.current('Notebook rename is only available in the desktop app.', 'warning')
       return false
@@ -138,7 +178,7 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
   }
 
   const openNotebook = async () => {
-    await beforeStorageActionRef.current?.()
+    await commitActiveNotebookBeforeStorageAction()
     const result = await window.electronAPI?.openNotebook?.()
     if (!result) {
       pushToastRef.current('Notebook opening is only available in the desktop app.', 'warning')
@@ -151,7 +191,7 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     typeof selector === 'string' ? { notebookPath: selector } : selector
 
   const switchNotebook = async (selector: string | NotebookSelectorPayload) => {
-    await beforeStorageActionRef.current?.()
+    await commitActiveNotebookBeforeStorageAction()
     const result = await window.electronAPI?.switchNotebook?.(normalizeNotebookSelector(selector))
     if (!result) {
       pushToastRef.current('Notebook switching is only available in the desktop app.', 'warning')
@@ -170,7 +210,7 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
   }
 
   const deleteNotebook = async (payload: NotebookDeletePayload = {}) => {
-    await beforeStorageActionRef.current?.()
+    await commitActiveNotebookBeforeStorageAction(payload)
     const result = await window.electronAPI?.deleteNotebook?.(payload)
     if (!result) {
       pushToastRef.current('Notebook deletion is only available in the desktop app.', 'warning')
@@ -180,7 +220,7 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
   }
 
   const moveStorageProfile = async () => {
-    await beforeStorageActionRef.current?.()
+    await commitActiveNotebookBeforeStorageAction()
     const result = await window.electronAPI?.moveStorageProfile?.()
     if (!result) {
       pushToastRef.current('Notebook folder migration is only available in the desktop app.', 'warning')
@@ -208,7 +248,7 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
   }
 
   const retryStorageProfile = async () => {
-    await beforeStorageActionRef.current?.()
+    await commitActiveNotebookBeforeStorageAction()
     const result = await window.electronAPI?.retryStorageProfile?.()
     if (!result) {
       pushToastRef.current('Notebook folder reload is only available in the desktop app.', 'warning')

@@ -4,8 +4,7 @@ import { splitAssetMetadataFromUrl } from '../markdown/asset-metadata.js'
 import { resolveAssetDisplayUrl } from '../markdown/image-asset-registry'
 import { getMediaDisplayTitle, getMediaKindFromUrl, type MediaKind } from '../media/media-utils'
 import { getAisleBodyId, getAisleMarkdown } from '../notes/note-markdown'
-import { buildNoteLocationKey, listSearchableNoteLocations } from '../notes/note-locations'
-import { getScratchpadNoteBody } from '../state/scratchpad'
+import { buildNoteLocationKey, type NoteSearchEntry } from '../notes/note-locations'
 import type { AppState, NoteBody, NoteLocation, NoteFilterKind } from '../types/app'
 import {
   buildTagFilterIndex,
@@ -15,6 +14,7 @@ import {
   type TagFilterOccurrence,
   type TagFilterSortMode,
 } from '../tags/tag-filter'
+import { getNotebookIndexContext, type NotebookIndexContext } from './notebook-index-context'
 
 export type NoteFilterOptionType =
   | 'tag'
@@ -66,7 +66,7 @@ export type NoteFilterIndex = {
   firstMatchByNote: Map<string, NoteLocation>
 }
 
-type NormalLocation = ReturnType<typeof listSearchableNoteLocations>[number]
+type NormalLocation = NoteSearchEntry
 
 const SYNCED_AISLE_PREFIX = 'synced-aisle:'
 const FRONTMATTER_TEMPLATE_PREFIX = 'fm-template:'
@@ -190,16 +190,14 @@ function finalizeIndex(
   return index
 }
 
-function buildTagNoteFilterIndex(state: AppState, selectedKeys: string[]): NoteFilterIndex {
-  const availableOnlyIndex = buildTagFilterIndex(state, [])
+function buildTagNoteFilterIndex(
+  state: AppState,
+  selectedKeys: string[],
+  context?: NotebookIndexContext,
+): NoteFilterIndex {
+  const indexContext = getNotebookIndexContext(state, context)
   const normalizedSelectedKeys = normalizeSelectedKeys('tags', selectedKeys)
-  const effectiveKeys = normalizedSelectedKeys.length > 0
-    ? normalizedSelectedKeys
-    : availableOnlyIndex.availableTags.map((tag) => tag.key)
-  const tagIndex = buildTagFilterIndex(state, effectiveKeys)
-  const orderedLocations = listSearchableNoteLocations(state).map((entry) => ({
-    noteId: entry.noteId,
-  }))
+  const tagIndex = buildTagFilterIndex(state, normalizedSelectedKeys, indexContext)
   const options: NoteFilterOption[] = tagIndex.availableTags.map((tag) => ({
     ...tag,
     type: 'tag',
@@ -215,7 +213,7 @@ function buildTagNoteFilterIndex(state: AppState, selectedKeys: string[]): NoteF
     aisleBodyId: occurrence.aisleBodyId,
     tagOccurrence: occurrence,
   }))
-  return finalizeIndex('tags', normalizedSelectedKeys, options, occurrences, orderedLocations)
+  return finalizeIndex('tags', normalizedSelectedKeys, options, occurrences, indexContext.orderedNoteLocations)
 }
 
 function buildOptionLabel(locations: NormalLocation[], fallback: string): string {
@@ -224,8 +222,8 @@ function buildOptionLabel(locations: NormalLocation[], fallback: string): string
   return first.folderPath ? `${first.folderPath} / ${first.noteName}` : first.noteName
 }
 
-function getBodyAisles(state: AppState, noteBodyId: string) {
-  return state.noteBodies.find((body) => body.id === noteBodyId)?.aisles ?? []
+function getBodyAisles(context: NotebookIndexContext, noteBodyId: string) {
+  return context.noteBodiesById.get(noteBodyId)?.aisles ?? []
 }
 
 function getNoteLocationFromEntry(entry: NormalLocation): NoteLocation {
@@ -234,8 +232,13 @@ function getNoteLocationFromEntry(entry: NormalLocation): NoteLocation {
   }
 }
 
-function buildSyncedFilterIndex(state: AppState, selectedKeys: string[]): NoteFilterIndex {
-  const locations = listSearchableNoteLocations(state)
+function buildSyncedFilterIndex(
+  state: AppState,
+  selectedKeys: string[],
+  context?: NotebookIndexContext,
+): NoteFilterIndex {
+  const indexContext = getNotebookIndexContext(state, context)
+  const locations = indexContext.locations
   const options: NoteFilterOption[] = []
   const occurrences: NoteFilterOccurrence[] = []
   const aisleSlotsByBodyId = new Map<string, {
@@ -246,7 +249,7 @@ function buildSyncedFilterIndex(state: AppState, selectedKeys: string[]): NoteFi
     aisleBodyId: string
   }[]>()
   locations.forEach((location) => {
-    getBodyAisles(state, location.noteBodyId).forEach((aisle) => {
+    getBodyAisles(indexContext, location.noteBodyId).forEach((aisle) => {
       const aisleBodyId = getAisleBodyId(aisle)
       if (!aisleBodyId) return
       const slotKey = `${location.noteId}::${location.noteBodyId}::${aisle.id}`
@@ -288,9 +291,7 @@ function buildSyncedFilterIndex(state: AppState, selectedKeys: string[]): NoteFi
     selectedKeys,
     options,
     occurrences,
-    locations.map((entry) => ({
-      noteId: entry.noteId,
-    })),
+    indexContext.orderedNoteLocations,
   )
 }
 
@@ -298,12 +299,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-function buildFrontmatterNoteFilterIndex(state: AppState, selectedKeys: string[]): NoteFilterIndex {
-  const locations = listSearchableNoteLocations(state)
-  const templatesById = new Map(state.frontmatter.templates.map((template) => [template.id, template]))
+function buildFrontmatterNoteFilterIndex(
+  state: AppState,
+  selectedKeys: string[],
+  context?: NotebookIndexContext,
+): NoteFilterIndex {
+  const indexContext = getNotebookIndexContext(state, context)
+  const locations = indexContext.locations
+  const templatesById = indexContext.templatesById
   const optionsByKey = new Map<string, NoteFilterOption>()
   const occurrences: NoteFilterOccurrence[] = []
-  const aisleBodiesById = new Map((state.noteAisleBodies ?? []).map((body) => [body.id, body]))
 
   const pushOption = (option: NoteFilterOption) => {
     const current = optionsByKey.get(option.key)
@@ -315,9 +320,9 @@ function buildFrontmatterNoteFilterIndex(state: AppState, selectedKeys: string[]
   }
 
   locations.forEach((location) => {
-    getBodyAisles(state, location.noteBodyId).forEach((aisle) => {
+    getBodyAisles(indexContext, location.noteBodyId).forEach((aisle) => {
       const aisleBodyId = getAisleBodyId(aisle)
-      const aisleBody = aisleBodiesById.get(aisleBodyId)
+      const aisleBody = indexContext.aisleBodiesById.get(aisleBodyId)
       if (aisleBody?.frontmatterStatus !== 'valid' || !isRecord(aisleBody.frontmatter)) return
 
       const template = aisleBody.frontmatterMeta?.templateId
@@ -362,7 +367,7 @@ function buildFrontmatterNoteFilterIndex(state: AppState, selectedKeys: string[]
     selectedKeys,
     Array.from(optionsByKey.values()),
     occurrences,
-    locations.map((entry) => ({ noteId: entry.noteId })),
+    indexContext.orderedNoteLocations,
   )
 }
 
@@ -448,9 +453,13 @@ export function extractMediaFilterReferences(markdown: string): ExtractedMediaFi
   return references
 }
 
-function buildMediaNoteFilterIndex(state: AppState, selectedKeys: string[]): NoteFilterIndex {
-  const locations = listSearchableNoteLocations(state)
-  const noteBodiesById = new Map(state.noteBodies.map((body) => [body.id, body]))
+function buildMediaNoteFilterIndex(
+  state: AppState,
+  selectedKeys: string[],
+  context?: NotebookIndexContext,
+): NoteFilterIndex {
+  const indexContext = getNotebookIndexContext(state, context)
+  const locations = indexContext.locations
   const optionsByKey = new Map<string, NoteFilterOption>()
   const occurrences: NoteFilterOccurrence[] = []
 
@@ -458,7 +467,7 @@ function buildMediaNoteFilterIndex(state: AppState, selectedKeys: string[]): Not
     if (!body) return
     body.aisles.forEach((aisle) => {
       const aisleBodyId = getAisleBodyId(aisle)
-      const references = extractMediaFilterReferences(getAisleMarkdown(aisle, state.noteAisleBodies))
+      const references = extractMediaFilterReferences(getAisleMarkdown(aisle, indexContext.aisleBodiesById))
       references.forEach((reference) => {
         const current = optionsByKey.get(reference.key)
         if (current) {
@@ -492,17 +501,17 @@ function buildMediaNoteFilterIndex(state: AppState, selectedKeys: string[]): Not
   }
 
   locations.forEach((entry) => {
-    pushLocationMedia(getNoteLocationFromEntry(entry), noteBodiesById.get(entry.noteBodyId))
+    pushLocationMedia(getNoteLocationFromEntry(entry), indexContext.noteBodiesById.get(entry.noteBodyId))
   })
 
-  pushLocationMedia(SCRATCHPAD_FIND_LOCATION, getScratchpadNoteBody(state))
+  pushLocationMedia(SCRATCHPAD_FIND_LOCATION, indexContext.scratchpadBody)
 
   return finalizeIndex(
     'media',
     selectedKeys,
     Array.from(optionsByKey.values()),
     occurrences,
-    locations.map(getNoteLocationFromEntry),
+    indexContext.orderedNoteLocations,
   )
 }
 
@@ -510,11 +519,12 @@ export function buildNoteFilterIndex(
   state: AppState,
   kind: NoteFilterKind,
   selectedKeys: string[] = [],
+  context?: NotebookIndexContext,
 ): NoteFilterIndex {
-  if (kind === 'tags') return buildTagNoteFilterIndex(state, selectedKeys)
-  if (kind === 'synced') return buildSyncedFilterIndex(state, selectedKeys)
-  if (kind === 'frontmatter') return buildFrontmatterNoteFilterIndex(state, selectedKeys)
-  return buildMediaNoteFilterIndex(state, selectedKeys)
+  if (kind === 'tags') return buildTagNoteFilterIndex(state, selectedKeys, context)
+  if (kind === 'synced') return buildSyncedFilterIndex(state, selectedKeys, context)
+  if (kind === 'frontmatter') return buildFrontmatterNoteFilterIndex(state, selectedKeys, context)
+  return buildMediaNoteFilterIndex(state, selectedKeys, context)
 }
 
 export function getFirstMatchingNoteFilterLocation(

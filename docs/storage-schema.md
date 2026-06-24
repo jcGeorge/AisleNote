@@ -166,11 +166,11 @@ All split files live under `.aislenote/`.
 - `note-registry.json`: note body records and aisle body records, including content hashes, frontmatter metadata, tags, inline preserved Markdown, and mirror paths.
 - `trash-index.json`: deleted notebook items and restore metadata.
 - `frontmatter-settings.json`: frontmatter templates, selected settings template, and last applied template.
-- `editor-state.json`: theme, scratchpad, hotkeys, UI state, toast history, cursor locations, heading collapse state, and aisle widths.
+- `editor-state.json`: notebook-local editor/view state, including scratchpad reference, sidebar state, collapsed folders, toast history, cursor locations, heading collapse state, and aisle widths. Portable user preferences such as theme, hotkeys, toolbar layouts, custom themes, and settings tabs live in app settings instead.
 - `messages.json`: persisted app messages.
 - `sync-state.json`: sync metadata.
 
-Portable user preferences live in `<electron-user-data>/settings/app-settings.json`, not in the selected notebook folder. Missing optional split files fall back to defaults where the loader has a defined fallback.
+Portable user preferences live in `<electron-user-data>/settings/app-settings.json`, not in the selected notebook folder. Active notebook loads overlay those app settings onto notebook data; notebook import and inspection paths can opt out of that overlay. Missing optional split files fall back to defaults where the loader has a defined fallback.
 
 ## Import Behavior
 

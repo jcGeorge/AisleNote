@@ -29,7 +29,7 @@ function currentSettingsJson() {
 describe('portable app settings parsing', () => {
   it('builds a current default app-settings shape', () => {
     expect(createDefaultPortableAppSettings()).toMatchObject({
-      theme: 'dawn',
+      theme: 'dark',
       hotkeys: {
         shortcuts: {
           openSettings: 'Mod+,',
@@ -177,7 +177,7 @@ describe('portable app settings parsing', () => {
     expect(parsePortableAppSettingsJson(JSON.stringify({ foo: 'bar' }))).toMatchObject({
       ok: true,
       settings: {
-        theme: 'dawn',
+        theme: 'dark',
       },
     })
   })

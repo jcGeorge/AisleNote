@@ -91,7 +91,7 @@ function writeDefaultSettingsFile(settingsPath) {
   writeTextFileAtomic(settingsPath, stringifyDefaultPortableAppSettings())
 }
 
-function ensureLocalSettingsFile(userDataPath) {
+function ensureLocalSettingsFile(userDataPath, options = {}) {
   const localSettingsPath = getUserSettingsFilePath(userDataPath)
   const localSettings = readSettingsFile(localSettingsPath)
   if (localSettings.ok) return { ok: true, contents: localSettings.contents, created: false }
@@ -103,8 +103,17 @@ function ensureLocalSettingsFile(userDataPath) {
     }
   }
   try {
-    writeDefaultSettingsFile(localSettingsPath)
-    return { ok: true, contents: stringifyDefaultPortableAppSettings(), created: true }
+    if (typeof options.seedSerializedState === 'string') {
+      writeAppSettingsForState(userDataPath, options.seedSerializedState)
+    } else {
+      writeDefaultSettingsFile(localSettingsPath)
+    }
+    const createdSettings = readSettingsFile(localSettingsPath)
+    return {
+      ok: true,
+      contents: createdSettings.ok ? createdSettings.contents : stringifyDefaultPortableAppSettings(),
+      created: true,
+    }
   } catch (error) {
     return {
       ok: false,
@@ -172,7 +181,7 @@ export function resetUserSettingsLocationConfig(userDataPath) {
 }
 
 function detachUnreachableUserSettingsLocation(userDataPath, location, options = {}) {
-  const localSettings = ensureLocalSettingsFile(userDataPath)
+  const localSettings = ensureLocalSettingsFile(userDataPath, options)
   if (!localSettings.ok) {
     return {
       ok: false,
@@ -225,9 +234,13 @@ export function readUserSettingsFromLocation(location) {
   return readSettingsFile(location.settingsPath)
 }
 
-export function refreshLocalUserSettingsFromLocation(userDataPath, location = resolveUserSettingsLocation(userDataPath)) {
+export function refreshLocalUserSettingsFromLocation(
+  userDataPath,
+  location = resolveUserSettingsLocation(userDataPath),
+  options = {},
+) {
   if (location.isDefault) {
-    const localSettings = ensureLocalSettingsFile(userDataPath)
+    const localSettings = ensureLocalSettingsFile(userDataPath, options)
     if (!localSettings.ok) {
       return {
         ok: false,
@@ -254,13 +267,13 @@ export function refreshLocalUserSettingsFromLocation(userDataPath, location = re
   }
 
   if (!existsSync(location.settingsRootPath)) {
-    return detachUnreachableUserSettingsLocation(userDataPath, location)
+    return detachUnreachableUserSettingsLocation(userDataPath, location, options)
   }
 
   const cloudSettings = readSettingsFile(location.settingsPath)
   if (!cloudSettings.ok) {
     if (cloudSettings.missing) {
-      const localSettings = ensureLocalSettingsFile(userDataPath)
+      const localSettings = ensureLocalSettingsFile(userDataPath, options)
       if (!localSettings.ok) {
         return {
           ok: false,

@@ -80,7 +80,6 @@ import {
 import {
   buildNoteLocationKey,
   filterNoteSearchEntries,
-  listSearchableNoteLocations,
 } from '../notes/note-locations'
 import { buildAisleEditorKey, getAisleIdFromAisleEditorKey } from '../editor/aisle-editor'
 import { shouldClearPendingCursorRestoreForAisleActivation } from '../editor/aisle-activation'
@@ -252,13 +251,16 @@ import {
   listLinkedAisleSlotsForAisleBody,
 } from '../notes/aisle-links'
 import {
+  buildNoteFilterIndex,
   getFrontmatterTemplateFilterKey,
   getSyncedAisleFilterKey,
 } from '../filters/note-filter'
+import { createNotebookIndexContext } from '../filters/notebook-index-context'
 import {
   buildSidebarSearchIndexes,
   buildSidebarSearchResultGroups,
   clearActiveSidebarSearchPrefix,
+  getEmptySidebarSearchIndexes,
   getSidebarSearchSelectedTokens,
   getSidebarSearchSuggestions,
   mergeSidebarSearchTokens,
@@ -299,6 +301,9 @@ void React
 const SIDEBAR_MIN_WIDTH = 212
 const SIDEBAR_MAX_WIDTH = 520
 const NOTEBOOK_FOCUS_BOUNDARY_FLUSH_DELAY_MS = 60
+const NOTEBOOK_TREE_VIRTUALIZATION_THRESHOLD = 300
+const NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT = 32
+const NOTEBOOK_TREE_VIRTUAL_OVERSCAN = 12
 
 function getDefaultNoteFilterSettings(): NonNullable<AppState['ui']['noteFilter']> {
   return DEFAULT_UI_SETTINGS.noteFilter ?? {
@@ -842,6 +847,13 @@ type NotebookTreeContextMenuState = {
 type NotebookTreeNoteSelectionMode = 'replace' | 'toggle' | 'range'
 type NotebookTreeRenameCommitSource = 'enter' | 'blur' | 'tab'
 
+type NotebookTreeFlatRow = {
+  item: NotebookTreeItem
+  depth: number
+  parentFolderId: string | null
+  index: number
+}
+
 type PendingCreatedTreeRename =
   | {
       kind: 'note'
@@ -854,6 +866,17 @@ type PendingCreatedTreeRename =
       itemId: string
       returnNoteBodyId: string
       returnAisleId: string
+    }
+
+type NotebookNameDialogState =
+  | {
+      mode: 'create'
+      initialName: string
+    }
+  | {
+      mode: 'rename'
+      initialName: string
+      notebook: KnownNotebook
     }
 
 function getNotebookMenuViewportSize(): MenuViewport {
@@ -925,6 +948,30 @@ function getVisibleNotebookTreeNoteIds(items: NotebookTreeItem[], collapsedFolde
     }
   })
   return noteIds
+}
+
+function flattenVisibleNotebookTreeRows(
+  items: NotebookTreeItem[],
+  collapsedFolderIds: Set<string>,
+  query: string,
+  depth = 0,
+  parentFolderId: string | null = null,
+): NotebookTreeFlatRow[] {
+  const rows: NotebookTreeFlatRow[] = []
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  items.forEach((item, index) => {
+    if (item.type === 'note' && normalizedQuery && !item.title.toLocaleLowerCase().includes(normalizedQuery)) return
+    rows.push({
+      item,
+      depth,
+      parentFolderId,
+      index,
+    })
+    if (item.type === 'folder' && !collapsedFolderIds.has(item.id)) {
+      rows.push(...flattenVisibleNotebookTreeRows(item.children, collapsedFolderIds, query, depth + 1, item.id))
+    }
+  })
+  return rows
 }
 
 function getNotebookTreeRangeNoteIds(noteIds: string[], anchorNoteId: string, targetNoteId: string): string[] {
@@ -1050,6 +1097,7 @@ function TreeItemRow({
   onDragItemEnd,
   onUpdateDropTarget,
   onDropItem,
+  renderChildren = true,
 }: {
   item: NotebookTreeItem
   depth: number
@@ -1077,6 +1125,7 @@ function TreeItemRow({
   onDragItemEnd: () => void
   onUpdateDropTarget: (target: NotebookTreeDropTarget | null) => void
   onDropItem: (target: NotebookTreeDropTarget) => void
+  renderChildren?: boolean
 }) {
   const isFolder = item.type === 'folder'
   const collapsed = isFolder && collapsedFolderIds.has(item.id)
@@ -1279,10 +1328,10 @@ function TreeItemRow({
           </button>
         )}
       </div>
-      {isFolder && !collapsed ? (
+      {renderChildren && isFolder && !collapsed ? (
         <div className="notebook-tree-children" role="group" style={{ '--tree-depth': depth } as CSSProperties}>
           {children.map((child, childIndex) => (
-            <TreeItemRow
+            <MemoizedTreeItemRow
               key={child.id}
               item={child}
               depth={depth + 1}
@@ -1317,6 +1366,8 @@ function TreeItemRow({
     </>
   )
 }
+
+const MemoizedTreeItemRow = React.memo(TreeItemRow)
 
 function NotebookAisleContextMenu({
   menu,
@@ -1872,11 +1923,13 @@ function isSixDigitHexDraft(value: string): boolean {
 function CustomThemePaletteSlotRow({
   label,
   value,
-  onChange,
+  onPreviewChange,
+  onCommit,
 }: {
   label: string
   value: string
-  onChange: (value: string) => void
+  onPreviewChange: (value: string) => void
+  onCommit: (value: string) => void
 }) {
   const [hexDraft, setHexDraft] = useState(value)
 
@@ -1884,17 +1937,25 @@ function CustomThemePaletteSlotRow({
     setHexDraft(value)
   }, [value])
 
+  const previewHexDraft = (rawValue: string): boolean => {
+    const normalized = normalizeHexColor(rawValue)
+    if (!normalized) return false
+    setHexDraft(normalized)
+    onPreviewChange(normalized)
+    return true
+  }
+
   const commitHexDraft = (rawValue: string): boolean => {
     const normalized = normalizeHexColor(rawValue)
     if (!normalized) return false
     setHexDraft(normalized)
-    onChange(normalized)
+    onCommit(normalized)
     return true
   }
 
   const handleHexDraftChange = (rawValue: string) => {
     setHexDraft(rawValue)
-    if (isSixDigitHexDraft(rawValue)) commitHexDraft(rawValue)
+    if (isSixDigitHexDraft(rawValue)) previewHexDraft(rawValue)
   }
 
   const handleHexDraftBlur = () => {
@@ -1923,7 +1984,13 @@ function CustomThemePaletteSlotRow({
         type="color"
         value={value}
         aria-label={`${label} color picker`}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => onPreviewChange(event.target.value)}
+        onBlur={() => onCommit(value)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter') return
+          event.preventDefault()
+          onCommit(value)
+        }}
       />
       <input
         className="settings-text-input custom-theme-hex-input"
@@ -1955,7 +2022,10 @@ function NotebookThemeSettings({
   onMutateState: (updater: (previous: AppState) => AppState) => void
 }) {
   const selectedCustomTheme = state.ui.selectedCustomTheme ?? 'custom1'
-  const selectedPalette = getThemePaletteForTheme(state.theme, state.ui.themePalettes)
+  const committedPalette = getThemePaletteForTheme(state.theme, state.ui.themePalettes)
+  const committedPaletteSignature = CUSTOM_THEME_PALETTE_SLOTS.map((slot) => committedPalette[slot]).join('|')
+  const [draftPalette, setDraftPalette] = useState(committedPalette)
+  const paletteCommitTimerRef = useRef<number | null>(null)
   const canCopyActiveThemeToSelectedCustomPalette = state.theme !== selectedCustomTheme
   const [themeJsonMode, setThemeJsonMode] = useState<'import' | 'export' | null>(null)
   const [themeJsonDraft, setThemeJsonDraft] = useState('')
@@ -1964,11 +2034,59 @@ function NotebookThemeSettings({
   const defaultToolbarButtonScale = DEFAULT_UI_SETTINGS.toolbarButtonScale ?? 1.2
   const toolbarButtonScale = clampToolbarButtonScale(state.ui.toolbarButtonScale ?? defaultToolbarButtonScale)
   const previewScaleStyle = {
+    ...getThemePaletteVariables({
+      theme: state.theme,
+      ui: {
+        themePalettes: {
+          ...(state.ui.themePalettes ?? {}),
+          [state.theme]: draftPalette,
+        },
+      },
+    }),
     '--note-font-scale': String(noteFontScale),
     '--toolbar-button-scale': String(toolbarButtonScale),
   } as CSSProperties
 
+  const clearPaletteCommitTimer = () => {
+    if (paletteCommitTimerRef.current === null) return
+    window.clearTimeout(paletteCommitTimerRef.current)
+    paletteCommitTimerRef.current = null
+  }
+
+  const commitThemePalette = (themeId: AppTheme, palette: typeof committedPalette) => {
+    clearPaletteCommitTimer()
+    onMutateState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        themePalettes: {
+          ...(previous.ui.themePalettes ?? {}),
+          [themeId]: normalizeCustomThemePalette(palette, getCustomThemePaletteSeed(themeId)),
+        },
+      },
+    }))
+  }
+
+  const scheduleThemePaletteCommit = (themeId: AppTheme, palette: typeof committedPalette) => {
+    clearPaletteCommitTimer()
+    paletteCommitTimerRef.current = window.setTimeout(() => {
+      paletteCommitTimerRef.current = null
+      commitThemePalette(themeId, palette)
+    }, 300)
+  }
+
+  useEffect(() => {
+    setDraftPalette(committedPalette)
+    // The palette helper returns a fresh object each render; sync drafts on value signature changes only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [committedPaletteSignature, state.theme])
+
+  useEffect(() => () => {
+    clearPaletteCommitTimer()
+  }, [])
+
   const updateTheme = (theme: AppTheme) => {
+    commitThemePalette(state.theme, draftPalette)
     onMutateState((previous) => ({
       ...previous,
       theme,
@@ -1990,46 +2108,40 @@ function NotebookThemeSettings({
   }
 
   const updatePaletteSlot = (slot: CustomThemePaletteSlot, value: string) => {
-    onMutateState((previous) => {
-      const themeId = previous.theme
-      const currentPalette = getThemePaletteForTheme(themeId, previous.ui.themePalettes)
-      return {
-        ...previous,
-        ui: {
-          ...previous.ui,
-          themePalettes: {
-            ...(previous.ui.themePalettes ?? {}),
-            [themeId]: normalizeCustomThemePalette(
-              {
-                ...currentPalette,
-                [slot]: value,
-              },
-              getCustomThemePaletteSeed(themeId),
-            ),
-          },
-        },
-      }
-    })
+    const themeId = state.theme
+    const nextPalette = normalizeCustomThemePalette(
+      {
+        ...draftPalette,
+        [slot]: value,
+      },
+      getCustomThemePaletteSeed(themeId),
+    )
+    setDraftPalette(nextPalette)
+    scheduleThemePaletteCommit(themeId, nextPalette)
+  }
+
+  const commitPaletteSlot = (slot: CustomThemePaletteSlot, value: string) => {
+    const themeId = state.theme
+    const nextPalette = normalizeCustomThemePalette(
+      {
+        ...draftPalette,
+        [slot]: value,
+      },
+      getCustomThemePaletteSeed(themeId),
+    )
+    setDraftPalette(nextPalette)
+    commitThemePalette(themeId, nextPalette)
   }
 
   const resetSelectedPalette = () => {
-    onMutateState((previous) => {
-      const themeId = previous.theme
-      return {
-        ...previous,
-        ui: {
-          ...previous.ui,
-          themePalettes: {
-            ...(previous.ui.themePalettes ?? {}),
-            [themeId]: getCustomThemePaletteSeed(themeId),
-          },
-        },
-      }
-    })
+    const nextPalette = getCustomThemePaletteSeed(state.theme)
+    setDraftPalette(nextPalette)
+    commitThemePalette(state.theme, nextPalette)
   }
 
   const copyActiveThemeToSelectedCustomPalette = () => {
     if (!canCopyActiveThemeToSelectedCustomPalette) return
+    commitThemePalette(state.theme, draftPalette)
     onMutateState((previous) => {
       const targetTheme = previous.ui.selectedCustomTheme ?? 'custom1'
       if (previous.theme === targetTheme) return previous
@@ -2051,7 +2163,7 @@ function NotebookThemeSettings({
 
   const openExportThemeJson = () => {
     setThemeJsonMode('export')
-    setThemeJsonDraft(serializeThemeSettings(selectedPalette))
+    setThemeJsonDraft(serializeThemeSettings(draftPalette))
     setThemeJsonStatus('')
   }
 
@@ -2062,24 +2174,14 @@ function NotebookThemeSettings({
   }
 
   const importThemeJson = () => {
-    const result = parseThemeSettingsImport(themeJsonDraft, selectedPalette)
+    const result = parseThemeSettingsImport(themeJsonDraft, draftPalette)
     if (!result.ok) {
       setThemeJsonStatus(result.error)
       return
     }
-    onMutateState((previous) => {
-      const themeId = previous.theme
-      return {
-        ...previous,
-        ui: {
-          ...previous.ui,
-          themePalettes: {
-            ...(previous.ui.themePalettes ?? {}),
-            [themeId]: normalizeCustomThemePalette(result.palette, getCustomThemePaletteSeed(themeId)),
-          },
-        },
-      }
-    })
+    const nextPalette = normalizeCustomThemePalette(result.palette, getCustomThemePaletteSeed(state.theme))
+    setDraftPalette(nextPalette)
+    commitThemePalette(state.theme, nextPalette)
     setThemeJsonStatus(`Imported ${result.importedSlots.length} theme color${result.importedSlots.length === 1 ? '' : 's'}.`)
   }
 
@@ -2267,8 +2369,9 @@ function NotebookThemeSettings({
           <CustomThemePaletteSlotRow
             key={slot}
             label={CUSTOM_THEME_PALETTE_LABELS[slot]}
-            value={selectedPalette[slot]}
-            onChange={(value) => updatePaletteSlot(slot, value)}
+            value={draftPalette[slot]}
+            onPreviewChange={(value) => updatePaletteSlot(slot, value)}
+            onCommit={(value) => commitPaletteSlot(slot, value)}
           />
         ))}
       </div>
@@ -2330,6 +2433,83 @@ function NotebookThemeSettings({
   )
 }
 
+function NotebookNameDialog({
+  dialog,
+  onCancel,
+  onSubmit,
+}: {
+  dialog: NotebookNameDialogState | null
+  onCancel: () => void
+  onSubmit: (name: string) => void
+}) {
+  const [draft, setDraft] = useState('')
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    if (!dialog) return
+    setDraft(dialog.initialName)
+    const focusId = window.setTimeout(() => {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }, 0)
+    return () => window.clearTimeout(focusId)
+  }, [dialog])
+
+  if (!dialog) return null
+
+  const title = dialog.mode === 'create' ? 'Create notebook' : 'Rename notebook'
+  const actionLabel = dialog.mode === 'create' ? 'Select folder' : 'Rename'
+  const trimmedName = draft.trim()
+  const canSubmit = trimmedName.length > 0 && (dialog.mode === 'create' || trimmedName !== dialog.initialName)
+
+  return (
+    <div className="modal-backdrop notebook-modal-backdrop" role="presentation" onMouseDown={onCancel}>
+      <form
+        className="modal-card notebook-frontmatter-modal notebook-name-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="notebook-name-dialog-title"
+        onMouseDown={(event) => event.stopPropagation()}
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (canSubmit) onSubmit(trimmedName)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') onCancel()
+        }}
+      >
+        <header className="modal-card-header">
+          <h2 id="notebook-name-dialog-title">{title}</h2>
+          <button type="button" className="app-close-button" aria-label="Close notebook name dialog" onClick={onCancel}>
+            <AppIcon iconId="x" className="app-close-button-icon" />
+          </button>
+        </header>
+        <div className="notebook-frontmatter-body">
+          <label className="settings-modal-field" htmlFor="notebook-name-input">
+            <span>Notebook name</span>
+            <input
+              ref={inputRef}
+              id="notebook-name-input"
+              type="text"
+              className="settings-text-input"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+            />
+          </label>
+        </div>
+        <footer className="modal-card-footer">
+          <button type="submit" className="notebook-settings-action" disabled={!canSubmit}>
+            {actionLabel}
+          </button>
+          <button type="button" className="notebook-settings-action" onClick={onCancel}>
+            Cancel
+          </button>
+        </footer>
+      </form>
+    </div>
+  )
+}
+
 export function NotebookApp() {
   const { state, setState, stateRef, externalStateLoadVersion, commitAppStateNow } = usePersistentAppState()
   const [viewMode, setViewMode] = useState<ViewMode>('main')
@@ -2361,6 +2541,7 @@ export function NotebookApp() {
   const [shortcutMenu, setShortcutMenu] = useState<NotebookShortcutMenuState | null>(null)
   const [noteActionPicker, setNoteActionPicker] = useState<NoteActionPickerState | null>(null)
   const [openNotebookActionMenuKey, setOpenNotebookActionMenuKey] = useState('')
+  const [notebookNameDialog, setNotebookNameDialog] = useState<NotebookNameDialogState | null>(null)
   const [decoupleDialog, setDecoupleDialog] = useState<DecoupleDialogState | null>(null)
   const [linkPrompt, setLinkPrompt] = useState<LinkPromptState>(CLOSED_LINK_PROMPT_STATE)
   const [findReplaceOpen, setFindReplaceOpen] = useState(false)
@@ -2379,7 +2560,9 @@ export function NotebookApp() {
   const [expandedTrashItemId, setExpandedTrashItemId] = useState('')
   const [runtimeVersion, setRuntimeVersion] = useState('')
   const [zoomHudPercent, setZoomHudPercent] = useState<number | null>(null)
+  const [notebookTreeViewport, setNotebookTreeViewport] = useState({ scrollTop: 0, height: 0 })
   const aisleScrollRef = useRef<HTMLDivElement | null>(null)
+  const notebookTreeScrollRef = useRef<HTMLDivElement | null>(null)
   const workspaceRootRef = useRef<HTMLElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const linkPromptInputRef = useRef<HTMLInputElement | null>(null)
@@ -2419,10 +2602,44 @@ export function NotebookApp() {
     ),
     [isMacPlatform],
   )
+  const updateNotebookTreeViewport = useCallback(() => {
+    const element = notebookTreeScrollRef.current
+    if (!element) return
+    const nextViewport = {
+      scrollTop: element.scrollTop,
+      height: element.clientHeight,
+    }
+    setNotebookTreeViewport((current) =>
+      current.scrollTop === nextViewport.scrollTop && current.height === nextViewport.height
+        ? current
+        : nextViewport,
+    )
+  }, [])
+  const handleNotebookTreeScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    const element = event.currentTarget
+    const nextViewport = {
+      scrollTop: element.scrollTop,
+      height: element.clientHeight,
+    }
+    setNotebookTreeViewport((current) =>
+      current.scrollTop === nextViewport.scrollTop && current.height === nextViewport.height
+        ? current
+        : nextViewport,
+    )
+  }, [])
 
   useEffect(() => () => {
     cancelScheduledAisleFocusScroll(scheduledAisleFocusScrollRef.current, window)
   }, [])
+
+  useLayoutEffect(() => {
+    updateNotebookTreeViewport()
+    const element = notebookTreeScrollRef.current
+    if (!element || typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(updateNotebookTreeViewport)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [query, sidebarSearchMode, state.ui.noteFilter, state.ui.sidebarCollapsed, updateNotebookTreeViewport])
 
   useEffect(() => {
     const clearZoomHudTimeout = () => {
@@ -2452,8 +2669,18 @@ export function NotebookApp() {
     stateRef,
   })
 
-  const activeNotebookModel = useMemo(() => getActiveNoteModel(state), [state])
-  const scratchpadModel = useMemo(() => getScratchpadEditorModel(state), [state])
+  const activeNotebookModel = useMemo(
+    () => getActiveNoteModel(stateRef.current),
+    // Recompute only when active-note inputs change; stateRef keeps the callback on the latest state object.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.noteAisleBodies, state.noteBodies, state.notebook.activeNoteId, state.notebook.items, stateRef],
+  )
+  const scratchpadModel = useMemo(
+    () => getScratchpadEditorModel(stateRef.current),
+    // Recompute only when scratchpad editor inputs change; stateRef keeps the callback on the latest state object.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.noteAisleBodies, state.noteBodies, state.scratchpad, stateRef],
+  )
   const activeModel = scratchpadActive ? scratchpadModel ?? activeNotebookModel : activeNotebookModel
   const activeModelIsScratchpad = activeModel?.kind === 'scratchpad'
   const collapsedFolderIds = useMemo(() => new Set(state.ui.collapsedFolderIds), [state.ui.collapsedFolderIds])
@@ -2461,10 +2688,61 @@ export function NotebookApp() {
     () => getVisibleNotebookTreeNoteIds(state.notebook.items, collapsedFolderIds),
     [collapsedFolderIds, state.notebook.items],
   )
+  const notebookTreeFlatRows = useMemo(
+    () => flattenVisibleNotebookTreeRows(state.notebook.items, collapsedFolderIds, query),
+    [collapsedFolderIds, query, state.notebook.items],
+  )
+  const useVirtualizedNotebookTree = notebookTreeFlatRows.length > NOTEBOOK_TREE_VIRTUALIZATION_THRESHOLD
+  const notebookTreeVirtualWindow = useMemo(() => {
+    if (!useVirtualizedNotebookTree) {
+      return {
+        rows: notebookTreeFlatRows,
+        startIndex: 0,
+        totalHeight: notebookTreeFlatRows.length * NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT,
+      }
+    }
+    const viewportHeight = notebookTreeViewport.height || 640
+    const startIndex = Math.max(
+      0,
+      Math.floor(notebookTreeViewport.scrollTop / NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT) - NOTEBOOK_TREE_VIRTUAL_OVERSCAN,
+    )
+    const visibleRowCount =
+      Math.ceil(viewportHeight / NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT) + NOTEBOOK_TREE_VIRTUAL_OVERSCAN * 2
+    return {
+      rows: notebookTreeFlatRows.slice(startIndex, startIndex + visibleRowCount),
+      startIndex,
+      totalHeight: notebookTreeFlatRows.length * NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT,
+    }
+  }, [notebookTreeFlatRows, notebookTreeViewport.height, notebookTreeViewport.scrollTop, useVirtualizedNotebookTree])
   const selectedTreeNoteIdSet = useMemo(() => new Set(selectedTreeNoteIds), [selectedTreeNoteIds])
   const draggingTreeNoteIdSet = useMemo(() => new Set(draggingTreeNoteIds), [draggingTreeNoteIds])
   const noteFilterSettings = state.ui.noteFilter ?? getDefaultNoteFilterSettings()
-  const sidebarSearchIndexes = useMemo(() => buildSidebarSearchIndexes(state), [state])
+  const notebookIndexContext = useMemo(
+    () => createNotebookIndexContext(stateRef.current),
+    // Rebuild only for data that affects searchable notebook indexes, not theme/UI-only state changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      state.frontmatter.templates,
+      state.noteAisleBodies,
+      state.noteBodies,
+      state.notebook.items,
+      state.scratchpad,
+      stateRef,
+    ],
+  )
+  const sidebarSearchHasFilterKeys = noteFilterSettings.active && hasSidebarSearchFilterKeys(noteFilterSettings)
+  const sidebarSearchNeedsFullIndexes = sidebarSearchMode || query.trim().length > 0 || sidebarSearchHasFilterKeys
+  const tagAutocompleteFilterIndex = useMemo(
+    () => buildNoteFilterIndex(notebookIndexContext.state, 'tags', [], notebookIndexContext),
+    [notebookIndexContext],
+  )
+  const sidebarSearchIndexes = useMemo(() => {
+    if (sidebarSearchNeedsFullIndexes) return buildSidebarSearchIndexes(notebookIndexContext.state, notebookIndexContext)
+    return {
+      ...getEmptySidebarSearchIndexes(),
+      tags: tagAutocompleteFilterIndex,
+    }
+  }, [notebookIndexContext, sidebarSearchNeedsFullIndexes, tagAutocompleteFilterIndex])
   const parsedSidebarSearch = useMemo(
     () => parseSidebarSearchInput(query, sidebarSearchIndexes),
     [query, sidebarSearchIndexes],
@@ -2483,12 +2761,13 @@ export function NotebookApp() {
   const sidebarSearchResultGroups = useMemo(
     () =>
       buildSidebarSearchResultGroups({
-        state,
+        state: notebookIndexContext.state,
         query,
         filter: noteFilterSettings,
         indexes: sidebarSearchIndexes,
+        context: notebookIndexContext,
       }),
-    [noteFilterSettings, query, sidebarSearchIndexes, state],
+    [noteFilterSettings, notebookIndexContext, query, sidebarSearchIndexes],
   )
   const sidebarSearchActive = query.trim().length > 0 || sidebarSearchSelectedTokens.length > 0
   const sidebarSearchVisible = sidebarSearchMode || sidebarSearchActive
@@ -2496,11 +2775,11 @@ export function NotebookApp() {
     if (!noteActionPicker) return []
     const activeNoteId = activeNotebookModel?.noteId ?? state.notebook.activeNoteId
     return filterNoteSearchEntries(
-      listSearchableNoteLocations(state).filter((entry) => entry.noteId !== activeNoteId),
+      notebookIndexContext.locations.filter((entry) => entry.noteId !== activeNoteId),
       noteActionPicker.query,
       12,
     )
-  }, [activeNotebookModel?.noteId, noteActionPicker, state])
+  }, [activeNotebookModel?.noteId, notebookIndexContext, noteActionPicker, state.notebook.activeNoteId])
   const getNoteActionPickerAislesForNote = useCallback((noteId: string): NotebookNoteActionPickerAisleOption[] => {
     const note = findNotebookNote(state.notebook.items, noteId)?.note
     const noteBody = note ? state.noteBodies.find((body) => body.id === note.noteBodyId) : null
@@ -2536,21 +2815,32 @@ export function NotebookApp() {
     return new Set(
       activeModel.resolved.aisles
         .filter((aisle) => {
-          const body = getAisleBodyById(state, aisle.aisleBodyId)
+          const body = notebookIndexContext.aisleBodiesById.get(aisle.aisleBodyId)
           return Boolean(body?.frontmatter || body?.frontmatterRaw || body?.frontmatterStatus === 'invalid')
         })
         .map((aisle) => aisle.id),
     )
-  }, [activeModel, state])
+  }, [activeModel, notebookIndexContext.aisleBodiesById])
   const defaultToolbarButtonScale = DEFAULT_UI_SETTINGS.toolbarButtonScale ?? 1.2
   const rootStyle = useMemo(
     () =>
       ({
-        ...getThemePaletteVariables(state),
+        ...getThemePaletteVariables({
+          theme: state.theme,
+          ui: {
+            themePalettes: state.ui.themePalettes,
+          },
+        }),
         '--note-font-scale': String(state.ui.noteFontScale),
         '--toolbar-button-scale': String(state.ui.toolbarButtonScale ?? defaultToolbarButtonScale),
       }) as CSSProperties,
-    [defaultToolbarButtonScale, state],
+    [
+      defaultToolbarButtonScale,
+      state.theme,
+      state.ui.noteFontScale,
+      state.ui.themePalettes,
+      state.ui.toolbarButtonScale,
+    ],
   )
   const toolbarLayout = useMemo(
     () => resolveToolbarLayout(state.ui.toolbarLayouts, activeToolbarLayoutId),
@@ -3076,7 +3366,7 @@ export function NotebookApp() {
 
   const tagAutocompleteController = useTagAutocompleteController({
     viewMode,
-    getAvailableTags: () => sidebarSearchIndexes.tags.availableOptions,
+    getAvailableTags: () => tagAutocompleteFilterIndex.availableOptions,
     recentTagKeys: tagAutocompleteRecentKeys,
     onRecentTagKeysChange: updateTagAutocompleteRecentKeys,
     editorRef,
@@ -3101,6 +3391,7 @@ export function NotebookApp() {
   const commitCurrentEditorContent = useCallback(() => {
     const editor = editorRef.current
     if (editor) notebookEditors.commitActiveEditorMarkdownNow(editor)
+    notebookEditors.flushPendingEditorAppStateCommit()
   }, [notebookEditors])
 
   const pushEditorToolToast = useCallback((message: string, tone?: ToastTone) => {
@@ -3230,6 +3521,7 @@ export function NotebookApp() {
   }, [activeModel, renderedActiveAisleId, scheduleAisleFocusScroll, viewMode])
 
   const getLatestNotebookStateFromMountedEditors = useCallback(() => {
+    notebookEditors.flushPendingEditorAppStateCommit()
     const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
     return {
       state: applyActiveCursorToState(applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots)),
@@ -3310,6 +3602,7 @@ export function NotebookApp() {
 
   const applyNotebookNavigationLocation = useCallback(
     (location: NotebookNavigationLocation) => {
+      notebookEditors.flushPendingEditorAppStateCommit()
       const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
       const snapshotState = applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots)
       const resolvedLocation = resolveNotebookNavigationLocation(snapshotState, location)
@@ -3402,6 +3695,7 @@ export function NotebookApp() {
       if (!activeModel) return
       const editor = editorRef.current
       if (editor) notebookEditors.commitActiveEditorMarkdownNow(editor)
+      notebookEditors.flushPendingEditorAppStateCommit()
       setViewMode('main')
       toolbarState.closeToolbarPopovers()
       setAisleContextMenu(null)
@@ -3480,9 +3774,10 @@ export function NotebookApp() {
   )
 
   const updateFindReplaceQuery = useCallback((nextQuery: string) => {
+    notebookEditors.flushPendingEditorAppStateCommit()
     setFindReplaceQuery(nextQuery)
     setFindReplaceActiveIndex(0)
-  }, [])
+  }, [notebookEditors])
 
   const updateFindReplaceScope = useCallback(
     (scope: FindReplaceScope) => {
@@ -4122,6 +4417,7 @@ export function NotebookApp() {
 
   const updateSidebarSearchQuery = useCallback(
     (nextQuery: string) => {
+      notebookEditors.flushPendingEditorAppStateCommit()
       const parsed = parseSidebarSearchInput(nextQuery, sidebarSearchIndexes)
       if (parsed.tokens.length > 0) {
         activateSidebarSearchTokens(parsed.tokens)
@@ -4130,7 +4426,7 @@ export function NotebookApp() {
       }
       setQuery(nextQuery)
     },
-    [activateSidebarSearchTokens, sidebarSearchIndexes],
+    [activateSidebarSearchTokens, notebookEditors, sidebarSearchIndexes],
   )
 
   const selectSidebarSearchSuggestion = useCallback(
@@ -4193,6 +4489,7 @@ export function NotebookApp() {
   }, [clearNotebookNavigationTransientUi, closeSidebarSearchMode, scheduleAisleFocusScroll, stateRef])
 
   const focusNotesFilterFromShortcut = useCallback(() => {
+    notebookEditors.flushPendingEditorAppStateCommit()
     pendingFindReplaceRevealRef.current = null
     setFindReplaceOpen(false)
     toolbarState.closeToolbarPopovers()
@@ -4215,7 +4512,7 @@ export function NotebookApp() {
       searchInputRef.current?.focus()
       searchInputRef.current?.select()
     }, 0)
-  }, [mutateState, toolbarState])
+  }, [mutateState, notebookEditors, toolbarState])
 
   const toggleSidebarSearchModeFromButton = useCallback(() => {
     if (sidebarSearchVisible) {
@@ -5322,15 +5619,30 @@ export function NotebookApp() {
   }), [])
 
   const createNotebookFromSettings = useCallback(() => {
-    void storageProfileController.createNotebook()
-  }, [storageProfileController])
+    setOpenNotebookActionMenuKey('')
+    setNotebookNameDialog({ mode: 'create', initialName: 'New Notebook' })
+  }, [])
 
-  const renameCurrentNotebookFromSettings = useCallback(() => {
-    const currentName = storageProfileController.storageProfileStatus?.notebookName ?? ''
-    const name = window.prompt('Notebook name', currentName)?.trim()
-    if (!name || name === currentName) return
-    void storageProfileController.renameNotebook(name)
-  }, [storageProfileController])
+  const renameNotebookFromSettings = useCallback((notebook: KnownNotebook) => {
+    setOpenNotebookActionMenuKey('')
+    setNotebookNameDialog({ mode: 'rename', initialName: notebook.notebookName, notebook })
+  }, [])
+
+  const submitNotebookNameDialog = useCallback((name: string) => {
+    const dialog = notebookNameDialog
+    if (!dialog) return
+    setNotebookNameDialog(null)
+    if (dialog.mode === 'rename') {
+      if (name === dialog.initialName) return
+      void storageProfileController.renameNotebook(name, getNotebookSelector(dialog.notebook))
+      return
+    }
+    void (async () => {
+      const locationPath = await storageProfileController.chooseNotebookLocation()
+      if (!locationPath) return
+      await storageProfileController.createNotebook({ name, locationPath })
+    })()
+  }, [getNotebookSelector, notebookNameDialog, storageProfileController])
 
   const switchNotebookFromSettings = useCallback((notebook: KnownNotebook) => {
     setOpenNotebookActionMenuKey('')
@@ -5411,16 +5723,6 @@ export function NotebookApp() {
                 <p className="notebook-settings-help">Browser stores notebook content in local browser storage.</p>
               </div>
             </div>
-            <div className="notebook-manager-meta-grid">
-              <div>
-                <span>storage</span>
-                <strong>browser local</strong>
-              </div>
-              <div>
-                <span>folder controls</span>
-                <strong>desktop only</strong>
-              </div>
-            </div>
           </div>
         </div>
       )
@@ -5429,7 +5731,7 @@ export function NotebookApp() {
     return (
       <div className="notebook-settings-stack">
         <p className="notebook-settings-help">
-          The notebook is this folder on disk. To use iCloud, Dropbox, OneDrive, or another sync service, put the notebook folder in that synced location.
+          The notebook is this folder on disk. New Notebook creates a named folder inside the parent folder you choose. To use iCloud, Dropbox, OneDrive, or another sync service, put the notebook folder in that synced location.
         </p>
         <div className={`notebook-manager-card ${storageHealth === 'error' ? 'is-error' : ''} ${storageHealth === 'warning' ? 'is-warning' : ''}`.trim()}>
           <div className="notebook-manager-header">
@@ -5442,27 +5744,6 @@ export function NotebookApp() {
               <button type="button" className="notebook-settings-action" onClick={createNotebookFromSettings}>
                 New Notebook
               </button>
-              <button type="button" className="notebook-settings-action" onClick={() => void storageProfileController.openNotebook()}>
-                Open Notebook Folder
-              </button>
-            </div>
-          </div>
-          <div className="notebook-manager-meta-grid">
-            <div>
-              <span>status</span>
-              <strong>{storageProfileStatus?.status ?? 'loading'}</strong>
-            </div>
-            <div>
-              <span>health</span>
-              <strong>{storageProfileStatus ? storageHealth : 'loading'}</strong>
-            </div>
-            <div>
-              <span>writable</span>
-              <strong>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'loading'}</strong>
-            </div>
-            <div>
-              <span>schema</span>
-              <strong>{storageProfileStatus?.schemaVersion ?? 'n/a'}</strong>
             </div>
           </div>
           {storageProfileStatus?.error ? (
@@ -5477,25 +5758,6 @@ export function NotebookApp() {
               ))}
             </div>
           ) : null}
-          <div className="notebook-settings-actions">
-            <button type="button" className="notebook-settings-action" onClick={renameCurrentNotebookFromSettings} disabled={!storageProfileStatus?.activeNotebookId}>
-              Rename
-            </button>
-            <button type="button" className="notebook-settings-action" onClick={() => void storageProfileController.moveStorageProfile()} disabled={!storageProfileStatus?.activeNotebookId}>
-              Move Folder
-            </button>
-            <button type="button" className="notebook-settings-action" onClick={() => void storageProfileController.revealStorageProfile()} disabled={!activeNotebookPath}>
-              Reveal Folder
-            </button>
-            {showRetry ? (
-              <button type="button" className="notebook-settings-action" onClick={() => void storageProfileController.retryStorageProfile()}>
-                Retry
-              </button>
-            ) : null}
-            <button type="button" className="notebook-settings-action is-danger" onClick={() => deleteNotebookFromSettings()} disabled={!storageProfileStatus?.activeNotebookId}>
-              Delete Notebook
-            </button>
-          </div>
         </div>
         <div className="notebook-manager-list" aria-label="Remembered notebooks">
           <div className="notebook-manager-list-header">
@@ -5536,14 +5798,9 @@ export function NotebookApp() {
                     </button>
                     {menuOpen ? (
                       <div className="notebook-manager-menu" role="menu">
-                        {!notebook.isActive && notebook.available ? (
-                          <button type="button" role="menuitem" onClick={() => switchNotebookFromSettings(notebook)}>
-                            Switch to Notebook
-                          </button>
-                        ) : null}
                         {notebook.isActive ? (
                           <>
-                            <button type="button" role="menuitem" onClick={() => runCurrentNotebookAction(renameCurrentNotebookFromSettings)}>
+                            <button type="button" role="menuitem" onClick={() => renameNotebookFromSettings(notebook)}>
                               Rename
                             </button>
                             <button type="button" role="menuitem" onClick={() => runCurrentNotebookAction(() => void storageProfileController.moveStorageProfile())}>
@@ -5559,9 +5816,21 @@ export function NotebookApp() {
                             ) : null}
                           </>
                         ) : (
-                          <button type="button" role="menuitem" onClick={() => forgetNotebookFromSettings(notebook)}>
-                            Remove from List
-                          </button>
+                          <>
+                            {notebook.available ? (
+                              <>
+                                <button type="button" role="menuitem" onClick={() => switchNotebookFromSettings(notebook)}>
+                                  Switch to Notebook
+                                </button>
+                                <button type="button" role="menuitem" onClick={() => renameNotebookFromSettings(notebook)}>
+                                  Rename
+                                </button>
+                              </>
+                            ) : null}
+                            <button type="button" role="menuitem" onClick={() => forgetNotebookFromSettings(notebook)}>
+                              Remove from List
+                            </button>
+                          </>
                         )}
                         {notebook.available || notebook.isActive ? (
                           <button type="button" role="menuitem" className="is-danger" onClick={() => deleteNotebookFromSettings(notebook)}>
@@ -6461,7 +6730,7 @@ export function NotebookApp() {
           <div className="notebook-setup-action-row">
             <div className="notebook-setup-action-copy">
               <h2>Create new notebook</h2>
-              <p>Create a new notebook under a folder.</p>
+              <p>Name a notebook, then choose the parent folder.</p>
             </div>
             <button type="button" className="notebook-setup-action-button is-primary" onClick={createNotebookFromSettings}>
               Create
@@ -6570,38 +6839,93 @@ export function NotebookApp() {
         ) : null}
         {!state.ui.sidebarCollapsed && !sidebarSearchVisible ? (
           <>
-            <div className="notebook-tree" role="tree" aria-multiselectable="true">
-                {state.notebook.items.map((item, itemIndex) => (
-                  <TreeItemRow
-                    key={item.id}
-                    item={item}
-                    depth={0}
-                    parentFolderId={null}
-                    index={itemIndex}
-                    activeNoteId={state.notebook.activeNoteId}
-                    renamingItemId={renamingTreeItemId}
-                    renameDraft={treeRenameDraft}
-                    draggingItemId={draggingTreeItemId}
-                    draggingNoteIds={draggingTreeNoteIdSet}
-                    selectedNoteIds={selectedTreeNoteIdSet}
-                    createdRenameItemId={pendingCreatedTreeRenameRef.current?.itemId ?? ''}
-                    dropTarget={treeDropTarget}
-                    collapsedFolderIds={collapsedFolderIds}
-                    query={query}
-                    onSelectNote={selectSidebarTreeNote}
-                    onSelectFolder={selectSidebarTreeFolder}
-                    onToggleFolder={toggleFolder}
-                    onStartRename={startTreeRename}
-                    onRenameDraftChange={setTreeRenameDraft}
-                    onCommitRename={commitTreeRename}
-                    onCancelRename={cancelTreeRename}
-                    onOpenContextMenu={openTreeContextMenu}
-                    onDragItemStart={startTreeDrag}
-                    onDragItemEnd={finishTreeDrag}
-                    onUpdateDropTarget={updateTreeDropTarget}
-                    onDropItem={dropTreeItem}
-                  />
-                ))}
+            <div
+              className="notebook-tree"
+              ref={notebookTreeScrollRef}
+              role="tree"
+              aria-multiselectable="true"
+              onScroll={handleNotebookTreeScroll}
+            >
+                {useVirtualizedNotebookTree ? (
+                  <div
+                    className="notebook-tree-virtual-spacer"
+                    style={{ height: notebookTreeVirtualWindow.totalHeight }}
+                  >
+                    {notebookTreeVirtualWindow.rows.map((row, rowOffset) => (
+                      <div
+                        key={row.item.id}
+                        className="notebook-tree-virtual-row"
+                        style={{
+                          transform: `translateY(${
+                            (notebookTreeVirtualWindow.startIndex + rowOffset) * NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT
+                          }px)`,
+                        }}
+                      >
+                        <MemoizedTreeItemRow
+                          item={row.item}
+                          depth={row.depth}
+                          parentFolderId={row.parentFolderId}
+                          index={row.index}
+                          activeNoteId={state.notebook.activeNoteId}
+                          renamingItemId={renamingTreeItemId}
+                          renameDraft={treeRenameDraft}
+                          draggingItemId={draggingTreeItemId}
+                          draggingNoteIds={draggingTreeNoteIdSet}
+                          selectedNoteIds={selectedTreeNoteIdSet}
+                          createdRenameItemId={pendingCreatedTreeRenameRef.current?.itemId ?? ''}
+                          dropTarget={treeDropTarget}
+                          collapsedFolderIds={collapsedFolderIds}
+                          query={query}
+                          renderChildren={false}
+                          onSelectNote={selectSidebarTreeNote}
+                          onSelectFolder={selectSidebarTreeFolder}
+                          onToggleFolder={toggleFolder}
+                          onStartRename={startTreeRename}
+                          onRenameDraftChange={setTreeRenameDraft}
+                          onCommitRename={commitTreeRename}
+                          onCancelRename={cancelTreeRename}
+                          onOpenContextMenu={openTreeContextMenu}
+                          onDragItemStart={startTreeDrag}
+                          onDragItemEnd={finishTreeDrag}
+                          onUpdateDropTarget={updateTreeDropTarget}
+                          onDropItem={dropTreeItem}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  state.notebook.items.map((item, itemIndex) => (
+                    <MemoizedTreeItemRow
+                      key={item.id}
+                      item={item}
+                      depth={0}
+                      parentFolderId={null}
+                      index={itemIndex}
+                      activeNoteId={state.notebook.activeNoteId}
+                      renamingItemId={renamingTreeItemId}
+                      renameDraft={treeRenameDraft}
+                      draggingItemId={draggingTreeItemId}
+                      draggingNoteIds={draggingTreeNoteIdSet}
+                      selectedNoteIds={selectedTreeNoteIdSet}
+                      createdRenameItemId={pendingCreatedTreeRenameRef.current?.itemId ?? ''}
+                      dropTarget={treeDropTarget}
+                      collapsedFolderIds={collapsedFolderIds}
+                      query={query}
+                      onSelectNote={selectSidebarTreeNote}
+                      onSelectFolder={selectSidebarTreeFolder}
+                      onToggleFolder={toggleFolder}
+                      onStartRename={startTreeRename}
+                      onRenameDraftChange={setTreeRenameDraft}
+                      onCommitRename={commitTreeRename}
+                      onCancelRename={cancelTreeRename}
+                      onOpenContextMenu={openTreeContextMenu}
+                      onDragItemStart={startTreeDrag}
+                      onDragItemEnd={finishTreeDrag}
+                      onUpdateDropTarget={updateTreeDropTarget}
+                      onDropItem={dropTreeItem}
+                    />
+                  ))
+                )}
                 <div
                   className={`notebook-tree-root-drop-zone ${treeDropTarget?.position === 'root' ? 'is-drop-root' : ''}`}
                   onDragOver={handleRootTreeDragOver}
@@ -6901,6 +7225,11 @@ export function NotebookApp() {
         onCloseLinkPrompt={closeLinkPrompt}
         onOpenLink={openPromptLinkUrl}
         onOpenNoteLink={openNoteLinkFromLinkPrompt}
+      />
+      <NotebookNameDialog
+        dialog={notebookNameDialog}
+        onCancel={() => setNotebookNameDialog(null)}
+        onSubmit={submitNotebookNameDialog}
       />
       {decoupleDialog ? (
         <NotebookDecoupleDialog

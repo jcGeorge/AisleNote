@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { AppState } from '../types/app'
 import {
+  buildNoteFilterIndex,
   getFrontmatterPropertyFilterKey,
   getFrontmatterTemplateFilterKey,
   getSyncedAisleFilterKey,
 } from './note-filter'
+import { createNotebookIndexContext } from './notebook-index-context'
 import {
   buildSidebarSearchIndexes,
   buildSidebarSearchResultGroups,
@@ -174,5 +176,59 @@ describe('sidebar search result filtering', () => {
     })
 
     expect(resultGroups).toEqual([])
+  })
+})
+
+describe('sidebar search index context', () => {
+  it('preserves sidebar index and result shapes when callers provide a notebook index context', () => {
+    const state = createSearchState()
+    const context = createNotebookIndexContext(state)
+    const directIndexes = buildSidebarSearchIndexes(state)
+    const contextIndexes = buildSidebarSearchIndexes(state, context)
+
+    expect(contextIndexes.tags.availableOptions).toEqual(directIndexes.tags.availableOptions)
+    expect(contextIndexes.synced.availableOptions).toEqual(directIndexes.synced.availableOptions)
+    expect(contextIndexes.frontmatter.availableOptions).toEqual(directIndexes.frontmatter.availableOptions)
+    expect(contextIndexes.tags.allOccurrences).toEqual(directIndexes.tags.allOccurrences)
+    expect(contextIndexes.synced.allOccurrences).toEqual(directIndexes.synced.allOccurrences)
+    expect(contextIndexes.frontmatter.allOccurrences).toEqual(directIndexes.frontmatter.allOccurrences)
+
+    const directResults = buildSidebarSearchResultGroups({
+      state,
+      indexes: directIndexes,
+      query: 'grace',
+      filter: null,
+    })
+    const contextResults = buildSidebarSearchResultGroups({
+      state,
+      context,
+      indexes: contextIndexes,
+      query: 'grace',
+      filter: null,
+    })
+
+    expect(contextResults).toEqual(directResults)
+  })
+
+  it('uses precomputed body maps in context-backed note filter builders', () => {
+    const state = createSearchState()
+    const context = createNotebookIndexContext(state)
+    const originalFind = state.noteBodies.find
+    state.noteBodies.find = (() => {
+      throw new Error('noteBodies.find should not be used by context-backed filter builders')
+    }) as typeof state.noteBodies.find
+
+    try {
+      expect(buildNoteFilterIndex(state, 'tags', [], context).availableOptions.map((option) => option.label)).toContain(
+        'Calvin',
+      )
+      expect(buildNoteFilterIndex(state, 'synced', [], context).availableOptions).toHaveLength(1)
+      expect(buildNoteFilterIndex(state, 'frontmatter', [], context).availableOptions.map((option) => option.key)).toContain(
+        getFrontmatterTemplateFilterKey('template-sermon'),
+      )
+      expect(buildNoteFilterIndex(state, 'media', [], context).availableOptions).toEqual([])
+    } finally {
+      state.noteBodies.find = originalFind
+    }
   })
 })

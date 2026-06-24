@@ -1,14 +1,15 @@
 import { buildVisibleMarkdownIndex } from '../notes/find-replace'
 import { getAisleBodyId, getAisleMarkdown } from '../notes/note-markdown'
-import { buildNoteLocationKey, listSearchableNoteLocations, type NoteSearchEntry } from '../notes/note-locations'
+import { buildNoteLocationKey, type NoteSearchEntry } from '../notes/note-locations'
 import type { AppState, NoteAisle, NoteFilterKind, NoteFilterSettings, NoteLocation } from '../types/app'
 import {
   buildNoteFilterIndex,
+  getEmptyNoteFilterIndex,
   type NoteFilterIndex,
-  type NoteFilterOccurrence,
   type NoteFilterOption,
   type NoteFilterOptionType,
 } from './note-filter'
+import { getNotebookIndexContext, type NotebookIndexContext } from './notebook-index-context'
 
 export type SidebarSearchFilterKind = Exclude<NoteFilterKind, 'media'>
 export type SidebarSearchPrefix = 'tag' | 'fm' | 'prop' | 'synced' | 'duplicate'
@@ -177,11 +178,23 @@ export function clearActiveSidebarSearchPrefix(query: string): string {
   return query.replace(ACTIVE_PREFIX_PATTERN, '').trim().replace(/\s+/g, ' ')
 }
 
-export function buildSidebarSearchIndexes(state: AppState): SidebarSearchIndexes {
+export function getEmptySidebarSearchIndexes(): SidebarSearchIndexes {
   return {
-    tags: buildNoteFilterIndex(state, 'tags', []),
-    synced: buildNoteFilterIndex(state, 'synced', []),
-    frontmatter: buildNoteFilterIndex(state, 'frontmatter', []),
+    tags: getEmptyNoteFilterIndex('tags'),
+    synced: getEmptyNoteFilterIndex('synced'),
+    frontmatter: getEmptyNoteFilterIndex('frontmatter'),
+  }
+}
+
+export function buildSidebarSearchIndexes(
+  state: AppState,
+  context?: NotebookIndexContext,
+): SidebarSearchIndexes {
+  const indexContext = getNotebookIndexContext(state, context)
+  return {
+    tags: buildNoteFilterIndex(state, 'tags', [], indexContext),
+    synced: buildNoteFilterIndex(state, 'synced', [], indexContext),
+    frontmatter: buildNoteFilterIndex(state, 'frontmatter', [], indexContext),
   }
 }
 
@@ -254,29 +267,40 @@ export function mergeSidebarSearchTokens(
   return uniqueTokens([...selectedTokens, ...parsedTokens])
 }
 
-function occurrenceMatchesCandidate(
-  occurrence: NoteFilterOccurrence,
-  token: SidebarSearchToken,
-  candidate: SidebarSearchCandidate,
-): boolean {
-  if (occurrence.key !== token.key || occurrence.location.noteId !== candidate.location.noteId) return false
-  return occurrence.aisleId === candidate.aisle.id && occurrence.aisleBodyId === candidate.aisleBodyId
-}
-
-function candidateMatchesToken(
-  token: SidebarSearchToken,
-  candidate: SidebarSearchCandidate,
-  indexes: SidebarSearchIndexes,
-): boolean {
-  return indexes[token.kind].allOccurrences.some((occurrence) => occurrenceMatchesCandidate(occurrence, token, candidate))
-}
-
-function candidateMatchesFilters(
-  candidate: SidebarSearchCandidate,
+function buildCandidateTokenLookup(
   tokens: SidebarSearchToken[],
   indexes: SidebarSearchIndexes,
+): Map<string, Set<string>> {
+  const lookup = new Map<string, Set<string>>()
+  tokens.forEach((token) => {
+    const lookupKey = `${token.kind}:${token.key}`
+    if (lookup.has(lookupKey)) return
+    const matches = new Set<string>()
+    indexes[token.kind].allOccurrences.forEach((occurrence) => {
+      if (occurrence.key !== token.key) return
+      matches.add(`${occurrence.location.noteId}:${occurrence.aisleId}:${occurrence.aisleBodyId}`)
+    })
+    lookup.set(lookupKey, matches)
+  })
+  return lookup
+}
+
+function candidateMatchesTokenLookup(
+  token: SidebarSearchToken,
+  candidate: SidebarSearchCandidate,
+  lookup: Map<string, Set<string>>,
 ): boolean {
-  return tokens.every((token) => candidateMatchesToken(token, candidate, indexes))
+  const matches = lookup.get(`${token.kind}:${token.key}`)
+  if (!matches) return false
+  return matches.has(`${candidate.location.noteId}:${candidate.aisle.id}:${candidate.aisleBodyId}`)
+}
+
+function candidateMatchesFilterLookup(
+  candidate: SidebarSearchCandidate,
+  tokens: SidebarSearchToken[],
+  lookup: Map<string, Set<string>>,
+): boolean {
+  return tokens.every((token) => candidateMatchesTokenLookup(token, candidate, lookup))
 }
 
 function queryTextMatches(haystack: string, query: string): boolean {
@@ -309,28 +333,31 @@ export function buildSidebarSearchResultGroups({
   state,
   query,
   filter,
-  indexes = buildSidebarSearchIndexes(state),
+  indexes,
+  context,
   limit = RESULT_LIMIT,
 }: {
   state: AppState
   query: string
   filter: NoteFilterSettings | null | undefined
   indexes?: SidebarSearchIndexes
+  context?: NotebookIndexContext
   limit?: number
 }): SidebarSearchResultGroup[] {
-  const parsed = parseSidebarSearchInput(query, indexes)
-  const selectedTokens = mergeSidebarSearchTokens(getSidebarSearchSelectedTokens(filter, indexes), parsed.tokens)
+  const indexContext = getNotebookIndexContext(state, context)
+  const effectiveIndexes = indexes ?? buildSidebarSearchIndexes(state, indexContext)
+  const parsed = parseSidebarSearchInput(query, effectiveIndexes)
+  const selectedTokens = mergeSidebarSearchTokens(getSidebarSearchSelectedTokens(filter, effectiveIndexes), parsed.tokens)
   const textQuery = parsed.text
   if (selectedTokens.length <= 0 && !textQuery) return []
 
-  const noteBodiesById = new Map(state.noteBodies.map((body) => [body.id, body]))
-  const aisleBodies = state.noteAisleBodies ?? []
+  const tokenLookup = buildCandidateTokenLookup(selectedTokens, effectiveIndexes)
   const groups: SidebarSearchResultGroup[] = []
   const groupsByNoteId = new Map<string, SidebarSearchResultGroup>()
   let count = 0
 
-  for (const note of listSearchableNoteLocations(state)) {
-    const body = noteBodiesById.get(note.noteBodyId)
+  for (const note of indexContext.locations) {
+    const body = indexContext.noteBodiesById.get(note.noteBodyId)
     if (!body) continue
     for (let aisleIndex = 0; aisleIndex < body.aisles.length; aisleIndex += 1) {
       if (count >= limit) break
@@ -345,9 +372,9 @@ export function buildSidebarSearchResultGroups({
         aisleIndex,
         aisleCount: body.aisles.length,
       }
-      if (!candidateMatchesFilters(candidate, selectedTokens, indexes)) continue
+      if (!candidateMatchesFilterLookup(candidate, selectedTokens, tokenLookup)) continue
 
-      const markdown = getAisleMarkdown(aisle, aisleBodies)
+      const markdown = getAisleMarkdown(aisle, indexContext.aisleBodiesById)
       const visibleText = buildVisibleMarkdownIndex(markdown).text
       const noteText = `${note.label} ${note.folderPath} ${note.noteName}`
       if (!queryTextMatches(`${noteText} ${visibleText}`, textQuery)) continue

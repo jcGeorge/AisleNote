@@ -3,11 +3,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  getUserSettingsFilePath,
   loadAppStateResult,
   resolveNotebookItemLocationRevealPath,
   resolveNoteLocationRevealPath,
   saveAppState,
   writeAssetToProfile,
+  writeAppSettingsForState,
 } from './app-state-storage.mjs'
 
 const tempRoots = []
@@ -171,6 +173,24 @@ function readNotebookIndex(root) {
   return JSON.parse(readFileSync(pathFromRoot(root, '.aislenote/notebook-index.json'), 'utf8'))
 }
 
+function writeLegacyPortableSettingsToEditorState(root, state) {
+  const editorStatePath = pathFromRoot(root, '.aislenote/editor-state.json')
+  const editorState = JSON.parse(readFileSync(editorStatePath, 'utf8'))
+  writeFileSync(
+    editorStatePath,
+    `${JSON.stringify({
+      ...editorState,
+      theme: state.theme,
+      hotkeys: state.hotkeys,
+      ui: {
+        ...(editorState.ui ?? {}),
+        ...(state.ui ?? {}),
+      },
+    }, null, 2)}\n`,
+    'utf8',
+  )
+}
+
 function findNotebookIndexItem(items, itemId) {
   for (const item of items ?? []) {
     if ((item.type === 'note' || item.type === 'folder') && item.id === itemId) return item
@@ -236,6 +256,130 @@ describe('schema 2 app-state storage', () => {
     expect(reloaded.noteAisleBodies.find((body) => body.id === 'aisle-body-root').frontmatter).toEqual({ status: 'open' })
     expect(reloaded.noteAisleBodies.find((body) => body.id === 'aisle-body-deleted').markdown).toBe('deleted markdown')
     expect(reloaded.noteAisleBodies.find((body) => body.id === 'aisle-body-scratch').markdown).toBe('scratch markdown')
+  })
+
+  it('overlays app-support user settings when loading different notebooks', () => {
+    const root = tempRoot()
+    const userDataPath = path.join(root, 'user-data')
+    const notebookAPath = path.join(root, 'notebook-a')
+    const notebookBPath = path.join(root, 'notebook-b')
+    const notebookA = appState()
+    notebookA.theme = 'light'
+    notebookA.hotkeys.shortcuts.openSettings = 'Ctrl+Alt+,'
+    notebookA.ui = {
+      ...notebookA.ui,
+      sidebarWidth: 333,
+      settingsSection: 'data',
+    }
+    const notebookB = appState()
+    notebookB.theme = 'dawn'
+    notebookB.ui = {
+      ...notebookB.ui,
+      sidebarWidth: 444,
+      settingsSection: 'hotkeys',
+    }
+    const appSettingsState = appState()
+    appSettingsState.theme = 'custom1'
+    appSettingsState.hotkeys.shortcuts.openSettings = 'Ctrl+,'
+    appSettingsState.ui = {
+      ...appSettingsState.ui,
+      settingsSection: 'visuals',
+      selectedCustomTheme: 'custom2',
+      toolbarLayouts: [{ id: 'main', name: 'Main', items: [] }],
+    }
+
+    saveAppState(notebookAPath, JSON.stringify(notebookA))
+    saveAppState(notebookBPath, JSON.stringify(notebookB))
+    writeLegacyPortableSettingsToEditorState(notebookAPath, notebookA)
+    writeLegacyPortableSettingsToEditorState(notebookBPath, notebookB)
+    writeAppSettingsForState(userDataPath, JSON.stringify(appSettingsState))
+
+    const loadedA = JSON.parse(loadAppStateResult(notebookAPath, { userSettingsRoot: userDataPath }).serializedState)
+    const loadedB = JSON.parse(loadAppStateResult(notebookBPath, { userSettingsRoot: userDataPath }).serializedState)
+    const rawA = JSON.parse(loadAppStateResult(notebookAPath, {
+      userSettingsRoot: userDataPath,
+      includeUserSettings: false,
+    }).serializedState)
+
+    expect(loadedA.theme).toBe('custom1')
+    expect(loadedB.theme).toBe('custom1')
+    expect(loadedA.hotkeys.shortcuts.openSettings).toBe('Ctrl+,')
+    expect(loadedA.ui.settingsSection).toBe('visuals')
+    expect(loadedA.ui.selectedCustomTheme).toBe('custom2')
+    expect(loadedA.ui.toolbarLayouts).toEqual([{ id: 'main', name: 'Main', items: [] }])
+    expect(loadedA.ui.sidebarWidth).toBe(333)
+    expect(loadedB.ui.sidebarWidth).toBe(444)
+    expect(rawA.theme).toBe('light')
+    expect(rawA.hotkeys.shortcuts.openSettings).toBe('Ctrl+Alt+,')
+    expect(rawA.ui.settingsSection).toBe('data')
+  })
+
+  it('writes portable app settings outside the notebook and keeps editor-state notebook-local', () => {
+    const root = tempRoot()
+    const userDataPath = path.join(root, 'user-data')
+    const state = appState()
+    state.theme = 'custom1'
+    state.hotkeys.shortcuts.openSettings = 'Ctrl+,'
+    state.scratchpad = { noteBodyId: 'body-scratch', activeAisleId: 'aisle-scratch' }
+    state.ui = {
+      ...state.ui,
+      sidebarCollapsed: true,
+      sidebarWidth: 321,
+      collapsedFolderIds: ['folder-projects'],
+      settingsSection: 'visuals',
+      selectedCustomTheme: 'custom2',
+      toolbarLayouts: [{ id: 'main', name: 'Main', items: [] }],
+      noteCursorLocations: {
+        'note-root': {
+          activeAisleId: 'aisle-root',
+          aisles: {
+            'aisle-root': {
+              blockIndex: 0,
+              offset: 3,
+              anchor: 3,
+              head: 3,
+              updatedAt: 10,
+            },
+          },
+          updatedAt: 10,
+        },
+      },
+      headingCollapseState: {
+        'body-root': {
+          'aisle-root': ['Heading'],
+        },
+      },
+      aisleWidths: {
+        'note-multi': {
+          'aisle-multi-a': 260,
+          'aisle-multi-b': 360,
+        },
+      },
+    }
+
+    const saveResult = saveAppState(root, JSON.stringify(state), { userSettingsRoot: userDataPath })
+    const editorState = JSON.parse(readFileSync(pathFromRoot(root, '.aislenote/editor-state.json'), 'utf8'))
+    const appSettings = JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8'))
+
+    expect(saveResult.ok).toBe(true)
+    expect(editorState).not.toHaveProperty('theme')
+    expect(editorState).not.toHaveProperty('hotkeys')
+    expect(editorState.ui).not.toHaveProperty('settingsSection')
+    expect(editorState.ui).not.toHaveProperty('selectedCustomTheme')
+    expect(editorState.ui).not.toHaveProperty('toolbarLayouts')
+    expect(editorState.scratchpad).toEqual(state.scratchpad)
+    expect(editorState.ui.sidebarCollapsed).toBe(true)
+    expect(editorState.ui.sidebarWidth).toBe(321)
+    expect(editorState.ui.collapsedFolderIds).toEqual(['folder-projects'])
+    expect(editorState.ui.noteCursorLocations).toEqual(state.ui.noteCursorLocations)
+    expect(editorState.ui.headingCollapseState).toEqual(state.ui.headingCollapseState)
+    expect(editorState.ui.aisleWidths).toEqual(state.ui.aisleWidths)
+    expect(appSettings).not.toHaveProperty('schemaVersion')
+    expect(appSettings).not.toHaveProperty('frontmatter')
+    expect(appSettings.theme).toBe('custom1')
+    expect(appSettings.hotkeys.shortcuts.openSettings).toBe('Ctrl+,')
+    expect(appSettings.ui.settingsSection).toBe('visuals')
+    expect(appSettings.ui.toolbarLayouts).toEqual([{ id: 'main', name: 'Main', items: [] }])
   })
 
   it('keeps exact titles in metadata while writing sanitized short-hash paths', () => {

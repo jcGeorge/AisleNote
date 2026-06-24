@@ -159,6 +159,8 @@ const TOAST_AISLE_EDITOR_RECENT_RETAIN_LIMIT = 3
 const AISLE_EDITOR_SMALL_NOTE_LIVE_LIMIT = 4
 const AISLE_EDITOR_INTERSECTION_ROOT_MARGIN = '240px'
 const DISPLAY_RESTORE_MAX_FRAME_ATTEMPTS = 8
+const EDITOR_APP_STATE_COMMIT_DEBOUNCE_MS = 300
+const EDITOR_APP_STATE_COMMIT_MAX_WAIT_MS = 1200
 
 function countMarkdownLinks(markdown: string): number {
   return String(markdown ?? '').match(/\[[^\]\n]+\]\((?:https?:\/\/|#aislenote-note\/)[^)]+\)/gi)?.length ?? 0
@@ -323,6 +325,9 @@ export function useNotebookAisleEditors({
   const renderedMarkdownByAisleBodyRef = useRef<Map<string, string>>(new Map())
   const revisionByAisleBodyRef = useRef<Map<string, number>>(new Map())
   const localStateEchoByAisleBodyRef = useRef<Map<string, NotebookEditorLocalStateEcho>>(new Map())
+  const pendingAppStateCommitRevisionsByAisleBodyRef = useRef<Map<string, number>>(new Map())
+  const pendingAppStateCommitTimerRef = useRef<number | null>(null)
+  const pendingAppStateCommitMaxWaitTimerRef = useRef<number | null>(null)
   const externalStateLoadVersionRef = useRef(externalStateLoadVersion)
   const externalReconciledVersionByAisleBodyRef = useRef<Map<string, number>>(new Map())
   const userEditedExternalVersionByAisleBodyRef = useRef<Map<string, number>>(new Map())
@@ -503,6 +508,101 @@ export function useNotebookAisleEditors({
     [commitAisleMarkdown, markLocalStateEchoForAisleBody],
   )
 
+  const clearScheduledEditorAppStateCommit = useCallback(() => {
+    if (typeof window === 'undefined') return
+    if (pendingAppStateCommitTimerRef.current !== null) {
+      window.clearTimeout(pendingAppStateCommitTimerRef.current)
+      pendingAppStateCommitTimerRef.current = null
+    }
+    if (pendingAppStateCommitMaxWaitTimerRef.current !== null) {
+      window.clearTimeout(pendingAppStateCommitMaxWaitTimerRef.current)
+      pendingAppStateCommitMaxWaitTimerRef.current = null
+    }
+  }, [])
+
+  const flushPendingEditorAppStateCommit = useCallback(() => {
+    clearScheduledEditorAppStateCommit()
+    const pendingRevisions = pendingAppStateCommitRevisionsByAisleBodyRef.current
+    if (pendingRevisions.size <= 0) return
+    pendingAppStateCommitRevisionsByAisleBodyRef.current = new Map()
+
+    const snapshotsByAisleBodyId = new Map<string, {
+      aisleBodyId: string
+      markdown: string
+      revision: number
+    }>()
+
+    editorMetaRef.current.forEach((meta) => {
+      const pendingRevision = pendingRevisions.get(meta.aisleBodyId)
+      if (pendingRevision === undefined) return
+      const useCachedMarkdown =
+        meta.programmaticMarkdownUpdatePending &&
+        !meta.userEditedSinceProgrammaticUpdate &&
+        !meta.displayRestoreReady
+      const markdown = useCachedMarkdown ? meta.markdown : getEditorMarkdownForPersistence(meta.editor)
+      let revision = meta.revision
+      if (!useCachedMarkdown) meta.programmaticMarkdownUpdatePending = false
+      if (markdown !== meta.markdown) {
+        revision = nextEditorMarkdownRevision()
+        meta.markdown = markdown
+        meta.revision = revision
+        markUserEditedAisleBodyAtCurrentExternalVersion(meta.aisleBodyId)
+        lastMarkdownByAisleBodyRef.current.set(meta.aisleBodyId, markdown)
+        revisionByAisleBodyRef.current.set(meta.aisleBodyId, revision)
+        syncMountedEditorsForAisleBody(meta, markdown, revision)
+      }
+
+      const snapshot = {
+        aisleBodyId: meta.aisleBodyId,
+        markdown,
+        revision: Math.max(revision, pendingRevision),
+      }
+      const current = snapshotsByAisleBodyId.get(meta.aisleBodyId)
+      if (!current || snapshot.revision >= current.revision) {
+        snapshotsByAisleBodyId.set(meta.aisleBodyId, snapshot)
+      }
+    })
+
+    snapshotsByAisleBodyId.forEach((snapshot) => {
+      commitEditorOriginatedAisleMarkdown(snapshot.aisleBodyId, snapshot.markdown, snapshot.revision)
+    })
+  }, [
+    clearScheduledEditorAppStateCommit,
+    commitEditorOriginatedAisleMarkdown,
+    markUserEditedAisleBodyAtCurrentExternalVersion,
+    nextEditorMarkdownRevision,
+    syncMountedEditorsForAisleBody,
+  ])
+
+  const schedulePendingEditorAppStateCommit = useCallback(() => {
+    if (typeof window === 'undefined') {
+      flushPendingEditorAppStateCommit()
+      return
+    }
+    if (pendingAppStateCommitTimerRef.current !== null) {
+      window.clearTimeout(pendingAppStateCommitTimerRef.current)
+    }
+    pendingAppStateCommitTimerRef.current = window.setTimeout(() => {
+      pendingAppStateCommitTimerRef.current = null
+      flushPendingEditorAppStateCommit()
+    }, EDITOR_APP_STATE_COMMIT_DEBOUNCE_MS)
+
+    if (pendingAppStateCommitMaxWaitTimerRef.current === null) {
+      pendingAppStateCommitMaxWaitTimerRef.current = window.setTimeout(() => {
+        pendingAppStateCommitMaxWaitTimerRef.current = null
+        flushPendingEditorAppStateCommit()
+      }, EDITOR_APP_STATE_COMMIT_MAX_WAIT_MS)
+    }
+  }, [flushPendingEditorAppStateCommit])
+
+  const scheduleEditorOriginatedAisleMarkdownCommit = useCallback(
+    (aisleBodyId: string, revision: number) => {
+      pendingAppStateCommitRevisionsByAisleBodyRef.current.set(aisleBodyId, revision)
+      schedulePendingEditorAppStateCommit()
+    },
+    [schedulePendingEditorAppStateCommit],
+  )
+
   const markEditorUserEditIntent = useCallback((editorKey: string) => {
     const meta = editorMetaRef.current.get(editorKey)
     if (meta) meta.userEditedSinceProgrammaticUpdate = true
@@ -524,6 +624,7 @@ export function useNotebookAisleEditors({
     const revisionByAisleBodyId = new Map<string, number>()
 
     editorMetaRef.current.forEach((meta, editorKey) => {
+      if (pendingAppStateCommitRevisionsByAisleBodyRef.current.has(meta.aisleBodyId)) return
       const authoritativeMarkdown = markdownByAisleBodyId.get(meta.aisleBodyId)
       if (authoritativeMarkdown === undefined) return
       if (meta.markdown === authoritativeMarkdown) {
@@ -582,7 +683,7 @@ export function useNotebookAisleEditors({
       lastMarkdownByAisleBodyRef.current.set(meta.aisleBodyId, nextMarkdown)
       revisionByAisleBodyRef.current.set(meta.aisleBodyId, revision)
       if (source === 'user') {
-        commitEditorOriginatedAisleMarkdown(meta.aisleBodyId, nextMarkdown, revision)
+        scheduleEditorOriginatedAisleMarkdownCommit(meta.aisleBodyId, revision)
       } else {
         commitAisleMarkdown(meta.aisleBodyId, nextMarkdown)
       }
@@ -606,10 +707,10 @@ export function useNotebookAisleEditors({
     },
     [
       commitAisleMarkdown,
-      commitEditorOriginatedAisleMarkdown,
       markUserEditedAisleBodyAtCurrentExternalVersion,
       nextEditorMarkdownRevision,
       noteId,
+      scheduleEditorOriginatedAisleMarkdownCommit,
       syncMountedEditorsForAisleBody,
     ],
   )
@@ -686,10 +787,16 @@ export function useNotebookAisleEditors({
   ])
 
   const commitMountedEditorMarkdownNow = useCallback(() => {
+    clearScheduledEditorAppStateCommit()
+    const committedAisleBodyIds = new Set<string>()
     collapseNotebookEditorMarkdownSnapshots(getMountedEditorMarkdownSnapshots()).forEach((snapshot) => {
       commitEditorOriginatedAisleMarkdown(snapshot.aisleBodyId, snapshot.markdown, snapshot.revision ?? 0)
+      committedAisleBodyIds.add(snapshot.aisleBodyId)
     })
-  }, [commitEditorOriginatedAisleMarkdown, getMountedEditorMarkdownSnapshots])
+    committedAisleBodyIds.forEach((aisleBodyId) => {
+      pendingAppStateCommitRevisionsByAisleBodyRef.current.delete(aisleBodyId)
+    })
+  }, [clearScheduledEditorAppStateCommit, commitEditorOriginatedAisleMarkdown, getMountedEditorMarkdownSnapshots])
 
   const replaceActiveEditorMarkdown = useCallback(
     (markdown: string) => {
@@ -756,6 +863,7 @@ export function useNotebookAisleEditors({
     if (!meta) return
     if (captureContent) {
       try {
+        flushPendingEditorAppStateCommit()
         commitEditorMarkdown(meta, meta.editor, 'lifecycle')
       } catch {
         // Snapshot before destroy is best-effort.
@@ -776,7 +884,7 @@ export function useNotebookAisleEditors({
       activeEditorAisleIdRef.current = ''
     }
     editorMetaRef.current.delete(editorKey)
-  }, [commitEditorMarkdown, editorRef])
+  }, [commitEditorMarkdown, editorRef, flushPendingEditorAppStateCommit])
 
   useEffect(() => () => {
     Array.from(editorMetaRef.current.keys()).forEach((editorKey) => destroyEditor(editorKey, true))
@@ -1619,13 +1727,14 @@ export function useNotebookAisleEditors({
       const view = getWysiwygView(meta?.editor ?? null)
       if (!view?.state?.doc || typeof view.posAtCoords !== 'function') return null
 
-      let position: number | null = null
-      try {
-        const result = view.posAtCoords({ left: point.clientX, top: point.clientY })
-        position = typeof result?.pos === 'number' && Number.isFinite(result.pos) ? result.pos : null
-      } catch {
-        return null
-      }
+      const position = (() => {
+        try {
+          const result = view.posAtCoords({ left: point.clientX, top: point.clientY })
+          return typeof result?.pos === 'number' && Number.isFinite(result.pos) ? result.pos : null
+        } catch {
+          return null
+        }
+      })()
       if (position === null) return null
 
       const range =
@@ -1783,6 +1892,7 @@ export function useNotebookAisleEditors({
     replaceActiveEditorRangeWithText,
     commitActiveEditorMarkdownNow,
     commitMountedEditorMarkdownNow,
+    flushPendingEditorAppStateCommit,
     getMountedEditorMarkdownSnapshots,
     getPreviewMarkdownForAisle,
     getHeadingOutlineForAisle,

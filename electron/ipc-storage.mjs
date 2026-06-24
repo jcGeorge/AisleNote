@@ -384,7 +384,14 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   notebookLibrary = startupReconciliation.library
   let profile = createProfileFromNotebookLibrary(userDataPath, notebookLibrary)
   let userSettingsLocation = resolveUserSettingsLocation(userDataPath)
-  let userSettingsLocationRefresh = refreshLocalUserSettingsFromLocation(userDataPath, userSettingsLocation)
+  const getStartupUserSettingsSeed = () => {
+    if (profile?.setupRequired || !profile?.profileRootPath) return null
+    const result = loadAppStateResult(profile.profileRootPath, { includeUserSettings: false })
+    return result.ok && typeof result.serializedState === 'string' ? result.serializedState : null
+  }
+  let userSettingsLocationRefresh = refreshLocalUserSettingsFromLocation(userDataPath, userSettingsLocation, {
+    seedSerializedState: getStartupUserSettingsSeed(),
+  })
   if (userSettingsLocationRefresh.location) userSettingsLocation = userSettingsLocationRefresh.location
   let userSettingsLocationStatus = userSettingsLocationRefresh.status
   const refreshProfileFromLibrary = () => {
@@ -559,37 +566,6 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
       name: validation.name,
       profileRootPath,
     }
-  }
-
-  const buildNotebookTargetPathFromProfileRoot = (profileRootPath) => {
-    const targetPath = typeof profileRootPath === 'string' ? path.resolve(profileRootPath) : ''
-    const validation = validateNotebookName(path.basename(targetPath))
-    if (!validation.ok) return validation
-    const locationValidation = validateNotebookLocationPath(path.dirname(targetPath))
-    if (!locationValidation.ok) return locationValidation
-    const nesting = validateNotebookFolderNesting(targetPath)
-    if (!nesting.ok) return nesting
-    return {
-      ok: true,
-      name: validation.name,
-      profileRootPath: targetPath,
-    }
-  }
-
-  const chooseNotebookTargetPath = async () => {
-    if (!dialog || typeof dialog.showSaveDialog !== 'function') {
-      return { ok: false, error: 'Notebook creation is unavailable.' }
-    }
-    const selection = await dialog.showSaveDialog({
-      title: 'Create notebook',
-      defaultPath: 'AisleNote Notebook',
-      buttonLabel: 'Create',
-      nameFieldLabel: 'Notebook name',
-      message: 'Choose where to create the new AisleNote notebook folder.',
-      properties: ['createDirectory', 'showOverwriteConfirmation'],
-    })
-    if (selection.canceled || !selection.filePath) return { canceled: true }
-    return buildNotebookTargetPathFromProfileRoot(selection.filePath)
   }
 
   const notebookDirectoryHasEntries = (profileRootPath) => {
@@ -925,23 +901,41 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     const validation = validateNotebookName(payload?.name)
     if (!validation.ok) return { ok: false, error: validation.error, status }
     try {
-      const activeRecord = getActiveNotebookRecord(notebookLibrary)
-      if (!activeRecord) return { ok: false, error: 'No active notebook is available.', status }
-      const currentPath = path.resolve(activeRecord.notebookPath)
+      const hasNotebookSelector =
+        (typeof payload?.notebookId === 'string' && payload.notebookId.trim()) ||
+        (typeof payload?.notebookPath === 'string' && payload.notebookPath.trim())
+      if (!hasNotebookSelector) return { ok: false, error: 'Notebook is required.', status }
+      const resolution = resolveNotebookRecordFromPayload(payload)
+      if (!resolution.ok) return { ok: false, error: resolution.error, status }
+      const record = resolution.record
+      const currentPath = path.resolve(record.notebookPath)
       const nextPath = path.join(path.dirname(currentPath), validation.name)
       if (currentPath === nextPath) return { ok: true, status }
+      if (!existsSync(currentPath)) {
+        return { ok: false, error: 'Notebook folder could not be found.', status }
+      }
+      const renamingActiveNotebook = record.id === notebookLibrary.activeNotebookId
+      if (!renamingActiveNotebook && !existsSync(path.join(getHybridStorageRoot(currentPath), 'manifest.json'))) {
+        return { ok: false, error: 'Notebook folder could not be loaded.', status }
+      }
       if (existsSync(nextPath)) {
         return { ok: false, error: 'A folder with that notebook name already exists.', status }
       }
-      const nesting = validateNotebookFolderNesting(nextPath, { ignoreNotebookId: activeRecord.id })
+      const nesting = validateNotebookFolderNesting(nextPath, { ignoreNotebookId: record.id })
       if (!nesting.ok) return { ok: false, error: nesting.error, status }
-      watcher?.close()
+
+      if (renamingActiveNotebook) watcher?.close()
       renameSync(currentPath, nextPath)
       notebookLibrary = upsertNotebookRecord(userDataPath, notebookLibrary, {
-        ...activeRecord,
+        ...record,
         notebookPath: nextPath,
-      }, { activate: true })
+      }, { activate: renamingActiveNotebook })
       refreshProfileFromLibrary()
+      if (!renamingActiveNotebook) {
+        updateStatus('notebook-renamed')
+        return { ok: true, status }
+      }
+
       const result = coordinator.reloadProfileRoot(nextPath, {
         requireSerializedState: true,
         detectAppSaveEcho: false,
@@ -1226,7 +1220,9 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
 
     const selection = await dialog.showOpenDialog({
-      title: 'Choose notebook location',
+      title: 'Choose notebook parent folder',
+      buttonLabel: 'Choose Parent Folder',
+      message: 'Choose the folder where the named notebook folder will be created.',
       properties: ['openDirectory', 'createDirectory'],
     })
     if (selection.canceled || !selection.filePaths?.[0]) return { canceled: true }
@@ -1236,12 +1232,7 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
   }
 
   const createNotebook = async (_event, payload = {}) => {
-    const hasDirectTarget =
-      typeof payload?.name === 'string' || typeof payload?.locationPath === 'string'
-    const target = hasDirectTarget
-      ? buildNotebookTargetPath(payload?.locationPath, payload?.name)
-      : await chooseNotebookTargetPath()
-    if (target.canceled) return { canceled: true, status }
+    const target = buildNotebookTargetPath(payload?.locationPath, payload?.name)
     if (!target.ok) return { ok: false, error: target.error, status }
     if (existsSync(target.profileRootPath)) {
       return {

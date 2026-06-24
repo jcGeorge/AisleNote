@@ -14,6 +14,11 @@ import path from 'node:path'
 import JSZip from 'jszip'
 import YAML from 'yaml'
 import { buildAssetUrl, normalizeImageAssetPath } from '../src/markdown/image-asset-refs.js'
+import {
+  applyPortableAppSettings,
+  parsePortableAppSettingsJson,
+  stringifyPortableAppSettings,
+} from '../src/storage/settings-partition.js'
 
 export const SCHEMA_VERSION = 2
 export const AISLENOTE_METADATA_DIR = '.aislenote'
@@ -221,6 +226,24 @@ export function getHybridStorageRoot(profileRootPath) {
 
 export function getUserSettingsFilePath(profileRootPath) {
   return path.join(profileRootPath, USER_SETTINGS_FILE_PATH)
+}
+
+function readPortableAppSettingsFromRoot(userSettingsRoot) {
+  if (!userSettingsRoot) return null
+  const settingsPath = getUserSettingsFilePath(userSettingsRoot)
+  if (!existsSync(settingsPath)) return null
+  try {
+    const parsed = parsePortableAppSettingsJson(readFileSync(settingsPath, 'utf8'))
+    return parsed.ok ? parsed.settings : null
+  } catch {
+    return null
+  }
+}
+
+function applyUserSettingsToLoadedAppState(appState, options = {}) {
+  if (options.includeUserSettings === false || !options.userSettingsRoot) return appState
+  const appSettings = readPortableAppSettingsFromRoot(options.userSettingsRoot)
+  return appSettings ? applyPortableAppSettings(appState, appSettings) : appState
 }
 
 export function createStorageFilesSnapshot(entries, metrics = null) {
@@ -539,13 +562,23 @@ function pruneGeneratedNotebookFiles(rootPath, expectedFiles) {
   return { filesPruned, directoriesPruned }
 }
 
+function buildEditorUiState(appState) {
+  const ui = isRecord(appState?.ui) ? appState.ui : {}
+  return {
+    sidebarCollapsed: typeof ui.sidebarCollapsed === 'boolean' ? ui.sidebarCollapsed : false,
+    sidebarWidth: Number.isFinite(ui.sidebarWidth) ? ui.sidebarWidth : 280,
+    collapsedFolderIds: ensureArray(ui.collapsedFolderIds),
+    noteCursorLocations: isRecord(ui.noteCursorLocations) ? ui.noteCursorLocations : {},
+    headingCollapseState: isRecord(ui.headingCollapseState) ? ui.headingCollapseState : {},
+    aisleWidths: isRecord(ui.aisleWidths) ? ui.aisleWidths : {},
+  }
+}
+
 function buildEditorState(appState) {
   return {
     schemaVersion: SCHEMA_VERSION,
-    theme: appState?.theme ?? 'dawn',
     scratchpad: appState?.scratchpad ?? null,
-    hotkeys: appState?.hotkeys ?? null,
-    ui: appState?.ui ?? null,
+    ui: buildEditorUiState(appState),
     toastHistory: appState?.toastHistory ?? [],
   }
 }
@@ -564,7 +597,7 @@ function buildAppStateFromParts({ notebookIndex, navigationState, noteRegistry, 
   })
   const ui = isRecord(editorState?.ui) ? editorState.ui : {}
   return {
-    theme: typeof editorState?.theme === 'string' ? editorState.theme : 'dawn',
+    theme: typeof editorState?.theme === 'string' ? editorState.theme : 'dark',
     notebook: {
       activeNoteId,
       items: resolvedItems,
@@ -866,7 +899,7 @@ export function loadAppStateResult(profileRootPath, options = {}) {
       editorState,
       messages,
     })
-    const serializedState = JSON.stringify(appState)
+    const serializedState = JSON.stringify(applyUserSettingsToLoadedAppState(appState, options))
     const storageFiles = createStorageFilesSnapshot(listStorageFileContents(rootPath))
     return {
       ok: true,
@@ -1157,17 +1190,7 @@ export function writeAppSettingsForState(userSettingsRoot, serializedState) {
   } catch {
     appState = {}
   }
-  writeFileSync(
-    settingsPath,
-    `${JSON.stringify({
-      schemaVersion: SCHEMA_VERSION,
-      theme: appState?.theme ?? 'dawn',
-      hotkeys: appState?.hotkeys ?? null,
-      frontmatter: appState?.frontmatter ?? null,
-      ui: appState?.ui ?? null,
-    }, null, 2)}\n`,
-    'utf8',
-  )
+  writeFileSync(settingsPath, stringifyPortableAppSettings(appState), 'utf8')
 }
 
 export function resolveNoteLocationRevealPath(profileRootPath, payload = {}) {

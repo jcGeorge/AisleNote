@@ -680,6 +680,19 @@
   margin: 1px 0;
 }
 
+.notebook-tree-virtual-spacer {
+  position: relative;
+  min-height: 0;
+}
+
+.notebook-tree-virtual-row {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  min-height: 32px;
+}
+
 .notebook-tree-row.is-dragging {
   opacity: 0.42;
 }
@@ -1289,7 +1302,6 @@
 }
 
 .notebook-manager-eyebrow,
-.notebook-manager-meta-grid span,
 .notebook-manager-list-header,
 .notebook-manager-row-status {
   color: var(--app-text-muted);
@@ -1306,22 +1318,6 @@
 
 .notebook-manager-primary-actions {
   justify-content: flex-end;
-}
-
-.notebook-manager-meta-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 8px;
-}
-
-.notebook-manager-meta-grid div {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-  padding: 9px;
-  border: 1px solid var(--app-border-muted);
-  border-radius: 6px;
-  background: var(--app-surface);
 }
 
 .notebook-manager-error,
@@ -1772,6 +1768,10 @@
 
 .notebook-frontmatter-modal.frontmatter-note-modal {
   width: min(960px, calc(100vw - 32px));
+}
+
+.notebook-frontmatter-modal.notebook-name-modal {
+  width: min(420px, calc(100vw - 32px));
 }
 
 .notebook-frontmatter-modal .modal-card-header,

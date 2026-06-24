@@ -152,6 +152,32 @@ describe('notebook aisle editor task checkbox wiring', () => {
     expect(source).toContain('markUserEditedAisleBodyAtCurrentExternalVersion(meta.aisleBodyId)')
   })
 
+  it('schedules user markdown commits to app state and exposes an explicit flush', () => {
+    expect(source).toContain('const EDITOR_APP_STATE_COMMIT_DEBOUNCE_MS = 300')
+    expect(source).toContain('const EDITOR_APP_STATE_COMMIT_MAX_WAIT_MS = 1200')
+    expect(source).toContain('const pendingAppStateCommitRevisionsByAisleBodyRef = useRef<Map<string, number>>(new Map())')
+    expect(source).toContain('const flushPendingEditorAppStateCommit = useCallback')
+    expect(source).toContain('const schedulePendingEditorAppStateCommit = useCallback')
+    expect(source).toContain('const scheduleEditorOriginatedAisleMarkdownCommit = useCallback')
+    expect(source).toContain('pendingAppStateCommitRevisionsByAisleBodyRef.current.set(aisleBodyId, revision)')
+    expect(source).toContain('scheduleEditorOriginatedAisleMarkdownCommit(meta.aisleBodyId, revision)')
+    expect(source).toContain('if (pendingAppStateCommitRevisionsByAisleBodyRef.current.has(meta.aisleBodyId)) return')
+    expect(source).toContain('flushPendingEditorAppStateCommit,')
+
+    const commitIndex = source.indexOf('const commitEditorMarkdown = useCallback')
+    const snapshotIndex = source.indexOf('const commitActiveEditorMarkdownNow = useCallback', commitIndex)
+    const commitBody = source.slice(commitIndex, snapshotIndex)
+    expect(commitBody).toContain("if (source === 'user') {")
+    expect(commitBody).toContain('scheduleEditorOriginatedAisleMarkdownCommit(meta.aisleBodyId, revision)')
+    expect(commitBody).not.toContain('commitEditorOriginatedAisleMarkdown(meta.aisleBodyId, nextMarkdown, revision)')
+
+    const mountedCommitIndex = source.indexOf('const commitMountedEditorMarkdownNow = useCallback')
+    const replaceIndex = source.indexOf('const replaceActiveEditorMarkdown = useCallback', mountedCommitIndex)
+    const mountedCommitBody = source.slice(mountedCommitIndex, replaceIndex)
+    expect(mountedCommitBody).toContain('clearScheduledEditorAppStateCommit()')
+    expect(mountedCommitBody).toContain('pendingAppStateCommitRevisionsByAisleBodyRef.current.delete(aisleBodyId)')
+  })
+
   it('replaces mounted editor content through the shared markdown helper', () => {
     expect(source).toContain('const replaceMountedEditorMarkdown = useCallback')
     expect(source).toContain('meta.displayRestoreReady = false')

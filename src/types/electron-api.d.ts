@@ -74,6 +74,10 @@ type NotebookSelectorPayload = {
   notebookPath?: string
 }
 
+type NotebookRenamePayload = NotebookSelectorPayload & {
+  name: string
+}
+
 type NotebookDeletePayload = NotebookSelectorPayload & {
   skipConfirmation?: boolean
 }
@@ -334,8 +338,8 @@ declare global {
         | { ok: true; locationPath: string }
         | { ok: false; error: string }
       >
-      createNotebook?: (payload?: { name: string; locationPath: string }) => Promise<StorageProfileActionResult>
-      renameNotebook?: (payload: { name: string }) => Promise<StorageProfileActionResult>
+      createNotebook?: (payload: { name: string; locationPath: string }) => Promise<StorageProfileActionResult>
+      renameNotebook?: (payload: NotebookRenamePayload) => Promise<StorageProfileActionResult>
       openNotebook?: () => Promise<StorageProfileActionResult>
       switchNotebook?: (payload: NotebookSelectorPayload) => Promise<StorageProfileActionResult>
       forgetNotebook?: (payload: NotebookSelectorPayload) => Promise<StorageProfileActionResult>

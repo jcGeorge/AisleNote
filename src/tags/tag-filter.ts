@@ -1,9 +1,9 @@
 import { buildVisibleMarkdownIndex } from '../notes/find-replace'
 import { getAisleBodyId, getAisleMarkdown } from '../notes/note-markdown'
-import { buildNoteLocationKey, listSearchableNoteLocations } from '../notes/note-locations'
+import { buildNoteLocationKey } from '../notes/note-locations'
 import { SCRATCHPAD_FIND_LOCATION } from '../notes/find-replace'
-import { getScratchpadNoteBody } from '../state/scratchpad'
-import type { AppState, NoteBody, NoteLocation } from '../types/app'
+import { getNotebookIndexContext, type NotebookIndexContext, type NotebookOrderedLocation } from '../filters/notebook-index-context'
+import type { AppState, NoteAisleBody, NoteBody, NoteLocation } from '../types/app'
 import { extractMarkdownTagRanges, normalizeTagLabel } from './tags.js'
 
 export type TagFilterSortMode = 'az' | 'occurrences'
@@ -39,11 +39,6 @@ export type TagFilterIndex = {
   scratchpadCount: number
   primaryOccurrencesByLocation: Map<string, TagFilterOccurrence[]>
   firstMatchByNote: Map<string, NoteLocation>
-}
-
-type OrderedLocation = {
-  location: NoteLocation
-  noteBodyId: string
 }
 
 export function normalizeTagKey(tag: string): string {
@@ -90,11 +85,11 @@ function pushLocationOccurrences(
   tagSummariesByKey: Map<string, TagFilterTagSummary>,
   location: NoteLocation,
   body: NoteBody | null | undefined,
-  state: AppState,
+  aisleBodiesById: Map<string, NoteAisleBody>,
 ) {
   if (!body) return
   body.aisles.forEach((aisle) => {
-    const markdown = getAisleMarkdown(aisle, state.noteAisleBodies)
+    const markdown = getAisleMarkdown(aisle, aisleBodiesById)
     const visible = buildVisibleMarkdownIndex(markdown)
     const ordinalByTagKey = new Map<string, number>()
     extractMarkdownTagRanges(markdown).forEach((range) => {
@@ -127,13 +122,6 @@ function pushLocationOccurrences(
   })
 }
 
-function collectOrderedLocations(state: AppState): OrderedLocation[] {
-  return listSearchableNoteLocations(state).map((entry) => ({
-    location: { noteId: entry.noteId },
-    noteBodyId: entry.noteBodyId,
-  }))
-}
-
 function addFirstMatch(map: Map<string, NoteLocation>, key: string, location: NoteLocation) {
   if (!map.has(key)) map.set(key, location)
 }
@@ -151,7 +139,7 @@ function addSelectedOccurrenceToCounts(index: TagFilterIndex, occurrence: TagFil
   }
 }
 
-function populateFirstMatches(index: TagFilterIndex, orderedLocations: OrderedLocation[]) {
+function populateFirstMatches(index: TagFilterIndex, orderedLocations: NotebookOrderedLocation[]) {
   orderedLocations.forEach(({ location }) => {
     const locationKey = buildNoteLocationKey(location)
     if ((index.noteCounts.get(locationKey) ?? 0) <= 0) return
@@ -159,19 +147,22 @@ function populateFirstMatches(index: TagFilterIndex, orderedLocations: OrderedLo
   })
 }
 
-export function buildTagFilterIndex(state: AppState, selectedTagKeys: string[] = []): TagFilterIndex {
+export function buildTagFilterIndex(
+  state: AppState,
+  selectedTagKeys: string[] = [],
+  context?: NotebookIndexContext,
+): TagFilterIndex {
+  const indexContext = getNotebookIndexContext(state, context)
   const occurrences: TagFilterOccurrence[] = []
   const tagSummariesByKey = new Map<string, TagFilterTagSummary>()
-  const noteBodiesById = new Map(state.noteBodies.map((body) => [body.id, body]))
-  const orderedLocations = collectOrderedLocations(state)
+  const { aisleBodiesById, noteBodiesById, orderedLocations, scratchpadBody } = indexContext
 
   orderedLocations.forEach(({ location, noteBodyId }) => {
-    pushLocationOccurrences(occurrences, tagSummariesByKey, location, noteBodiesById.get(noteBodyId), state)
+    pushLocationOccurrences(occurrences, tagSummariesByKey, location, noteBodiesById.get(noteBodyId), aisleBodiesById)
   })
 
-  const scratchpadBody = getScratchpadNoteBody(state)
   if (scratchpadBody) {
-    pushLocationOccurrences(occurrences, tagSummariesByKey, SCRATCHPAD_FIND_LOCATION, scratchpadBody, state)
+    pushLocationOccurrences(occurrences, tagSummariesByKey, SCRATCHPAD_FIND_LOCATION, scratchpadBody, aisleBodiesById)
   }
 
   const normalizedSelectedKeys = Array.from(

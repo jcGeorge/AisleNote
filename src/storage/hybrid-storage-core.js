@@ -60,7 +60,7 @@ export function reconcileNotebookStorageState(appState) {
 }
 
 export function normalizeStorageTheme(value) {
-  return THEMES.has(value) ? value : 'dawn'
+  return THEMES.has(value) ? value : 'dark'
 }
 
 export function getThemeForStorage(appState) {

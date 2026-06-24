@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { getStorageProfileStatusToast } from './useStorageProfileController'
+import {
+  getStorageProfileStatusToast,
+  hasActiveNotebookForStorageAction,
+  notebookSelectorTargetsActiveNotebook,
+} from './useStorageProfileController'
 import type { StorageProfileStatus } from '../types/app'
 
 function storageStatus(event: string, overrides: Partial<StorageProfileStatus> = {}): StorageProfileStatus {
@@ -92,5 +96,55 @@ describe('notebook folder status toasts', () => {
       tone: 'error',
       durationMs: 6000,
     })
+  })
+})
+
+describe('notebook storage action commit guards', () => {
+  it('does not require a pre-storage commit before setup creates the first notebook', () => {
+    expect(
+      hasActiveNotebookForStorageAction(
+        storageStatus('notebook-setup-required', {
+          status: 'setup-required',
+          profileRootPath: '',
+          notebookPath: '',
+          notebookName: '',
+          activeNotebookId: null,
+          hasProfile: false,
+          canWrite: false,
+        }),
+      ),
+    ).toBe(false)
+    expect(
+      hasActiveNotebookForStorageAction(
+        storageStatus('profile-error', {
+          status: 'error',
+          activeNotebookId: 'broken-notebook',
+          notebookPath: '/tmp/Broken',
+          error: 'Notebook folder could not be loaded.',
+        }),
+      ),
+    ).toBe(false)
+    expect(
+      hasActiveNotebookForStorageAction(
+        storageStatus('paused', {
+          activeNotebookId: 'readonly-notebook',
+          canWrite: false,
+        }),
+      ),
+    ).toBe(false)
+  })
+
+  it('requires a pre-storage commit only when an action targets the active notebook', () => {
+    const status = storageStatus('ready', {
+      activeNotebookId: 'active-notebook',
+      notebookPath: '/tmp/Active',
+    })
+
+    expect(hasActiveNotebookForStorageAction(status)).toBe(true)
+    expect(notebookSelectorTargetsActiveNotebook(status)).toBe(true)
+    expect(notebookSelectorTargetsActiveNotebook(status, { notebookId: 'active-notebook' })).toBe(true)
+    expect(notebookSelectorTargetsActiveNotebook(status, { notebookPath: '/tmp/Active' })).toBe(true)
+    expect(notebookSelectorTargetsActiveNotebook(status, { notebookId: 'inactive-notebook' })).toBe(false)
+    expect(notebookSelectorTargetsActiveNotebook(status, { notebookPath: '/tmp/Inactive' })).toBe(false)
   })
 })
