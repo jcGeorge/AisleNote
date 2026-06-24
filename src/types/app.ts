@@ -18,6 +18,13 @@ export type NotebookNote = {
   noteBodyId: string
 }
 
+export type NotebookTabStatus = 'temporary' | 'retained'
+
+export type NotebookTab = {
+  noteId: string
+  status: NotebookTabStatus
+}
+
 export type DeletedNotebookItem = {
   id: string
   deletedAt: number
@@ -28,6 +35,7 @@ export type DeletedNotebookItem = {
 
 export type NotebookState = {
   activeNoteId: string
+  openTabs?: NotebookTab[]
   items: NotebookTreeItem[]
   deletedItems: DeletedNotebookItem[]
   settings: {
@@ -245,6 +253,7 @@ export type ShortcutId =
   | 'toggleNotesFilter'
   | 'newNote'
   | 'newFolder'
+  | 'closeCurrentNote'
   | 'formatStrikethrough'
   | 'cycleAislePrev'
   | 'cycleAisleNext'

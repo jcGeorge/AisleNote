@@ -44,6 +44,7 @@ export const DEFAULT_SHORTCUTS = {
   toggleNotesFilter: 'mod+shift+f',
   newNote: 'mod+n',
   newFolder: 'mod+shift+n',
+  closeCurrentNote: 'mod+w',
   formatStrikethrough: 'mod+shift+x',
   cycleAislePrev: 'mod+alt+arrowleft',
   cycleAisleNext: 'mod+alt+arrowright',
@@ -82,6 +83,7 @@ export function createDefaultAppState(options = {}) {
     theme: 'dark',
     notebook: {
       activeNoteId: welcomeNote.id,
+      openTabs: [{ noteId: welcomeNote.id, status: 'temporary' }],
       items: [welcomeNote],
       deletedItems: [],
       settings: {

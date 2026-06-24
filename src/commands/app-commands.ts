@@ -14,6 +14,7 @@ export const APP_COMMANDS: AppCommandDefinition[] = [
   { id: 'toggleNotesFilter', label: 'toggle notes / filter', defaultShortcut: '' },
   { id: 'newNote', label: 'new note', defaultShortcut: 'Mod+N' },
   { id: 'newFolder', label: 'new folder', defaultShortcut: 'Mod+Shift+N' },
+  { id: 'closeCurrentNote', label: 'close current note', defaultShortcut: 'Mod+W' },
   { id: 'formatStrikethrough', label: 'strikethrough', defaultShortcut: '' },
   { id: 'cycleAislePrev', label: 'previous aisle', defaultShortcut: 'Alt+[' },
   { id: 'cycleAisleNext', label: 'next aisle', defaultShortcut: 'Alt+]' },

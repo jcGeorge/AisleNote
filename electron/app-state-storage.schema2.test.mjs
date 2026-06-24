@@ -225,6 +225,10 @@ describe('schema 2 app-state storage', () => {
   it('saves and loads root notes, nested folders, duplicate names, multi-aisle folders, frontmatter, scratchpad, and trash', () => {
     const root = tempRoot()
     const state = appState()
+    state.notebook.openTabs = [
+      { noteId: 'note-root', status: 'retained' },
+      { noteId: 'note-duplicate-a', status: 'temporary' },
+    ]
 
     const saveResult = saveAppState(root, JSON.stringify(state))
     expect(saveResult.ok).toBe(true)
@@ -236,6 +240,10 @@ describe('schema 2 app-state storage', () => {
     const duplicateB = findNotebookIndexItem(index.items, 'note-duplicate-b')
     const multi = findNotebookIndexItem(index.items, 'note-multi')
 
+    expect(index.openTabs).toEqual([
+      { noteId: 'note-root', status: 'retained' },
+      { noteId: 'note-duplicate-a', status: 'temporary' },
+    ])
     expect(inbox.file).toMatch(/^Inbox--[a-f0-9]{8}\.md$/)
     expect(inbox.file).not.toContain('note-root')
     expect(projects.path).toMatch(/^Projects--[a-f0-9]{8}$/)
@@ -252,10 +260,26 @@ describe('schema 2 app-state storage', () => {
     expect(existsSync(pathFromRoot(root, duplicateB.file))).toBe(true)
 
     const reloaded = loadState(root)
+    expect(reloaded.notebook.openTabs).toEqual(index.openTabs)
     expect(reloaded.notebook.items[1].children).toHaveLength(3)
     expect(reloaded.noteAisleBodies.find((body) => body.id === 'aisle-body-root').frontmatter).toEqual({ status: 'open' })
     expect(reloaded.noteAisleBodies.find((body) => body.id === 'aisle-body-deleted').markdown).toBe('deleted markdown')
     expect(reloaded.noteAisleBodies.find((body) => body.id === 'aisle-body-scratch').markdown).toBe('scratch markdown')
+  })
+
+  it('loads older notebook indexes without open tab state', () => {
+    const root = tempRoot()
+    const state = appState()
+    const saveResult = saveAppState(root, JSON.stringify(state))
+    expect(saveResult.ok).toBe(true)
+
+    const indexPath = pathFromRoot(root, '.aislenote/notebook-index.json')
+    const index = JSON.parse(readFileSync(indexPath, 'utf8'))
+    delete index.openTabs
+    writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`, 'utf8')
+
+    const reloaded = loadState(root)
+    expect(reloaded.notebook.openTabs).toEqual([{ noteId: 'note-root', status: 'temporary' }])
   })
 
   it('overlays app-support user settings when loading different notebooks', () => {

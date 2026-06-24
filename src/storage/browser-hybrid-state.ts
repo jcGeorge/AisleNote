@@ -113,6 +113,7 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
   fileMap.set(NOTEBOOK_APP_STATE_FILE, textFile(NOTEBOOK_APP_STATE_FILE, serializedState))
   fileMap.set(NOTEBOOK_INDEX_FILE, textFile(NOTEBOOK_INDEX_FILE, {
     activeNoteId: typeof notebook.activeNoteId === 'string' ? notebook.activeNoteId : '',
+    openTabs: Array.isArray(notebook.openTabs) ? notebook.openTabs : [],
     items: Array.isArray(notebook.items) ? notebook.items : [],
     settings: isRecord(notebook.settings) ? notebook.settings : { autoRemoveDeletedDays: 30 },
   }))
@@ -168,6 +169,7 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
     notebook: {
       ...defaultNotebook,
       activeNoteId: typeof notebookIndex.activeNoteId === 'string' ? notebookIndex.activeNoteId : '',
+      openTabs: Array.isArray(notebookIndex.openTabs) ? notebookIndex.openTabs : [],
       items: Array.isArray(notebookIndex.items) ? notebookIndex.items : [],
       deletedItems: Array.isArray(trashIndex.deletedItems) ? trashIndex.deletedItems : [],
       settings: isRecord(notebookIndex.settings) ? notebookIndex.settings : { autoRemoveDeletedDays: 30 },

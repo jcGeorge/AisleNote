@@ -7,6 +7,7 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
   toggleNotesFilter: '',
   newNote: 'Mod+N',
   newFolder: 'Mod+Shift+N',
+  closeCurrentNote: 'Mod+W',
   formatStrikethrough: '',
   cycleAislePrev: 'Alt+[',
   cycleAisleNext: 'Alt+]',

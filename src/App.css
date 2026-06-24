@@ -308,7 +308,7 @@
   position: absolute;
   right: 8px;
   bottom: 8px;
-  z-index: 5;
+  z-index: 7;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -321,7 +321,7 @@
 .notebook-sidebar .notebook-sidebar-toggle:focus-visible,
 .notebook-sidebar .notebook-sidebar-toggle:active {
   border-color: transparent;
-  background: transparent;
+  background: var(--notebook-sidebar-bg);
   box-shadow: none;
 }
 

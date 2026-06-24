@@ -5,6 +5,7 @@ import type {
   FrontmatterSettings,
   NoteAisleBody,
   NoteBody,
+  NotebookTab,
   NotebookState,
   NotebookTreeItem,
   NoteCursorLocation,
@@ -44,6 +45,7 @@ export type StorageRootManifest = {
 
 export type StorageNotebookIndex = {
   activeNoteId: StorageEntityId
+  openTabs?: NotebookTab[]
   items: NotebookTreeItem[]
   settings: NotebookState['settings']
 }

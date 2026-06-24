@@ -600,6 +600,7 @@ function buildAppStateFromParts({ notebookIndex, navigationState, noteRegistry, 
     theme: typeof editorState?.theme === 'string' ? editorState.theme : 'dark',
     notebook: {
       activeNoteId,
+      openTabs: normalizeNotebookOpenTabs(notebookIndex?.openTabs, resolvedItems, activeNoteId),
       items: resolvedItems,
       deletedItems: ensureArray(trashIndex?.deletedItems),
       settings: {
@@ -622,6 +623,7 @@ function buildAppStateFromParts({ notebookIndex, navigationState, noteRegistry, 
             toggleNotesFilter: 'mod+shift+f',
             newNote: 'mod+n',
             newFolder: 'mod+shift+n',
+            closeCurrentNote: 'mod+w',
             formatStrikethrough: 'mod+shift+x',
             cycleAislePrev: 'mod+alt+arrowleft',
             cycleAisleNext: 'mod+alt+arrowright',
@@ -736,6 +738,46 @@ function getFirstNoteId(items) {
     }
   }
   return ''
+}
+
+function collectNotebookNoteIds(items, noteIds = new Set()) {
+  for (const item of ensureArray(items)) {
+    if (item?.type === 'note' && normalizeId(item.id)) {
+      noteIds.add(normalizeId(item.id))
+    } else if (item?.type === 'folder') {
+      collectNotebookNoteIds(item.children, noteIds)
+    }
+  }
+  return noteIds
+}
+
+function normalizeNotebookOpenTabs(rawTabs, items, activeNoteId = '') {
+  const noteIds = collectNotebookNoteIds(items)
+  const tabs = []
+  const tabNoteIds = new Set()
+  let hasTemporaryTab = false
+
+  for (const rawTab of ensureArray(rawTabs)) {
+    if (!isRecord(rawTab)) continue
+    const noteId = normalizeId(rawTab.noteId)
+    if (!noteId || !noteIds.has(noteId) || tabNoteIds.has(noteId)) continue
+    const status = rawTab.status === 'retained' ? 'retained' : 'temporary'
+    if (status === 'temporary') {
+      if (hasTemporaryTab) continue
+      hasTemporaryTab = true
+    }
+    tabs.push({ noteId, status })
+    tabNoteIds.add(noteId)
+  }
+
+  const fallbackNoteId = noteIds.has(activeNoteId) ? activeNoteId : getFirstNoteId(items)
+  if (!fallbackNoteId || tabNoteIds.has(fallbackNoteId)) return tabs
+
+  const temporaryIndex = tabs.findIndex((tab) => tab.status === 'temporary')
+  const fallbackTab = { noteId: fallbackNoteId, status: 'temporary' }
+  if (temporaryIndex >= 0) tabs[temporaryIndex] = fallbackTab
+  else tabs.push(fallbackTab)
+  return tabs
 }
 
 function readAisleFile(rootPath, file) {
@@ -937,6 +979,11 @@ export function saveAppState(profileRootPath, serializedState, options = {}) {
     const notebookIndex = {
       schemaVersion: SCHEMA_VERSION,
       activeNoteId: appState?.notebook?.activeNoteId ?? '',
+      openTabs: normalizeNotebookOpenTabs(
+        appState?.notebook?.openTabs,
+        notebookItems,
+        appState?.notebook?.activeNoteId ?? '',
+      ),
       items: notebookItems,
       settings: appState?.notebook?.settings ?? { autoRemoveDeletedDays: 30 },
     }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { readFileMapFromStorageBackend, writeFileMapToStorageBackend } from './browser-hybrid-state'
+import {
+  buildHybridFileMapFromSerializedState,
+  readFileMapFromStorageBackend,
+  readSerializedStateFromHybridFileMap,
+  writeFileMapToStorageBackend,
+} from './browser-hybrid-state'
 import { storageReadOk, storageWriteOk, type StorageBackend, type StorageFileEntry } from './storage-backend'
 
 class MemoryStorageBackend implements StorageBackend {
@@ -65,5 +70,43 @@ describe('storage backend file map helpers', () => {
     const imageEntry = roundTripped.get('notes/assets/image.png')
     expect(imageEntry?.kind).toBe('binary')
     expect(imageEntry?.kind === 'binary' ? Array.from(imageEntry.bytes) : []).toEqual([1, 2, 3])
+  })
+
+  it('preserves notebook open tabs in browser hybrid split files', () => {
+    const serializedState = JSON.stringify({
+      theme: 'dark',
+      notebook: {
+        activeNoteId: 'note-b',
+        openTabs: [
+          { noteId: 'note-a', status: 'retained' },
+          { noteId: 'note-b', status: 'temporary' },
+        ],
+        items: [
+          { type: 'note', id: 'note-a', title: 'A', noteBodyId: 'body-a' },
+          { type: 'note', id: 'note-b', title: 'B', noteBodyId: 'body-b' },
+        ],
+        deletedItems: [],
+        settings: { autoRemoveDeletedDays: 30 },
+      },
+      messages: [],
+      toastHistory: [],
+      noteBodies: [],
+      noteAisleBodies: [],
+      hotkeys: { shortcuts: {}, newlineShortcuts: { shortcuts: {}, menuOperations: [] } },
+      frontmatter: { templates: [], settingsTemplateId: '', lastAppliedTemplateId: '' },
+      ui: {},
+    })
+
+    const fileMap = buildHybridFileMapFromSerializedState(serializedState)
+    const notebookIndex = JSON.parse(fileMap.get('notes/.aislenote/notebook-index.json')?.kind === 'text'
+      ? fileMap.get('notes/.aislenote/notebook-index.json')?.text ?? '{}'
+      : '{}')
+    const restored = JSON.parse(readSerializedStateFromHybridFileMap(fileMap) ?? '{}')
+
+    expect(notebookIndex.openTabs).toEqual([
+      { noteId: 'note-a', status: 'retained' },
+      { noteId: 'note-b', status: 'temporary' },
+    ])
+    expect(restored.notebook.openTabs).toEqual(notebookIndex.openTabs)
   })
 })

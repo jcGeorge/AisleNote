@@ -72,6 +72,18 @@ describe('notebook hotkey intents', () => {
       viewMode: 'main',
     })).toBe('newFolder')
     expect(getNotebookHotkeyIntent({
+      event: keyboardEvent('w', { code: 'KeyW', metaKey: true }),
+      hotkeys,
+      isMacPlatform: true,
+      viewMode: 'main',
+    })).toBe('closeCurrentNote')
+    expect(getNotebookHotkeyIntent({
+      event: keyboardEvent('w', { code: 'KeyW', ctrlKey: true }),
+      hotkeys,
+      isMacPlatform: false,
+      viewMode: 'main',
+    })).toBe('closeCurrentNote')
+    expect(getNotebookHotkeyIntent({
       event: keyboardEvent('t', { code: 'KeyT', metaKey: true }),
       hotkeys,
       isMacPlatform: true,
@@ -118,6 +130,12 @@ describe('notebook hotkey intents', () => {
     })).toBe('toggleNotesScratchpad')
     expect(getNotebookHotkeyIntent({
       event: keyboardEvent('[', { code: 'BracketLeft', altKey: true }),
+      hotkeys: defaultHotkeys,
+      isMacPlatform: true,
+      viewMode: 'settings',
+    })).toBeNull()
+    expect(getNotebookHotkeyIntent({
+      event: keyboardEvent('w', { code: 'KeyW', metaKey: true }),
       hotkeys: defaultHotkeys,
       isMacPlatform: true,
       viewMode: 'settings',

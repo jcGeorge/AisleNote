@@ -26,6 +26,7 @@ import { ToolbarToolIcon } from '../editor/ToolbarToolIcon'
 import { getAislePreviewSegments } from './aisle-markdown-preview-segments'
 import { NotePreviewContent } from './NotePreviewContent'
 import { AisleHorizontalScrollbar } from './AisleHorizontalScrollbar'
+import { NoteTabStrip, type NoteTabRenameCommitSource, type NoteTabStripItem } from './NoteTabStrip'
 import {
   MarkdownPreviewHeading1,
   MarkdownPreviewHeading2,
@@ -192,6 +193,17 @@ type NoteWorkspaceProps = {
   onSelectEditableAsset?: (target: Element) => void
   onRegisterAislePaneRoot: (aisleId: string, node: HTMLElement | null) => void
   onRegisterAisleEditorRoot: (editorKey: string, node: HTMLElement | null) => void
+  noteTabs?: NoteTabStripItem[]
+  renamingNoteTabId?: string
+  noteTabRenameDraft?: string
+  onSelectNoteTab?: (noteId: string) => void
+  onCloseNoteTab?: (noteId: string) => void
+  onPromoteNoteTab?: (noteId: string) => void
+  onReorderNoteTabs?: (sourceNoteId: string, targetIndex: number) => void
+  onStartNoteTabRename?: (noteId: string, title: string) => void
+  onNoteTabRenameDraftChange?: (title: string) => void
+  onCommitNoteTabRename?: (source: NoteTabRenameCommitSource) => void
+  onCancelNoteTabRename?: () => void
 }
 
 type AisleTableOfContentsPanelProps = {
@@ -389,6 +401,17 @@ export function NoteWorkspace({
   onSelectEditableAsset = () => undefined,
   onRegisterAislePaneRoot,
   onRegisterAisleEditorRoot,
+  noteTabs = [],
+  renamingNoteTabId = '',
+  noteTabRenameDraft = '',
+  onSelectNoteTab = () => undefined,
+  onCloseNoteTab = () => undefined,
+  onPromoteNoteTab = () => undefined,
+  onReorderNoteTabs = () => undefined,
+  onStartNoteTabRename = () => undefined,
+  onNoteTabRenameDraftChange = () => undefined,
+  onCommitNoteTabRename = () => undefined,
+  onCancelNoteTabRename = () => undefined,
 }: NoteWorkspaceProps) {
   const [aisleScrollNode, setAisleScrollNode] = useState<HTMLDivElement | null>(null)
   const aisleResizeDragRef = useRef<{
@@ -754,6 +777,21 @@ export function NoteWorkspace({
           onScrollLeftChange={onAisleScroll}
         />
       )}
+      {noteTabs.length > 0 ? (
+        <NoteTabStrip
+          tabs={noteTabs}
+          renamingNoteId={renamingNoteTabId}
+          renameDraft={noteTabRenameDraft}
+          onSelectTab={onSelectNoteTab}
+          onCloseTab={onCloseNoteTab}
+          onPromoteTab={onPromoteNoteTab}
+          onReorderTabs={onReorderNoteTabs}
+          onStartRenameTab={onStartNoteTabRename}
+          onRenameDraftChange={onNoteTabRenameDraftChange}
+          onCommitRenameTab={onCommitNoteTabRename}
+          onCancelRenameTab={onCancelNoteTabRename}
+        />
+      ) : null}
     </section>
   )
 }

@@ -52,6 +52,9 @@ describe('Markdown folder import', () => {
       expect(books.children[1]?.type).toBe('folder')
     }
     expect(result.state.notebook.activeNoteId).toBe(result.sources[0]?.noteId)
+    expect(result.state.notebook.openTabs).toEqual([
+      { noteId: result.sources[0]?.noteId, status: 'temporary' },
+    ])
     expect(result.state.scratchpad?.noteBodyId).toBeTruthy()
     const scratchpadBody = result.state.noteBodies.find((body) => body.id === result.state.scratchpad?.noteBodyId)
     const scratchpadAisle = scratchpadBody?.aisles[0]

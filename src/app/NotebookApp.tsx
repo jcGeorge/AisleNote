@@ -109,6 +109,7 @@ import {
 } from '../editor/toolbar-layouts'
 import { resetAisleWidthForLocation, setAisleWidthForLocation } from '../notes/aisle-widths'
 import { NoteWorkspace } from '../components/notes/NoteWorkspace'
+import type { NoteTabStripItem } from '../components/notes/NoteTabStrip'
 import { scrollAislePaneIntoHorizontalView } from '../components/notes/aisle-horizontal-scroll'
 import { SharedEditorToolbar } from '../components/editor/SharedEditorToolbar'
 import { ToolbarToolVisual } from '../components/editor/ToolbarToolVisual'
@@ -217,21 +218,28 @@ import {
 import { parseThemeSettingsImport, serializeThemeSettings } from '../settings/theme-transfer'
 import {
   collectNotebookIds,
+  closeNotebookTab,
   createNotebookFolderInState,
   createNotebookNoteInState,
   deleteNotebookItemInState,
   findNotebookFolder,
   findNotebookItem,
   findNotebookNote,
+  focusNotebookOpenTab,
   getContainingFolderId,
   getFirstNotebookNote,
   getNotebookNoteFolderPath,
   isNoteBodyLinked,
   moveNotebookItem,
   moveNotebookItems,
+  openNotebookRetainedTab,
+  openNotebookTemporaryTab,
+  promoteNotebookTemporaryTab,
   renameNotebookItem,
+  reorderNotebookTabs,
   restoreDeletedNotebookItemInState,
   sortNotebookItemsInScope,
+  type NotebookTabOpenDisposition,
 } from '../state/notebook'
 import {
   NotebookNoteActionPicker,
@@ -459,6 +467,7 @@ const HOTKEY_ROWS: Array<{ id: ShortcutId; label: string }> = [
   { id: 'toggleNotesFilter', label: 'Toggle filter' },
   { id: 'newNote', label: 'New note' },
   { id: 'newFolder', label: 'New folder' },
+  { id: 'closeCurrentNote', label: 'Close current note' },
   { id: 'formatStrikethrough', label: 'Strikethrough' },
   { id: 'cycleAislePrev', label: 'Previous aisle' },
   { id: 'cycleAisleNext', label: 'Next aisle' },
@@ -872,6 +881,7 @@ type NotebookTreeContextMenuState =
 
 type NotebookTreeNoteSelectionMode = 'replace' | 'toggle' | 'range'
 type NotebookTreeRenameCommitSource = 'enter' | 'blur' | 'tab'
+type NotebookRenameSurface = 'tree' | 'tab'
 
 type NotebookTreeFlatRow = {
   item: NotebookTreeItem
@@ -1204,6 +1214,7 @@ function TreeItemRow({
   collapsedFolderIds,
   query,
   onSelectNote,
+  onOpenNoteRetained,
   onSelectFolder,
   onToggleFolder,
   onStartRename,
@@ -1232,6 +1243,7 @@ function TreeItemRow({
   collapsedFolderIds: Set<string>
   query: string
   onSelectNote: (noteId: string, mode: NotebookTreeNoteSelectionMode) => void
+  onOpenNoteRetained: (noteId: string) => void
   onSelectFolder: (folderId: string) => void
   onToggleFolder: (folderId: string) => void
   onStartRename: (itemId: string, title: string) => void
@@ -1420,6 +1432,27 @@ function TreeItemRow({
             onPointerUp={finishLongPressRename}
             onPointerCancel={finishLongPressRename}
             onPointerLeave={finishLongPressRename}
+            onMouseDown={(event) => {
+              if (item.type !== 'note' || event.button !== 1) return
+              event.preventDefault()
+              event.stopPropagation()
+              clearLongPress()
+              onOpenNoteRetained(item.id)
+            }}
+            onAuxClick={(event) => {
+              if (item.type !== 'note' || event.button !== 1) return
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+            onDoubleClick={(event) => {
+              if (item.type !== 'note' || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+                return
+              }
+              event.preventDefault()
+              event.stopPropagation()
+              clearLongPress()
+              onOpenNoteRetained(item.id)
+            }}
             onClick={(event) => {
               if (suppressNextClickRef.current) {
                 suppressNextClickRef.current = false
@@ -1467,6 +1500,7 @@ function TreeItemRow({
               collapsedFolderIds={collapsedFolderIds}
               query={query}
               onSelectNote={onSelectNote}
+              onOpenNoteRetained={onOpenNoteRetained}
               onSelectFolder={onSelectFolder}
               onToggleFolder={onToggleFolder}
               onStartRename={onStartRename}
@@ -2648,6 +2682,7 @@ export function NotebookApp() {
   const [activeAisleId, setActiveAisleId] = useState('')
   const [selectedFolderId, setSelectedFolderId] = useState('')
   const [renamingTreeItemId, setRenamingTreeItemId] = useState('')
+  const [renamingItemSurface, setRenamingItemSurface] = useState<NotebookRenameSurface | null>(null)
   const [treeRenameDraft, setTreeRenameDraft] = useState('')
   const [draggingTreeItemId, setDraggingTreeItemId] = useState('')
   const [draggingTreeNoteIds, setDraggingTreeNoteIds] = useState<string[]>([])
@@ -2802,6 +2837,22 @@ export function NotebookApp() {
   )
   const activeModel = scratchpadActive ? scratchpadModel ?? activeNotebookModel : activeNotebookModel
   const activeModelIsScratchpad = activeModel?.kind === 'scratchpad'
+  const noteTabItems = useMemo<NoteTabStripItem[]>(
+    () =>
+      (state.notebook.openTabs ?? []).flatMap((tab): NoteTabStripItem[] => {
+        const notePath = findNotebookNote(state.notebook.items, tab.noteId)
+        if (!notePath) return []
+        return [
+          {
+            noteId: tab.noteId,
+            title: notePath.note.title,
+            status: tab.status,
+            active: tab.noteId === state.notebook.activeNoteId,
+          },
+        ]
+      }),
+    [state.notebook.activeNoteId, state.notebook.items, state.notebook.openTabs],
+  )
   const collapsedFolderIds = useMemo(() => new Set(state.ui.collapsedFolderIds), [state.ui.collapsedFolderIds])
   const visibleTreeNoteIds = useMemo(
     () => getVisibleNotebookTreeNoteIds(state.notebook.items, collapsedFolderIds),
@@ -3034,6 +3085,7 @@ export function NotebookApp() {
         pendingCreatedEditRef.current = null
       }
       setRenamingTreeItemId('')
+      setRenamingItemSurface(null)
       setTreeRenameDraft('')
     }
     if (draggingTreeItemId && !findNotebookItem(state.notebook.items, draggingTreeItemId)) {
@@ -3776,7 +3828,7 @@ export function NotebookApp() {
   }, [toolbarState])
 
   const applyNotebookNavigationLocation = useCallback(
-    (location: NotebookNavigationLocation) => {
+    (location: NotebookNavigationLocation, options: { tabDisposition?: NotebookTabOpenDisposition } = {}) => {
       notebookEditors.flushPendingEditorAppStateCommit()
       const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
       const snapshotState = applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots)
@@ -3793,13 +3845,17 @@ export function NotebookApp() {
       mutateState((previous) => {
         const previousWithEditorContent = applyNotebookEditorMarkdownSnapshotsToState(previous, snapshots)
         const previousWithCursor = applyActiveCursorToState(previousWithEditorContent)
-        if (previousWithCursor.notebook.activeNoteId === resolvedLocation.noteId) return previousWithCursor
+        const tabDisposition = options.tabDisposition ?? 'temporary'
+        const notebook =
+          tabDisposition === 'retained'
+            ? openNotebookRetainedTab(previousWithCursor.notebook, resolvedLocation.noteId)
+            : tabDisposition === 'preserve'
+              ? focusNotebookOpenTab(previousWithCursor.notebook, resolvedLocation.noteId)
+              : openNotebookTemporaryTab(previousWithCursor.notebook, resolvedLocation.noteId)
+        if (notebook === previousWithCursor.notebook) return previousWithCursor
         return {
           ...previousWithCursor,
-          notebook: {
-            ...previousWithCursor.notebook,
-            activeNoteId: resolvedLocation.noteId,
-          },
+          notebook,
         }
       })
       setViewMode('main')
@@ -3818,6 +3874,94 @@ export function NotebookApp() {
       return true
     },
     [applyActiveCursorToState, clearNotebookNavigationTransientUi, mutateState, notebookEditors, scheduleAisleFocusScroll, stateRef],
+  )
+
+  const selectNoteTab = useCallback(
+    (noteId: string) => {
+      applyNotebookNavigationLocation({ noteId, aisleId: '' }, { tabDisposition: 'preserve' })
+    },
+    [applyNotebookNavigationLocation],
+  )
+
+  const promoteNoteTab = useCallback(
+    (noteId: string) => {
+      mutateState((previous) => ({
+        ...previous,
+        notebook: promoteNotebookTemporaryTab(previous.notebook, noteId),
+      }))
+    },
+    [mutateState],
+  )
+
+  const reorderNoteTabs = useCallback(
+    (sourceNoteId: string, targetIndex: number) => {
+      mutateState((previous) => ({
+        ...previous,
+        notebook: reorderNotebookTabs(previous.notebook, sourceNoteId, targetIndex),
+      }))
+    },
+    [mutateState],
+  )
+
+  const closeNoteTab = useCallback(
+    (noteId: string) => {
+      notebookEditors.flushPendingEditorAppStateCommit()
+      const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
+      const snapshotState = applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots)
+      const nextNotebook = closeNotebookTab(snapshotState.notebook, noteId)
+      const activeChanged = nextNotebook.activeNoteId !== snapshotState.notebook.activeNoteId
+      const resolvedLocation = activeChanged && nextNotebook.activeNoteId
+        ? resolveNotebookNavigationLocation({ ...snapshotState, notebook: nextNotebook }, { noteId: nextNotebook.activeNoteId })
+        : null
+
+      if (activeChanged && !resolvedLocation) return
+
+      if (noteId === renamingTreeItemId) {
+        setRenamingTreeItemId('')
+        setRenamingItemSurface(null)
+        setTreeRenameDraft('')
+      }
+
+      if (resolvedLocation) {
+        pendingFocusToAisleIdRef.current = resolvedLocation.aisleId || null
+        pendingScrollToAisleIdRef.current = resolvedLocation.aisleId || null
+        pendingNavigationTopAisleIdRef.current = null
+        setActiveAisleId(resolvedLocation.aisleId)
+        clearNotebookNavigationTransientUi()
+      }
+
+      mutateState((previous) => {
+        const previousWithEditorContent = applyNotebookEditorMarkdownSnapshotsToState(previous, snapshots)
+        const previousWithCursor = applyActiveCursorToState(previousWithEditorContent)
+        const notebook = closeNotebookTab(previousWithCursor.notebook, noteId)
+        return notebook === previousWithCursor.notebook ? previousWithCursor : { ...previousWithCursor, notebook }
+      })
+
+      if (!resolvedLocation) return
+      setViewMode('main')
+      setScratchpadActive(false)
+      const targetNoteBodyId = findNotebookNote(nextNotebook.items, resolvedLocation.noteId)?.note.noteBodyId ?? ''
+      scheduleAisleFocusScroll(targetNoteBodyId, resolvedLocation.aisleId)
+      window.requestAnimationFrame(() => {
+        if (pendingFocusToAisleIdRef.current !== (resolvedLocation.aisleId || null)) return
+        const active = getActiveNoteModel(stateRef.current)
+        if (!active || active.noteId !== resolvedLocation.noteId) return
+        if (!active.noteBody.aisles.some((aisle) => aisle.id === resolvedLocation.aisleId)) return
+        notebookEditors.activateAisleEditor(buildAisleEditorKey(active.noteBody.id, resolvedLocation.aisleId), {
+          focus: true,
+          source: 'programmatic',
+        })
+      })
+    },
+    [
+      applyActiveCursorToState,
+      clearNotebookNavigationTransientUi,
+      mutateState,
+      notebookEditors,
+      renamingTreeItemId,
+      scheduleAisleFocusScroll,
+      stateRef,
+    ],
   )
 
   navigateToNotebookLocationRef.current = applyNotebookNavigationLocation
@@ -4070,6 +4214,7 @@ export function NotebookApp() {
     pendingCreatedEditRef.current = pending
     skipNextTreeRenameCommitRef.current = false
     setRenamingTreeItemId(pending.itemId)
+    setRenamingItemSurface('tree')
     setTreeRenameDraft(title)
   }, [])
 
@@ -4263,12 +4408,20 @@ export function NotebookApp() {
     [mutateState],
   )
 
-  const startTreeRename = useCallback((itemId: string, title: string) => {
+  const startTreeRename = useCallback((itemId: string, title: string, surface: NotebookRenameSurface = 'tree') => {
     skipNextTreeRenameCommitRef.current = false
     skipTreeRenameBlurItemIdRef.current = ''
     setRenamingTreeItemId(itemId)
+    setRenamingItemSurface(surface)
     setTreeRenameDraft(title)
   }, [])
+
+  const startNoteTabRename = useCallback(
+    (noteId: string, title: string) => {
+      startTreeRename(noteId, title, 'tab')
+    },
+    [startTreeRename],
+  )
 
   const commitTreeRename = useCallback((source: NotebookTreeRenameCommitSource) => {
     if (source === 'blur' && skipTreeRenameBlurItemIdRef.current === renamingTreeItemId) {
@@ -4298,6 +4451,7 @@ export function NotebookApp() {
       skipTreeRenameBlurItemIdRef.current = renamingTreeItemId
     }
     setRenamingTreeItemId('')
+    setRenamingItemSurface(null)
     setTreeRenameDraft('')
   }, [createFolderAt, createNoteAt, finishCreatedTreeRename, renameItem, renamingTreeItemId, stateRef, treeRenameDraft])
 
@@ -4309,6 +4463,7 @@ export function NotebookApp() {
       pendingCreatedEditRef.current = null
     }
     setRenamingTreeItemId('')
+    setRenamingItemSurface(null)
     setTreeRenameDraft('')
   }, [renamingTreeItemId])
 
@@ -4318,6 +4473,7 @@ export function NotebookApp() {
 
   const startTreeDrag = useCallback((itemId: string) => {
     setRenamingTreeItemId('')
+    setRenamingItemSurface(null)
     setTreeRenameDraft('')
     const entry = findNotebookItem(stateRef.current.notebook.items, itemId)
     const selectedNoteIds = selectedTreeNoteIds.includes(itemId)
@@ -4606,6 +4762,16 @@ export function NotebookApp() {
     [selectedTreeNoteIds, setActiveNote, state.notebook.activeNoteId, treeSelectionAnchorNoteId, visibleTreeNoteIds],
   )
 
+  const openSidebarTreeNoteRetained = useCallback(
+    (noteId: string) => {
+      setSelectedFolderId('')
+      setSelectedTreeNoteIds([noteId])
+      setTreeSelectionAnchorNoteId(noteId)
+      applyNotebookNavigationLocation({ noteId, aisleId: '' }, { tabDisposition: 'retained' })
+    },
+    [applyNotebookNavigationLocation],
+  )
+
   const selectSidebarTreeFolder = useCallback((folderId: string) => {
     setSelectedTreeNoteIds([])
     setTreeSelectionAnchorNoteId('')
@@ -4868,6 +5034,11 @@ export function NotebookApp() {
       openSettings: () => openUtilityView('settings'),
       newNote: createNote,
       newFolder: createFolder,
+      closeCurrentNote: () => {
+        if (scratchpadActiveRef.current) return
+        const noteId = stateRef.current.notebook.activeNoteId
+        if (noteId) closeNoteTab(noteId)
+      },
       toggleNotesTrash: toggleNotesTrashFromShortcut,
       toggleNotesScratchpad: toggleNotesScratchpadFromShortcut,
       toggleNotesFilter: focusNotesFilterFromShortcut,
@@ -7104,7 +7275,7 @@ export function NotebookApp() {
                           parentFolderId={row.parentFolderId}
                           index={row.index}
                           activeNoteId={state.notebook.activeNoteId}
-                          renamingItemId={renamingTreeItemId}
+                          renamingItemId={renamingItemSurface === 'tree' ? renamingTreeItemId : ''}
                           renameDraft={treeRenameDraft}
                           draggingItemId={draggingTreeItemId}
                           draggingNoteIds={draggingTreeNoteIdSet}
@@ -7115,6 +7286,7 @@ export function NotebookApp() {
                           query={query}
                           renderChildren={false}
                           onSelectNote={selectSidebarTreeNote}
+                          onOpenNoteRetained={openSidebarTreeNoteRetained}
                           onSelectFolder={selectSidebarTreeFolder}
                           onToggleFolder={toggleFolder}
                           onStartRename={startTreeRename}
@@ -7139,7 +7311,7 @@ export function NotebookApp() {
                       parentFolderId={null}
                       index={itemIndex}
                       activeNoteId={state.notebook.activeNoteId}
-                      renamingItemId={renamingTreeItemId}
+                      renamingItemId={renamingItemSurface === 'tree' ? renamingTreeItemId : ''}
                       renameDraft={treeRenameDraft}
                       draggingItemId={draggingTreeItemId}
                       draggingNoteIds={draggingTreeNoteIdSet}
@@ -7149,6 +7321,7 @@ export function NotebookApp() {
                       collapsedFolderIds={collapsedFolderIds}
                       query={query}
                       onSelectNote={selectSidebarTreeNote}
+                      onOpenNoteRetained={openSidebarTreeNoteRetained}
                       onSelectFolder={selectSidebarTreeFolder}
                       onToggleFolder={toggleFolder}
                       onStartRename={startTreeRename}
@@ -7321,6 +7494,17 @@ export function NotebookApp() {
                 aisleWidths={activeAisleWidths}
                 onRegisterAislePaneRoot={notebookEditors.registerAislePaneRoot}
                 onRegisterAisleEditorRoot={notebookEditors.registerAisleEditorRoot}
+                noteTabs={activeModelIsScratchpad ? [] : noteTabItems}
+                renamingNoteTabId={renamingItemSurface === 'tab' ? renamingTreeItemId : ''}
+                noteTabRenameDraft={treeRenameDraft}
+                onSelectNoteTab={selectNoteTab}
+                onCloseNoteTab={closeNoteTab}
+                onPromoteNoteTab={promoteNoteTab}
+                onReorderNoteTabs={reorderNoteTabs}
+                onStartNoteTabRename={startNoteTabRename}
+                onNoteTabRenameDraftChange={setTreeRenameDraft}
+                onCommitNoteTabRename={commitTreeRename}
+                onCancelNoteTabRename={cancelTreeRename}
               />
               <NotebookAisleContextMenu
                 menu={aisleContextMenu}

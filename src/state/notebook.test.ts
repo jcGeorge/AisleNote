@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AppState } from '../types/app'
+import type { AppState, NotebookState } from '../types/app'
 import {
   createDefaultNotebookState,
   createNotebookFolderInState,
@@ -15,7 +15,12 @@ import {
   materializeSyncedNoteBodiesInState,
   moveNotebookItem,
   moveNotebookItems,
+  openNotebookRetainedTab,
+  openNotebookTemporaryTab,
+  closeNotebookTab,
+  promoteNotebookTemporaryTab,
   renameNotebookItem,
+  reorderNotebookTabs,
   replaceNotebookNoteBodyId,
   restoreDeletedNotebookItemInState,
   sortNotebookItemsInScope,
@@ -42,6 +47,7 @@ function createState(): AppState {
         toggleNotesFilter: '',
         newNote: 'mod+n',
         newFolder: 'mod+shift+n',
+        closeCurrentNote: 'mod+w',
         formatStrikethrough: '',
         cycleAislePrev: '',
         cycleAisleNext: '',
@@ -73,6 +79,20 @@ function createState(): AppState {
       seenTipIds: [],
       disabledTipIds: [],
     },
+  }
+}
+
+function createTabNotebook(): NotebookState {
+  return {
+    activeNoteId: 'note-a',
+    openTabs: [],
+    items: [
+      { type: 'note', id: 'note-a', title: 'A', noteBodyId: 'body-a' },
+      { type: 'note', id: 'note-b', title: 'B', noteBodyId: 'body-b' },
+      { type: 'note', id: 'note-c', title: 'C', noteBodyId: 'body-c' },
+    ],
+    deletedItems: [],
+    settings: { autoRemoveDeletedDays: 30 },
   }
 }
 
@@ -386,6 +406,95 @@ describe('notebook tree helpers', () => {
     const restored = restoreDeletedNotebookItemInState(deleted, 'deleted-1')
     expect(listNotebookNotes(restored.notebook.items).map((entry) => entry.note.id)).toEqual(['note-1', 'note-2'])
     expect(restored.notebook.activeNoteId).toBe('note-1')
+  })
+
+  it('opens one replaceable temporary tab and keeps retained tabs', () => {
+    let notebook = createTabNotebook()
+
+    notebook = openNotebookTemporaryTab(notebook, 'note-a')
+    expect(notebook.activeNoteId).toBe('note-a')
+    expect(notebook.openTabs).toEqual([{ noteId: 'note-a', status: 'temporary' }])
+
+    notebook = openNotebookRetainedTab(notebook, 'note-b')
+    expect(notebook.activeNoteId).toBe('note-b')
+    expect(notebook.openTabs).toEqual([
+      { noteId: 'note-a', status: 'temporary' },
+      { noteId: 'note-b', status: 'retained' },
+    ])
+
+    notebook = openNotebookTemporaryTab(notebook, 'note-c')
+    expect(notebook.activeNoteId).toBe('note-c')
+    expect(notebook.openTabs).toEqual([
+      { noteId: 'note-c', status: 'temporary' },
+      { noteId: 'note-b', status: 'retained' },
+    ])
+  })
+
+  it('promotes temporary tabs and retained opens promote existing temporary tabs', () => {
+    let notebook = openNotebookTemporaryTab(createTabNotebook(), 'note-a')
+
+    notebook = promoteNotebookTemporaryTab(notebook, 'note-a')
+    expect(notebook.openTabs).toEqual([{ noteId: 'note-a', status: 'retained' }])
+
+    notebook = openNotebookTemporaryTab(notebook, 'note-b')
+    notebook = openNotebookRetainedTab(notebook, 'note-b')
+    expect(notebook.openTabs).toEqual([
+      { noteId: 'note-a', status: 'retained' },
+      { noteId: 'note-b', status: 'retained' },
+    ])
+  })
+
+  it('closes active tabs to next, previous, then first-note temporary fallback', () => {
+    let notebook = {
+      ...createTabNotebook(),
+      activeNoteId: 'note-b',
+      openTabs: [
+        { noteId: 'note-a', status: 'retained' as const },
+        { noteId: 'note-b', status: 'retained' as const },
+        { noteId: 'note-c', status: 'retained' as const },
+      ],
+    }
+
+    notebook = closeNotebookTab(notebook, 'note-b')
+    expect(notebook.activeNoteId).toBe('note-c')
+    expect(notebook.openTabs?.map((tab) => tab.noteId)).toEqual(['note-a', 'note-c'])
+
+    notebook = closeNotebookTab(notebook, 'note-c')
+    expect(notebook.activeNoteId).toBe('note-a')
+    expect(notebook.openTabs).toEqual([{ noteId: 'note-a', status: 'retained' }])
+
+    notebook = closeNotebookTab(notebook, 'note-a')
+    expect(notebook.activeNoteId).toBe('note-a')
+    expect(notebook.openTabs).toEqual([{ noteId: 'note-a', status: 'temporary' }])
+  })
+
+  it('reorders tabs and prunes stale tabs when notes are deleted', () => {
+    let notebook = {
+      ...createTabNotebook(),
+      openTabs: [
+        { noteId: 'note-a', status: 'retained' as const },
+        { noteId: 'note-b', status: 'temporary' as const },
+        { noteId: 'note-c', status: 'retained' as const },
+      ],
+    }
+
+    notebook = reorderNotebookTabs(notebook, 'note-a', 3)
+    expect(notebook.openTabs?.map((tab) => tab.noteId)).toEqual(['note-b', 'note-c', 'note-a'])
+
+    const deleted = deleteNotebookItemInState(
+      {
+        ...createState(),
+        notebook,
+        noteBodies: [],
+        noteAisleBodies: [],
+      },
+      'note-b',
+      idSequence(['deleted-b']),
+    )
+    expect(deleted.notebook.openTabs).toEqual([
+      { noteId: 'note-c', status: 'retained' },
+      { noteId: 'note-a', status: 'retained' },
+    ])
   })
 
   it('replaces one visible note body while keeping synced siblings linked', () => {

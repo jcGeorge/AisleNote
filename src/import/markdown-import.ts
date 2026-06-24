@@ -646,6 +646,7 @@ export function buildMarkdownImportState(
       notebook: {
         ...baseState.notebook,
         activeNoteId,
+        openTabs: activeNoteId ? [{ noteId: activeNoteId, status: 'temporary' }] : [],
         items: rootItems,
         deletedItems: [],
       },

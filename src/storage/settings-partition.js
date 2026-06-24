@@ -40,6 +40,7 @@ const DEFAULT_COMMAND_SHORTCUTS = {
   toggleNotesFilter: '',
   newNote: 'Mod+N',
   newFolder: 'Mod+Shift+N',
+  closeCurrentNote: 'Mod+W',
   formatStrikethrough: '',
   cycleAislePrev: 'Alt+[',
   cycleAisleNext: 'Alt+]',

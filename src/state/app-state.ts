@@ -27,6 +27,7 @@ import {
   createNoteBodyWithAisle,
   ensureValidActiveNote,
   materializeSyncedNoteBodiesInState,
+  normalizeNotebookTabsForItems,
   purgeOldDeletedNotebookItems,
 } from './notebook'
 import { CUSTOM_THEME_IDS, normalizeThemePaletteOverrides } from '../theme/notebook-themes'
@@ -205,6 +206,11 @@ function normalizeNotebookState(raw: unknown, fallback: NotebookState): Notebook
     : []
   return ensureValidActiveNote({
     activeNoteId: normalizeString(raw.activeNoteId, fallback.activeNoteId),
+    openTabs: normalizeNotebookTabsForItems(
+      raw.openTabs,
+      items,
+      normalizeString(raw.activeNoteId, fallback.activeNoteId),
+    ),
     items,
     deletedItems,
     settings: {

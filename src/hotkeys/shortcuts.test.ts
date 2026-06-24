@@ -172,6 +172,26 @@ describe('newline shortcut settings', () => {
     ).toBe(true)
   })
 
+  it('defaults close current note to mod w and matches platform key events', () => {
+    expect(DEFAULT_SHORTCUTS.closeCurrentNote).toBe('Mod+W')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.closeCurrentNote, true)).toBe('cmd+w')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.closeCurrentNote, false)).toBe('ctrl+w')
+    expect(
+      eventMatchesShortcut(
+        { key: 'w', code: 'KeyW', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.closeCurrentNote,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      eventMatchesShortcut(
+        { key: 'w', code: 'KeyW', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.closeCurrentNote,
+        false,
+      ),
+    ).toBe(true)
+  })
+
   it('keeps notes/filter assignable but unbound by default', () => {
     expect(DEFAULT_SHORTCUTS.toggleNotesFilter).toBe('')
     expect(
@@ -251,5 +271,6 @@ describe('newline shortcut settings', () => {
     expect(normalized.shortcuts.cycleAisleNext).toBe('Alt+]')
     expect(normalized.shortcuts.formatStrikethrough).toBe('')
     expect(normalized.shortcuts.toggleNotesFilter).toBe('')
+    expect(normalized.shortcuts.closeCurrentNote).toBe('Mod+W')
   })
 })

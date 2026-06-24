@@ -7,6 +7,8 @@ import type {
   NotebookFolder,
   NotebookNote,
   NotebookState,
+  NotebookTab,
+  NotebookTabStatus,
   NotebookTreeItem,
   TabSortMode,
 } from '../types/app'
@@ -47,6 +49,8 @@ export type CreatedNotebookFolder = {
   state: AppState
   folderId: string
 }
+
+export type NotebookTabOpenDisposition = NotebookTabStatus | 'preserve'
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -130,6 +134,7 @@ export function createDefaultNotebookState(idGenerator: IdGenerator = createRand
   return {
     notebook: {
       activeNoteId: note.id,
+      openTabs: [{ noteId: note.id, status: 'temporary' }],
       items: [note],
       deletedItems: [],
       settings: {
@@ -235,6 +240,181 @@ export function getFirstNotebookNote(items: NotebookTreeItem[]): NotebookNote | 
   return first
 }
 
+export function getNotebookNoteIdSet(items: NotebookTreeItem[]): Set<string> {
+  const noteIds = new Set<string>()
+  walkNotebookItems(items, ({ item }) => {
+    if (item.type === 'note') noteIds.add(item.id)
+  })
+  return noteIds
+}
+
+function normalizeNotebookTabStatus(status: unknown): NotebookTabStatus {
+  return status === 'retained' ? 'retained' : 'temporary'
+}
+
+function isNotebookTabRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+export function normalizeNotebookTabsForItems(
+  rawTabs: unknown,
+  items: NotebookTreeItem[],
+  activeNoteId = '',
+): NotebookTab[] {
+  const noteIds = getNotebookNoteIdSet(items)
+  const tabs: NotebookTab[] = []
+  const tabNoteIds = new Set<string>()
+  let hasTemporaryTab = false
+
+  if (Array.isArray(rawTabs)) {
+    rawTabs.forEach((rawTab) => {
+      if (!isNotebookTabRecord(rawTab)) return
+      const noteId = typeof rawTab.noteId === 'string' ? rawTab.noteId.trim() : ''
+      if (!noteId || !noteIds.has(noteId) || tabNoteIds.has(noteId)) return
+      const status = normalizeNotebookTabStatus(rawTab.status)
+      if (status === 'temporary') {
+        if (hasTemporaryTab) return
+        hasTemporaryTab = true
+      }
+      tabs.push({ noteId, status })
+      tabNoteIds.add(noteId)
+    })
+  }
+
+  const fallbackNoteId = noteIds.has(activeNoteId) ? activeNoteId : getFirstNotebookNote(items)?.id ?? ''
+  if (!fallbackNoteId) return tabs
+
+  if (!tabNoteIds.has(fallbackNoteId)) {
+    const temporaryIndex = tabs.findIndex((tab) => tab.status === 'temporary')
+    const fallbackTab: NotebookTab = { noteId: fallbackNoteId, status: 'temporary' }
+    if (temporaryIndex >= 0) {
+      tabNoteIds.delete(tabs[temporaryIndex]?.noteId ?? '')
+      tabs[temporaryIndex] = fallbackTab
+    } else {
+      tabs.push(fallbackTab)
+    }
+  }
+
+  return tabs
+}
+
+function notebookTabsEqual(left: readonly NotebookTab[] | undefined, right: readonly NotebookTab[]): boolean {
+  if (!left || left.length !== right.length) return false
+  return left.every((tab, index) => tab.noteId === right[index]?.noteId && tab.status === right[index]?.status)
+}
+
+export function normalizeNotebookOpenTabs(notebook: NotebookState): NotebookState {
+  const openTabs = normalizeNotebookTabsForItems(notebook.openTabs, notebook.items, notebook.activeNoteId)
+  return notebookTabsEqual(notebook.openTabs, openTabs) ? notebook : { ...notebook, openTabs }
+}
+
+function setNotebookActiveTab(notebook: NotebookState, noteId: string, disposition: NotebookTabOpenDisposition): NotebookState {
+  const notePath = findNotebookNote(notebook.items, noteId)
+  if (!notePath) return normalizeNotebookOpenTabs(notebook)
+
+  const normalized = normalizeNotebookOpenTabs(notebook)
+  const openTabs = [...(normalized.openTabs ?? [])]
+  const existingIndex = openTabs.findIndex((tab) => tab.noteId === noteId)
+
+  if (existingIndex >= 0) {
+    if (disposition === 'retained' && openTabs[existingIndex]?.status === 'temporary') {
+      openTabs[existingIndex] = { noteId, status: 'retained' }
+    }
+    return normalizeNotebookOpenTabs({
+      ...normalized,
+      activeNoteId: noteId,
+      openTabs,
+    })
+  }
+
+  if (disposition === 'preserve') {
+    return normalizeNotebookOpenTabs({
+      ...normalized,
+      activeNoteId: noteId,
+    })
+  }
+
+  if (disposition === 'temporary') {
+    const temporaryIndex = openTabs.findIndex((tab) => tab.status === 'temporary')
+    const temporaryTab: NotebookTab = { noteId, status: 'temporary' }
+    if (temporaryIndex >= 0) openTabs[temporaryIndex] = temporaryTab
+    else openTabs.push(temporaryTab)
+  } else {
+    openTabs.push({ noteId, status: 'retained' })
+  }
+
+  return normalizeNotebookOpenTabs({
+    ...normalized,
+    activeNoteId: noteId,
+    openTabs,
+  })
+}
+
+export function openNotebookTemporaryTab(notebook: NotebookState, noteId: string): NotebookState {
+  return setNotebookActiveTab(notebook, noteId, 'temporary')
+}
+
+export function openNotebookRetainedTab(notebook: NotebookState, noteId: string): NotebookState {
+  return setNotebookActiveTab(notebook, noteId, 'retained')
+}
+
+export function focusNotebookOpenTab(notebook: NotebookState, noteId: string): NotebookState {
+  return setNotebookActiveTab(notebook, noteId, 'preserve')
+}
+
+export function promoteNotebookTemporaryTab(notebook: NotebookState, noteId: string): NotebookState {
+  const normalized = normalizeNotebookOpenTabs(notebook)
+  const openTabs = (normalized.openTabs ?? []).map((tab) =>
+    tab.noteId === noteId && tab.status === 'temporary'
+      ? { ...tab, status: 'retained' as const }
+      : tab,
+  )
+  return notebookTabsEqual(normalized.openTabs, openTabs) ? normalized : { ...normalized, openTabs }
+}
+
+export function closeNotebookTab(notebook: NotebookState, noteId: string): NotebookState {
+  const normalized = normalizeNotebookOpenTabs(notebook)
+  const openTabs = normalized.openTabs ?? []
+  const closingIndex = openTabs.findIndex((tab) => tab.noteId === noteId)
+  if (closingIndex < 0) return normalized
+
+  const nextOpenTabs = openTabs.filter((tab) => tab.noteId !== noteId)
+  if (normalized.activeNoteId !== noteId) {
+    return normalizeNotebookOpenTabs({
+      ...normalized,
+      openTabs: nextOpenTabs,
+    })
+  }
+
+  const nextActiveTab = nextOpenTabs[closingIndex] ?? nextOpenTabs[closingIndex - 1] ?? null
+  if (nextActiveTab) {
+    return normalizeNotebookOpenTabs({
+      ...normalized,
+      activeNoteId: nextActiveTab.noteId,
+      openTabs: nextOpenTabs,
+    })
+  }
+
+  const fallbackNoteId = getFirstNotebookNote(normalized.items)?.id ?? ''
+  return normalizeNotebookOpenTabs({
+    ...normalized,
+    activeNoteId: fallbackNoteId,
+    openTabs: fallbackNoteId ? [{ noteId: fallbackNoteId, status: 'temporary' }] : [],
+  })
+}
+
+export function reorderNotebookTabs(notebook: NotebookState, sourceNoteId: string, targetIndex: number): NotebookState {
+  const normalized = normalizeNotebookOpenTabs(notebook)
+  const openTabs = [...(normalized.openTabs ?? [])]
+  const sourceIndex = openTabs.findIndex((tab) => tab.noteId === sourceNoteId)
+  if (sourceIndex < 0) return normalized
+  const [tab] = openTabs.splice(sourceIndex, 1)
+  if (!tab) return normalized
+  const boundedIndex = Math.max(0, Math.min(targetIndex, openTabs.length))
+  openTabs.splice(boundedIndex, 0, tab)
+  return notebookTabsEqual(normalized.openTabs, openTabs) ? normalized : { ...normalized, openTabs }
+}
+
 export function getContainingFolderId(items: NotebookTreeItem[], itemId: string): string | null {
   const entry = findNotebookItem(items, itemId)
   return entry?.parentFolderId ?? null
@@ -260,18 +440,18 @@ export function getNotebookFolderPathLabel(items: NotebookTreeItem[], folderId: 
 }
 
 export function ensureValidActiveNote(notebook: NotebookState): NotebookState {
-  if (findNotebookNote(notebook.items, notebook.activeNoteId)) return notebook
+  if (findNotebookNote(notebook.items, notebook.activeNoteId)) return normalizeNotebookOpenTabs(notebook)
   const firstNote = getFirstNotebookNote(notebook.items)
   if (firstNote) {
-    return {
+    return normalizeNotebookOpenTabs({
       ...notebook,
       activeNoteId: firstNote.id,
-    }
+    })
   }
-  return {
+  return normalizeNotebookOpenTabs({
     ...notebook,
     activeNoteId: '',
-  }
+  })
 }
 
 function updateFolderChildren(
@@ -380,7 +560,7 @@ function sortNotebookSiblingItems(
         : null,
     }))
     .sort((left, right) => {
-      let comparison = 0
+      let comparison: number
       if (descriptor.kind === 'title') {
         comparison = NOTEBOOK_ITEM_TITLE_COLLATOR.compare(left.item.title, right.item.title)
         if (descriptor.direction === 'desc') comparison *= -1
@@ -668,10 +848,10 @@ export function restoreDeletedNotebookItem(notebook: NotebookState, deletedItemI
     parentFolderId,
     entry.originalIndex,
   )
-  return {
+  return normalizeNotebookOpenTabs({
     ...restored,
     activeNoteId: entry.item.type === 'note' ? entry.item.id : restored.activeNoteId,
-  }
+  })
 }
 
 export function purgeOldDeletedNotebookItems(notebook: NotebookState, now = Date.now()): NotebookState {
@@ -910,14 +1090,17 @@ export function createNotebookNoteInState(
 ): CreatedNotebookNote {
   const { noteBody, aisleBody, aisleId, aisleBodyId } = createNoteBodyWithAisle(markdown, idGenerator)
   const note = createNotebookNote(title, noteBody.id, idGenerator)
-  const notebook = insertNotebookItem(state.notebook, note, parentFolderId, index)
+  const notebook = openNotebookRetainedTab(
+    {
+      ...insertNotebookItem(state.notebook, note, parentFolderId, index),
+      activeNoteId: note.id,
+    },
+    note.id,
+  )
   return {
     state: {
       ...state,
-      notebook: {
-        ...notebook,
-        activeNoteId: note.id,
-      },
+      notebook,
       noteBodies: [...state.noteBodies, noteBody],
       noteAisleBodies: [...(state.noteAisleBodies ?? []), aisleBody],
     },

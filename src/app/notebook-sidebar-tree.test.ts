@@ -59,6 +59,7 @@ describe('notebook sidebar tree', () => {
     expect(notebookAppSource).toContain('NOTEBOOK_TREE_RENAME_LONG_PRESS_MS = 500')
     expect(notebookAppSource).toContain('onPointerDown={beginLongPressRename}')
     expect(notebookAppSource).toContain('className="notebook-tree-rename-input"')
+    expect(notebookAppSource).toContain("renamingItemId={renamingItemSurface === 'tree' ? renamingTreeItemId : ''}")
     expect(notebookAppSource).toContain("type NotebookTreeRenameCommitSource = 'enter' | 'blur' | 'tab'")
     expect(notebookAppSource).toContain("onBlur={() => onCommitRename('blur')}")
     expect(notebookAppSource).toContain("onCommitRename('enter')")
@@ -82,6 +83,15 @@ describe('notebook sidebar tree', () => {
     expect(notebookAppSource).toContain('setSelectedTreeNoteIds([])')
     expect(notebookAppSource).toContain('draggingNoteIds.has(item.id)')
     expect(appCssSource).toContain('.notebook-tree-row.is-note.is-selected .notebook-tree-main')
+  })
+
+  it('opens retained note tabs from sidebar middle-click and unmodified double-click', () => {
+    expect(notebookAppSource).toContain('onOpenNoteRetained: (noteId: string) => void')
+    expect(notebookAppSource).toContain('onOpenNoteRetained(item.id)')
+    expect(notebookAppSource).toContain('onDoubleClick={(event) => {')
+    expect(notebookAppSource).toContain('event.button !== 0 ||')
+    expect(notebookAppSource).toContain('event.metaKey ||')
+    expect(notebookAppSource).toContain("applyNotebookNavigationLocation({ noteId, aisleId: '' }, { tabDisposition: 'retained' })")
   })
 
   it('does not keep hidden inline rename or delete controls in note rows', () => {

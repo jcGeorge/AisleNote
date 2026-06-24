@@ -38,6 +38,7 @@ describe('portable app settings parsing', () => {
           toggleNotesFilter: '',
           newNote: 'Mod+N',
           newFolder: 'Mod+Shift+N',
+          closeCurrentNote: 'Mod+W',
         },
         newlineShortcuts: {
           shortcuts: {
@@ -208,6 +209,7 @@ describe('portable app settings parsing', () => {
             toggleNotesFilter: '',
             newNote: 'Mod+N',
             newFolder: 'Mod+Shift+N',
+            closeCurrentNote: 'Mod+W',
           },
           newlineShortcuts: {
             shortcuts: {
@@ -242,6 +244,7 @@ describe('portable app settings parsing', () => {
     expect(syncedSettings.hotkeys.shortcuts.toggleNotesFilter).toBe('')
     expect(syncedSettings.hotkeys.shortcuts.newNote).toBe('Mod+N')
     expect(syncedSettings.hotkeys.shortcuts.newFolder).toBe('Mod+Shift+N')
+    expect(syncedSettings.hotkeys.shortcuts.closeCurrentNote).toBe('Mod+W')
     expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Alt+]')
     expect(syncedSettings.hotkeys.newlineShortcuts.menuOperations).toEqual(['blockQuote', 'strikethrough'])
   })

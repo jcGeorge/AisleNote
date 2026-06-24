@@ -22,6 +22,7 @@ import type { AppState, NoteLocation, ResolvedNoteAisle } from '../../types/app'
 import { buildInternalNoteLinkToken, buildPreviewToken } from '../../notes/note-references'
 
 const noteWorkspaceSource = readFileSync(fileURLToPath(new URL('./NoteWorkspace.tsx', import.meta.url)), 'utf8')
+const noteTabStripSource = readFileSync(fileURLToPath(new URL('./NoteTabStrip.tsx', import.meta.url)), 'utf8')
 const notebookAppSource = readFileSync(fileURLToPath(new URL('../../app/NotebookApp.tsx', import.meta.url)), 'utf8')
 const editorShellCss = readFileSync(fileURLToPath(new URL('../../styles/editor-shell.css', import.meta.url)), 'utf8')
 const responsiveCss = readFileSync(fileURLToPath(new URL('../../styles/responsive.css', import.meta.url)), 'utf8')
@@ -84,6 +85,9 @@ function renderWorkspace(
     deferInactivePreviewFallbacks?: boolean
     appState?: AppState | null
     onOpenNoteReference?: (target: NoteLocation) => void
+    noteTabs?: Array<{ noteId: string; title: string; status: 'temporary' | 'retained'; active: boolean }>
+    renamingNoteTabId?: string
+    noteTabRenameDraft?: string
   } = {},
 ) {
   return renderToStaticMarkup(
@@ -113,6 +117,9 @@ function renderWorkspace(
       onRegisterAisleEditorRoot={() => undefined}
       appState={options.appState}
       onOpenNoteReference={options.onOpenNoteReference}
+      noteTabs={options.noteTabs}
+      renamingNoteTabId={options.renamingNoteTabId}
+      noteTabRenameDraft={options.noteTabRenameDraft}
     />,
   )
 }
@@ -408,6 +415,63 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('note-aisle-horizontal-scrollbar-thumb')
     expect(html).toContain('role="scrollbar"')
     expect(html).toContain('aria-label="Scroll aisles horizontally"')
+  })
+
+  it('renders bottom note tabs below the split aisle scrollbar', () => {
+    const html = renderWorkspace(new Set(['a']), {
+      noteTabs: [
+        { noteId: 'note-parent', title: 'Parent', status: 'temporary', active: true },
+        { noteId: 'note-child', title: 'Child', status: 'retained', active: false },
+      ],
+    })
+
+    expect(html.indexOf('note-aisle-horizontal-scrollbar')).toBeLessThan(html.indexOf('note-tab-strip'))
+    expect(html).toContain('aria-label="Open notes"')
+    expect(html).toContain('note-tab is-active is-temporary')
+    expect(html).toContain('note-tab is-retained')
+    expect(html).toContain('note-tab-close')
+    expect(html).toContain('data-app-icon="x"')
+  })
+
+  it('renders an inline rename input for tab-row initiated note renames', () => {
+    const html = renderWorkspace(new Set(['a']), {
+      noteTabs: [
+        { noteId: 'note-parent', title: 'Parent', status: 'temporary', active: true },
+        { noteId: 'note-child', title: 'Child', status: 'retained', active: false },
+      ],
+      renamingNoteTabId: 'note-parent',
+      noteTabRenameDraft: 'Parent draft',
+    })
+
+    expect(html).toContain('note-tab is-active is-temporary is-renaming')
+    expect(html).toContain('class="note-tab-rename-input"')
+    expect(html).toContain('value="Parent draft"')
+  })
+
+  it('wires notebook tabs through the notebook app while hiding them for scratchpad', () => {
+    expect(notebookAppSource).toContain('noteTabs={activeModelIsScratchpad ? [] : noteTabItems}')
+    expect(notebookAppSource).toContain("renamingNoteTabId={renamingItemSurface === 'tab' ? renamingTreeItemId : ''}")
+    expect(notebookAppSource).toContain("applyNotebookNavigationLocation({ noteId, aisleId: '' }, { tabDisposition: 'retained' })")
+    expect(noteWorkspaceSource).toContain('<NoteTabStrip')
+  })
+
+  it('keeps middle-click close wired on bottom note tabs', () => {
+    expect(noteTabStripSource).toContain('const closeFromMiddleClick =')
+    expect(noteTabStripSource).toContain('if (event.button !== 1) return false')
+    expect(noteTabStripSource).toContain('onMouseDown={(event) => {')
+    expect(noteTabStripSource).toContain('closeFromMiddleClick(event, tab.noteId)')
+    expect(noteTabStripSource).toContain('onAuxClick={(event) => {')
+  })
+
+  it('promotes temporary tabs on double-click and starts rename from long-press', () => {
+    expect(noteTabStripSource).toContain('NOTE_TAB_RENAME_LONG_PRESS_MS = 500')
+    expect(noteTabStripSource).not.toContain('NOTE_TAB_PROMOTE_LONG_PRESS_MS')
+    expect(noteTabStripSource).toContain('onDoubleClick={(event) => {')
+    expect(noteTabStripSource).toContain("if (tab.status !== 'temporary'")
+    expect(noteTabStripSource).toContain('onPromoteTab(tab.noteId)')
+    expect(noteTabStripSource).toContain('const startLongPressRename =')
+    expect(noteTabStripSource).toContain('onStartRenameTab(tab.noteId, tab.title)')
+    expect(noteTabStripSource).toContain('className="note-tab-rename-input"')
   })
 
   it('keeps split aisle alignment gutters out of the first aisle layout', () => {
