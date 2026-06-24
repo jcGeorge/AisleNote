@@ -1292,8 +1292,33 @@
 .custom-theme-transfer-actions {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 1rem;
+  margin-top: 0.35rem;
+}
+
+.custom-theme-transfer-actions-left,
+.custom-theme-transfer-actions-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.4rem;
+}
+
+.custom-theme-transfer-actions-left {
+  justify-content: flex-start;
+  margin-right: auto;
+}
+
+.custom-theme-transfer-actions-right {
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.custom-theme-transfer-actions .notebook-settings-action,
+.custom-theme-json-modal-actions .notebook-settings-action {
+  margin-top: 0;
 }
 
 .custom-theme-json-modal {

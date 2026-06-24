@@ -123,6 +123,23 @@ describe('notebook settings access', () => {
     expect(settingsCssSource).toContain('.settings-theme-copy-button.notebook-settings-action')
   })
 
+  it('restores plain JSON theme import and export controls', () => {
+    expect(notebookAppSource).toContain('serializeThemeSettings(selectedPalette)')
+    expect(notebookAppSource).toContain('parseThemeSettingsImport(themeJsonDraft, selectedPalette)')
+    expect(notebookAppSource).toContain('className="custom-theme-transfer-actions"')
+    expect(notebookAppSource).toContain('className="custom-theme-transfer-actions-left"')
+    expect(notebookAppSource).toContain('className="custom-theme-transfer-actions-right"')
+    expect(notebookAppSource).toContain('Import theme')
+    expect(notebookAppSource).toContain('Export theme')
+    expect(notebookAppSource).toContain('Reset selected palette')
+    expect(notebookAppSource).toContain('className="settings-text-input custom-theme-json-textarea"')
+    expect(notebookAppSource).toContain('readOnly={themeJsonMode === \'export\'}')
+    expect(settingsCssSource).toContain('.custom-theme-json-modal')
+    expect(settingsCssSource).toContain('.custom-theme-transfer-actions')
+    expect(settingsCssSource).toContain('justify-content: space-between;')
+    expect(settingsCssSource).toContain('.custom-theme-transfer-actions-right')
+  })
+
   it('uses theme-specific aisle resize affordance colors', () => {
     expect(editorShellCssSource).toContain('background: var(--note-aisle-resize-bg);')
     expect(editorShellCssSource).toContain('background: var(--note-aisle-resize-hover-bg);')
@@ -133,5 +150,13 @@ describe('notebook settings access', () => {
     expect(dawnCssSource).toContain('--note-aisle-resize-border: transparent;')
     expect(dawnCssSource).toContain('--note-aisle-resize-hover-bg: color-mix(in srgb, var(--custom-palette-primary) 72%, var(--custom-theme-sidebar));')
     expect(dawnCssSource).toContain('--note-aisle-resize-hover-border: transparent;')
+  })
+
+  it('derives editor toolbar colors from the sidebar palette for every palette theme', () => {
+    expect(baseCssSource).toContain('--editor-toolbar-bg: var(--custom-theme-sidebar, var(--custom-palette-surface));')
+    expect(baseCssSource).toContain('var(--custom-theme-sidebar, var(--custom-palette-surface)) 70%')
+    expect(baseCssSource).toContain('--editor-toolbar-active-bg: var(--custom-palette-primary);')
+    expect(baseCssSource).toContain('--editor-toolbar-button-bg: color-mix(')
+    expect(dawnCssSource).not.toContain('--editor-toolbar-bg: var(--custom-theme-sidebar);')
   })
 })

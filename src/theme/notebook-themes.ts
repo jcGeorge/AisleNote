@@ -86,7 +86,7 @@ export const BUILT_IN_THEME_PALETTE_SEEDS: Record<BuiltInAppTheme, CustomThemePa
   dawn: {
     canvas: '#e2bc69',
     page: '#f1d58a',
-    surface: '#fff6e3',
+    surface: '#ecd8ac',
     surfaceRaised: '#ead4a9',
     text: '#243047',
     mutedText: '#615342',

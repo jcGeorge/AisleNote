@@ -206,6 +206,7 @@ import {
   clampToolbarButtonScale,
   normalizeHexColor,
 } from '../settings/defaults'
+import { parseThemeSettingsImport, serializeThemeSettings } from '../settings/theme-transfer'
 import {
   collectNotebookIds,
   createNotebookFolderInState,
@@ -1956,6 +1957,9 @@ function NotebookThemeSettings({
   const selectedCustomTheme = state.ui.selectedCustomTheme ?? 'custom1'
   const selectedPalette = getThemePaletteForTheme(state.theme, state.ui.themePalettes)
   const canCopyActiveThemeToSelectedCustomPalette = state.theme !== selectedCustomTheme
+  const [themeJsonMode, setThemeJsonMode] = useState<'import' | 'export' | null>(null)
+  const [themeJsonDraft, setThemeJsonDraft] = useState('')
+  const [themeJsonStatus, setThemeJsonStatus] = useState('')
   const noteFontScale = clampNoteFontScale(state.ui.noteFontScale)
   const defaultToolbarButtonScale = DEFAULT_UI_SETTINGS.toolbarButtonScale ?? 1.2
   const toolbarButtonScale = clampToolbarButtonScale(state.ui.toolbarButtonScale ?? defaultToolbarButtonScale)
@@ -2037,6 +2041,46 @@ function NotebookThemeSettings({
         },
       }
     })
+  }
+
+  const closeThemeJsonModal = () => {
+    setThemeJsonMode(null)
+    setThemeJsonDraft('')
+    setThemeJsonStatus('')
+  }
+
+  const openExportThemeJson = () => {
+    setThemeJsonMode('export')
+    setThemeJsonDraft(serializeThemeSettings(selectedPalette))
+    setThemeJsonStatus('')
+  }
+
+  const openImportThemeJson = () => {
+    setThemeJsonMode('import')
+    setThemeJsonDraft('')
+    setThemeJsonStatus('')
+  }
+
+  const importThemeJson = () => {
+    const result = parseThemeSettingsImport(themeJsonDraft, selectedPalette)
+    if (!result.ok) {
+      setThemeJsonStatus(result.error)
+      return
+    }
+    onMutateState((previous) => {
+      const themeId = previous.theme
+      return {
+        ...previous,
+        ui: {
+          ...previous.ui,
+          themePalettes: {
+            ...(previous.ui.themePalettes ?? {}),
+            [themeId]: normalizeCustomThemePalette(result.palette, getCustomThemePaletteSeed(themeId)),
+          },
+        },
+      }
+    })
+    setThemeJsonStatus(`Imported ${result.importedSlots.length} theme color${result.importedSlots.length === 1 ? '' : 's'}.`)
   }
 
   const updateUiScale = (key: 'noteFontScale' | 'toolbarButtonScale', value: number) => {
@@ -2228,9 +2272,60 @@ function NotebookThemeSettings({
           />
         ))}
       </div>
-      <button type="button" className="notebook-settings-action" onClick={resetSelectedPalette}>
-        Reset selected palette
-      </button>
+      <div className="custom-theme-transfer-actions">
+        <div className="custom-theme-transfer-actions-left">
+          <button type="button" className="notebook-settings-action" onClick={resetSelectedPalette}>
+            Reset selected palette
+          </button>
+        </div>
+        <div className="custom-theme-transfer-actions-right">
+          <button type="button" className="notebook-settings-action" onClick={openImportThemeJson}>
+            Import theme
+          </button>
+          <button type="button" className="notebook-settings-action" onClick={openExportThemeJson}>
+            Export theme
+          </button>
+        </div>
+      </div>
+      {themeJsonMode ? (
+        <div className="modal-backdrop notebook-modal-backdrop" role="presentation" onMouseDown={closeThemeJsonModal}>
+          <div
+            className="modal-card notebook-frontmatter-modal custom-theme-json-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="custom-theme-json-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="modal-card-header">
+              <h2 id="custom-theme-json-title">{themeJsonMode === 'export' ? 'Export theme' : 'Import theme'}</h2>
+              <button type="button" className="app-close-button" aria-label="Close theme JSON" onClick={closeThemeJsonModal}>
+                <AppIcon iconId="x" className="app-close-button-icon" />
+              </button>
+            </header>
+            <div className="notebook-frontmatter-body">
+              <textarea
+                className="settings-text-input custom-theme-json-textarea"
+                value={themeJsonDraft}
+                readOnly={themeJsonMode === 'export'}
+                spellCheck={false}
+                aria-label="Theme JSON"
+                onChange={(event) => setThemeJsonDraft(event.target.value)}
+              />
+              {themeJsonStatus ? <p className="custom-theme-json-status">{themeJsonStatus}</p> : null}
+            </div>
+            <footer className="modal-card-footer custom-theme-json-modal-actions">
+              <button type="button" className="notebook-settings-action" onClick={closeThemeJsonModal}>
+                Close
+              </button>
+              {themeJsonMode === 'import' ? (
+                <button type="button" className="notebook-settings-action" onClick={importThemeJson}>
+                  Import theme
+                </button>
+              ) : null}
+            </footer>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }

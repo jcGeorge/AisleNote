@@ -473,10 +473,28 @@
 
   --editor-bg: var(--custom-palette-canvas);
   --editor-panel-bg: var(--custom-palette-surface);
-  --editor-toolbar-bg: var(--custom-palette-surface);
-  --editor-toolbar-hover-bg: color-mix(in srgb, var(--custom-palette-surface) 78%, var(--custom-palette-primary));
-  --editor-toolbar-hover-border: color-mix(in srgb, var(--custom-palette-primary) 38%, var(--custom-palette-border));
-  --editor-toolbar-active-bg: color-mix(in srgb, var(--custom-palette-primary) 28%, var(--custom-palette-surface));
+  --editor-toolbar-bg: var(--custom-theme-sidebar, var(--custom-palette-surface));
+  --editor-toolbar-hover-bg: color-mix(
+    in srgb,
+    var(--custom-theme-sidebar, var(--custom-palette-surface)) 70%,
+    var(--custom-palette-surface)
+  );
+  --editor-toolbar-hover-border: color-mix(
+    in srgb,
+    var(--custom-palette-border) 64%,
+    var(--custom-theme-sidebar, var(--custom-palette-surface))
+  );
+  --editor-toolbar-active-bg: var(--custom-palette-primary);
+  --editor-toolbar-button-bg: color-mix(
+    in srgb,
+    var(--custom-theme-sidebar, var(--custom-palette-surface)) 72%,
+    var(--custom-palette-surface)
+  );
+  --editor-toolbar-button-border: color-mix(
+    in srgb,
+    var(--custom-theme-sidebar, var(--custom-palette-surface)) 70%,
+    var(--custom-palette-border)
+  );
   --editor-border: color-mix(in srgb, var(--custom-palette-border) 74%, var(--custom-palette-canvas));
   --editor-border-strong: var(--app-primary-border);
   --editor-text: var(--custom-palette-text);

@@ -79,6 +79,7 @@ describe('notebook theme palettes', () => {
 
   it('uses a warm sunrise Dawn palette as the canvas seed', () => {
     expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.canvas).toBe('#e2bc69')
+    expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.surface).toBe('#ecd8ac')
     expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.surfaceRaised).toBe('#ead4a9')
     expect(BUILT_IN_THEME_PALETTE_SEEDS.dawn.sidebar).toBe('#e3cb68')
     expect(getThemePaletteForTheme('dawn', {}).canvas).toBe('#e2bc69')
