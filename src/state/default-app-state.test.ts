@@ -16,6 +16,11 @@ describe('default app state', () => {
     expect(scratchpadAisleBody?.markdown).toBe(DEFAULT_SCRATCHPAD_MARKDOWN)
     expect(state.ui).not.toHaveProperty('scratchpadAisleLimit')
     expect(state.ui).not.toHaveProperty('trashDeleteForRealRequiresConfirmation')
+    expect(state.hotkeys.shortcuts).toMatchObject({
+      cyclePinnedNoteTabNext: 'ctrl+tab',
+      cyclePinnedNoteTabPrev: 'ctrl+shift+tab',
+      reopenClosedNoteTab: 'mod+shift+t',
+    })
     expect(state.hotkeys.newlineShortcuts.shortcuts).toEqual({
       controlEnter: 'operationsMenu',
       shiftEnter: 'task',
@@ -46,5 +51,21 @@ describe('default app state', () => {
       'blockQuote',
       'strikethrough',
     ])
+  })
+
+  it('normalizes command shortcuts while pruning unknown shortcut ids', () => {
+    const state = createDefaultAppState()
+    state.hotkeys.shortcuts = {
+      closeCurrentNote: 'Mod+Alt+W',
+      removedShortcut: 'Ctrl+Tab',
+    }
+
+    const parsed = parseSavedState(JSON.stringify(state))
+
+    expect(parsed.hotkeys.shortcuts).not.toHaveProperty('removedShortcut')
+    expect(parsed.hotkeys.shortcuts.closeCurrentNote).toBe('Mod+Alt+W')
+    expect(parsed.hotkeys.shortcuts.cyclePinnedNoteTabNext).toBe('Ctrl+Tab')
+    expect(parsed.hotkeys.shortcuts.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')
+    expect(parsed.hotkeys.shortcuts.reopenClosedNoteTab).toBe('Mod+Shift+T')
   })
 })

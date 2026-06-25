@@ -21,9 +21,10 @@
   --notebook-topbar-row-gap: 2px;
   --notebook-topbar-control-size: max(36px, calc(26px * var(--toolbar-button-scale)));
   --notebook-topbar-icon-size: calc(20px * var(--toolbar-button-scale));
-  --notebook-topbar-height: calc(
+  --notebook-topbar-content-height: calc(
     var(--notebook-topbar-control-size) + var(--notebook-topbar-block-padding) + var(--notebook-topbar-block-padding)
   );
+  --notebook-topbar-height: calc(var(--notebook-topbar-content-height) + 1px);
   --notebook-topbar-border: var(--app-border);
   --notebook-sidebar-control-size: var(--notebook-topbar-control-size);
   --notebook-sidebar-control-icon-size: var(--notebook-topbar-icon-size);
@@ -34,9 +35,10 @@
   --notebook-sidebar-control-inset-inline: var(--notebook-topbar-inline-padding);
   --resize-handle-width: calc(1.4rem + 2px);
   --resize-handle-height: calc(4.4rem + 4px);
-  --resize-handle-capsule-width: calc(0.34rem + 2px);
+  --resize-handle-half-height: calc(2.2rem + 2px);
+  --resize-handle-capsule-width: 0.34rem;
   --resize-handle-capsule-height: calc(3rem + 4px);
-  --sidebar-resize-handle-top: calc(var(--notebook-topbar-height) + (100% - var(--notebook-topbar-height)) * 0.7);
+  --resize-handle-center-y: calc(var(--notebook-topbar-height) + (100vh - var(--notebook-topbar-height)) * 0.7);
   --notebook-sidebar-bg: var(--app-surface);
   --notebook-action-accent: var(--app-primary);
   --notebook-sidebar-active-bg: var(--action-chip-selected-bg);
@@ -98,7 +100,7 @@
 .notebook-sidebar-resize-handle {
   position: absolute;
   z-index: 6;
-  top: var(--sidebar-resize-handle-top);
+  top: var(--resize-handle-center-y);
   right: 0;
   display: inline-flex;
   align-items: center;
@@ -187,8 +189,7 @@
 
 .notebook-shell .note-shared-toolbar .app-shared-editor-toolbar {
   align-content: center !important;
-  height: auto !important;
-  min-height: var(--notebook-topbar-height) !important;
+  min-height: var(--notebook-topbar-content-height) !important;
   padding: var(--notebook-topbar-block-padding) var(--notebook-topbar-inline-padding) !important;
   row-gap: var(--notebook-topbar-row-gap) !important;
 }

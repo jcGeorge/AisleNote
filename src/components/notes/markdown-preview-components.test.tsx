@@ -119,6 +119,23 @@ describe('markdown preview tag appearance', () => {
     )
   })
 
+  it('keeps numeric hashtags as plain preview text', () => {
+    const html = renderPreview([
+      '# Heading #1 #4word',
+      '',
+      'Text #2024 and #2024-q1',
+      '',
+      '- item #4-5 #4/word',
+    ].join('\n'))
+
+    expect(html).not.toContain('data-aislenote-tag="1"')
+    expect(html).not.toContain('data-aislenote-tag="2024"')
+    expect(html).not.toContain('data-aislenote-tag="4-5"')
+    expect(html).toContain('<span class="aislenote-tag-token" data-aislenote-tag="4word" data-app-tooltip="filter by tag">#4word</span>')
+    expect(html).toContain('<span class="aislenote-tag-token" data-aislenote-tag="2024-q1" data-app-tooltip="filter by tag">#2024-q1</span>')
+    expect(html).toContain('<span class="aislenote-tag-token" data-aislenote-tag="4/word" data-app-tooltip="filter by tag">#4/word</span>')
+  })
+
   it('does not style tags inside inline code or fenced code', () => {
     const html = renderPreview([
       'Visible #Tag and `#Inline`',

@@ -1,4 +1,4 @@
-import { normalizeTagLabel } from './tags.js'
+import { isRecognizedMarkdownTagLabel, normalizeTagLabel } from './tags.js'
 
 export const TAG_AUTOCOMPLETE_SUGGESTION_LIMIT = 7
 export const TAG_AUTOCOMPLETE_RECENT_LIMIT = TAG_AUTOCOMPLETE_SUGGESTION_LIMIT
@@ -51,6 +51,7 @@ export function getTagAutocompleteQueryFromText(
   const match = TAG_QUERY_BOUNDARY_RE.exec(source)
   if (!match) return null
   const query = match[2] ?? ''
+  if (query && !isRecognizedMarkdownTagLabel(query)) return null
   const triggerOffset = source.length - query.length - 1
   return {
     from: cursorPosition - query.length - 1,

@@ -113,6 +113,30 @@ describe('notebook hotkey intents', () => {
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('formatStrikethrough')
+    expect(getNotebookHotkeyIntent({
+      event: keyboardEvent('Tab', { code: 'Tab', ctrlKey: true }),
+      hotkeys,
+      isMacPlatform: true,
+      viewMode: 'main',
+    })).toBe('cyclePinnedNoteTabNext')
+    expect(getNotebookHotkeyIntent({
+      event: keyboardEvent('Tab', { code: 'Tab', ctrlKey: true, shiftKey: true }),
+      hotkeys,
+      isMacPlatform: true,
+      viewMode: 'main',
+    })).toBe('cyclePinnedNoteTabPrev')
+    expect(getNotebookHotkeyIntent({
+      event: keyboardEvent('T', { code: 'KeyT', metaKey: true, shiftKey: true }),
+      hotkeys,
+      isMacPlatform: true,
+      viewMode: 'main',
+    })).toBe('reopenClosedNoteTab')
+    expect(getNotebookHotkeyIntent({
+      event: keyboardEvent('T', { code: 'KeyT', ctrlKey: true, shiftKey: true }),
+      hotkeys,
+      isMacPlatform: false,
+      viewMode: 'main',
+    })).toBe('reopenClosedNoteTab')
   })
 
   it('exposes scratchpad toggle but keeps main-editor-only commands in the main view', () => {
@@ -136,6 +160,18 @@ describe('notebook hotkey intents', () => {
     })).toBeNull()
     expect(getNotebookHotkeyIntent({
       event: keyboardEvent('w', { code: 'KeyW', metaKey: true }),
+      hotkeys: defaultHotkeys,
+      isMacPlatform: true,
+      viewMode: 'settings',
+    })).toBeNull()
+    expect(getNotebookHotkeyIntent({
+      event: keyboardEvent('Tab', { code: 'Tab', ctrlKey: true }),
+      hotkeys: defaultHotkeys,
+      isMacPlatform: true,
+      viewMode: 'settings',
+    })).toBeNull()
+    expect(getNotebookHotkeyIntent({
+      event: keyboardEvent('T', { code: 'KeyT', metaKey: true, shiftKey: true }),
       hotkeys: defaultHotkeys,
       isMacPlatform: true,
       viewMode: 'settings',

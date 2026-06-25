@@ -39,6 +39,9 @@ describe('portable app settings parsing', () => {
           newNote: 'Mod+N',
           newFolder: 'Mod+Shift+N',
           closeCurrentNote: 'Mod+W',
+          cyclePinnedNoteTabNext: 'Ctrl+Tab',
+          cyclePinnedNoteTabPrev: 'Ctrl+Shift+Tab',
+          reopenClosedNoteTab: 'Mod+Shift+T',
         },
         newlineShortcuts: {
           shortcuts: {
@@ -210,6 +213,9 @@ describe('portable app settings parsing', () => {
             newNote: 'Mod+N',
             newFolder: 'Mod+Shift+N',
             closeCurrentNote: 'Mod+W',
+            cyclePinnedNoteTabNext: 'Ctrl+Tab',
+            cyclePinnedNoteTabPrev: 'Ctrl+Shift+Tab',
+            reopenClosedNoteTab: 'Mod+Shift+T',
           },
           newlineShortcuts: {
             shortcuts: {
@@ -245,6 +251,9 @@ describe('portable app settings parsing', () => {
     expect(syncedSettings.hotkeys.shortcuts.newNote).toBe('Mod+N')
     expect(syncedSettings.hotkeys.shortcuts.newFolder).toBe('Mod+Shift+N')
     expect(syncedSettings.hotkeys.shortcuts.closeCurrentNote).toBe('Mod+W')
+    expect(syncedSettings.hotkeys.shortcuts.cyclePinnedNoteTabNext).toBe('Ctrl+Tab')
+    expect(syncedSettings.hotkeys.shortcuts.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')
+    expect(syncedSettings.hotkeys.shortcuts.reopenClosedNoteTab).toBe('Mod+Shift+T')
     expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Alt+]')
     expect(syncedSettings.hotkeys.newlineShortcuts.menuOperations).toEqual(['blockQuote', 'strikethrough'])
   })

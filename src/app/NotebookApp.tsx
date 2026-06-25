@@ -26,7 +26,6 @@ import type {
   FrontmatterSaveOptions,
   FrontmatterTemplate,
   FrontmatterTemplateField,
-  FindReplaceScope,
   MessagesSection,
   LinkPromptState,
   NoteAisle,
@@ -226,9 +225,11 @@ import {
   findNotebookItem,
   findNotebookNote,
   focusNotebookOpenTab,
+  getClosedNotebookTab,
   getContainingFolderId,
   getFirstNotebookNote,
   getNotebookNoteFolderPath,
+  getNotebookRetainedTabCycleTarget,
   isNoteBodyLinked,
   moveNotebookItem,
   moveNotebookItems,
@@ -237,8 +238,10 @@ import {
   promoteNotebookTemporaryTab,
   renameNotebookItem,
   reorderNotebookTabs,
+  restoreClosedNotebookTab,
   restoreDeletedNotebookItemInState,
   sortNotebookItemsInScope,
+  type ClosedNotebookTab,
   type NotebookTabOpenDisposition,
 } from '../state/notebook'
 import {
@@ -428,6 +431,7 @@ const ACTIVE_TOOLBAR_LAYOUT_STORAGE_KEY = 'aislenote:notebook-active-toolbar-lay
 const TAG_AUTOCOMPLETE_RECENT_STORAGE_KEY = 'aislenote:tag-autocomplete-recent:v1'
 const NOTEBOOK_SETUP_APP_NAME = 'AisleNote'
 const NOTEBOOK_SETUP_LOGO_SRC = './favicon.svg'
+const CLOSED_NOTE_TAB_HISTORY_LIMIT = 20
 
 const UTILITY_VIEW_MODES = ['settings', 'messages', 'about', 'trash'] as const
 type UtilityViewMode = typeof UTILITY_VIEW_MODES[number]
@@ -468,6 +472,9 @@ const HOTKEY_ROWS: Array<{ id: ShortcutId; label: string }> = [
   { id: 'newNote', label: 'New note' },
   { id: 'newFolder', label: 'New folder' },
   { id: 'closeCurrentNote', label: 'Close current note' },
+  { id: 'cyclePinnedNoteTabNext', label: 'Next pinned note tab' },
+  { id: 'cyclePinnedNoteTabPrev', label: 'Previous pinned note tab' },
+  { id: 'reopenClosedNoteTab', label: 'Reopen closed note tab' },
   { id: 'formatStrikethrough', label: 'Strikethrough' },
   { id: 'cycleAislePrev', label: 'Previous aisle' },
   { id: 'cycleAisleNext', label: 'Next aisle' },
@@ -2721,6 +2728,7 @@ export function NotebookApp() {
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const linkPromptInputRef = useRef<HTMLInputElement | null>(null)
   const editorRef = useRef<Editor | null>(null)
+  const closedNoteTabHistoryRef = useRef<ClosedNotebookTab[]>([])
   const dismissedMentionStartRef = useRef<number | null>(null)
   const activeAisleIdRef = useRef('')
   const activeNoteLocationKeyRef = useRef('')
@@ -3775,8 +3783,6 @@ export function NotebookApp() {
     beforeStorageAction: commitNotebookBeforeStorageAction,
   })
 
-  const findReplaceMode = state.ui.findReplaceMode ?? 'find'
-  const findReplaceScope = state.ui.findReplaceScope ?? 'note'
   const findReplaceOptions = useMemo(
     () => ({
       caseSensitive: state.ui.findCaseSensitive ?? false,
@@ -3794,7 +3800,7 @@ export function NotebookApp() {
     return findVisibleMatches(
       state,
       { noteId: activeModel.noteId },
-      findReplaceScope,
+      'note',
       findReplaceQuery,
       findReplaceOptions,
     )
@@ -3804,7 +3810,6 @@ export function NotebookApp() {
     findReplaceOptions,
     findReplaceQuery,
     findReplaceQueryError,
-    findReplaceScope,
     state,
   ])
 
@@ -3828,7 +3833,10 @@ export function NotebookApp() {
   }, [toolbarState])
 
   const applyNotebookNavigationLocation = useCallback(
-    (location: NotebookNavigationLocation, options: { tabDisposition?: NotebookTabOpenDisposition } = {}) => {
+    (
+      location: NotebookNavigationLocation,
+      options: { tabDisposition?: NotebookTabOpenDisposition; restoreClosedTab?: ClosedNotebookTab } = {},
+    ) => {
       notebookEditors.flushPendingEditorAppStateCommit()
       const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
       const snapshotState = applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots)
@@ -3846,8 +3854,9 @@ export function NotebookApp() {
         const previousWithEditorContent = applyNotebookEditorMarkdownSnapshotsToState(previous, snapshots)
         const previousWithCursor = applyActiveCursorToState(previousWithEditorContent)
         const tabDisposition = options.tabDisposition ?? 'temporary'
-        const notebook =
-          tabDisposition === 'retained'
+        const notebook = options.restoreClosedTab
+          ? restoreClosedNotebookTab(previousWithCursor.notebook, options.restoreClosedTab)
+          : tabDisposition === 'retained'
             ? openNotebookRetainedTab(previousWithCursor.notebook, resolvedLocation.noteId)
             : tabDisposition === 'preserve'
               ? focusNotebookOpenTab(previousWithCursor.notebook, resolvedLocation.noteId)
@@ -3883,6 +3892,36 @@ export function NotebookApp() {
     [applyNotebookNavigationLocation],
   )
 
+  const cyclePinnedNoteTab = useCallback(
+    (direction: -1 | 1) => {
+      const noteId = getNotebookRetainedTabCycleTarget(stateRef.current.notebook, direction)
+      if (!noteId || noteId === stateRef.current.notebook.activeNoteId) return
+      selectNoteTab(noteId)
+    },
+    [selectNoteTab, stateRef],
+  )
+
+  const rememberClosedNoteTab = useCallback((closedTab: ClosedNotebookTab | null) => {
+    if (!closedTab) return
+    closedNoteTabHistoryRef.current = [
+      closedTab,
+      ...closedNoteTabHistoryRef.current.filter((entry) => entry.noteId !== closedTab.noteId),
+    ].slice(0, CLOSED_NOTE_TAB_HISTORY_LIMIT)
+  }, [])
+
+  const reopenClosedNoteTab = useCallback(() => {
+    while (closedNoteTabHistoryRef.current.length > 0) {
+      const [closedTab, ...remainingClosedTabs] = closedNoteTabHistoryRef.current
+      closedNoteTabHistoryRef.current = remainingClosedTabs
+      if (!closedTab || !findNotebookNote(stateRef.current.notebook.items, closedTab.noteId)) continue
+      const restored = applyNotebookNavigationLocation(
+        { noteId: closedTab.noteId, aisleId: '' },
+        { restoreClosedTab: closedTab },
+      )
+      if (restored) return
+    }
+  }, [applyNotebookNavigationLocation, stateRef])
+
   const promoteNoteTab = useCallback(
     (noteId: string) => {
       mutateState((previous) => ({
@@ -3908,6 +3947,7 @@ export function NotebookApp() {
       notebookEditors.flushPendingEditorAppStateCommit()
       const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
       const snapshotState = applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots)
+      const closedTab = getClosedNotebookTab(snapshotState.notebook, noteId)
       const nextNotebook = closeNotebookTab(snapshotState.notebook, noteId)
       const activeChanged = nextNotebook.activeNoteId !== snapshotState.notebook.activeNoteId
       const resolvedLocation = activeChanged && nextNotebook.activeNoteId
@@ -3915,6 +3955,7 @@ export function NotebookApp() {
         : null
 
       if (activeChanged && !resolvedLocation) return
+      rememberClosedNoteTab(closedTab)
 
       if (noteId === renamingTreeItemId) {
         setRenamingTreeItemId('')
@@ -3959,6 +4000,7 @@ export function NotebookApp() {
       mutateState,
       notebookEditors,
       renamingTreeItemId,
+      rememberClosedNoteTab,
       scheduleAisleFocusScroll,
       stateRef,
     ],
@@ -3996,7 +4038,7 @@ export function NotebookApp() {
   const updateFindReplaceUi = useCallback(
     (patch: Partial<Pick<
       AppState['ui'],
-      'findCaseSensitive' | 'findWholeWord' | 'findRegex' | 'findReplaceMode' | 'findReplaceScope'
+      'findCaseSensitive' | 'findWholeWord' | 'findRegex'
     >>) => {
       mutateState((previous) => ({
         ...previous,
@@ -4010,7 +4052,7 @@ export function NotebookApp() {
   )
 
   const openFindReplace = useCallback(
-    (mode: 'find' | 'replace' = 'find') => {
+    () => {
       if (!activeModel) return
       const editor = editorRef.current
       if (editor) notebookEditors.commitActiveEditorMarkdownNow(editor)
@@ -4026,12 +4068,8 @@ export function NotebookApp() {
       setFindReplaceOpen(true)
       setFindReplaceActiveIndex(0)
       setFindReplaceFocusRequestId((current) => current + 1)
-      updateFindReplaceUi({
-        findReplaceMode: mode,
-        findReplaceScope: 'note',
-      })
     },
-    [activeModel, notebookEditors, toolbarState, updateFindReplaceUi],
+    [activeModel, notebookEditors, toolbarState],
   )
 
   const closeFindReplace = useCallback(() => {
@@ -4098,14 +4136,6 @@ export function NotebookApp() {
     setFindReplaceActiveIndex(0)
   }, [notebookEditors])
 
-  const updateFindReplaceScope = useCallback(
-    (scope: FindReplaceScope) => {
-      setFindReplaceActiveIndex(0)
-      updateFindReplaceUi({ findReplaceScope: scope })
-    },
-    [updateFindReplaceUi],
-  )
-
   const replaceFindMatches = useCallback(
     (matchesToReplace: FindReplaceMatch[]) => {
       if (matchesToReplace.length === 0 || findReplaceQueryError) return
@@ -4129,11 +4159,11 @@ export function NotebookApp() {
     const handleFindReplaceShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented || viewMode !== 'main' || !activeModel) return
       const mode = getFindReplaceShortcutMode(event, isMacPlatform)
-      if (mode !== 'find') return
+      if (!mode) return
       event.preventDefault()
       event.stopPropagation()
       event.stopImmediatePropagation()
-      openFindReplace('find')
+      openFindReplace()
     }
     window.addEventListener('keydown', handleFindReplaceShortcut, true)
     return () => {
@@ -5039,6 +5069,9 @@ export function NotebookApp() {
         const noteId = stateRef.current.notebook.activeNoteId
         if (noteId) closeNoteTab(noteId)
       },
+      cyclePinnedNoteTabNext: () => cyclePinnedNoteTab(1),
+      cyclePinnedNoteTabPrev: () => cyclePinnedNoteTab(-1),
+      reopenClosedNoteTab,
       toggleNotesTrash: toggleNotesTrashFromShortcut,
       toggleNotesScratchpad: toggleNotesScratchpadFromShortcut,
       toggleNotesFilter: focusNotesFilterFromShortcut,
@@ -7537,23 +7570,17 @@ export function NotebookApp() {
               />
               {findReplaceOpen ? (
                 <FindReplacePanel
-                  replaceMode={findReplaceMode === 'replace'}
                   focusRequestId={findReplaceFocusRequestId}
                   query={findReplaceQuery}
                   replacement={findReplaceReplacement}
-                  scope={findReplaceScope}
                   caseSensitive={findReplaceOptions.caseSensitive}
                   wholeWord={findReplaceOptions.wholeWord}
                   regex={findReplaceOptions.regex}
                   queryError={findReplaceQueryError}
                   matches={findReplaceMatches}
                   activeIndex={findReplaceActiveMatchIndex}
-                  onReplaceModeChange={(enabled) =>
-                    updateFindReplaceUi({ findReplaceMode: enabled ? 'replace' : 'find' })
-                  }
                   onQueryChange={updateFindReplaceQuery}
                   onReplacementChange={setFindReplaceReplacement}
-                  onScopeChange={updateFindReplaceScope}
                   onCaseSensitiveChange={(checked) => {
                     setFindReplaceActiveIndex(0)
                     updateFindReplaceUi({ findCaseSensitive: checked })
@@ -7568,7 +7595,6 @@ export function NotebookApp() {
                   }}
                   onPrevious={() => selectFindReplaceMatch(findReplaceActiveMatchIndex - 1)}
                   onNext={() => selectFindReplaceMatch(findReplaceActiveMatchIndex + 1)}
-                  onSelectMatch={selectFindReplaceMatch}
                   onReplaceCurrent={() => {
                     const match = findReplaceMatches[findReplaceActiveMatchIndex]
                     if (match) replaceFindMatches([match])

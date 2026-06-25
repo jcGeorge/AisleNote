@@ -29,6 +29,16 @@ import { getWysiwygView, markWysiwygLoadedUndoBoundary } from './prosemirror-uti
 
 const MARKDOWN_LINK_DESTINATION_RE = /(!?\[((?:\\.|[^\]\\])*)\])\((<[^>\n]*>|[^)\s\n]+)\)/g
 const INTERNAL_NOTE_HANDLE_RE = /--[0-9a-f]{6}(?:-\d+)?$/i
+const HIGHLIGHT_DELIMITER_RE = /(^|[^=])==([^\n]*?\S[^\n]*?)==(?=$|[^=])/g
+
+type HighlightDelimiterRange = {
+  openFrom: number
+  openTo: number
+  contentFrom: number
+  contentTo: number
+  closeFrom: number
+  closeTo: number
+}
 
 function getSyntaxInternalNoteTarget(destination: string): string | null {
   const target = parseMarkdownNoteReferenceDestination(destination)
@@ -93,6 +103,96 @@ export function getEditorMarkdownForPersistence(editor: Editor): string {
   )
 }
 
+function trimHighlightDelimiterContentRange(rawText: string): { left: number; right: number } {
+  if (!rawText.startsWith(' ') || !rawText.endsWith(' ') || rawText.trim().length === 0) {
+    return { left: 0, right: 0 }
+  }
+  return { left: 1, right: 1 }
+}
+
+function rangeContainsCodeMark(doc: any, from: number, to: number): boolean {
+  let containsCode = false
+  doc.nodesBetween(from, to, (node: any, position: number) => {
+    if (containsCode) return false
+    if (!node?.isText || typeof node.text !== 'string') return true
+    const segmentFrom = Math.max(from, position)
+    const segmentTo = Math.min(to, position + node.text.length)
+    if (segmentTo <= segmentFrom) return false
+    if (node.marks?.some((mark: any) => mark?.type?.name === 'code' || mark?.type?.spec?.code)) {
+      containsCode = true
+    }
+    return false
+  })
+  return containsCode
+}
+
+function collectHighlightDelimiterRanges(doc: any): HighlightDelimiterRange[] {
+  const ranges: HighlightDelimiterRange[] = []
+  doc.descendants((node: any, position: number) => {
+    if (!node?.isTextblock) return true
+    if (node.type?.spec?.code) return false
+
+    const text = String(node.textContent ?? '')
+    if (!text.includes('==')) return false
+
+    for (const match of text.matchAll(HIGHLIGHT_DELIMITER_RE)) {
+      const rawText = match[2] ?? ''
+      const matchIndex = match.index ?? 0
+      const markerStartOffset = matchIndex + (match[1]?.length ?? 0)
+      const rawContentStartOffset = markerStartOffset + 2
+      const rawContentEndOffset = rawContentStartOffset + rawText.length
+      const closeEndOffset = rawContentEndOffset + 2
+      const trim = trimHighlightDelimiterContentRange(rawText)
+      const contentStartOffset = rawContentStartOffset + trim.left
+      const contentEndOffset = rawContentEndOffset - trim.right
+      if (contentEndOffset <= contentStartOffset) continue
+
+      const textStart = position + 1
+      const openFrom = textStart + markerStartOffset
+      const openTo = textStart + rawContentStartOffset + trim.left
+      const contentFrom = textStart + contentStartOffset
+      const contentTo = textStart + contentEndOffset
+      const closeFrom = textStart + rawContentEndOffset - trim.right
+      const closeTo = textStart + closeEndOffset
+      if (rangeContainsCodeMark(doc, openFrom, closeTo)) continue
+
+      ranges.push({
+        openFrom,
+        openTo,
+        contentFrom,
+        contentTo,
+        closeFrom,
+        closeTo,
+      })
+    }
+
+    return false
+  })
+  return ranges
+}
+
+export function applyMarkdownHighlightDelimitersToEditorDisplay(editor: Editor | null): boolean {
+  const view = getWysiwygView(editor)
+  const markType = view?.state?.schema?.marks?.mark
+  const doc = view?.state?.doc
+  if (!view || !doc || !markType || typeof view.dispatch !== 'function') return false
+
+  const ranges = collectHighlightDelimiterRanges(doc)
+  if (ranges.length === 0) return false
+
+  let transaction = view.state.tr
+  ranges
+    .sort((left, right) => right.openFrom - left.openFrom)
+    .forEach((range) => {
+      transaction = transaction
+        .addMark(range.contentFrom, range.contentTo, markType.create())
+        .delete(range.closeFrom, range.closeTo)
+        .delete(range.openFrom, range.openTo)
+    })
+  view.dispatch(transaction.setMeta('addToHistory', false))
+  return true
+}
+
 function prepareMarkdownForBlankParagraphPlanning(markdown: string): string {
   const blockIndentsPrepared = decodeBlockIndentHtmlForInternalMarkdown(markdown)
   const escapedLinksPrepared = normalizeEscapedMarkdownLinks(blockIndentsPrepared)
@@ -107,7 +207,9 @@ export function prepareMarkdownForEditorDisplay(
   const blankPrepared = prepareBlankParagraphsForEditorDisplay(annotationMarkersPrepared, options)
   const noteLinksPrepared = prepareMarkdownNoteLinkDestinationsForEditorDisplay(blankPrepared.markdown)
   const notePreviewsPrepared = escapeNotePreviewTokensForEditorDisplay(noteLinksPrepared)
-  return prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(notePreviewsPrepared))
+  return prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(notePreviewsPrepared, {
+    preserveLinkedHighlights: true,
+  }))
 }
 
 export function restoreEditorBlankParagraphs(editor: Editor | null, markdown: string): boolean {
@@ -377,6 +479,7 @@ export function setEditorMarkdownForDisplay(
 ): void {
   measureSlowOperation('editor display markdown rewrite', () => {
     editor.setMarkdown(prepareMarkdownForEditorDisplay(markdown, options), cursorToEnd)
+    applyMarkdownHighlightDelimitersToEditorDisplay(editor)
     restoreEditorDisplay(editor, markdown)
   })
 }

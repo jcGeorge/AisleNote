@@ -4,6 +4,7 @@ import {
   extractMarkdownTagRanges,
   extractMarkdownTags,
   getAisleBodyTags,
+  isRecognizedMarkdownTagLabel,
   migrateAisleTags,
 } from './tags.js'
 
@@ -20,6 +21,25 @@ describe('tag extraction', () => {
     expect(extractMarkdownTagRanges('#Tag-3 and #asdf')).toEqual([
       { from: 0, to: 6, text: '#Tag-3', tag: 'Tag-3' },
       { from: 11, to: 16, text: '#asdf', tag: 'asdf' },
+    ])
+  })
+
+  it('requires at least one letter after normalization for markdown tags', () => {
+    expect(isRecognizedMarkdownTagLabel('123')).toBe(false)
+    expect(isRecognizedMarkdownTagLabel('4-5')).toBe(false)
+    expect(isRecognizedMarkdownTagLabel('4word')).toBe(true)
+    expect(isRecognizedMarkdownTagLabel('2024-q1')).toBe(true)
+
+    expect(extractMarkdownTags('#1 #1.2 #2024 #4-5')).toEqual([])
+    expect(extractMarkdownTags('#4word #2024-q1 #4/word #Tag')).toEqual([
+      '4word',
+      '2024-q1',
+      '4/word',
+      'Tag',
+    ])
+    expect(extractMarkdownTagRanges('#1 #4word #4-5 #2024-q1')).toEqual([
+      { from: 3, to: 9, text: '#4word', tag: '4word' },
+      { from: 15, to: 23, text: '#2024-q1', tag: '2024-q1' },
     ])
   })
 

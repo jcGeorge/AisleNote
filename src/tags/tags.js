@@ -67,6 +67,10 @@ export function normalizeTagLabel(value) {
   return raw || ''
 }
 
+export function isRecognizedMarkdownTagLabel(value) {
+  return /[A-Za-z]/.test(normalizeTagLabel(value))
+}
+
 function getTagKey(tag) {
   return normalizeTagLabel(tag).toLocaleLowerCase()
 }
@@ -82,7 +86,7 @@ export function extractMarkdownTagRanges(markdown) {
     const previous = start > 0 ? masked[start - 1] : ''
     if (!previous || !/[A-Za-z0-9_/-]/.test(previous)) {
       const tag = normalizeTagLabel(match[1])
-      if (tag) {
+      if (isRecognizedMarkdownTagLabel(tag)) {
         ranges.push({
           from: start,
           to: tagPattern.lastIndex,

@@ -25,6 +25,7 @@ import { createMediaLinkPlugin } from './media-link-plugin'
 import { createNotePreviewPlugin } from './note-preview-plugin'
 import { sanitizeEditorHtml } from './editor-sanitizer'
 import {
+  applyMarkdownHighlightDelimitersToEditorDisplay,
   getEditorMarkdownForPersistence,
   prepareMarkdownForEditorDisplay,
   restoreEditorDisplay,
@@ -1236,6 +1237,7 @@ export function useNotebookAisleEditors({
         editorMetaRef.current.set(editorKey, meta)
         lastMarkdownByAisleBodyRef.current.set(aisle.aisleBodyId, aisle.markdown)
         renderedMarkdownByAisleBodyRef.current.set(aisle.aisleBodyId, aisle.markdown)
+        applyMarkdownHighlightDelimitersToEditorDisplay(mountedEditor)
         restoreEditorDisplayWhenReady(editorKey, meta, aisle.markdown)
         if (aisle.id === resolvedActiveAisleId) {
           editorRef.current = mountedEditor

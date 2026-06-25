@@ -19,10 +19,7 @@ import type {
 } from '../types/app'
 import { syncNoteAisleBodyMarkdownInState, syncNoteBodyAislesInState } from '../notes/aisle-body-state'
 import { normalizeToolbarLayouts } from '../editor/toolbar-layouts'
-import {
-  createDefaultAppState,
-  DEFAULT_SHORTCUTS as DEFAULT_APP_SHORTCUTS,
-} from './default-app-state.js'
+import { createDefaultAppState } from './default-app-state.js'
 import {
   createNoteBodyWithAisle,
   ensureValidActiveNote,
@@ -42,8 +39,6 @@ import { normalizeHotkeySettings } from '../hotkeys/shortcuts'
 const APP_THEMES: AppTheme[] = ['dark', 'light', 'cheese', 'custom1', 'custom2', 'custom3']
 const MAX_NORMALIZED_TOAST_HISTORY_ENTRIES = 70
 export const AUTO_PURGE_DAY_MS = 24 * 60 * 60 * 1000
-
-const DEFAULT_SHORTCUTS = DEFAULT_APP_SHORTCUTS as AppState['hotkeys']['shortcuts']
 
 function createDefaultState(): AppState {
   return createDefaultAppState() as AppState
@@ -397,10 +392,7 @@ export function normalizeAppState(raw: unknown): AppState {
     noteBodies,
     noteAisleBodies,
     hotkeys: {
-      shortcuts: {
-        ...DEFAULT_SHORTCUTS,
-        ...(isRecord(hotkeys.shortcuts) ? hotkeys.shortcuts : {}),
-      },
+      shortcuts: normalizedHotkeys.shortcuts,
       newlineShortcuts: normalizedHotkeys.newlineShortcuts,
     },
     frontmatter: isRecord(raw.frontmatter)

@@ -1239,6 +1239,13 @@ describe('markdown highlight syntax', () => {
     )
   })
 
+  it('can preserve linked highlight markers for editor post-processing', () => {
+    const markdown = '==[Specs](<Specs--abcdef>)=='
+
+    expect(prepareMarkdownHighlightsForDisplay(markdown)).toBe('<mark>[Specs](&lt;Specs--abcdef&gt;)</mark>')
+    expect(prepareMarkdownHighlightsForDisplay(markdown, { preserveLinkedHighlights: true })).toBe(markdown)
+  })
+
   it('escapes highlighted text while preparing editor display', () => {
     expect(prepareMarkdownHighlightsForDisplay('==a < b & c==')).toBe('<mark>a &lt; b &amp; c</mark>')
   })

@@ -73,6 +73,14 @@ describe('ListReorderControlsOverlay', () => {
     expect(editorShellCss).not.toContain('.list-reorder-handle::before')
   })
 
+  it('keeps workspace chrome above fixed list reorder controls', () => {
+    expect(editorShellCss).toContain('--note-workspace-chrome-z: 2610;')
+    expect(editorShellCss).toContain('.note-aisles-shell > .note-shared-toolbar.toastui-editor-toolbar')
+    expect(editorShellCss).toContain('.note-aisles-shell > .note-aisle-horizontal-scrollbar')
+    expect(editorShellCss).toContain('.note-aisles-shell > .note-tab-strip')
+    expect(editorShellCss).toContain('z-index: var(--note-workspace-chrome-z);')
+  })
+
   it('renders nothing when inactive', () => {
     expect(renderOverlay({ controlsVisible: false })).toBe('')
     expect(renderOverlay({ globalVisible: false })).toBe('')

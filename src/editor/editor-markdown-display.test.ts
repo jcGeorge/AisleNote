@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Editor } from '@toast-ui/editor'
+import { Schema } from 'prosemirror-model'
+import { EditorState } from 'prosemirror-state'
 import {
   BLOCK_INDENT_TOKEN,
   EDITOR_BLANK_LINE_PLACEHOLDER,
   INDENT_TOKEN,
 } from '../markdown/markdown-utils'
 import {
+  applyMarkdownHighlightDelimitersToEditorDisplay,
   escapeNotePreviewTokensForEditorDisplay,
   getEditorMarkdownForPersistence,
   normalizeEditorNoteLinkDestinationsForPersistence,
@@ -93,6 +96,66 @@ function fakeEditorWithBlocks(blocks: any[]) {
   return { editor, tr, dispatch }
 }
 
+const highlightSchema = new Schema({
+  nodes: {
+    doc: { content: 'block+' },
+    text: { group: 'inline' },
+    paragraph: {
+      group: 'block',
+      content: 'inline*',
+      toDOM: () => ['p', 0],
+    },
+  },
+  marks: {
+    link: {
+      attrs: { href: {} },
+      toDOM: (mark) => ['a', { href: mark.attrs.href }, 0],
+    },
+    mark: {
+      toDOM: () => ['mark', 0],
+    },
+    code: {
+      code: true,
+      toDOM: () => ['code', 0],
+    },
+  },
+})
+
+function highlightParagraph(children: any[]) {
+  return highlightSchema.nodes.paragraph.create(null, children)
+}
+
+function fakeEditorWithProseMirrorDoc(doc: any) {
+  let currentState = EditorState.create({ schema: highlightSchema, doc })
+  const view: any = {
+    get state() {
+      return currentState
+    },
+    dispatch: vi.fn((transaction: any) => {
+      currentState = currentState.apply(transaction)
+    }),
+  }
+  const editor = { wwEditor: { view } } as unknown as Editor
+  return {
+    editor,
+    view,
+    getState: () => currentState,
+  }
+}
+
+function textSegments(node: any): Array<{ text: string; marks: string[] }> {
+  const segments: Array<{ text: string; marks: string[] }> = []
+  node.descendants((child: any) => {
+    if (!child?.isText) return true
+    segments.push({
+      text: child.text,
+      marks: child.marks.map((mark: any) => mark.type.name),
+    })
+    return false
+  })
+  return segments
+}
+
 describe('editor markdown display helpers', () => {
   it('normalizes persisted markdown through the canonical editor gateway', () => {
     const editor = {
@@ -134,6 +197,50 @@ describe('editor markdown display helpers', () => {
     expect(prepareMarkdownNoteLinkDestinationsForEditorDisplay('![2 aisle](<2 aisle--c761e6>)')).toBe(
       '![2 aisle](2%20aisle--c761e6)',
     )
+  })
+
+  it('leaves linked highlight markers for the editor document pass', () => {
+    expect(prepareMarkdownForEditorDisplay('==plain==')).toBe('<mark>plain</mark>')
+    expect(prepareMarkdownForEditorDisplay('==[Specs](<Specs--abcdef>)==')).toBe(
+      '==[Specs](Specs--abcdef)==',
+    )
+  })
+
+  it('converts linked highlight delimiters into composable editor marks', () => {
+    const linkMark = highlightSchema.marks.link.create({ href: 'Specs--abcdef' })
+    const doc = highlightSchema.nodes.doc.create(null, [
+      highlightParagraph([
+        highlightSchema.text('==For '),
+        highlightSchema.text('Specs', [linkMark]),
+        highlightSchema.text(' now=='),
+      ]),
+    ])
+    const mounted = fakeEditorWithProseMirrorDoc(doc)
+
+    expect(applyMarkdownHighlightDelimitersToEditorDisplay(mounted.editor)).toBe(true)
+
+    const paragraph = mounted.getState().doc.child(0)
+    expect(paragraph.textContent).toBe('For Specs now')
+    expect(textSegments(paragraph)).toEqual([
+      { text: 'For ', marks: ['mark'] },
+      { text: 'Specs', marks: ['link', 'mark'] },
+      { text: ' now', marks: ['mark'] },
+    ])
+    expect(mounted.view.dispatch).toHaveBeenCalledOnce()
+  })
+
+  it('does not consume highlight-looking delimiters inside inline code', () => {
+    const codeMark = highlightSchema.marks.code.create()
+    const doc = highlightSchema.nodes.doc.create(null, [
+      highlightParagraph([
+        highlightSchema.text('==[Specs](Specs--abcdef)==', [codeMark]),
+      ]),
+    ])
+    const mounted = fakeEditorWithProseMirrorDoc(doc)
+
+    expect(applyMarkdownHighlightDelimitersToEditorDisplay(mounted.editor)).toBe(false)
+    expect(mounted.getState().doc.textContent).toBe('==[Specs](Specs--abcdef)==')
+    expect(mounted.view.dispatch).not.toHaveBeenCalled()
   })
 
   it('normalizes escaped annotation lines for editor display', () => {

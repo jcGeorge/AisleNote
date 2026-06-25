@@ -59,6 +59,40 @@ describe('list reorder controls', () => {
     })
   })
 
+  it('keeps tall handles inside the editor host bounds between toolbar and tabs', () => {
+    expect(
+      getListReorderHandlePlacement(
+        { top: 20, left: 120, width: 220, height: 90 },
+        { top: 20, left: 96, width: 244, height: 90 },
+        { top: 20, left: 132, width: 180, height: 90 },
+        1000,
+        800,
+        { top: 44, bottom: 156 },
+      ),
+    ).toEqual({
+      top: 44,
+      left: 78,
+      width: 14,
+      height: 90,
+    })
+
+    expect(
+      getListReorderHandlePlacement(
+        { top: 120, left: 120, width: 220, height: 60 },
+        { top: 120, left: 96, width: 244, height: 60 },
+        { top: 120, left: 132, width: 180, height: 60 },
+        1000,
+        800,
+        { top: 44, bottom: 156 },
+      ),
+    ).toEqual({
+      top: 96,
+      left: 78,
+      width: 14,
+      height: 60,
+    })
+  })
+
   it('filters list handles by rendered list kind and starts drag from handle segments only', () => {
     expect(source).toContain("querySelectorAll<HTMLElement>('li')")
     expect(source).toContain('getRenderedListItemKind(listItemElement)')

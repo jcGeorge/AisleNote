@@ -11,6 +11,9 @@ export type NotebookHotkeyIntent = Extract<
   | 'toggleNotesScratchpad'
   | 'toggleNotesFilter'
   | 'closeCurrentNote'
+  | 'cyclePinnedNoteTabNext'
+  | 'cyclePinnedNoteTabPrev'
+  | 'reopenClosedNoteTab'
   | 'cycleAislePrev'
   | 'cycleAisleNext'
   | 'formatStrikethrough'
@@ -29,16 +32,29 @@ const NOTEBOOK_HOTKEY_INTENTS: NotebookHotkeyIntent[] = [
   'toggleNotesScratchpad',
   'toggleNotesFilter',
   'closeCurrentNote',
+  'cyclePinnedNoteTabNext',
+  'cyclePinnedNoteTabPrev',
+  'reopenClosedNoteTab',
   'cycleAislePrev',
   'cycleAisleNext',
   'formatStrikethrough',
 ]
 
 const MAIN_ONLY_INTENTS = new Set<NotebookHotkeyIntent>([
+  'cyclePinnedNoteTabNext',
+  'cyclePinnedNoteTabPrev',
+  'reopenClosedNoteTab',
   'cycleAislePrev',
   'cycleAisleNext',
   'closeCurrentNote',
   'formatStrikethrough',
+])
+
+const REPEATABLE_INTENTS = new Set<NotebookHotkeyIntent>([
+  'cyclePinnedNoteTabNext',
+  'cyclePinnedNoteTabPrev',
+  'cycleAislePrev',
+  'cycleAisleNext',
 ])
 
 export type NotebookMouseHistoryNavigationPhase = 'press' | 'release' | 'auxclick'
@@ -209,7 +225,7 @@ export function useNotebookHotkeys({
 
       event.preventDefault()
       event.stopPropagation()
-      if (event.repeat && intent !== 'cycleAislePrev' && intent !== 'cycleAisleNext') return
+      if (event.repeat && !REPEATABLE_INTENTS.has(intent)) return
 
       actionsRef.current[intent]()
     }

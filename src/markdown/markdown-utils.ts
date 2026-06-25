@@ -512,10 +512,17 @@ export function normalizeEscapedMarkdownLinks(markdown: string): string {
   )
 }
 
-function convertHighlightMarkersToHtml(segment: string): string {
+export type HighlightDisplayOptions = {
+  preserveLinkedHighlights?: boolean
+}
+
+const MARKDOWN_LINK_TOKEN_RE = /\[((?:\\.|[^\]\\])*)\]\((<[^>\n]*>|[^)\n]+)\)/
+
+function convertHighlightMarkersToHtml(segment: string, options: HighlightDisplayOptions = {}): string {
   return segment.replace(/(^|[^=])==([^\n]*?\S[^\n]*?)==(?=$|[^=])/g, (match, prefix: string, rawText: string) => {
     const text = trimSyntacticHighlightPadding(rawText)
     if (text.trim().length === 0) return match
+    if (options.preserveLinkedHighlights && MARKDOWN_LINK_TOKEN_RE.test(text)) return match
     return `${prefix}<mark>${escapeHtmlText(text)}</mark>`
   })
 }
@@ -529,9 +536,12 @@ function convertHighlightHtmlToMarkers(segment: string): string {
   })
 }
 
-export function prepareMarkdownHighlightsForDisplay(markdown: string): string {
+export function prepareMarkdownHighlightsForDisplay(
+  markdown: string,
+  options: HighlightDisplayOptions = {},
+): string {
   return transformOutsideFencedCode(String(markdown ?? ''), (line) =>
-    transformOutsideInlineCode(line, convertHighlightMarkersToHtml),
+    transformOutsideInlineCode(line, (segment) => convertHighlightMarkersToHtml(segment, options)),
   )
 }
 

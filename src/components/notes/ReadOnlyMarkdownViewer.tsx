@@ -6,7 +6,11 @@ import {
   listMarkerPlugin,
   tagAppearancePlugin,
 } from '../../editor/editor-setup'
-import { prepareMarkdownForEditorDisplay, restoreEditorDisplay } from '../../editor/editor-markdown-display'
+import {
+  applyMarkdownHighlightDelimitersToEditorDisplay,
+  prepareMarkdownForEditorDisplay,
+  restoreEditorDisplay,
+} from '../../editor/editor-markdown-display'
 import { sanitizeEditorHtml } from '../../editor/editor-sanitizer'
 import { normalizeExternalWebUrl, openExternalWebUrl } from '../../notes/external-links'
 import { resolveMarkdownNoteReferenceDestination } from '../../notes/note-references'
@@ -114,6 +118,7 @@ export function ReadOnlyMarkdownViewer({
         ],
       })
       editor = mountedEditor
+      applyMarkdownHighlightDelimitersToEditorDisplay(mountedEditor)
       restoreEditorDisplay(mountedEditor, markdown)
       disableEditorEditing(host)
       window.requestAnimationFrame(() => {
@@ -133,7 +138,7 @@ export function ReadOnlyMarkdownViewer({
         host.innerHTML = ''
       }
     }
-  }, [displayMarkdown])
+  }, [displayMarkdown, markdown])
 
   const handleClick = React.useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.button !== 0) return

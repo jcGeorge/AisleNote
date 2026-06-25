@@ -326,12 +326,21 @@ describe('tag autocomplete query detection', () => {
       to: 16,
       query: 'nested/tag',
     })
+    expect(getTagAutocompleteQueryAtSelection(viewForText('see #4word'))).toEqual({
+      from: 5,
+      to: 11,
+      query: '4word',
+    })
   })
 
   it('rejects non-tag contexts', () => {
     expect(getTagAutocompleteQueryAtSelection(viewForText('C#'))).toBeNull()
     expect(getTagAutocompleteQueryAtSelection(viewForText('https://example.com/#anchor'))).toBeNull()
     expect(getTagAutocompleteQueryAtSelection(viewForText('see #bad?'))).toBeNull()
+    expect(getTagAutocompleteQueryAtSelection(viewForText('#1'))).toBeNull()
+    expect(getTagAutocompleteQueryAtSelection(viewForText('#1.2'))).toBeNull()
+    expect(getTagAutocompleteQueryAtSelection(viewForText('#2024'))).toBeNull()
+    expect(getTagAutocompleteQueryAtSelection(viewForText('#4-5'))).toBeNull()
     expect(getTagAutocompleteQueryAtSelection(viewForText('#asdf', { empty: false }))).toBeNull()
   })
 

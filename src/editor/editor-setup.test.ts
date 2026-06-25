@@ -1631,6 +1631,15 @@ describe('tag WYSIWYG decorations', () => {
     ])
   })
 
+  it('keeps numeric hashtags undecorated while allowing mixed numeric tags', () => {
+    expect(getTagDecorationRanges(tagDoc([
+      { text: 'Read #1 #4word #4-5 #2024-q1', position: 1 },
+    ]))).toEqual([
+      { from: 9, to: 15, text: '#4word', tag: '4word' },
+      { from: 21, to: 29, text: '#2024-q1', tag: '2024-q1' },
+    ])
+  })
+
   it('skips inline code marks and code block parents', () => {
     const codeMark = { type: { name: 'code' } }
     expect(getTagDecorationRanges(tagDoc([

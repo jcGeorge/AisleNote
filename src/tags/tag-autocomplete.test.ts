@@ -44,6 +44,7 @@ describe('tag autocomplete helpers', () => {
       to: 17,
       query: 'nested/tag',
     })
+    expect(getTagAutocompleteQueryFromText('#4word', 6)).toEqual({ from: 0, to: 6, query: '4word' })
   })
 
   it('rejects non-tag contexts and invalid query characters', () => {
@@ -51,6 +52,10 @@ describe('tag autocomplete helpers', () => {
     expect(getTagAutocompleteQueryFromText('https://example.com/#anchor', 27)).toBeNull()
     expect(getTagAutocompleteQueryFromText('#bad?', 5)).toBeNull()
     expect(getTagAutocompleteQueryFromText('file/path#tag', 13)).toBeNull()
+    expect(getTagAutocompleteQueryFromText('#1', 2)).toBeNull()
+    expect(getTagAutocompleteQueryFromText('#1.2', 4)).toBeNull()
+    expect(getTagAutocompleteQueryFromText('#2024', 5)).toBeNull()
+    expect(getTagAutocompleteQueryFromText('#4-5', 4)).toBeNull()
   })
 
   it('filters typed suggestions by case-insensitive prefix and sorts A-Z', () => {

@@ -489,12 +489,19 @@ describe('NoteWorkspace aisle mounting', () => {
 
   it('renders resize handles for split aisles', () => {
     const html = renderWorkspace(new Set(['a']))
+    const resizeRule = editorShellCss.slice(
+      editorShellCss.indexOf('.note-aisle-resize-btn {'),
+      editorShellCss.indexOf('.note-aisle-resize-capsule {'),
+    )
 
     expect(html.match(/note-aisle-resize-btn/g) ?? []).toHaveLength(3)
     expect(html).toContain('Resize aisle 1')
     expect(html).toContain('Drag to resize. Double click to reset.')
     expect(html.match(/data-note-workspace-skip-aisle-activation="true"/g) ?? []).toHaveLength(3)
     expect(html.match(/note-aisle-resize-capsule/g) ?? []).toHaveLength(3)
+    expect(resizeRule).toContain('top: clamp(')
+    expect(resizeRule).toContain('calc(var(--resize-handle-center-y) - var(--notebook-topbar-height))')
+    expect(resizeRule).not.toContain('top: 70%;')
   })
 
   it('does not render a separate derived frontmatter template filter action', () => {

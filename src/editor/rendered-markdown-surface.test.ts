@@ -32,6 +32,12 @@ describe('rendered Markdown surface contract', () => {
       { kind: 'text', text: ' ' },
       { kind: 'tag', text: '#tag', tag: 'tag' },
     ])
+    expect(getRenderedMarkdownInlineTextParts('A #1 #4word #4-5 #2024-q1')).toEqual([
+      { kind: 'text', text: 'A #1 ' },
+      { kind: 'tag', text: '#4word', tag: '4word' },
+      { kind: 'text', text: ' #4-5 ' },
+      { kind: 'tag', text: '#2024-q1', tag: '2024-q1' },
+    ])
   })
 
   it('keeps a fixture list for parity work and marks unresolved block widgets as known gaps', () => {

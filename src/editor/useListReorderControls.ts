@@ -86,6 +86,11 @@ type RectLike = {
   height: number
 }
 
+type VerticalBounds = {
+  top: number
+  bottom: number
+}
+
 export const CLOSED_LIST_REORDER_CONTROLS_STATE: ListReorderControlsState = {
   visible: false,
   handles: [],
@@ -117,12 +122,32 @@ function isVisibleRect(rect: RectLike, viewportWidth: number, viewportHeight: nu
   return rect.width > 0 && rect.height > 0 && bottom >= 0 && right >= 0 && rect.top <= viewportHeight && rect.left <= viewportWidth
 }
 
+function isVisibleInVerticalBounds(rect: RectLike, bounds: VerticalBounds | null) {
+  if (!bounds) return true
+  const bottom = rect.bottom ?? rect.top + rect.height
+  return bottom > bounds.top && rect.top < bounds.bottom
+}
+
+function getListReorderHandleVerticalBounds(
+  editorRoot: HTMLElement,
+  viewport: { width: number; height: number },
+): VerticalBounds | null {
+  const editorHost = editorRoot.closest<HTMLElement>('.toast-editor-host')
+  if (!editorHost) return null
+
+  const hostRect = editorHost.getBoundingClientRect()
+  const top = clamp(hostRect.top, LIST_REORDER_HANDLE_VIEWPORT_PADDING_PX, viewport.height)
+  const bottom = clamp(hostRect.bottom, top, viewport.height - LIST_REORDER_HANDLE_VIEWPORT_PADDING_PX)
+  return bottom > top ? { top, bottom } : null
+}
+
 export function getListReorderHandlePlacement(
   itemRect: RectLike,
   listRect: RectLike | null | undefined,
   textRect: RectLike | null | undefined,
   viewportWidth: number,
   viewportHeight: number,
+  verticalBounds: VerticalBounds | null = null,
 ) {
   const verticalAnchorRect = textRect && textRect.width > 0 && textRect.height > 0 ? textRect : itemRect
   const horizontalAnchorRect = listRect && listRect.width > 0 && listRect.height > 0 ? listRect : itemRect
@@ -130,6 +155,11 @@ export function getListReorderHandlePlacement(
   const railLeft = Math.min(horizontalAnchorRect.left, itemRect.left)
   const preferredLeft = railLeft - LIST_REORDER_HANDLE_SIZE_PX - LIST_REORDER_HANDLE_GAP_PX
   const preferredTop = verticalAnchorRect.top + verticalAnchorRect.height / 2 - handleHeight / 2
+  const minTop = Math.max(LIST_REORDER_HANDLE_VIEWPORT_PADDING_PX, verticalBounds?.top ?? LIST_REORDER_HANDLE_VIEWPORT_PADDING_PX)
+  const maxBottom = Math.min(
+    viewportHeight - LIST_REORDER_HANDLE_VIEWPORT_PADDING_PX,
+    verticalBounds?.bottom ?? viewportHeight - LIST_REORDER_HANDLE_VIEWPORT_PADDING_PX,
+  )
 
   return {
     left: clamp(
@@ -139,8 +169,8 @@ export function getListReorderHandlePlacement(
     ),
     top: clamp(
       preferredTop,
-      LIST_REORDER_HANDLE_VIEWPORT_PADDING_PX,
-      viewportHeight - LIST_REORDER_HANDLE_VIEWPORT_PADDING_PX - handleHeight,
+      minTop,
+      maxBottom - handleHeight,
     ),
     width: LIST_REORDER_HANDLE_SIZE_PX,
     height: handleHeight,
@@ -162,6 +192,8 @@ export function getListReorderHandleSegmentsForEditorRoot(
   view: any,
   viewport: { width: number; height: number } = getViewportSize(),
 ): ListReorderHandleSegment[] {
+  const verticalBounds = getListReorderHandleVerticalBounds(editorRoot, viewport)
+
   return Array.from(editorRoot.querySelectorAll<HTMLElement>('li')).flatMap((listItemElement) => {
     const listElement = listItemElement.parentElement
     if (!(listElement instanceof HTMLElement)) return []
@@ -175,11 +207,12 @@ export function getListReorderHandleSegmentsForEditorRoot(
 
     const itemRect = listItemElement.getBoundingClientRect()
     if (!isVisibleRect(itemRect, viewport.width, viewport.height)) return []
+    if (!isVisibleInVerticalBounds(itemRect, verticalBounds)) return []
 
     const listRect = listElement.getBoundingClientRect()
     const paragraph = getListItemParagraphElement(listItemElement)
     const textRect = paragraph?.getBoundingClientRect() ?? itemRect
-    const placement = getListReorderHandlePlacement(itemRect, listRect, textRect, viewport.width, viewport.height)
+    const placement = getListReorderHandlePlacement(itemRect, listRect, textRect, viewport.width, viewport.height, verticalBounds)
     const positionKey = getListItemPositionKey(view, listItemElement)
     const key = positionKey
       ? `list-reorder-${kind}-${positionKey}`

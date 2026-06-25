@@ -192,6 +192,43 @@ describe('newline shortcut settings', () => {
     ).toBe(true)
   })
 
+  it('defaults pinned tab navigation and closed-tab restore shortcuts', () => {
+    expect(DEFAULT_SHORTCUTS.cyclePinnedNoteTabNext).toBe('Ctrl+Tab')
+    expect(DEFAULT_SHORTCUTS.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')
+    expect(DEFAULT_SHORTCUTS.reopenClosedNoteTab).toBe('Mod+Shift+T')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cyclePinnedNoteTabNext, true)).toBe('ctrl+tab')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cyclePinnedNoteTabPrev, true)).toBe('ctrl+shift+tab')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.reopenClosedNoteTab, true)).toBe('cmd+shift+t')
+    expect(
+      eventMatchesShortcut(
+        { key: 'Tab', code: 'Tab', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.cyclePinnedNoteTabNext,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      eventMatchesShortcut(
+        { key: 'Tab', code: 'Tab', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.cyclePinnedNoteTabPrev,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      eventMatchesShortcut(
+        { key: 'T', code: 'KeyT', ctrlKey: false, metaKey: true, altKey: false, shiftKey: true } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.reopenClosedNoteTab,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      eventMatchesShortcut(
+        { key: 'T', code: 'KeyT', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.reopenClosedNoteTab,
+        false,
+      ),
+    ).toBe(true)
+  })
+
   it('keeps notes/filter assignable but unbound by default', () => {
     expect(DEFAULT_SHORTCUTS.toggleNotesFilter).toBe('')
     expect(
@@ -272,5 +309,8 @@ describe('newline shortcut settings', () => {
     expect(normalized.shortcuts.formatStrikethrough).toBe('')
     expect(normalized.shortcuts.toggleNotesFilter).toBe('')
     expect(normalized.shortcuts.closeCurrentNote).toBe('Mod+W')
+    expect(normalized.shortcuts.cyclePinnedNoteTabNext).toBe('Ctrl+Tab')
+    expect(normalized.shortcuts.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')
+    expect(normalized.shortcuts.reopenClosedNoteTab).toBe('Mod+Shift+T')
   })
 })
