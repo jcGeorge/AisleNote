@@ -5,7 +5,6 @@ import type {
   SidebarSearchResult,
   SidebarSearchResultGroup,
   SidebarSearchSuggestion,
-  SidebarSearchToken,
 } from '../../filters/sidebar-search'
 
 void React
@@ -14,29 +13,29 @@ type SidebarSearchPanelProps = {
   inputRef?: RefObject<HTMLInputElement | null>
   query: string
   active: boolean
-  selectedTokens: SidebarSearchToken[]
+  metadataSearchActive: boolean
   suggestions: SidebarSearchSuggestion[]
+  searchOptions: SidebarSearchOption[]
+  searchHistory: string[]
   resultGroups: SidebarSearchResultGroup[]
   onQueryChange: (query: string) => void
   onSelectSuggestion: (suggestion: SidebarSearchSuggestion) => void
-  onRemoveToken: (token: SidebarSearchToken) => void
+  onSelectSearchOption: (option: SidebarSearchOption) => void
+  onSelectHistory: (query: string) => void
+  onClearHistory: () => void
   onClear: () => void
   onClearButtonClick?: () => void
   onCloseMode?: () => void
-  onOpenResult: (result: SidebarSearchResult) => void
+  onOpenResult: (result: SidebarSearchResult, mode?: SidebarSearchResultOpenMode) => void
 }
 
-function getTokenKindLabel(token: SidebarSearchToken): string {
-  if (token.optionType === 'tag') return 'tag'
-  if (token.optionType === 'frontmatter-template') return 'fm'
-  if (token.optionType === 'frontmatter-property') return 'prop'
-  if (token.optionType === 'synced-aisle') return token.prefix === 'duplicate' ? 'duplicate aisle' : 'synced aisle'
-  return token.kind
+export type SidebarSearchOption = {
+  tokenText: string
+  description: string
+  insertText: string
 }
 
-function getTokenDisplayLabel(token: SidebarSearchToken): string {
-  return token.optionType === 'tag' ? `#${token.label}` : token.label
-}
+export type SidebarSearchResultOpenMode = 'temporary' | 'retained'
 
 function getResultCount(resultGroups: SidebarSearchResultGroup[]): number {
   return resultGroups.reduce((count, group) => count + group.results.length, 0)
@@ -79,13 +78,30 @@ function SearchResultButton({
 }: {
   group: SidebarSearchResultGroup
   result: SidebarSearchResult
-  onOpenResult: (result: SidebarSearchResult) => void
+  onOpenResult: (result: SidebarSearchResult, mode?: SidebarSearchResultOpenMode) => void
 }) {
   return (
     <button
       type="button"
       className="notebook-sidebar-search-result"
       onClick={() => onOpenResult(result)}
+      onMouseDown={(event) => {
+        if (event.button !== 1) return
+        event.preventDefault()
+        event.stopPropagation()
+        onOpenResult(result, 'retained')
+      }}
+      onAuxClick={(event) => {
+        if (event.button !== 1) return
+        event.preventDefault()
+        event.stopPropagation()
+      }}
+      onDoubleClick={(event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
+        event.preventDefault()
+        event.stopPropagation()
+        onOpenResult(result, 'retained')
+      }}
     >
       <span className="notebook-sidebar-search-result-meta">
         {result.aisleCount > 1 ? `${result.aisleNumber})` : 'Note'}
@@ -99,21 +115,28 @@ export function SidebarSearchPanel({
   inputRef,
   query,
   active,
-  selectedTokens,
+  metadataSearchActive,
   suggestions,
+  searchOptions,
+  searchHistory,
   resultGroups,
   onQueryChange,
   onSelectSuggestion,
-  onRemoveToken,
+  onSelectSearchOption,
+  onSelectHistory,
+  onClearHistory,
   onClear,
   onClearButtonClick,
   onCloseMode,
   onOpenResult,
 }: SidebarSearchPanelProps) {
+  const [focused, setFocused] = React.useState(false)
   const resultCount = getResultCount(resultGroups)
-  const canClear = query.trim().length > 0 || selectedTokens.length > 0
-  const textOnlySearchActive = query.trim().length > 0 && selectedTokens.length === 0
+  const canClear = query.trim().length > 0
+  const textOnlySearchActive = query.trim().length > 0 && !metadataSearchActive
   const folderSections = textOnlySearchActive ? getFolderResultSections(resultGroups) : []
+  const showSearchMenu = focused && query.trim().length <= 0
+  const showSuggestions = focused && suggestions.length > 0
 
   return (
     <section className={`notebook-sidebar-search ${active ? 'is-active' : ''}`} aria-label="Notebook search">
@@ -124,6 +147,8 @@ export function SidebarSearchPanel({
           className="notebook-search-input"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           onKeyDown={(event) => {
             if (event.key !== 'Escape') return
             event.preventDefault()
@@ -146,25 +171,7 @@ export function SidebarSearchPanel({
         ) : null}
       </label>
 
-      {selectedTokens.length > 0 ? (
-        <div className="notebook-sidebar-search-chips" aria-label="Selected filters">
-          {selectedTokens.map((token) => (
-            <button
-              key={`${token.kind}:${token.key}`}
-              type="button"
-              className="notebook-sidebar-search-chip"
-              aria-label={`Remove ${getTokenKindLabel(token)} filter ${getTokenDisplayLabel(token)}`}
-              onClick={() => onRemoveToken(token)}
-            >
-              <span className="notebook-sidebar-search-chip-kind">{getTokenKindLabel(token)}</span>
-              <span className="notebook-sidebar-search-chip-label">{getTokenDisplayLabel(token)}</span>
-              <AppIcon iconId="x" className="notebook-sidebar-search-chip-remove" />
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {suggestions.length > 0 ? (
+      {showSuggestions ? (
         <div className="notebook-sidebar-search-suggestions" role="listbox" aria-label="Search suggestions">
           {suggestions.map((suggestion) => (
             <button
@@ -181,6 +188,52 @@ export function SidebarSearchPanel({
               </span>
             </button>
           ))}
+        </div>
+      ) : showSearchMenu ? (
+        <div className="notebook-sidebar-search-menu" aria-label="Search options">
+          <div className="notebook-sidebar-search-menu-section">
+            <div className="notebook-sidebar-search-menu-heading">Search options</div>
+            {searchOptions.map((option) => (
+              <button
+                key={option.tokenText}
+                type="button"
+                className="notebook-sidebar-search-menu-row"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onSelectSearchOption(option)}
+              >
+                <span className="notebook-sidebar-search-menu-token">{option.tokenText}</span>
+                <span className="notebook-sidebar-search-menu-description">{option.description}</span>
+              </button>
+            ))}
+          </div>
+          {searchHistory.length > 0 ? (
+            <div className="notebook-sidebar-search-menu-section">
+              <div className="notebook-sidebar-search-history-heading">
+                <span>History</span>
+                <button
+                  type="button"
+                  className="notebook-sidebar-search-history-clear"
+                  aria-label="Clear search history"
+                  data-app-tooltip="Clear search history"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={onClearHistory}
+                >
+                  <AppIcon iconId="x" className="notebook-sidebar-search-history-clear-icon" />
+                </button>
+              </div>
+              {searchHistory.map((historyQuery) => (
+                <button
+                  key={historyQuery}
+                  type="button"
+                  className="notebook-sidebar-search-history-row"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => onSelectHistory(historyQuery)}
+                >
+                  {historyQuery}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

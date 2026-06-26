@@ -560,6 +560,100 @@
   font-size: 0.78rem;
 }
 
+.notebook-sidebar-search-menu {
+  display: grid;
+  gap: 8px;
+  padding: 7px;
+  border: 1px solid var(--app-border-muted);
+  border-radius: 6px;
+  background: var(--app-surface-raised);
+}
+
+.notebook-sidebar-search-menu-section {
+  display: grid;
+  gap: 3px;
+}
+
+.notebook-sidebar-search-menu-heading,
+.notebook-sidebar-search-history-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  padding: 0 4px;
+  color: var(--app-text-subtle);
+  font-size: inherit;
+  font-style: italic;
+  font-weight: 400;
+}
+
+.notebook-sidebar-search-menu-row,
+.notebook-sidebar-search-history-row {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--app-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.notebook-sidebar-search-menu-row:hover,
+.notebook-sidebar-search-menu-row:focus-visible,
+.notebook-sidebar-search-history-row:hover,
+.notebook-sidebar-search-history-row:focus-visible {
+  background: var(--notebook-control-hover-bg);
+  color: var(--app-text-heading);
+}
+
+.notebook-sidebar-search-menu-token,
+.notebook-sidebar-search-menu-description,
+.notebook-sidebar-search-history-row {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notebook-sidebar-search-menu-token {
+  font-weight: 400;
+}
+
+.notebook-sidebar-search-menu-description {
+  color: var(--app-text-subtle);
+  font-size: 0.78rem;
+}
+
+.notebook-sidebar-search-history-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--app-text-muted);
+  cursor: pointer;
+}
+
+.notebook-sidebar-search-history-clear:hover,
+.notebook-sidebar-search-history-clear:focus-visible {
+  background: var(--notebook-control-hover-bg);
+  color: var(--app-text-heading);
+}
+
+.notebook-sidebar-search-history-clear-icon {
+  width: 13px;
+  height: 13px;
+}
+
 .notebook-sidebar-search-results {
   flex: 1 1 auto;
   min-height: 0;

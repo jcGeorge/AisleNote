@@ -10,6 +10,7 @@ import { createNotebookIndexContext } from './notebook-index-context'
 import {
   buildSidebarSearchIndexes,
   buildSidebarSearchResultGroups,
+  completeSidebarSearchTokenQuery,
   getSidebarSearchSuggestions,
   parseSidebarSearchInput,
 } from './sidebar-search'
@@ -37,7 +38,7 @@ function createSearchState(): AppState {
       {
         id: 'aisle-body-shared',
         markdown: '#Calvin grace sermon body',
-        frontmatter: { speaker: 'Calvin', topic: 'Grace' },
+        frontmatter: { id: 'VB6C9', speaker: 'Calvin', topic: 'Grace' },
         frontmatterStatus: 'valid',
         frontmatterMeta: {
           templateId: 'template-sermon',
@@ -59,7 +60,7 @@ function createSearchState(): AppState {
       templates: [
         {
           id: 'template-sermon',
-          name: 'Sermon',
+          name: 'Sermon Template',
           fields: [],
         },
       ],
@@ -83,27 +84,33 @@ function createSearchState(): AppState {
 }
 
 describe('sidebar search parsing and suggestions', () => {
-  it('parses prefix filter tokens and leaves plain text as the text query', () => {
+  it('parses exact tokens, frontmatter terms, and plain text from prefixed queries', () => {
     const indexes = buildSidebarSearchIndexes(createSearchState())
-    const parsed = parseSidebarSearchInput('tag:#Calvin fm:Sermon prop:speaker synced:"Calvin sermon" grace', indexes)
+    const parsed = parseSidebarSearchInput('tag:#Calvin fm:"Sermon Template" prop:speaker synced:\'Calvin sermon\' grace', indexes)
 
     expect(parsed.text).toBe('grace')
     expect(parsed.tokens.map((token) => [token.kind, token.optionType, token.label])).toEqual([
       ['tags', 'tag', 'Calvin'],
-      ['frontmatter', 'frontmatter-template', 'Sermon'],
       ['frontmatter', 'frontmatter-property', 'speaker'],
       ['synced', 'synced-aisle', 'Calvin sermon'],
     ])
+    expect(parsed.frontmatterTerms).toEqual([{ value: 'Sermon Template', quoted: true }])
   })
 
-  it('suggests supported filter prefixes including duplicate as synced aliases', () => {
+  it('suggests supported filter prefixes including frontmatter keys, templates, values, and duplicate aliases', () => {
     const indexes = buildSidebarSearchIndexes(createSearchState())
 
     expect(getSidebarSearchSuggestions('tag:#Cal', indexes).map((suggestion) => suggestion.tokenText)).toContain(
       'tag:#Calvin',
     )
     expect(getSidebarSearchSuggestions('fm:Ser', indexes).map((suggestion) => suggestion.tokenText)).toContain(
-      'fm:Sermon',
+      'fm:"Sermon Template"',
+    )
+    expect(getSidebarSearchSuggestions('fm:sp', indexes).map((suggestion) => suggestion.tokenText)).toContain(
+      'fm:speaker',
+    )
+    expect(getSidebarSearchSuggestions('fm:Cal', indexes).map((suggestion) => suggestion.tokenText)).toContain(
+      'fm:Calvin',
     )
     expect(getSidebarSearchSuggestions('prop:spe', indexes).map((suggestion) => suggestion.tokenText)).toContain(
       'prop:speaker',
@@ -114,9 +121,49 @@ describe('sidebar search parsing and suggestions', () => {
       prefix: 'duplicate',
     })
   })
+
+  it('replaces the active prefixed segment when completing a suggestion', () => {
+    expect(completeSidebarSearchTokenQuery('grace fm:Ser', 'fm:"Sermon Template"')).toBe(
+      'grace fm:"Sermon Template" ',
+    )
+    expect(completeSidebarSearchTokenQuery('grace', 'tag:#Calvin')).toBe('grace tag:#Calvin ')
+  })
 })
 
 describe('sidebar search result filtering', () => {
+  it('matches frontmatter keys, template phrases, and values through fm terms', () => {
+    const state = createSearchState()
+    const indexes = buildSidebarSearchIndexes(state)
+
+    expect(buildSidebarSearchResultGroups({ state, indexes, query: 'fm:id', filter: null }).map((group) => group.noteId)).toEqual([
+      'note-a',
+      'note-b',
+      'note-c',
+    ])
+    expect(
+      buildSidebarSearchResultGroups({ state, indexes, query: 'fm:"Sermon Template"', filter: null }).map(
+        (group) => group.noteId,
+      ),
+    ).toEqual(['note-a', 'note-b', 'note-c'])
+    expect(
+      buildSidebarSearchResultGroups({ state, indexes, query: 'fm:Calvin', filter: null }).map((group) => group.noteId),
+    ).toEqual(['note-a', 'note-b', 'note-c'])
+  })
+
+  it('ANDs fm terms with tag tokens and plain text', () => {
+    const state = createSearchState()
+    const indexes = buildSidebarSearchIndexes(state)
+
+    expect(
+      buildSidebarSearchResultGroups({ state, indexes, query: 'tag:#Calvin fm:id grace', filter: null }).map(
+        (group) => group.noteId,
+      ),
+    ).toEqual(['note-a', 'note-b', 'note-c'])
+    expect(buildSidebarSearchResultGroups({ state, indexes, query: 'tag:#Calvin fm:id salvation', filter: null })).toEqual(
+      [],
+    )
+  })
+
   it('combines text, tags, and frontmatter filters with AND semantics', () => {
     const state = createSearchState()
     const indexes = buildSidebarSearchIndexes(state)
@@ -189,6 +236,7 @@ describe('sidebar search index context', () => {
     expect(contextIndexes.tags.availableOptions).toEqual(directIndexes.tags.availableOptions)
     expect(contextIndexes.synced.availableOptions).toEqual(directIndexes.synced.availableOptions)
     expect(contextIndexes.frontmatter.availableOptions).toEqual(directIndexes.frontmatter.availableOptions)
+    expect(contextIndexes.frontmatterValues).toEqual(directIndexes.frontmatterValues)
     expect(contextIndexes.tags.allOccurrences).toEqual(directIndexes.tags.allOccurrences)
     expect(contextIndexes.synced.allOccurrences).toEqual(directIndexes.synced.allOccurrences)
     expect(contextIndexes.frontmatter.allOccurrences).toEqual(directIndexes.frontmatter.allOccurrences)

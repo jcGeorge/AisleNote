@@ -266,6 +266,10 @@
   overflow-wrap: normal;
 }
 
+.aisle-editor-preview-fallback.is-editor-mount-failed {
+  box-shadow: inset 0 0 0 1px var(--app-danger-border, var(--app-border));
+}
+
 .aisle-editor-lightweight-preview {
   margin: 0;
   white-space: pre-wrap;

@@ -12,6 +12,7 @@ import {
   restoreEditorDisplay,
 } from '../../editor/editor-markdown-display'
 import { sanitizeEditorHtml } from '../../editor/editor-sanitizer'
+import { AISLENOTE_TOAST_HTML_RENDERER } from '../../editor/toast-inline-html-renderer'
 import { normalizeExternalWebUrl, openExternalWebUrl } from '../../notes/external-links'
 import { resolveMarkdownNoteReferenceDestination } from '../../notes/note-references'
 import type { AppState, NoteLocation } from '../../types/app'
@@ -108,6 +109,7 @@ export function ReadOnlyMarkdownViewer({
         height: '100%',
         autofocus: false,
         usageStatistics: false,
+        customHTMLRenderer: AISLENOTE_TOAST_HTML_RENDERER,
         customHTMLSanitizer: sanitizeEditorHtml,
         plugins: [
           listMarkerPlugin,

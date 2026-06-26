@@ -21,6 +21,7 @@ export type NoteFilterOptionType =
   | 'synced-aisle'
   | 'frontmatter-template'
   | 'frontmatter-property'
+  | 'frontmatter-value'
   | 'media-image'
   | 'media-audio'
   | 'media-video'

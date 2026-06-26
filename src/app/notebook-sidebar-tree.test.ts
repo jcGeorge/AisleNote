@@ -122,6 +122,22 @@ describe('notebook sidebar tree', () => {
     expect(notebookAppSource).toContain("source: 'programmatic'")
   })
 
+  it('reveals the active note row in the sidebar tree after notebook note changes', () => {
+    expect(notebookAppSource).toContain("import { getNotebookTreeRevealScrollTop } from './notebook-tree-scroll'")
+    expect(notebookAppSource).toContain('const activeNoteTreeRevealNoteIdRef = useRef(state.notebook.activeNoteId)')
+    expect(notebookAppSource).toContain("const pendingActiveNoteTreeRevealIdRef = useRef('')")
+    expect(notebookAppSource).toContain('pendingActiveNoteTreeRevealIdRef.current = activeNoteId')
+    expect(notebookAppSource).toContain('if (scratchpadActive || activeModelIsScratchpad) {')
+    expect(notebookAppSource).toContain('const collapsedAncestorIds = getNotebookNoteFolderPath(state.notebook.items, pendingNoteId)')
+    expect(notebookAppSource).toContain('previous.ui.collapsedFolderIds.filter(')
+    expect(notebookAppSource).toContain('data-notebook-tree-item-id={item.id}')
+    expect(notebookAppSource).toContain("scrollNode.querySelectorAll<HTMLElement>('[data-notebook-tree-item-id]')")
+    expect(notebookAppSource).toContain('rowIndex * NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT')
+    expect(notebookAppSource).toContain('const nextScrollTop = getNotebookTreeRevealScrollTop(')
+    expect(notebookAppSource).toContain('if (Math.abs(nextScrollTop - scrollNode.scrollTop) > 0.5) {')
+    expect(notebookAppSource).toContain('updateNotebookTreeViewport()')
+  })
+
   it('lets workspace pointer activation cancel pending cursor restore before focusing an aisle', () => {
     expect(notebookAppSource).toContain('shouldClearPendingCursorRestoreForAisleActivation')
     expect(notebookAppSource).toContain('onActivateAisle={(editorKey, pointer) => {')
@@ -132,10 +148,8 @@ describe('notebook sidebar tree', () => {
   })
 
   it('starts newly created notes and folders in inline rename after revealing the sidebar tree', () => {
-    expect(notebookAppSource).toContain('function clearSidebarSearchFilter(currentFilter: NoteFilterSettings | null | undefined): NoteFilterSettings')
     expect(notebookAppSource).toContain('function revealNotebookTreeForCreatedItem(')
     expect(notebookAppSource).toContain('sidebarCollapsed: false')
-    expect(notebookAppSource).toContain('noteFilter: clearSidebarSearchFilter(ui.noteFilter)')
     expect(notebookAppSource).toContain('const createdRenameRef: { current: PendingCreatedTreeRename | null } = { current: null }')
     expect(notebookAppSource).toContain("createdRenameRef.current = {\n        kind: 'note',\n        itemId: result.noteId,")
     expect(notebookAppSource).toContain("createdRenameRef.current = {\n        kind: 'folder',\n        itemId: result.folderId,")

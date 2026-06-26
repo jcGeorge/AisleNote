@@ -4,6 +4,23 @@ import { describe, expect, it } from 'vitest'
 const source = readFileSync(new URL('./useNotebookAisleEditors.ts', import.meta.url), 'utf8')
 
 describe('notebook aisle editor task checkbox wiring', () => {
+  it('registers raw inline span support with Toast UI', () => {
+    expect(source).toContain("import { AISLENOTE_TOAST_HTML_RENDERER } from './toast-inline-html-renderer'")
+    expect(source).toContain('customHTMLRenderer: AISLENOTE_TOAST_HTML_RENDERER')
+  })
+
+  it('fails closed after a Toast UI editor mount error for the same aisle revision', () => {
+    expect(source).toContain('type NotebookAisleEditorMountFailure = {')
+    expect(source).toContain('const failedEditorMountsRef = useRef<Map<string, NotebookAisleEditorMountFailure>>(new Map())')
+    expect(source).toContain('const [failedEditorMountAisleIds, setFailedEditorMountAisleIds] = useState<Set<string>>(() => new Set())')
+    expect(source).toContain('const hasMatchingEditorMountFailure = useCallback')
+    expect(source).toContain('failure.markdown === aisle.markdown')
+    expect(source).toContain('const recordEditorMountFailure = useCallback')
+    expect(source).toContain('if (hasMatchingEditorMountFailure(editorKey, aisle)) return')
+    expect(source).toContain('recordEditorMountFailure(editorKey, aisle)')
+    expect(source).toContain('failedEditorMountAisleIds,')
+  })
+
   it('installs completed-task checkbox behavior for each mounted editor root', () => {
     expect(source).toContain("import { installCompletedTaskCheckboxBehavior } from './task-behavior'")
     expect(source).toContain(

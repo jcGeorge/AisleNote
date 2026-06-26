@@ -83,6 +83,7 @@ function renderWorkspace(
     arrangeModeActive?: boolean
     suppressActiveAislePreviewFallback?: boolean
     deferInactivePreviewFallbacks?: boolean
+    failedEditorMountAisleIds?: Set<string>
     appState?: AppState | null
     onOpenNoteReference?: (target: NoteLocation) => void
     noteTabs?: Array<{ noteId: string; title: string; status: 'temporary' | 'retained'; active: boolean }>
@@ -107,6 +108,7 @@ function renderWorkspace(
       imageToolsOverlay={null}
       tableControlsOverlay={null}
       mountedAisleIds={mountedAisleIds}
+      failedEditorMountAisleIds={options.failedEditorMountAisleIds}
       suppressActiveAislePreviewFallback={options.suppressActiveAislePreviewFallback}
       deferInactivePreviewFallbacks={options.deferInactivePreviewFallbacks}
       getPreviewMarkdownForAisle={(aisle) => aisle.markdown}
@@ -168,6 +170,19 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('is-editor-mount-pending')
     expect(html).not.toContain('>active</')
     expect(html).toContain('<p class="aislenote-rendered-markdown-paragraph">far</p>')
+  })
+
+  it('renders markdown fallback for an active aisle after editor mount failure', () => {
+    const html = renderWorkspace(new Set(['a']), {
+      activeAisleId: 'a',
+      failedEditorMountAisleIds: new Set(['a']),
+      suppressActiveAislePreviewFallback: true,
+    })
+
+    expect(html).toContain('is-editor-mount-failed')
+    expect(html).toContain('data-aisle-editor-mount-failed="true"')
+    expect(html).toContain('<p class="aislenote-rendered-markdown-paragraph">active</p>')
+    expect(html).not.toContain('is-editor-mount-pending')
   })
 
   it('renders deferred inactive link-heavy previews as markdown outside arrange mode', () => {

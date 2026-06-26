@@ -31,7 +31,6 @@ import type {
   NoteAisle,
   NoteAisleBody,
   NoteBody,
-  NoteFilterSettings,
   NoteLocation,
   NoteNavigationTarget,
   KnownNotebook,
@@ -163,7 +162,11 @@ import {
 import { TipHost } from '../components/overlays/TipHost'
 import { ToastHost } from '../components/overlays/ToastHost'
 import { AppIcon } from '../components/icons/AppIcon'
-import { SidebarSearchPanel } from '../components/navigation/SidebarSearchPanel'
+import {
+  SidebarSearchPanel,
+  type SidebarSearchOption,
+  type SidebarSearchResultOpenMode,
+} from '../components/navigation/SidebarSearchPanel'
 import { AboutView } from '../components/about/AboutView'
 import { MessagesView } from '../components/messages/MessagesView'
 import { TrashMarkdownPreview } from '../components/trash/TrashMarkdownPreview'
@@ -200,6 +203,7 @@ import {
   scheduleFocusedAisleScroll,
   type ScheduledAisleFocusScroll,
 } from './focused-aisle-scroll'
+import { getNotebookTreeRevealScrollTop } from './notebook-tree-scroll'
 import {
   resolveNotebookNavigationLocation,
   useNotebookNavigationHistory,
@@ -309,11 +313,11 @@ import { createNotebookIndexContext } from '../filters/notebook-index-context'
 import {
   buildSidebarSearchIndexes,
   buildSidebarSearchResultGroups,
-  clearActiveSidebarSearchPrefix,
+  completeSidebarSearchTokenQuery,
+  formatSidebarSearchTokenText,
   getEmptySidebarSearchIndexes,
-  getSidebarSearchSelectedTokens,
   getSidebarSearchSuggestions,
-  mergeSidebarSearchTokens,
+  getSidebarSearchTokenForKey,
   parseSidebarSearchInput,
   type SidebarSearchFilterKind,
   type SidebarSearchResult,
@@ -355,80 +359,47 @@ const NOTEBOOK_TREE_VIRTUALIZATION_THRESHOLD = 300
 const NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT = 32
 const NOTEBOOK_TREE_VIRTUAL_OVERSCAN = 12
 
-function getDefaultNoteFilterSettings(): NonNullable<AppState['ui']['noteFilter']> {
-  return DEFAULT_UI_SETTINGS.noteFilter ?? {
-    active: false,
-    kind: 'tags',
-    tags: { selectedKeys: [], sortMode: 'az' },
-    synced: { selectedKeys: [] },
-    frontmatter: { selectedKeys: [] },
-    media: { selectedKeys: [] },
+const SIDEBAR_SEARCH_HISTORY_STORAGE_KEY = 'aislenote:sidebar-search-history:v1'
+const SIDEBAR_SEARCH_HISTORY_LIMIT = 10
+const SIDEBAR_SEARCH_OPTIONS: SidebarSearchOption[] = [
+  { tokenText: 'tag:name', description: 'search tags', insertText: 'tag:' },
+  { tokenText: 'fm:key', description: 'search frontmatter keys, templates, and values', insertText: 'fm:' },
+  { tokenText: 'fm:"template or phrase"', description: 'match a frontmatter phrase', insertText: 'fm:"' },
+  { tokenText: 'synced:"note name"', description: 'search synced aisles', insertText: 'synced:"' },
+  { tokenText: 'duplicate:"note name"', description: 'search duplicate aisles', insertText: 'duplicate:"' },
+]
+
+function normalizeSidebarSearchHistoryEntry(query: string): string {
+  return query.trim().replace(/\s+/g, ' ')
+}
+
+function loadSidebarSearchHistory(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(SIDEBAR_SEARCH_HISTORY_STORAGE_KEY) ?? '[]') as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((entry) => (typeof entry === 'string' ? normalizeSidebarSearchHistoryEntry(entry) : ''))
+      .filter(Boolean)
+      .slice(0, SIDEBAR_SEARCH_HISTORY_LIMIT)
+  } catch {
+    return []
   }
 }
 
-const SIDEBAR_SEARCH_FILTER_KINDS: SidebarSearchFilterKind[] = ['tags', 'synced', 'frontmatter']
-
-function hasSidebarSearchFilterKeys(filter: NoteFilterSettings): boolean {
-  return SIDEBAR_SEARCH_FILTER_KINDS.some((kind) => filter[kind].selectedKeys.length > 0)
-}
-
-function addSidebarSearchFilterKey(
-  currentFilter: NoteFilterSettings | null | undefined,
-  kind: SidebarSearchFilterKind,
-  key: string,
-): NoteFilterSettings {
-  const fallback = getDefaultNoteFilterSettings()
-  const base = currentFilter?.active ? currentFilter : fallback
-  const selectedKeys = Array.from(new Set([...base[kind].selectedKeys, key].filter(Boolean)))
-  return {
-    ...base,
-    active: true,
-    kind,
-    [kind]: {
-      ...base[kind],
-      selectedKeys,
-    },
-  } as NoteFilterSettings
-}
-
-function addSidebarSearchFilterTokens(
-  currentFilter: NoteFilterSettings | null | undefined,
-  tokens: SidebarSearchToken[],
-): NoteFilterSettings {
-  return tokens.reduce(
-    (filter, token) => addSidebarSearchFilterKey(filter, token.kind, token.key),
-    currentFilter ?? getDefaultNoteFilterSettings(),
-  )
-}
-
-function removeSidebarSearchFilterToken(
-  currentFilter: NoteFilterSettings | null | undefined,
-  token: SidebarSearchToken,
-): NoteFilterSettings {
-  const base = currentFilter ?? getDefaultNoteFilterSettings()
-  const next = {
-    ...base,
-    [token.kind]: {
-      ...base[token.kind],
-      selectedKeys: base[token.kind].selectedKeys.filter((key) => key !== token.key),
-    },
-  } as NoteFilterSettings
-  return {
-    ...next,
-    active: hasSidebarSearchFilterKeys(next),
+function saveSidebarSearchHistory(history: string[]) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(SIDEBAR_SEARCH_HISTORY_STORAGE_KEY, JSON.stringify(history))
+  } catch {
+    // Local storage is best-effort UI state.
   }
 }
 
-function clearSidebarSearchFilter(currentFilter: NoteFilterSettings | null | undefined): NoteFilterSettings {
-  const noteFilter = currentFilter ?? getDefaultNoteFilterSettings()
-  return {
-    ...noteFilter,
-    active: false,
-    tags: { ...noteFilter.tags, selectedKeys: [] },
-    synced: { ...noteFilter.synced, selectedKeys: [] },
-    frontmatter: { ...noteFilter.frontmatter, selectedKeys: [] },
-    media: { ...noteFilter.media, selectedKeys: [] },
-  }
+function appendSidebarSearchHistoryEntry(history: string[], query: string): string[] {
+  const entry = normalizeSidebarSearchHistoryEntry(query)
+  if (!entry) return history
+  return [entry, ...history.filter((candidate) => candidate !== entry)].slice(0, SIDEBAR_SEARCH_HISTORY_LIMIT)
 }
 
 function revealNotebookTreeForCreatedItem(
@@ -439,7 +410,6 @@ function revealNotebookTreeForCreatedItem(
   return {
     ...ui,
     sidebarCollapsed: false,
-    noteFilter: clearSidebarSearchFilter(ui.noteFilter),
     collapsedFolderIds:
       expandedIds.size > 0
         ? ui.collapsedFolderIds.filter((folderId) => !expandedIds.has(folderId))
@@ -1483,6 +1453,7 @@ function TreeItemRow({
           dropPosition === 'after' ? 'is-drop-after' : '',
           dropPosition === 'inside' ? 'is-drop-inside' : '',
         ].filter(Boolean).join(' ')}
+        data-notebook-tree-item-id={item.id}
         role="treeitem"
         aria-selected={active || selected}
         aria-expanded={isFolder ? !collapsed : undefined}
@@ -2961,6 +2932,7 @@ export function NotebookApp() {
   const [activeToolbarLayoutId, setActiveToolbarLayoutIdState] = useState(loadNotebookActiveToolbarLayoutId)
   const [toolbarEditorLayoutId, setToolbarEditorLayoutId] = useState(activeToolbarLayoutId)
   const [query, setQuery] = useState('')
+  const [sidebarSearchHistory, setSidebarSearchHistory] = useState(loadSidebarSearchHistory)
   const [sidebarSearchMode, setSidebarSearchMode] = useState(false)
   const [scratchpadActive, setScratchpadActive] = useState(false)
   const [activeAisleId, setActiveAisleId] = useState('')
@@ -3024,6 +2996,8 @@ export function NotebookApp() {
   const activeAisleIdRef = useRef('')
   const activeNoteLocationKeyRef = useRef('')
   const scratchpadActiveRef = useRef(false)
+  const activeNoteTreeRevealNoteIdRef = useRef(state.notebook.activeNoteId)
+  const pendingActiveNoteTreeRevealIdRef = useRef('')
   const previousAssetToolsNoteLocationKeyRef = useRef('')
   const isMainViewRef = useRef(true)
   const pendingScrollToAisleIdRef = useRef<string | null>(null)
@@ -3104,7 +3078,7 @@ export function NotebookApp() {
     const observer = new ResizeObserver(updateNotebookTreeViewport)
     observer.observe(element)
     return () => observer.disconnect()
-  }, [query, sidebarSearchMode, state.ui.noteFilter, state.ui.sidebarCollapsed, updateNotebookTreeViewport])
+  }, [query, sidebarSearchMode, state.ui.sidebarCollapsed, updateNotebookTreeViewport])
 
   useEffect(() => {
     const clearZoomHudTimeout = () => {
@@ -3252,7 +3226,6 @@ export function NotebookApp() {
   }, [notebookTreeFlatRows, notebookTreeViewport.height, notebookTreeViewport.scrollTop, useVirtualizedNotebookTree])
   const selectedTreeNoteIdSet = useMemo(() => new Set(selectedTreeNoteIds), [selectedTreeNoteIds])
   const draggingTreeNoteIdSet = useMemo(() => new Set(draggingTreeNoteIds), [draggingTreeNoteIds])
-  const noteFilterSettings = state.ui.noteFilter ?? getDefaultNoteFilterSettings()
   const notebookIndexContext = useMemo(
     () => createNotebookIndexContext(stateRef.current),
     // Rebuild only for data that affects searchable notebook indexes, not theme/UI-only state changes.
@@ -3266,8 +3239,7 @@ export function NotebookApp() {
       stateRef,
     ],
   )
-  const sidebarSearchHasFilterKeys = noteFilterSettings.active && hasSidebarSearchFilterKeys(noteFilterSettings)
-  const sidebarSearchNeedsFullIndexes = sidebarSearchMode || query.trim().length > 0 || sidebarSearchHasFilterKeys
+  const sidebarSearchNeedsFullIndexes = sidebarSearchMode || query.trim().length > 0
   const tagAutocompleteFilterIndex = useMemo(
     () => buildNoteFilterIndex(notebookIndexContext.state, 'tags', [], notebookIndexContext),
     [notebookIndexContext],
@@ -3283,13 +3255,7 @@ export function NotebookApp() {
     () => parseSidebarSearchInput(query, sidebarSearchIndexes),
     [query, sidebarSearchIndexes],
   )
-  const sidebarSearchSelectedTokens = useMemo(
-    () => mergeSidebarSearchTokens(
-      getSidebarSearchSelectedTokens(noteFilterSettings, sidebarSearchIndexes),
-      parsedSidebarSearch.tokens,
-    ),
-    [noteFilterSettings, parsedSidebarSearch.tokens, sidebarSearchIndexes],
-  )
+  const sidebarSearchSelectedTokens = parsedSidebarSearch.tokens
   const sidebarSearchSuggestions = useMemo(
     () => getSidebarSearchSuggestions(query, sidebarSearchIndexes, sidebarSearchSelectedTokens),
     [query, sidebarSearchIndexes, sidebarSearchSelectedTokens],
@@ -3299,13 +3265,15 @@ export function NotebookApp() {
       buildSidebarSearchResultGroups({
         state: notebookIndexContext.state,
         query,
-        filter: noteFilterSettings,
+        filter: null,
         indexes: sidebarSearchIndexes,
         context: notebookIndexContext,
       }),
-    [noteFilterSettings, notebookIndexContext, query, sidebarSearchIndexes],
+    [notebookIndexContext, query, sidebarSearchIndexes],
   )
-  const sidebarSearchActive = query.trim().length > 0 || sidebarSearchSelectedTokens.length > 0
+  const sidebarSearchMetadataActive =
+    sidebarSearchSelectedTokens.length > 0 || parsedSidebarSearch.frontmatterTerms.length > 0
+  const sidebarSearchActive = query.trim().length > 0
   const sidebarSearchVisible = sidebarSearchMode || sidebarSearchActive
   const noteActionEntries = useMemo(() => {
     if (!noteActionPicker) return []
@@ -3467,6 +3435,100 @@ export function NotebookApp() {
   const mutateState = useCallback((updater: (previous: AppState) => AppState) => {
     setState((previous) => updater(previous))
   }, [setState])
+
+  useLayoutEffect(() => {
+    const activeNoteId = state.notebook.activeNoteId
+    if (activeNoteId !== activeNoteTreeRevealNoteIdRef.current) {
+      activeNoteTreeRevealNoteIdRef.current = activeNoteId
+      pendingActiveNoteTreeRevealIdRef.current = activeNoteId
+    }
+
+    const pendingNoteId = pendingActiveNoteTreeRevealIdRef.current
+    if (!pendingNoteId) return
+    if (scratchpadActive || activeModelIsScratchpad) {
+      pendingActiveNoteTreeRevealIdRef.current = ''
+      return
+    }
+    if (pendingNoteId !== activeNoteId) {
+      pendingActiveNoteTreeRevealIdRef.current = ''
+      return
+    }
+    if (state.ui.sidebarCollapsed || sidebarSearchVisible) return
+
+    if (!findNotebookNote(state.notebook.items, pendingNoteId)) {
+      pendingActiveNoteTreeRevealIdRef.current = ''
+      return
+    }
+
+    const collapsedAncestorIds = getNotebookNoteFolderPath(state.notebook.items, pendingNoteId)
+      .map((folder) => folder.id)
+      .filter((folderId) => collapsedFolderIds.has(folderId))
+    if (collapsedAncestorIds.length > 0) {
+      mutateState((previous) => ({
+        ...previous,
+        ui: {
+          ...previous.ui,
+          collapsedFolderIds: previous.ui.collapsedFolderIds.filter(
+            (folderId) => !collapsedAncestorIds.includes(folderId),
+          ),
+        },
+      }))
+      return
+    }
+
+    const scrollNode = notebookTreeScrollRef.current
+    if (!scrollNode || scrollNode.clientHeight <= 0) return
+
+    const rowIndex = notebookTreeFlatRows.findIndex(
+      (row) => row.item.type === 'note' && row.item.id === pendingNoteId,
+    )
+    if (rowIndex < 0) {
+      pendingActiveNoteTreeRevealIdRef.current = ''
+      return
+    }
+
+    const rowElement = Array.from(
+      scrollNode.querySelectorAll<HTMLElement>('[data-notebook-tree-item-id]'),
+    ).find((candidate) => candidate.dataset.notebookTreeItemId === pendingNoteId)
+    const rowBounds = rowElement
+      ? (() => {
+          const scrollRect = scrollNode.getBoundingClientRect()
+          const rowRect = rowElement.getBoundingClientRect()
+          const top = scrollNode.scrollTop + rowRect.top - scrollRect.top
+          return {
+            top,
+            bottom: top + rowRect.height,
+          }
+        })()
+      : {
+          top: rowIndex * NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT,
+          bottom: (rowIndex + 1) * NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT,
+        }
+    const nextScrollTop = getNotebookTreeRevealScrollTop(
+      {
+        scrollTop: scrollNode.scrollTop,
+        clientHeight: scrollNode.clientHeight,
+        scrollHeight: scrollNode.scrollHeight,
+      },
+      rowBounds,
+    )
+    if (Math.abs(nextScrollTop - scrollNode.scrollTop) > 0.5) {
+      scrollNode.scrollTop = nextScrollTop
+      updateNotebookTreeViewport()
+    }
+    pendingActiveNoteTreeRevealIdRef.current = ''
+  }, [
+    activeModelIsScratchpad,
+    collapsedFolderIds,
+    mutateState,
+    notebookTreeFlatRows,
+    scratchpadActive,
+    sidebarSearchVisible,
+    state.notebook.activeNoteId,
+    state.notebook.items,
+    state.ui.sidebarCollapsed,
+    updateNotebookTreeViewport,
+  ])
 
   useEffect(() => {
     if (!activeModelIsScratchpad || !renderedActiveAisleId) return
@@ -4903,16 +4965,25 @@ export function NotebookApp() {
     [notebookEditors, pendingCursorRestoreRef],
   )
 
+  const recordSidebarSearchHistory = useCallback((queryToRecord: string) => {
+    const entry = normalizeSidebarSearchHistoryEntry(queryToRecord)
+    if (!entry) return
+    setSidebarSearchHistory((current) => {
+      const next = appendSidebarSearchHistoryEntry(current, entry)
+      saveSidebarSearchHistory(next)
+      return next
+    })
+  }, [])
+
+  const clearSidebarSearchHistory = useCallback(() => {
+    setSidebarSearchHistory([])
+    saveSidebarSearchHistory([])
+  }, [])
+
   const clearSidebarSearch = useCallback(() => {
+    recordSidebarSearchHistory(query)
     setQuery('')
-    mutateState((previous) => ({
-      ...previous,
-      ui: {
-        ...previous.ui,
-        noteFilter: clearSidebarSearchFilter(previous.ui.noteFilter),
-      },
-    }))
-  }, [mutateState])
+  }, [query, recordSidebarSearchHistory])
 
   const closeSidebarSearchMode = useCallback(() => {
     clearSidebarSearch()
@@ -5433,85 +5504,95 @@ export function NotebookApp() {
     setSelectedFolderId(folderId)
   }, [])
 
+  const revealSidebarSearch = useCallback(() => {
+    setSidebarSearchMode(true)
+    mutateState((previous) => {
+      if (!previous.ui.sidebarCollapsed) return previous
+      return {
+        ...previous,
+        ui: {
+          ...previous.ui,
+          sidebarCollapsed: false,
+        },
+      }
+    })
+  }, [mutateState])
+
+  const applySidebarSearchTokenText = useCallback(
+    (tokenText: string) => {
+      if (!tokenText.trim()) return
+      revealSidebarSearch()
+      setQuery((current) => completeSidebarSearchTokenQuery(current, tokenText))
+      window.setTimeout(() => searchInputRef.current?.focus(), 0)
+    },
+    [revealSidebarSearch],
+  )
+
+  const activateSidebarSearchToken = useCallback(
+    (token: SidebarSearchToken) => {
+      applySidebarSearchTokenText(formatSidebarSearchTokenText(token))
+    },
+    [applySidebarSearchTokenText],
+  )
+
   const activateSidebarSearchKey = useCallback(
     (kind: SidebarSearchFilterKind, key: string) => {
       if (!key) return
-      setSidebarSearchMode(true)
-      mutateState((previous) => ({
-        ...previous,
-        ui: {
-          ...previous.ui,
-          sidebarCollapsed: false,
-          noteFilter: addSidebarSearchFilterKey(previous.ui.noteFilter, kind, key),
-        },
-      }))
+      const currentToken = getSidebarSearchTokenForKey(sidebarSearchIndexes, kind, key)
+      const resolvedToken = currentToken ?? getSidebarSearchTokenForKey(
+        buildSidebarSearchIndexes(notebookIndexContext.state, notebookIndexContext),
+        kind,
+        key,
+      )
+      if (!resolvedToken) return
+      activateSidebarSearchToken(resolvedToken)
     },
-    [mutateState],
-  )
-
-  const activateSidebarSearchTokens = useCallback(
-    (tokens: SidebarSearchToken[]) => {
-      if (tokens.length <= 0) return
-      setSidebarSearchMode(true)
-      mutateState((previous) => ({
-        ...previous,
-        ui: {
-          ...previous.ui,
-          sidebarCollapsed: false,
-          noteFilter: addSidebarSearchFilterTokens(previous.ui.noteFilter, tokens),
-        },
-      }))
-    },
-    [mutateState],
+    [activateSidebarSearchToken, notebookIndexContext, sidebarSearchIndexes],
   )
 
   const updateSidebarSearchQuery = useCallback(
     (nextQuery: string) => {
       notebookEditors.flushPendingEditorAppStateCommit()
-      const parsed = parseSidebarSearchInput(nextQuery, sidebarSearchIndexes)
-      if (parsed.tokens.length > 0) {
-        activateSidebarSearchTokens(parsed.tokens)
-        setQuery(parsed.text)
-        return
-      }
+      revealSidebarSearch()
       setQuery(nextQuery)
     },
-    [activateSidebarSearchTokens, notebookEditors, sidebarSearchIndexes],
+    [notebookEditors, revealSidebarSearch],
   )
 
   const selectSidebarSearchSuggestion = useCallback(
     (suggestion: SidebarSearchSuggestion) => {
-      activateSidebarSearchTokens([suggestion])
-      setQuery((current) => clearActiveSidebarSearchPrefix(current))
-      window.setTimeout(() => searchInputRef.current?.focus(), 0)
+      applySidebarSearchTokenText(suggestion.tokenText)
     },
-    [activateSidebarSearchTokens],
+    [applySidebarSearchTokenText],
   )
 
-  const removeSidebarSearchToken = useCallback(
-    (token: SidebarSearchToken) => {
-      let shouldCloseSearchMode = false
-      mutateState((previous) => {
-        const nextFilter = removeSidebarSearchFilterToken(previous.ui.noteFilter, token)
-        if (query.trim().length <= 0 && !hasSidebarSearchFilterKeys(nextFilter)) shouldCloseSearchMode = true
-        return {
-          ...previous,
-          ui: {
-            ...previous.ui,
-            noteFilter: nextFilter,
-          },
-        }
-      })
-      if (shouldCloseSearchMode) setSidebarSearchMode(false)
+  const selectSidebarSearchOption = useCallback(
+    (option: SidebarSearchOption) => {
+      revealSidebarSearch()
+      setQuery(option.insertText)
+      window.setTimeout(() => searchInputRef.current?.focus(), 0)
     },
-    [mutateState, query],
+    [revealSidebarSearch],
+  )
+
+  const selectSidebarSearchHistory = useCallback(
+    (historyQuery: string) => {
+      revealSidebarSearch()
+      setQuery(historyQuery)
+      window.setTimeout(() => searchInputRef.current?.focus(), 0)
+    },
+    [revealSidebarSearch],
   )
 
   const openSidebarSearchResult = useCallback(
-    (result: SidebarSearchResult) => {
-      applyNotebookNavigationLocation({ noteId: result.noteId, aisleId: result.aisleId })
+    (result: SidebarSearchResult, mode?: SidebarSearchResultOpenMode) => {
+      recordSidebarSearchHistory(query)
+      applyNotebookNavigationLocation(
+        { noteId: result.noteId, aisleId: result.aisleId },
+        mode === 'retained' ? { tabDisposition: 'retained' } : undefined,
+      )
     },
-    [applyNotebookNavigationLocation],
+    [applyNotebookNavigationLocation, query, recordSidebarSearchHistory],
   )
 
   const toggleNotesTrashFromShortcut = useCallback(() => {
@@ -8193,12 +8274,16 @@ export function NotebookApp() {
             inputRef={searchInputRef}
             query={query}
             active={sidebarSearchActive}
-            selectedTokens={sidebarSearchSelectedTokens}
+            metadataSearchActive={sidebarSearchMetadataActive}
             suggestions={sidebarSearchSuggestions}
+            searchOptions={SIDEBAR_SEARCH_OPTIONS}
+            searchHistory={sidebarSearchHistory}
             resultGroups={sidebarSearchResultGroups}
             onQueryChange={updateSidebarSearchQuery}
             onSelectSuggestion={selectSidebarSearchSuggestion}
-            onRemoveToken={removeSidebarSearchToken}
+            onSelectSearchOption={selectSidebarSearchOption}
+            onSelectHistory={selectSidebarSearchHistory}
+            onClearHistory={clearSidebarSearchHistory}
             onClear={clearSidebarSearch}
             onClearButtonClick={closeSidebarSearchMode}
             onCloseMode={closeSidebarSearchMode}
@@ -8442,6 +8527,7 @@ export function NotebookApp() {
                   }))
                 }}
                 mountedAisleIds={notebookEditors.mountedAisleIds}
+                failedEditorMountAisleIds={notebookEditors.failedEditorMountAisleIds}
                 getPreviewMarkdownForAisle={notebookEditors.getPreviewMarkdownForAisle}
                 onCloseTableOfContentsAisle={closeTableOfContentsAisle}
                 onSelectTableOfContentsHeading={selectTableOfContentsHeading}

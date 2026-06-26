@@ -179,6 +179,7 @@ type NoteWorkspaceProps = {
   onResetAisleWidth?: (aisleId: string) => void
   onAisleWidthDragCommitted?: () => void
   mountedAisleIds: Set<string>
+  failedEditorMountAisleIds?: Set<string>
   suppressActiveAislePreviewFallback?: boolean
   deferInactivePreviewFallbacks?: boolean
   getPreviewMarkdownForAisle: (aisle: ResolvedNoteAisle) => string
@@ -401,6 +402,7 @@ export function NoteWorkspace({
   onSelectEditableAsset = () => undefined,
   onRegisterAislePaneRoot,
   onRegisterAisleEditorRoot,
+  failedEditorMountAisleIds,
   noteTabs = [],
   renamingNoteTabId = '',
   noteTabRenameDraft = '',
@@ -603,8 +605,10 @@ export function NoteWorkspace({
       >
         {aisles.map((aisle, index) => {
           const editorKey = buildAisleEditorKey(noteBodyId, aisle.id)
-          const editorMounted = mountedAisleIds.has(aisle.id)
-          const editorMountPending = suppressActiveAislePreviewFallback && !editorMounted && aisle.id === activeAisleId
+          const editorMountFailed = failedEditorMountAisleIds?.has(aisle.id) ?? false
+          const editorMounted = mountedAisleIds.has(aisle.id) && !editorMountFailed
+          const editorMountPending =
+            suppressActiveAislePreviewFallback && !editorMounted && !editorMountFailed && aisle.id === activeAisleId
           const previewMarkdown = editorMounted || editorMountPending ? '' : getPreviewMarkdownForAisle(aisle)
           const previewProfile =
             previewMarkdown.length > 0
@@ -735,13 +739,16 @@ export function NoteWorkspace({
                     className={`toast-editor-host aisle-editor-preview-fallback ${RENDERED_MARKDOWN_SURFACE_CLASS} ${
                       editorMountPending ? 'is-editor-mount-pending' : ''
                     } ${
+                      editorMountFailed ? 'is-editor-mount-failed' : ''
+                    } ${
                       previewHydrationPending ? 'is-preview-hydration-pending' : ''
                     } ${
                       previewRenderMode === 'lightweight-preview' ? 'is-lightweight-preview' : ''
                     }`}
                     data-aisle-host-mode="preview"
                     data-aisle-preview-mode={previewRenderMode}
-                    aria-hidden="true"
+                    data-aisle-editor-mount-failed={editorMountFailed ? 'true' : undefined}
+                    aria-hidden={editorMountFailed ? undefined : 'true'}
                   >
                     {lightweightPreviewText.trim().length > 0 ? (
                       <pre className="aisle-editor-lightweight-preview">{lightweightPreviewText}</pre>

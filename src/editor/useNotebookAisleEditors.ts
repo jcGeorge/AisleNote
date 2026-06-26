@@ -35,6 +35,7 @@ import {
   restoreEditorDisplay,
   setEditorMarkdownForDisplay,
 } from './editor-markdown-display'
+import { AISLENOTE_TOAST_HTML_RENDERER } from './toast-inline-html-renderer'
 import { importBlobAsAssetUrl, importImageBlobAsAssetUrl } from '../markdown/image-asset-registry'
 import { installImageDisplayMetadataSync } from './image-dom-metadata'
 import { withDefaultInsertedImageDisplayWidth } from './image-insertion'
@@ -145,6 +146,12 @@ type NotebookEditorLocalStateEcho = {
   externalStateLoadVersion: number
 }
 
+type NotebookAisleEditorMountFailure = {
+  aisleId: string
+  aisleBodyId: string
+  markdown: string
+}
+
 export type NotebookAisleEditorActivationOptions = {
   focus?: boolean
   flushPrevious?: boolean
@@ -247,6 +254,14 @@ function buildMountedAisleIds({
   })
   if (mounted.size === 0 && aisleIds[0]) mounted.add(aisleIds[0])
   return mounted
+}
+
+function areStringSetsEqual(left: Set<string>, right: Set<string>): boolean {
+  if (left.size !== right.size) return false
+  for (const value of left) {
+    if (!right.has(value)) return false
+  }
+  return true
 }
 
 function runSelectionBlockIndent(editor: Editor, remove: boolean, runtime: EditorOperationRuntime): boolean {
@@ -396,6 +411,7 @@ export function useNotebookAisleEditors({
   const renderedMarkdownByAisleBodyRef = useRef<Map<string, string>>(new Map())
   const revisionByAisleBodyRef = useRef<Map<string, number>>(new Map())
   const localStateEchoByAisleBodyRef = useRef<Map<string, NotebookEditorLocalStateEcho>>(new Map())
+  const failedEditorMountsRef = useRef<Map<string, NotebookAisleEditorMountFailure>>(new Map())
   const pendingAppStateCommitRevisionsByAisleBodyRef = useRef<Map<string, number>>(new Map())
   const pendingAppStateCommitTimerRef = useRef<number | null>(null)
   const pendingAppStateCommitMaxWaitTimerRef = useRef<number | null>(null)
@@ -408,6 +424,7 @@ export function useNotebookAisleEditors({
   const [nearVisibleAisleIds, setNearVisibleAisleIds] = useState<Set<string>>(() => new Set())
   const [backgroundMountedAisleIds, setBackgroundMountedAisleIds] = useState<Set<string>>(() => new Set())
   const [recentRetainedAisleIds, setRecentRetainedAisleIds] = useState<string[]>([])
+  const [failedEditorMountAisleIds, setFailedEditorMountAisleIds] = useState<Set<string>>(() => new Set())
   const activeAisleIdRef = useRef(activeAisleId)
   const noteBodyIdRef = useRef(noteBodyId)
   const aislesRef = useRef(aisles)
@@ -467,6 +484,44 @@ export function useNotebookAisleEditors({
     const editorKey = buildAisleEditorKey(noteBodyIdRef.current, aisleId)
     return editorMetaRef.current.get(editorKey) ?? null
   }, [])
+
+  const syncFailedEditorMountAisleIds = useCallback(() => {
+    const nextAisleIds = new Set(Array.from(failedEditorMountsRef.current.values()).map((failure) => failure.aisleId))
+    setFailedEditorMountAisleIds((current) => (areStringSetsEqual(current, nextAisleIds) ? current : nextAisleIds))
+  }, [])
+
+  const hasMatchingEditorMountFailure = useCallback(
+    (editorKey: string, aisle: ResolvedNoteAisle) => {
+      const failure = failedEditorMountsRef.current.get(editorKey)
+      return Boolean(
+        failure &&
+          failure.aisleId === aisle.id &&
+          failure.aisleBodyId === aisle.aisleBodyId &&
+          failure.markdown === aisle.markdown,
+      )
+    },
+    [],
+  )
+
+  const recordEditorMountFailure = useCallback(
+    (editorKey: string, aisle: ResolvedNoteAisle) => {
+      failedEditorMountsRef.current.set(editorKey, {
+        aisleId: aisle.id,
+        aisleBodyId: aisle.aisleBodyId,
+        markdown: aisle.markdown,
+      })
+      syncFailedEditorMountAisleIds()
+    },
+    [syncFailedEditorMountAisleIds],
+  )
+
+  const clearEditorMountFailure = useCallback(
+    (editorKey: string) => {
+      if (!failedEditorMountsRef.current.delete(editorKey)) return
+      syncFailedEditorMountAisleIds()
+    },
+    [syncFailedEditorMountAisleIds],
+  )
 
   const getMarkdownForAisle = useCallback((aisleId: string) => {
     const aisle = getAisleById(aisleId)
@@ -1075,6 +1130,19 @@ export function useNotebookAisleEditors({
   }, [aisleIdsKey, viewMode])
 
   useEffect(() => {
+    const aislesByEditorKey = new Map(aisles.map((aisle) => [buildAisleEditorKey(noteBodyId, aisle.id), aisle]))
+    let changed = false
+    failedEditorMountsRef.current.forEach((failure, editorKey) => {
+      const aisle = aislesByEditorKey.get(editorKey)
+      if (!aisle || failure.aisleBodyId !== aisle.aisleBodyId || failure.markdown !== aisle.markdown) {
+        failedEditorMountsRef.current.delete(editorKey)
+        changed = true
+      }
+    })
+    if (changed) syncFailedEditorMountAisleIds()
+  }, [aisles, noteBodyId, syncFailedEditorMountAisleIds])
+
+  useEffect(() => {
     const expectedKeys = new Set(aisles.map((aisle) => buildAisleEditorKey(noteBodyId, aisle.id)))
     Array.from(editorMetaRef.current.keys()).forEach((editorKey) => {
       const meta = editorMetaRef.current.get(editorKey)
@@ -1090,8 +1158,10 @@ export function useNotebookAisleEditors({
     aisles.forEach((aisle) => {
       if (!mountedAisleIds.has(aisle.id)) return
       const editorKey = buildAisleEditorKey(noteBodyId, aisle.id)
+      if (hasMatchingEditorMountFailure(editorKey, aisle)) return
       const root = editorRootsRef.current.get(editorKey)
       if (!root) return
+      if (!root.isConnected) return
 
       const existing = editorMetaRef.current.get(editorKey)
       if (existing && existing.root === root && existing.aisleBodyId === aisle.aisleBodyId) {
@@ -1304,6 +1374,7 @@ export function useNotebookAisleEditors({
           initialEditType: 'wysiwyg',
           previewStyle: 'tab',
           hideModeSwitch: true,
+          customHTMLRenderer: AISLENOTE_TOAST_HTML_RENDERER,
           customHTMLSanitizer: sanitizeEditorHtml,
           toolbarItems: EDITOR_TOOLBAR_ITEMS,
           height: '100%',
@@ -1345,6 +1416,7 @@ export function useNotebookAisleEditors({
         } as any)
 
         const mountedEditor = editor
+        clearEditorMountFailure(editorKey)
         cleanupFns.push(installEditorSpellcheck(root))
         cleanupFns.push(installToolbarAppTooltips(root))
         cleanupFns.push(installImageDisplayMetadataSync(root))
@@ -1391,6 +1463,7 @@ export function useNotebookAisleEditors({
         } catch {
           // Toast UI can throw during partial mount cleanup.
         }
+        recordEditorMountFailure(editorKey, aisle)
         recordDiagnosticEvent('aisle-editor', 'notebook-mount-error', {
           level: 'error',
           message: error instanceof Error ? error.message : 'Toast UI editor mount failed.',
@@ -1409,8 +1482,10 @@ export function useNotebookAisleEditors({
     aisles,
     commitActiveEditorMarkdownNow,
     commitEditorMarkdown,
+    clearEditorMountFailure,
     destroyEditor,
     getMarkdownForAisle,
+    hasMatchingEditorMountFailure,
     mountedAisleIds,
     nextEditorMarkdownRevision,
     noteBodyId,
@@ -1418,6 +1493,7 @@ export function useNotebookAisleEditors({
     onExpandHeadingCollapse,
     onToggleHeadingCollapse,
     replaceMountedEditorMarkdown,
+    recordEditorMountFailure,
     restoreEditorDisplayWhenReady,
     runGuardedEditorHistory,
     setActiveEditor,
@@ -2105,6 +2181,7 @@ export function useNotebookAisleEditors({
   return {
     activeEditorAisleIdRef,
     mountedAisleIds,
+    failedEditorMountAisleIds,
     registerAislePaneRoot,
     registerAisleEditorRoot,
     activateAisleEditor,

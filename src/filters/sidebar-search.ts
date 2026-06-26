@@ -1,3 +1,4 @@
+import { coerceFrontmatterString } from '../frontmatter/frontmatter'
 import { buildVisibleMarkdownIndex } from '../notes/find-replace'
 import { getAisleBodyId, getAisleMarkdown } from '../notes/note-markdown'
 import { buildNoteLocationKey, type NoteSearchEntry } from '../notes/note-locations'
@@ -14,7 +15,9 @@ import { getNotebookIndexContext, type NotebookIndexContext } from './notebook-i
 export type SidebarSearchFilterKind = Exclude<NoteFilterKind, 'media'>
 export type SidebarSearchPrefix = 'tag' | 'fm' | 'prop' | 'synced' | 'duplicate'
 
-export type SidebarSearchIndexes = Record<SidebarSearchFilterKind, NoteFilterIndex>
+export type SidebarSearchIndexes = Record<SidebarSearchFilterKind, NoteFilterIndex> & {
+  frontmatterValues: NoteFilterOption[]
+}
 
 export type SidebarSearchToken = {
   kind: SidebarSearchFilterKind
@@ -27,8 +30,14 @@ export type SidebarSearchToken = {
 export type ParsedSidebarSearchInput = {
   text: string
   tokens: SidebarSearchToken[]
+  frontmatterTerms: SidebarSearchFrontmatterTerm[]
   activePrefix: SidebarSearchPrefix | null
   activeValue: string
+}
+
+export type SidebarSearchFrontmatterTerm = {
+  value: string
+  quoted: boolean
 }
 
 export type SidebarSearchSuggestion = SidebarSearchToken & {
@@ -68,9 +77,18 @@ type SidebarSearchCandidate = {
   aisleCount: number
 }
 
-const SEARCH_PREFIX_PATTERN = /(^|\s)(tag|fm|prop|synced|duplicate):(?:"([^"]*)"|([^\s"]+))/gi
-const ACTIVE_PREFIX_PATTERN = /(?:^|\s)(tag|fm|prop|synced|duplicate):(?:"([^"]*)|([^\s"]*))$/i
+type SidebarSearchSegment = {
+  prefix: SidebarSearchPrefix
+  value: string
+  start: number
+  end: number
+  complete: boolean
+  quoted: boolean
+}
+
+const SEARCH_PREFIX_PATTERN = /^(tag|fm|prop|synced|duplicate):/i
 const RESULT_LIMIT = 120
+const FRONTMATTER_VALUE_SUGGESTION_PREFIX = 'fm-value:'
 
 function normalizeSearchValue(value: string): string {
   return value.trim().replace(/^#/, '').toLocaleLowerCase()
@@ -78,6 +96,18 @@ function normalizeSearchValue(value: string): string {
 
 function normalizeText(value: string): string {
   return value.trim().toLocaleLowerCase()
+}
+
+function normalizeSearchDocument(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase()
+}
+
+function isWhitespace(value: string): boolean {
+  return /\s/.test(value)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 function uniqueTokens(tokens: SidebarSearchToken[]): SidebarSearchToken[] {
@@ -100,16 +130,27 @@ function getPrefixKind(prefix: SidebarSearchPrefix): SidebarSearchFilterKind {
 
 function getOptionPrefix(option: NoteFilterOption, requestedPrefix?: SidebarSearchPrefix): SidebarSearchPrefix {
   if (requestedPrefix === 'duplicate') return 'duplicate'
+  if (requestedPrefix === 'fm' && (
+    option.type === 'frontmatter-template' ||
+    option.type === 'frontmatter-property' ||
+    option.type === 'frontmatter-value'
+  )) return 'fm'
+  if (requestedPrefix === 'prop' && option.type === 'frontmatter-property') return 'prop'
   if (option.type === 'tag') return 'tag'
   if (option.type === 'frontmatter-template') return 'fm'
-  if (option.type === 'frontmatter-property') return 'prop'
+  if (option.type === 'frontmatter-property' || option.type === 'frontmatter-value') return 'fm'
   return 'synced'
 }
 
 function getOptionsForPrefix(indexes: SidebarSearchIndexes, prefix: SidebarSearchPrefix): NoteFilterOption[] {
   if (prefix === 'tag') return indexes.tags.availableOptions
   if (prefix === 'fm') {
-    return indexes.frontmatter.availableOptions.filter((option) => option.type === 'frontmatter-template')
+    return [
+      ...indexes.frontmatter.availableOptions.filter((option) =>
+        option.type === 'frontmatter-template' || option.type === 'frontmatter-property',
+      ),
+      ...indexes.frontmatterValues,
+    ]
   }
   if (prefix === 'prop') {
     return indexes.frontmatter.availableOptions.filter((option) => option.type === 'frontmatter-property')
@@ -150,12 +191,84 @@ function resolveToken(prefix: SidebarSearchPrefix, value: string, indexes: Sideb
   return option ? createTokenFromOption(option, prefix) : null
 }
 
+function readSidebarSearchSegments(query: string): SidebarSearchSegment[] {
+  const segments: SidebarSearchSegment[] = []
+  let index = 0
+
+  while (index < query.length) {
+    if (index > 0 && !isWhitespace(query[index - 1] ?? '')) {
+      index += 1
+      continue
+    }
+
+    const prefixMatch = query.slice(index).match(SEARCH_PREFIX_PATTERN)
+    if (!prefixMatch) {
+      index += 1
+      continue
+    }
+
+    const prefix = (prefixMatch[1] ?? '').toLocaleLowerCase() as SidebarSearchPrefix
+    const valueStart = index + prefixMatch[0].length
+    const quote = query[valueStart]
+    if (quote === '"' || quote === "'") {
+      let cursor = valueStart + 1
+      let value = ''
+      let complete = false
+      while (cursor < query.length) {
+        const character = query[cursor] ?? ''
+        if (character === '\\' && cursor + 1 < query.length) {
+          value += query[cursor + 1] ?? ''
+          cursor += 2
+          continue
+        }
+        if (character === quote) {
+          complete = true
+          cursor += 1
+          break
+        }
+        value += character
+        cursor += 1
+      }
+      segments.push({
+        prefix,
+        value,
+        start: index,
+        end: cursor,
+        complete: complete && value.trim().length > 0,
+        quoted: true,
+      })
+      index = cursor
+      continue
+    }
+
+    let cursor = valueStart
+    while (cursor < query.length && !isWhitespace(query[cursor] ?? '')) cursor += 1
+    const value = query.slice(valueStart, cursor)
+    segments.push({
+      prefix,
+      value,
+      start: index,
+      end: cursor,
+      complete: value.trim().length > 0,
+      quoted: false,
+    })
+    index = cursor
+  }
+
+  return segments
+}
+
+function getActiveSegment(query: string): SidebarSearchSegment | null {
+  if (!query || isWhitespace(query[query.length - 1] ?? '')) return null
+  return readSidebarSearchSegments(query).findLast((segment) => segment.end === query.length) ?? null
+}
+
 function getActivePrefix(query: string): Pick<ParsedSidebarSearchInput, 'activePrefix' | 'activeValue'> {
-  const match = query.match(ACTIVE_PREFIX_PATTERN)
-  if (!match) return { activePrefix: null, activeValue: '' }
+  const activeSegment = getActiveSegment(query)
+  if (!activeSegment) return { activePrefix: null, activeValue: '' }
   return {
-    activePrefix: match[1].toLocaleLowerCase() as SidebarSearchPrefix,
-    activeValue: match[2] ?? match[3] ?? '',
+    activePrefix: activeSegment.prefix,
+    activeValue: activeSegment.value,
   }
 }
 
@@ -175,7 +288,34 @@ export function formatSidebarSearchTokenText(token: SidebarSearchToken): string 
 }
 
 export function clearActiveSidebarSearchPrefix(query: string): string {
-  return query.replace(ACTIVE_PREFIX_PATTERN, '').trim().replace(/\s+/g, ' ')
+  const activeSegment = getActiveSegment(query)
+  if (!activeSegment) return query.trim().replace(/\s+/g, ' ')
+  return `${query.slice(0, activeSegment.start)}${query.slice(activeSegment.end)}`.trim().replace(/\s+/g, ' ')
+}
+
+export function completeSidebarSearchTokenQuery(query: string, tokenText: string): string {
+  const normalizedTokenText = tokenText.trim()
+  if (!normalizedTokenText) return query
+  const activeSegment = getActiveSegment(query)
+  const nextQuery = activeSegment
+    ? `${query.slice(0, activeSegment.start)}${normalizedTokenText}${query.slice(activeSegment.end)}`
+    : `${query.trim()} ${normalizedTokenText}`
+  return `${nextQuery.trim().replace(/\s+/g, ' ')} `
+}
+
+export function appendSidebarSearchTokenQuery(query: string, tokenText: string): string {
+  const normalizedTokenText = tokenText.trim()
+  if (!normalizedTokenText) return query
+  return `${`${query.trim()} ${normalizedTokenText}`.trim().replace(/\s+/g, ' ')} `
+}
+
+export function getSidebarSearchTokenForKey(
+  indexes: SidebarSearchIndexes,
+  kind: SidebarSearchFilterKind,
+  key: string,
+): SidebarSearchToken | null {
+  const option = indexes[kind].availableOptions.find((candidate) => candidate.key === key)
+  return option ? createTokenFromOption(option) : null
 }
 
 export function getEmptySidebarSearchIndexes(): SidebarSearchIndexes {
@@ -183,7 +323,56 @@ export function getEmptySidebarSearchIndexes(): SidebarSearchIndexes {
     tags: getEmptyNoteFilterIndex('tags'),
     synced: getEmptyNoteFilterIndex('synced'),
     frontmatter: getEmptyNoteFilterIndex('frontmatter'),
+    frontmatterValues: [],
   }
+}
+
+function getFrontmatterValueSuggestionLabel(value: unknown): string {
+  if (value == null || isRecord(value)) return ''
+  const label = coerceFrontmatterString(value).replace(/\s+/g, ' ').trim()
+  if (!label || label.length > 48) return ''
+  return label
+}
+
+function getFrontmatterValueSuggestionLabels(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => getFrontmatterValueSuggestionLabels(item))
+  }
+  const label = getFrontmatterValueSuggestionLabel(value)
+  return label ? [label] : []
+}
+
+function buildFrontmatterValueOptions(context: NotebookIndexContext): NoteFilterOption[] {
+  const optionsByKey = new Map<string, NoteFilterOption>()
+
+  context.locations.forEach((location) => {
+    const body = context.noteBodiesById.get(location.noteBodyId)
+    body?.aisles.forEach((aisle) => {
+      const aisleBody = context.aisleBodiesById.get(getAisleBodyId(aisle))
+      if (aisleBody?.frontmatterStatus !== 'valid' || !isRecord(aisleBody.frontmatter)) return
+
+      const aisleValues = new Set<string>()
+      Object.values(aisleBody.frontmatter).forEach((value) => {
+        getFrontmatterValueSuggestionLabels(value).forEach((label) => aisleValues.add(label))
+      })
+
+      aisleValues.forEach((label) => {
+        const normalized = normalizeSearchDocument(label)
+        const key = `${FRONTMATTER_VALUE_SUGGESTION_PREFIX}${normalized}`
+        const current = optionsByKey.get(key)
+        optionsByKey.set(key, {
+          key,
+          label,
+          count: (current?.count ?? 0) + 1,
+          type: 'frontmatter-value',
+        })
+      })
+    })
+  })
+
+  return Array.from(optionsByKey.values()).sort((left, right) =>
+    right.count - left.count || left.label.localeCompare(right.label, undefined, { sensitivity: 'base', numeric: true }),
+  )
 }
 
 export function buildSidebarSearchIndexes(
@@ -195,28 +384,39 @@ export function buildSidebarSearchIndexes(
     tags: buildNoteFilterIndex(state, 'tags', [], indexContext),
     synced: buildNoteFilterIndex(state, 'synced', [], indexContext),
     frontmatter: buildNoteFilterIndex(state, 'frontmatter', [], indexContext),
+    frontmatterValues: buildFrontmatterValueOptions(indexContext),
   }
 }
 
 export function parseSidebarSearchInput(query: string, indexes: SidebarSearchIndexes): ParsedSidebarSearchInput {
   let cleaned = query
   const tokens: SidebarSearchToken[] = []
+  const frontmatterTerms: SidebarSearchFrontmatterTerm[] = []
+  const activeSegment = getActiveSegment(query)
 
-  for (const match of query.matchAll(SEARCH_PREFIX_PATTERN)) {
-    const prefix = match[2].toLocaleLowerCase() as SidebarSearchPrefix
-    const value = match[3] ?? match[4] ?? ''
-    const token = resolveToken(prefix, value, indexes)
-    if (!token) continue
-    tokens.push(token)
-    const matchIndex = match.index ?? 0
-    const start = matchIndex + match[1].length
-    const end = matchIndex + match[0].length
-    cleaned = replaceRangeWithSpaces(cleaned, start, end)
+  for (const segment of readSidebarSearchSegments(query)) {
+    const value = segment.value.trim()
+    const isActiveSegment = activeSegment?.start === segment.start && activeSegment.end === segment.end
+    if (segment.prefix === 'fm') {
+      if (value) frontmatterTerms.push({ value, quoted: segment.quoted })
+      cleaned = replaceRangeWithSpaces(cleaned, segment.start, segment.end)
+      continue
+    }
+
+    const token = segment.complete ? resolveToken(segment.prefix, value, indexes) : null
+    if (token) {
+      tokens.push(token)
+      cleaned = replaceRangeWithSpaces(cleaned, segment.start, segment.end)
+      continue
+    }
+
+    if (isActiveSegment) cleaned = replaceRangeWithSpaces(cleaned, segment.start, segment.end)
   }
 
   return {
     text: cleaned.trim().replace(/\s+/g, ' '),
     tokens: uniqueTokens(tokens),
+    frontmatterTerms,
     ...getActivePrefix(query),
   }
 }
@@ -311,6 +511,43 @@ function queryTextMatches(haystack: string, query: string): boolean {
   return normalizedQuery.split(/\s+/).filter(Boolean).every((token) => normalizedHaystack.includes(token))
 }
 
+function getFrontmatterSearchDocument(candidate: SidebarSearchCandidate, context: NotebookIndexContext): string {
+  const aisleBody = context.aisleBodiesById.get(candidate.aisleBodyId)
+  if (aisleBody?.frontmatterStatus !== 'valid' || !isRecord(aisleBody.frontmatter)) return ''
+
+  const parts: string[] = []
+  const templateId = aisleBody.frontmatterMeta?.templateId ?? ''
+  const template = templateId ? context.templatesById.get(templateId) ?? null : null
+  if (template?.name) parts.push(template.name)
+
+  Object.entries(aisleBody.frontmatter).forEach(([key, value]) => {
+    if (key.trim()) parts.push(key)
+    const coercedValue = coerceFrontmatterString(value).replace(/\s+/g, ' ').trim()
+    if (coercedValue) parts.push(coercedValue)
+  })
+
+  return normalizeSearchDocument(parts.join(' '))
+}
+
+function frontmatterTermMatches(document: string, term: SidebarSearchFrontmatterTerm): boolean {
+  const normalizedTerm = normalizeSearchDocument(term.value)
+  if (!normalizedTerm) return true
+  return document.includes(normalizedTerm)
+}
+
+function candidateMatchesFrontmatterTerms(
+  candidate: SidebarSearchCandidate,
+  terms: SidebarSearchFrontmatterTerm[],
+  context: NotebookIndexContext,
+  documentCache: Map<string, string>,
+): boolean {
+  if (terms.length <= 0) return true
+  const document = documentCache.get(candidate.aisleBodyId) ?? getFrontmatterSearchDocument(candidate, context)
+  if (!documentCache.has(candidate.aisleBodyId)) documentCache.set(candidate.aisleBodyId, document)
+  if (!document) return false
+  return terms.every((term) => frontmatterTermMatches(document, term))
+}
+
 function getSnippet(visibleText: string, noteText: string, query: string): string {
   const compactVisibleText = visibleText.replace(/\s+/g, ' ').trim()
   const normalizedQuery = normalizeText(query)
@@ -349,9 +586,11 @@ export function buildSidebarSearchResultGroups({
   const parsed = parseSidebarSearchInput(query, effectiveIndexes)
   const selectedTokens = mergeSidebarSearchTokens(getSidebarSearchSelectedTokens(filter, effectiveIndexes), parsed.tokens)
   const textQuery = parsed.text
-  if (selectedTokens.length <= 0 && !textQuery) return []
+  const frontmatterTerms = parsed.frontmatterTerms
+  if (selectedTokens.length <= 0 && frontmatterTerms.length <= 0 && !textQuery) return []
 
   const tokenLookup = buildCandidateTokenLookup(selectedTokens, effectiveIndexes)
+  const frontmatterDocumentCache = new Map<string, string>()
   const groups: SidebarSearchResultGroup[] = []
   const groupsByNoteId = new Map<string, SidebarSearchResultGroup>()
   let count = 0
@@ -373,6 +612,7 @@ export function buildSidebarSearchResultGroups({
         aisleCount: body.aisles.length,
       }
       if (!candidateMatchesFilterLookup(candidate, selectedTokens, tokenLookup)) continue
+      if (!candidateMatchesFrontmatterTerms(candidate, frontmatterTerms, indexContext, frontmatterDocumentCache)) continue
 
       const markdown = getAisleMarkdown(aisle, indexContext.aisleBodiesById)
       const visibleText = buildVisibleMarkdownIndex(markdown).text

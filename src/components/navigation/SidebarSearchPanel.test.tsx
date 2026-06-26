@@ -3,18 +3,11 @@ import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { SidebarSearchPanel } from './SidebarSearchPanel'
-import type { SidebarSearchResultGroup, SidebarSearchSuggestion, SidebarSearchToken } from '../../filters/sidebar-search'
+import type { SidebarSearchOption } from './SidebarSearchPanel'
+import type { SidebarSearchResultGroup, SidebarSearchSuggestion } from '../../filters/sidebar-search'
 
 const noop = () => undefined
 const source = readFileSync(new URL('./SidebarSearchPanel.tsx', import.meta.url), 'utf8')
-
-const tagToken: SidebarSearchToken = {
-  kind: 'tags',
-  key: 'calvin',
-  label: 'Calvin',
-  optionType: 'tag',
-  prefix: 'tag',
-}
 
 const suggestion: SidebarSearchSuggestion = {
   kind: 'frontmatter',
@@ -25,6 +18,11 @@ const suggestion: SidebarSearchSuggestion = {
   count: 3,
   tokenText: 'fm:Sermon',
 }
+
+const searchOptions: SidebarSearchOption[] = [
+  { tokenText: 'tag:name', description: 'search tags', insertText: 'tag:' },
+  { tokenText: 'fm:key', description: 'search frontmatter keys, templates, and values', insertText: 'fm:' },
+]
 
 const resultGroups: SidebarSearchResultGroup[] = [
   {
@@ -97,27 +95,29 @@ const textResultGroups: SidebarSearchResultGroup[] = [
 ]
 
 describe('SidebarSearchPanel', () => {
-  it('renders chips, suggestions, and grouped aisle-level results', () => {
+  it('renders query-token searches without selected-filter chips', () => {
     const html = renderToStaticMarkup(
       <SidebarSearchPanel
         query="fm:Ser"
         active
-        selectedTokens={[tagToken]}
+        metadataSearchActive
         suggestions={[suggestion]}
+        searchOptions={searchOptions}
+        searchHistory={['tag:#Calvin']}
         resultGroups={resultGroups}
         onQueryChange={noop}
         onSelectSuggestion={noop}
-        onRemoveToken={noop}
+        onSelectSearchOption={noop}
+        onSelectHistory={noop}
+        onClearHistory={noop}
         onClear={noop}
         onOpenResult={noop}
       />,
     )
 
     expect(html).toContain('data-app-icon="search"')
-    expect(html).toContain('tag')
-    expect(html).toContain('#Calvin')
-    expect(html).toContain('fm:Sermon')
-    expect(html).toContain('3 matches')
+    expect(html).not.toContain('notebook-sidebar-search-chip')
+    expect(html).not.toContain('#Calvin')
     expect(html).toContain('1 result')
     expect(html).toContain('Calvin sermon')
     expect(html).toContain('Theology')
@@ -131,12 +131,16 @@ describe('SidebarSearchPanel', () => {
       <SidebarSearchPanel
         query="cool"
         active
-        selectedTokens={[]}
+        metadataSearchActive={false}
         suggestions={[]}
+        searchOptions={searchOptions}
+        searchHistory={[]}
         resultGroups={textResultGroups}
         onQueryChange={noop}
         onSelectSuggestion={noop}
-        onRemoveToken={noop}
+        onSelectSearchOption={noop}
+        onSelectHistory={noop}
+        onClearHistory={noop}
         onClear={noop}
         onOpenResult={noop}
       />,
@@ -156,12 +160,16 @@ describe('SidebarSearchPanel', () => {
       <SidebarSearchPanel
         query="missing"
         active
-        selectedTokens={[]}
+        metadataSearchActive={false}
         suggestions={[]}
+        searchOptions={searchOptions}
+        searchHistory={[]}
         resultGroups={[]}
         onQueryChange={noop}
         onSelectSuggestion={noop}
-        onRemoveToken={noop}
+        onSelectSearchOption={noop}
+        onSelectHistory={noop}
+        onClearHistory={noop}
         onClear={noop}
         onOpenResult={noop}
       />,
@@ -180,5 +188,28 @@ describe('SidebarSearchPanel', () => {
   it('lets the clear button close search mode without changing text-edit behavior', () => {
     expect(source).toContain('onClearButtonClick?: () => void')
     expect(source).toContain('onClick={onClearButtonClick ?? onClear}')
+  })
+
+  it('shows focus-driven suggestions or search options with history', () => {
+    expect(source).toContain('const showSearchMenu = focused && query.trim().length <= 0')
+    expect(source).toContain('const showSuggestions = focused && suggestions.length > 0')
+    expect(source).toContain('onFocus={() => setFocused(true)}')
+    expect(source).toContain('notebook-sidebar-search-menu-heading')
+    expect(source).toContain('Search options')
+    expect(source).toContain('notebook-sidebar-search-history-row')
+    expect(source).toContain('onClick={onClearHistory}')
+    expect(source).toContain('onClick={() => onSelectSuggestion(suggestion)}')
+  })
+
+  it('opens search results as retained tabs on unmodified double-click or middle-click', () => {
+    expect(source).toContain('onClick={() => onOpenResult(result)}')
+    expect(source).toContain('onDoubleClick={(event) => {')
+    expect(source).toContain('event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey')
+    expect(source).toContain("onOpenResult(result, 'retained')")
+    expect(source).toContain('onMouseDown={(event) => {')
+    expect(source).toContain('if (event.button !== 1) return')
+    expect(source).toContain('onAuxClick={(event) => {')
+    expect(source).toContain('event.preventDefault()')
+    expect(source).toContain('event.stopPropagation()')
   })
 })
