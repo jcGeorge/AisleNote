@@ -24,6 +24,14 @@ import { terminalBlockLandingPlugin } from './terminal-block-landing'
 import { createMediaLinkPlugin } from './media-link-plugin'
 import { createNotePreviewPlugin } from './note-preview-plugin'
 import {
+  FIND_REPLACE_ACTIVE_MATCH_META,
+  findReplaceActiveMatchPlugin,
+  resolveFindReplaceEditorRange,
+  type FindReplaceActiveMatchInput,
+  type FindReplaceActiveMatchRange,
+  type FindReplaceMatchPositionInput,
+} from './find-replace-active-match'
+import {
   insertMarkdownNoteReferenceTokenIntoView,
   type MarkdownNoteReferenceInsertionRange,
 } from './note-reference-insertion'
@@ -158,6 +166,11 @@ export type NotebookAisleEditorActivationOptions = {
   focusAtClientPoint?: { clientX: number; clientY: number; mode: 'coordinate' | 'focus-only' }
   allowDuringPendingRename?: boolean
   source?: AisleActivationSource
+}
+
+export type NotebookFindReplaceActiveMatchHighlight = FindReplaceActiveMatchInput & {
+  noteBodyId: string
+  aisleId: string
 }
 
 type UseNotebookAisleEditorsOptions = {
@@ -303,6 +316,20 @@ function scrollToRange(editor: Editor, from: number, to: number): boolean {
   }
 }
 
+function scrollToFindReplaceRange(editor: Editor, match: FindReplaceMatchPositionInput): boolean {
+  const view = getWysiwygView(editor)
+  if (!view?.state?.doc || typeof view.dispatch !== 'function') return false
+  try {
+    const range = resolveFindReplaceEditorRange(view.state.doc, match)
+    if (!range) return false
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, range.from, range.to)).scrollIntoView())
+    editor.focus()
+    return true
+  } catch {
+    return false
+  }
+}
+
 function getShortcutMenuAnchor(editor: Editor, root: HTMLElement): { top: number; left: number } {
   const view = getWysiwygView(editor)
   const position = view?.state?.selection?.to
@@ -412,6 +439,8 @@ export function useNotebookAisleEditors({
   const revisionByAisleBodyRef = useRef<Map<string, number>>(new Map())
   const localStateEchoByAisleBodyRef = useRef<Map<string, NotebookEditorLocalStateEcho>>(new Map())
   const failedEditorMountsRef = useRef<Map<string, NotebookAisleEditorMountFailure>>(new Map())
+  const findReplaceActiveMatchRef = useRef<NotebookFindReplaceActiveMatchHighlight | null>(null)
+  const findReplaceHighlightKeysRef = useRef<Map<string, string>>(new Map())
   const pendingAppStateCommitRevisionsByAisleBodyRef = useRef<Map<string, number>>(new Map())
   const pendingAppStateCommitTimerRef = useRef<number | null>(null)
   const pendingAppStateCommitMaxWaitTimerRef = useRef<number | null>(null)
@@ -602,6 +631,43 @@ export function useNotebookAisleEditors({
     },
     [editorRef, getEditorMetaForAisle, scheduleToolbarFormatStateSync, setActiveAisleId],
   )
+
+  const applyFindReplaceActiveMatchToMeta = useCallback((meta: NotebookAisleEditorMeta) => {
+    const view = getWysiwygView(meta.editor)
+    if (!view?.state?.doc || typeof view.dispatch !== 'function') return false
+
+    const activeMatch = findReplaceActiveMatchRef.current
+    const resolvedRange =
+      activeMatch &&
+      activeMatch.noteBodyId === meta.noteBodyId &&
+      activeMatch.aisleId === meta.aisleId
+        ? resolveFindReplaceEditorRange(view.state.doc, activeMatch)
+        : null
+    const range: FindReplaceActiveMatchRange | null = resolvedRange
+      ? { ...resolvedRange, requestId: activeMatch?.requestId ?? 0 }
+      : null
+    const normalizedRange = range && range.to > range.from ? range : null
+    const editorKey = buildAisleEditorKey(meta.noteBodyId, meta.aisleId)
+    const nextKey = normalizedRange
+      ? `${normalizedRange.from}:${normalizedRange.to}:${normalizedRange.requestId}`
+      : ''
+    if (findReplaceHighlightKeysRef.current.get(editorKey) === nextKey) return Boolean(normalizedRange)
+
+    findReplaceHighlightKeysRef.current.set(editorKey, nextKey)
+    view.dispatch(
+      view.state.tr
+        .setMeta(FIND_REPLACE_ACTIVE_MATCH_META, normalizedRange)
+        .setMeta('addToHistory', false),
+    )
+    return Boolean(normalizedRange)
+  }, [])
+
+  const setActiveFindReplaceMatchHighlight = useCallback((match: NotebookFindReplaceActiveMatchHighlight | null) => {
+    findReplaceActiveMatchRef.current = match
+    editorMetaRef.current.forEach((meta) => {
+      applyFindReplaceActiveMatchToMeta(meta)
+    })
+  }, [applyFindReplaceActiveMatchToMeta])
 
   const replaceMountedEditorMarkdown = useCallback(
     (
@@ -1061,6 +1127,7 @@ export function useNotebookAisleEditors({
       activeEditorAisleIdRef.current = ''
     }
     editorMetaRef.current.delete(editorKey)
+    findReplaceHighlightKeysRef.current.delete(editorKey)
     recordNotebookEditorTiming('notebook-editor-destroy', getNotebookEditorPerfNow() - startedAt, {
       noteId,
       noteBodyId: meta.noteBodyId,
@@ -1200,6 +1267,7 @@ export function useNotebookAisleEditors({
         blockIndentPlugin,
         annotationLinePlugin,
         tagAppearancePlugin,
+        findReplaceActiveMatchPlugin,
         highlightPlugin,
         codeBlockBacktickShortcutPlugin,
         terminalBlockLandingPlugin,
@@ -1441,6 +1509,7 @@ export function useNotebookAisleEditors({
         renderedMarkdownByAisleBodyRef.current.set(aisle.aisleBodyId, aisle.markdown)
         applyMarkdownHighlightDelimitersToEditorDisplay(mountedEditor)
         restoreEditorDisplayWhenReady(editorKey, meta, aisle.markdown)
+        applyFindReplaceActiveMatchToMeta(meta)
         if (aisle.id === resolvedActiveAisleId) {
           editorRef.current = mountedEditor
           activeEditorAisleIdRef.current = aisle.id
@@ -1492,6 +1561,7 @@ export function useNotebookAisleEditors({
     onNotebookStructurePaste,
     onExpandHeadingCollapse,
     onToggleHeadingCollapse,
+    applyFindReplaceActiveMatchToMeta,
     replaceMountedEditorMarkdown,
     recordEditorMountFailure,
     restoreEditorDisplayWhenReady,
@@ -2178,6 +2248,11 @@ export function useNotebookAisleEditors({
     return meta ? scrollToRange(meta.editor, from, to) : false
   }, [getEditorMetaForAisle])
 
+  const scrollToAisleFindReplaceMatch = useCallback((aisleId: string, match: FindReplaceMatchPositionInput) => {
+    const meta = getEditorMetaForAisle(aisleId)
+    return meta ? scrollToFindReplaceRange(meta.editor, match) : false
+  }, [getEditorMetaForAisle])
+
   return {
     activeEditorAisleIdRef,
     mountedAisleIds,
@@ -2208,5 +2283,7 @@ export function useNotebookAisleEditors({
     scrollToAisleHeading,
     scrollToAisleTableOfContentsLink,
     scrollToAisleRange,
+    scrollToAisleFindReplaceMatch,
+    setActiveFindReplaceMatchHighlight,
   }
 }

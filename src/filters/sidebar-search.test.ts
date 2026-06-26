@@ -25,6 +25,7 @@ function createSearchState(): AppState {
         { type: 'note', id: 'note-b', title: 'Calvin duplicate', noteBodyId: 'body-shared-note' },
         { type: 'note', id: 'note-c', title: 'Linked aisle note', noteBodyId: 'body-linked-aisle' },
         { type: 'note', id: 'note-d', title: 'Loose tag', noteBodyId: 'body-loose' },
+        { type: 'note', id: 'note-e', title: 'Plain note', noteBodyId: 'body-plain' },
       ],
       deletedItems: [],
       settings: { autoRemoveDeletedDays: 30 },
@@ -33,6 +34,7 @@ function createSearchState(): AppState {
       { id: 'body-shared-note', aisles: [{ id: 'aisle-a', aisleBodyId: 'aisle-body-shared' }] },
       { id: 'body-linked-aisle', aisles: [{ id: 'aisle-c', aisleBodyId: 'aisle-body-shared' }] },
       { id: 'body-loose', aisles: [{ id: 'aisle-d', aisleBodyId: 'aisle-body-loose' }] },
+      { id: 'body-plain', aisles: [{ id: 'aisle-e', aisleBodyId: 'aisle-body-plain' }] },
     ],
     noteAisleBodies: [
       {
@@ -48,6 +50,12 @@ function createSearchState(): AppState {
       {
         id: 'aisle-body-loose',
         markdown: '#Calvin salvation notes',
+        frontmatter: null,
+        frontmatterStatus: 'none',
+      },
+      {
+        id: 'aisle-body-plain',
+        markdown: 'ordinary plain body',
         frontmatter: null,
         frontmatterStatus: 'none',
       },
@@ -95,6 +103,23 @@ describe('sidebar search parsing and suggestions', () => {
       ['synced', 'synced-aisle', 'Calvin sermon'],
     ])
     expect(parsed.frontmatterTerms).toEqual([{ value: 'Sermon Template', quoted: true }])
+    expect(parsed.presenceTerms).toEqual([])
+  })
+
+  it('parses true and false presence terms for metadata prefixes', () => {
+    const indexes = buildSidebarSearchIndexes(createSearchState())
+    const parsed = parseSidebarSearchInput('tag:true fm:false prop:true synced:true duplicate:false plain', indexes)
+
+    expect(parsed.text).toBe('plain')
+    expect(parsed.tokens).toEqual([])
+    expect(parsed.frontmatterTerms).toEqual([])
+    expect(parsed.presenceTerms).toEqual([
+      { prefix: 'tag', kind: 'tags', value: true },
+      { prefix: 'fm', kind: 'frontmatter', value: false },
+      { prefix: 'prop', kind: 'frontmatter', value: true },
+      { prefix: 'synced', kind: 'synced', value: true },
+      { prefix: 'duplicate', kind: 'synced', value: false },
+    ])
   })
 
   it('suggests supported filter prefixes including frontmatter keys, templates, values, and duplicate aliases', () => {
@@ -120,6 +145,15 @@ describe('sidebar search parsing and suggestions', () => {
       optionType: 'synced-aisle',
       prefix: 'duplicate',
     })
+  })
+
+  it('does not suggest hidden boolean presence terms', () => {
+    const indexes = buildSidebarSearchIndexes(createSearchState())
+
+    expect(getSidebarSearchSuggestions('fm:true', indexes)).toEqual([])
+    expect(getSidebarSearchSuggestions('tag:false', indexes)).toEqual([])
+    expect(getSidebarSearchSuggestions('synced:true', indexes)).toEqual([])
+    expect(getSidebarSearchSuggestions('duplicate:false', indexes)).toEqual([])
   })
 
   it('replaces the active prefixed segment when completing a suggestion', () => {
@@ -148,6 +182,24 @@ describe('sidebar search result filtering', () => {
     expect(
       buildSidebarSearchResultGroups({ state, indexes, query: 'fm:Calvin', filter: null }).map((group) => group.noteId),
     ).toEqual(['note-a', 'note-b', 'note-c'])
+  })
+
+  it('filters true and false presence terms for tags, frontmatter, synced, and duplicate aliases', () => {
+    const state = createSearchState()
+    const indexes = buildSidebarSearchIndexes(state)
+    const noteIdsForQuery = (query: string) =>
+      buildSidebarSearchResultGroups({ state, indexes, query, filter: null }).map((group) => group.noteId)
+
+    expect(noteIdsForQuery('tag:true')).toEqual(['note-a', 'note-b', 'note-c', 'note-d'])
+    expect(noteIdsForQuery('tag:false')).toEqual(['note-e'])
+    expect(noteIdsForQuery('fm:true')).toEqual(['note-a', 'note-b', 'note-c'])
+    expect(noteIdsForQuery('fm:false')).toEqual(['note-d', 'note-e'])
+    expect(noteIdsForQuery('synced:true')).toEqual(['note-a', 'note-b', 'note-c'])
+    expect(noteIdsForQuery('synced:false')).toEqual(['note-d', 'note-e'])
+    expect(noteIdsForQuery('duplicate:true')).toEqual(['note-a', 'note-b', 'note-c'])
+    expect(noteIdsForQuery('duplicate:false')).toEqual(['note-d', 'note-e'])
+    expect(noteIdsForQuery('tag:false fm:false plain')).toEqual(['note-e'])
+    expect(noteIdsForQuery('tag:true fm:false salvation')).toEqual(['note-d'])
   })
 
   it('ANDs fm terms with tag tokens and plain text', () => {

@@ -31,6 +31,7 @@ export type ParsedSidebarSearchInput = {
   text: string
   tokens: SidebarSearchToken[]
   frontmatterTerms: SidebarSearchFrontmatterTerm[]
+  presenceTerms: SidebarSearchPresenceTerm[]
   activePrefix: SidebarSearchPrefix | null
   activeValue: string
 }
@@ -38,6 +39,12 @@ export type ParsedSidebarSearchInput = {
 export type SidebarSearchFrontmatterTerm = {
   value: string
   quoted: boolean
+}
+
+export type SidebarSearchPresenceTerm = {
+  prefix: SidebarSearchPrefix
+  kind: SidebarSearchFilterKind
+  value: boolean
 }
 
 export type SidebarSearchSuggestion = SidebarSearchToken & {
@@ -96,6 +103,13 @@ function normalizeSearchValue(value: string): string {
 
 function normalizeText(value: string): string {
   return value.trim().toLocaleLowerCase()
+}
+
+function parseBooleanSearchValue(value: string): boolean | null {
+  const normalized = normalizeText(value)
+  if (normalized === 'true') return true
+  if (normalized === 'false') return false
+  return null
 }
 
 function normalizeSearchDocument(value: string): string {
@@ -392,11 +406,23 @@ export function parseSidebarSearchInput(query: string, indexes: SidebarSearchInd
   let cleaned = query
   const tokens: SidebarSearchToken[] = []
   const frontmatterTerms: SidebarSearchFrontmatterTerm[] = []
+  const presenceTerms: SidebarSearchPresenceTerm[] = []
   const activeSegment = getActiveSegment(query)
 
   for (const segment of readSidebarSearchSegments(query)) {
     const value = segment.value.trim()
     const isActiveSegment = activeSegment?.start === segment.start && activeSegment.end === segment.end
+    const booleanValue = segment.complete ? parseBooleanSearchValue(value) : null
+    if (booleanValue !== null) {
+      presenceTerms.push({
+        prefix: segment.prefix,
+        kind: getPrefixKind(segment.prefix),
+        value: booleanValue,
+      })
+      cleaned = replaceRangeWithSpaces(cleaned, segment.start, segment.end)
+      continue
+    }
+
     if (segment.prefix === 'fm') {
       if (value) frontmatterTerms.push({ value, quoted: segment.quoted })
       cleaned = replaceRangeWithSpaces(cleaned, segment.start, segment.end)
@@ -417,6 +443,7 @@ export function parseSidebarSearchInput(query: string, indexes: SidebarSearchInd
     text: cleaned.trim().replace(/\s+/g, ' '),
     tokens: uniqueTokens(tokens),
     frontmatterTerms,
+    presenceTerms,
     ...getActivePrefix(query),
   }
 }
@@ -429,6 +456,7 @@ export function getSidebarSearchSuggestions(
 ): SidebarSearchSuggestion[] {
   const { activePrefix, activeValue } = getActivePrefix(query)
   if (!activePrefix) return []
+  if (parseBooleanSearchValue(activeValue) !== null) return []
 
   const selectedKeys = new Set(selectedTokens.map((token) => `${token.kind}:${token.key}`))
   return getOptionsForPrefix(indexes, activePrefix)
@@ -481,6 +509,19 @@ function buildCandidateTokenLookup(
       matches.add(`${occurrence.location.noteId}:${occurrence.aisleId}:${occurrence.aisleBodyId}`)
     })
     lookup.set(lookupKey, matches)
+  })
+  return lookup
+}
+
+function buildCandidatePresenceLookup(indexes: SidebarSearchIndexes): Map<SidebarSearchFilterKind, Set<string>> {
+  const lookup = new Map<SidebarSearchFilterKind, Set<string>>()
+  const indexedKinds: SidebarSearchFilterKind[] = ['tags', 'synced']
+  indexedKinds.forEach((kind) => {
+    const matches = new Set<string>()
+    indexes[kind].allOccurrences.forEach((occurrence) => {
+      matches.add(`${occurrence.location.noteId}:${occurrence.aisleId}:${occurrence.aisleBodyId}`)
+    })
+    lookup.set(kind, matches)
   })
   return lookup
 }
@@ -548,6 +589,34 @@ function candidateMatchesFrontmatterTerms(
   return terms.every((term) => frontmatterTermMatches(document, term))
 }
 
+function candidateHasPresence(
+  candidate: SidebarSearchCandidate,
+  kind: SidebarSearchFilterKind,
+  lookup: Map<SidebarSearchFilterKind, Set<string>>,
+  context: NotebookIndexContext,
+  documentCache: Map<string, string>,
+): boolean {
+  if (kind === 'frontmatter') {
+    const document = documentCache.get(candidate.aisleBodyId) ?? getFrontmatterSearchDocument(candidate, context)
+    if (!documentCache.has(candidate.aisleBodyId)) documentCache.set(candidate.aisleBodyId, document)
+    return document.length > 0
+  }
+
+  return lookup.get(kind)?.has(`${candidate.location.noteId}:${candidate.aisle.id}:${candidate.aisleBodyId}`) ?? false
+}
+
+function candidateMatchesPresenceTerms(
+  candidate: SidebarSearchCandidate,
+  terms: SidebarSearchPresenceTerm[],
+  lookup: Map<SidebarSearchFilterKind, Set<string>>,
+  context: NotebookIndexContext,
+  documentCache: Map<string, string>,
+): boolean {
+  return terms.every((term) =>
+    candidateHasPresence(candidate, term.kind, lookup, context, documentCache) === term.value,
+  )
+}
+
 function getSnippet(visibleText: string, noteText: string, query: string): string {
   const compactVisibleText = visibleText.replace(/\s+/g, ' ').trim()
   const normalizedQuery = normalizeText(query)
@@ -587,9 +656,11 @@ export function buildSidebarSearchResultGroups({
   const selectedTokens = mergeSidebarSearchTokens(getSidebarSearchSelectedTokens(filter, effectiveIndexes), parsed.tokens)
   const textQuery = parsed.text
   const frontmatterTerms = parsed.frontmatterTerms
-  if (selectedTokens.length <= 0 && frontmatterTerms.length <= 0 && !textQuery) return []
+  const presenceTerms = parsed.presenceTerms
+  if (selectedTokens.length <= 0 && frontmatterTerms.length <= 0 && presenceTerms.length <= 0 && !textQuery) return []
 
   const tokenLookup = buildCandidateTokenLookup(selectedTokens, effectiveIndexes)
+  const presenceLookup = buildCandidatePresenceLookup(effectiveIndexes)
   const frontmatterDocumentCache = new Map<string, string>()
   const groups: SidebarSearchResultGroup[] = []
   const groupsByNoteId = new Map<string, SidebarSearchResultGroup>()
@@ -612,6 +683,7 @@ export function buildSidebarSearchResultGroups({
         aisleCount: body.aisles.length,
       }
       if (!candidateMatchesFilterLookup(candidate, selectedTokens, tokenLookup)) continue
+      if (!candidateMatchesPresenceTerms(candidate, presenceTerms, presenceLookup, indexContext, frontmatterDocumentCache)) continue
       if (!candidateMatchesFrontmatterTerms(candidate, frontmatterTerms, indexContext, frontmatterDocumentCache)) continue
 
       const markdown = getAisleMarkdown(aisle, indexContext.aisleBodiesById)

@@ -133,26 +133,6 @@ export function FindReplacePanel({
         >
           {statusText}
         </span>
-        <button
-          type="button"
-          className="find-replace-icon-btn"
-          aria-label="Previous match"
-          data-app-tooltip="Previous"
-          onClick={goPrevious}
-          disabled={!hasMatches || Boolean(queryError)}
-        >
-          <AppIcon iconId="minimize" className="find-replace-button-icon" />
-        </button>
-        <button
-          type="button"
-          className="find-replace-icon-btn"
-          aria-label="Next match"
-          data-app-tooltip="Next"
-          onClick={goNext}
-          disabled={!hasMatches || Boolean(queryError)}
-        >
-          <AppIcon iconId="maximize" className="find-replace-button-icon" />
-        </button>
         <div className="find-replace-options" aria-label="Find options">
           <button
             type="button"
@@ -202,26 +182,48 @@ export function FindReplacePanel({
           spellCheck={false}
           onChange={(event) => onReplacementChange(event.target.value)}
         />
-        <button
-          type="button"
-          className="find-replace-action-btn"
-          aria-label="Replace"
-          data-app-tooltip="Replace"
-          onClick={onReplaceCurrent}
-          disabled={!activeMatch || Boolean(queryError)}
-        >
-          Replace
-        </button>
-        <button
-          type="button"
-          className="find-replace-action-btn"
-          aria-label="Replace all"
-          data-app-tooltip="Replace all"
-          onClick={onReplaceAll}
-          disabled={!hasMatches || Boolean(queryError)}
-        >
-          All
-        </button>
+        <div className="find-replace-replace-controls" aria-label="Replace controls">
+          <button
+            type="button"
+            className="find-replace-icon-btn"
+            aria-label="Previous match"
+            data-app-tooltip="Previous"
+            onClick={goPrevious}
+            disabled={!hasMatches || Boolean(queryError)}
+          >
+            <AppIcon iconId="minimize" className="find-replace-button-icon" />
+          </button>
+          <button
+            type="button"
+            className="find-replace-icon-btn"
+            aria-label="Next match"
+            data-app-tooltip="Next"
+            onClick={goNext}
+            disabled={!hasMatches || Boolean(queryError)}
+          >
+            <AppIcon iconId="maximize" className="find-replace-button-icon" />
+          </button>
+          <button
+            type="button"
+            className="find-replace-icon-btn find-replace-action-btn"
+            aria-label="Replace"
+            data-app-tooltip="Replace"
+            onClick={onReplaceCurrent}
+            disabled={!activeMatch || Boolean(queryError)}
+          >
+            <AppIcon iconId="replace" className="find-replace-button-icon" />
+          </button>
+          <button
+            type="button"
+            className="find-replace-icon-btn find-replace-action-btn"
+            aria-label="Replace all"
+            data-app-tooltip="Replace all"
+            onClick={onReplaceAll}
+            disabled={!hasMatches || Boolean(queryError)}
+          >
+            <AppIcon iconId="replaceAll" className="find-replace-button-icon" />
+          </button>
+        </div>
       </div>
     </section>
   )

@@ -194,11 +194,24 @@ describe('SidebarSearchPanel', () => {
     expect(source).toContain('const showSearchMenu = focused && query.trim().length <= 0')
     expect(source).toContain('const showSuggestions = focused && suggestions.length > 0')
     expect(source).toContain('onFocus={() => setFocused(true)}')
+    expect(source).toContain('notebook-sidebar-search-field-shell')
+    expect(source).toContain('notebook-sidebar-search-dropdown notebook-sidebar-search-suggestions')
+    expect(source).toContain('notebook-sidebar-search-dropdown notebook-sidebar-search-menu')
     expect(source).toContain('notebook-sidebar-search-menu-heading')
     expect(source).toContain('Search options')
     expect(source).toContain('notebook-sidebar-search-history-row')
     expect(source).toContain('onClick={onClearHistory}')
     expect(source).toContain('onClick={() => onSelectSuggestion(suggestion)}')
+  })
+
+  it('opens the first result from clickable result group headings', () => {
+    expect(source).toContain('function SearchResultGroupHeading')
+    expect(source).toContain('const firstResult = group.results[0]')
+    expect(source).toContain('onClick={() => onOpenResult(firstResult)}')
+    expect(source).toContain("onOpenResult(firstResult, 'retained')")
+    expect(source).toContain('<SearchResultGroupHeading group={group} onOpenResult={onOpenResult} />')
+    expect(source).toContain('<SearchResultGroupHeading group={group} showFolderPath onOpenResult={onOpenResult} />')
+    expect(source).toContain('notebook-sidebar-search-result-heading-button')
   })
 
   it('opens search results as retained tabs on unmodified double-click or middle-click', () => {

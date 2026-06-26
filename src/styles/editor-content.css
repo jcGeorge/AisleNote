@@ -300,6 +300,29 @@
   }
 }
 
+.toastui-editor-contents .aislenote-find-replace-active-match,
+.toastui-editor .ProseMirror .aislenote-find-replace-active-match {
+  color: var(--editor-tag-text, #06141a) !important;
+  background: color-mix(in srgb, var(--editor-tag-bg, #e5c552) 86%, transparent) !important;
+  border-radius: 0.2em !important;
+  padding: 0.01em 0.08em !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--editor-tag-text, #06141a) 22%, transparent) !important;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.toastui-editor-contents .aislenote-find-replace-active-match.aislenote-find-replace-active-match-pulse,
+.toastui-editor .ProseMirror .aislenote-find-replace-active-match.aislenote-find-replace-active-match-pulse {
+  animation: aislenote-tag-jump-glow 1.15s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toastui-editor-contents .aislenote-find-replace-active-match.aislenote-find-replace-active-match-pulse,
+  .toastui-editor .ProseMirror .aislenote-find-replace-active-match.aislenote-find-replace-active-match-pulse {
+    animation: none;
+  }
+}
+
 .toastui-editor-contents .task-list-item::before,
 .toastui-editor .ProseMirror .task-list-item::before {
   top: 0.24em !important;

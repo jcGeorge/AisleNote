@@ -34,6 +34,7 @@ import type {
   NoteLocation,
   NoteNavigationTarget,
   KnownNotebook,
+  StorageProfileStatus,
   NotebookTreeItem,
   NewlineOperationId,
   NewlineShortcutId,
@@ -424,6 +425,22 @@ const THEME_LABELS: Record<AppTheme, string> = {
   custom1: 'Custom 1',
   custom2: 'Custom 2',
   custom3: 'Custom 3',
+}
+
+function getNotebookRowsFromStorageStatus(storageProfileStatus: StorageProfileStatus | null): KnownNotebook[] {
+  const activeNotebookPath = storageProfileStatus?.notebookPath ?? storageProfileStatus?.profileRootPath ?? ''
+  const knownNotebooks = storageProfileStatus?.knownNotebooks ?? []
+  if (knownNotebooks.length > 0) return knownNotebooks
+  if (!storageProfileStatus || !activeNotebookPath) return []
+  return [{
+    notebookId: storageProfileStatus.activeNotebookId ?? undefined,
+    notebookPath: activeNotebookPath,
+    notebookName: storageProfileStatus.notebookName || 'Notebook',
+    isActive: true,
+    exists: storageProfileStatus.hasProfile,
+    hasManifest: storageProfileStatus.hasProfile,
+    available: storageProfileStatus.hasProfile,
+  }]
 }
 
 const ACTIVE_TOOLBAR_LAYOUT_STORAGE_KEY = 'aislenote:notebook-active-toolbar-layout:v1'
@@ -2951,6 +2968,7 @@ export function NotebookApp() {
   const [shortcutMenu, setShortcutMenu] = useState<NotebookShortcutMenuState | null>(null)
   const [noteActionPicker, setNoteActionPicker] = useState<NoteActionPickerState | null>(null)
   const [openNotebookActionMenuKey, setOpenNotebookActionMenuKey] = useState('')
+  const [notebookSwitcherOpen, setNotebookSwitcherOpen] = useState(false)
   const [notebookNameDialog, setNotebookNameDialog] = useState<NotebookNameDialogState | null>(null)
   const [decoupleDialog, setDecoupleDialog] = useState<DecoupleDialogState | null>(null)
   const [linkPrompt, setLinkPrompt] = useState<LinkPromptState>(CLOSED_LINK_PROMPT_STATE)
@@ -2959,6 +2977,7 @@ export function NotebookApp() {
   const [findReplaceQuery, setFindReplaceQuery] = useState('')
   const [findReplaceReplacement, setFindReplaceReplacement] = useState('')
   const [findReplaceActiveIndex, setFindReplaceActiveIndex] = useState(0)
+  const [findReplaceHighlightRequestId, setFindReplaceHighlightRequestId] = useState(0)
   const [tagAutocompleteRecentKeys, setTagAutocompleteRecentKeys] = useState(loadTagAutocompleteRecentKeys)
   const [aisleEditModalOpen, setAisleEditModalOpen] = useState(false)
   const [frontmatterModal, setFrontmatterModal] = useState<NotebookFrontmatterModalState | null>(null)
@@ -3272,7 +3291,9 @@ export function NotebookApp() {
     [notebookIndexContext, query, sidebarSearchIndexes],
   )
   const sidebarSearchMetadataActive =
-    sidebarSearchSelectedTokens.length > 0 || parsedSidebarSearch.frontmatterTerms.length > 0
+    sidebarSearchSelectedTokens.length > 0 ||
+    parsedSidebarSearch.frontmatterTerms.length > 0 ||
+    parsedSidebarSearch.presenceTerms.length > 0
   const sidebarSearchActive = query.trim().length > 0
   const sidebarSearchVisible = sidebarSearchMode || sidebarSearchActive
   const noteActionEntries = useMemo(() => {
@@ -4366,6 +4387,41 @@ export function NotebookApp() {
   }, [findReplaceMatches.length])
   const findReplaceActiveMatchIndex =
     findReplaceMatches.length > 0 ? Math.min(findReplaceActiveIndex, findReplaceMatches.length - 1) : 0
+  const findReplaceActiveMatch =
+    findReplaceOpen && findReplaceMatches.length > 0
+      ? findReplaceMatches[findReplaceActiveMatchIndex] ?? null
+      : null
+  const findReplaceActiveMatchKey = findReplaceActiveMatch
+    ? [
+        findReplaceQuery,
+        findReplaceActiveMatch.id,
+        findReplaceActiveMatch.visibleFrom,
+        findReplaceActiveMatch.visibleTo,
+        findReplaceActiveMatch.markdownFrom,
+        findReplaceActiveMatch.markdownTo,
+      ].join(':')
+    : ''
+
+  useEffect(() => {
+    if (!findReplaceActiveMatchKey) return
+    setFindReplaceHighlightRequestId((current) => current + 1)
+  }, [findReplaceActiveMatchKey])
+
+  useEffect(() => {
+    if (!findReplaceActiveMatch) {
+      notebookEditors.setActiveFindReplaceMatchHighlight(null)
+      return
+    }
+    notebookEditors.setActiveFindReplaceMatchHighlight({
+      noteBodyId: findReplaceActiveMatch.noteBodyId,
+      aisleId: findReplaceActiveMatch.aisleId,
+      visibleFrom: findReplaceActiveMatch.visibleFrom,
+      visibleTo: findReplaceActiveMatch.visibleTo,
+      markdownFrom: findReplaceActiveMatch.markdownFrom,
+      markdownTo: findReplaceActiveMatch.markdownTo,
+      requestId: findReplaceHighlightRequestId,
+    })
+  }, [findReplaceActiveMatch, findReplaceHighlightRequestId, notebookEditors])
 
   const clearNotebookNavigationTransientUi = useCallback(() => {
     setAisleContextMenu(null)
@@ -4764,7 +4820,12 @@ export function NotebookApp() {
       focus: true,
       source: 'programmatic',
     })
-    return notebookEditors.scrollToAisleRange(match.aisleId, match.markdownFrom, match.markdownTo)
+    return notebookEditors.scrollToAisleFindReplaceMatch(match.aisleId, {
+      visibleFrom: match.visibleFrom,
+      visibleTo: match.visibleTo,
+      markdownFrom: match.markdownFrom,
+      markdownTo: match.markdownTo,
+    })
   }, [activeModel, notebookEditors, renderedActiveAisleId, viewMode])
 
   useEffect(() => {
@@ -6662,10 +6723,12 @@ export function NotebookApp() {
         target?.closest('.shortcut-menu') ||
         target?.closest('.note-toolbar-copy-popover') ||
         target?.closest('.note-toolbar-heading-popover') ||
-        target?.closest('.note-shared-toolbar')
+        target?.closest('.note-shared-toolbar') ||
+        target?.closest('.notebook-sidebar-switcher')
       ) {
         return
       }
+      setNotebookSwitcherOpen(false)
       setAisleContextMenu(null)
       setEditorContextMenu(null)
       setTreeContextMenu(null)
@@ -6678,6 +6741,7 @@ export function NotebookApp() {
       setEditorContextMenu(null)
       setTreeContextMenu(null)
       setShortcutMenu(null)
+      setNotebookSwitcherOpen(false)
       toolbarState.closeToolbarPopovers()
     }
     document.addEventListener('pointerdown', closeFloatingUi)
@@ -6693,6 +6757,7 @@ export function NotebookApp() {
     setEditorContextMenu(null)
     setTreeContextMenu(null)
     setShortcutMenu(null)
+    setNotebookSwitcherOpen(false)
   }, [activeModel?.noteId, viewMode])
 
   const runEditorContextClipboardAction = useCallback(
@@ -6923,6 +6988,17 @@ export function NotebookApp() {
     void storageProfileController.switchNotebook(getNotebookSelector(notebook))
   }, [getNotebookSelector, storageProfileController])
 
+  const switchNotebookFromSidebar = useCallback((notebook: KnownNotebook) => {
+    setNotebookSwitcherOpen(false)
+    if (!notebook.available || notebook.isActive) return
+    void storageProfileController.switchNotebook(getNotebookSelector(notebook))
+  }, [getNotebookSelector, storageProfileController])
+
+  const openNotebookFromSidebar = useCallback(() => {
+    setNotebookSwitcherOpen(false)
+    void storageProfileController.openNotebook()
+  }, [storageProfileController])
+
   const forgetNotebookFromSettings = useCallback((notebook: KnownNotebook) => {
     setOpenNotebookActionMenuKey('')
     if (notebook.isActive) return
@@ -6940,6 +7016,17 @@ export function NotebookApp() {
     setOpenNotebookActionMenuKey('')
     action()
   }, [])
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    setNotebookSwitcherOpen(false)
+    mutateState((previous) => ({
+      ...previous,
+      ui: {
+        ...previous.ui,
+        sidebarCollapsed: !previous.ui.sidebarCollapsed,
+      },
+    }))
+  }, [mutateState])
 
   const renderSegmentedTabs = <T extends string,>(
     label: string,
@@ -6970,20 +7057,7 @@ export function NotebookApp() {
       storageProfileStatus?.health ?? (storageProfileStatus?.status === 'ready' ? 'healthy' : 'error')
     const showRetry = Boolean(storageProfileStatus && (storageProfileStatus.status === 'error' || storageHealth !== 'healthy'))
     const activeNotebookPath = storageProfileStatus?.notebookPath ?? storageProfileStatus?.profileRootPath ?? ''
-    const knownNotebooks = storageProfileStatus?.knownNotebooks ?? []
-    const notebookRows: KnownNotebook[] = knownNotebooks.length > 0
-      ? knownNotebooks
-      : storageProfileStatus && activeNotebookPath
-        ? [{
-            notebookId: storageProfileStatus.activeNotebookId ?? undefined,
-            notebookPath: activeNotebookPath,
-            notebookName: storageProfileStatus.notebookName || 'Notebook',
-            isActive: true,
-            exists: storageProfileStatus.hasProfile,
-            hasManifest: storageProfileStatus.hasProfile,
-            available: storageProfileStatus.hasProfile,
-          }]
-        : []
+    const notebookRows = getNotebookRowsFromStorageStatus(storageProfileStatus)
 
     if (!notebookFoldersAvailable) {
       return (
@@ -7118,6 +7192,120 @@ export function NotebookApp() {
             })
           )}
         </div>
+      </div>
+    )
+  }
+
+  const renderSidebarNotebookFooter = () => {
+    const storageProfileStatus = storageProfileController.storageProfileStatus
+    const notebookFoldersAvailable = Boolean(window.electronAPI?.getStorageProfileStatus)
+    const notebookRows = getNotebookRowsFromStorageStatus(storageProfileStatus)
+    const activeNotebook = notebookRows.find((notebook) => notebook.isActive)
+    const activeNotebookName = notebookFoldersAvailable
+      ? storageProfileStatus?.status === 'setup-required'
+        ? 'No notebook open'
+        : activeNotebook?.notebookName ?? storageProfileStatus?.notebookName ?? 'Notebook'
+      : 'Browser notebook'
+    const activeNotebookPath = activeNotebook?.notebookPath ?? storageProfileStatus?.notebookPath ?? ''
+    const switcherTitle = activeNotebookPath ? `${activeNotebookName}\n${activeNotebookPath}` : activeNotebookName
+
+    return (
+      <div className={`notebook-sidebar-footer ${state.ui.sidebarCollapsed ? 'is-collapsed' : ''}`}>
+        {!state.ui.sidebarCollapsed ? (
+          <div className="notebook-sidebar-switcher">
+            <button
+              type="button"
+              className="notebook-sidebar-switcher-trigger"
+              onClick={() => {
+                if (!notebookFoldersAvailable) return
+                setOpenNotebookActionMenuKey('')
+                setNotebookSwitcherOpen((open) => !open)
+              }}
+              disabled={!notebookFoldersAvailable}
+              aria-label={
+                notebookFoldersAvailable
+                  ? `Switch notebook. Current notebook: ${activeNotebookName}`
+                  : 'Browser notebook'
+              }
+              aria-haspopup="menu"
+              aria-expanded={notebookFoldersAvailable ? notebookSwitcherOpen : undefined}
+              title={switcherTitle}
+            >
+              <AppIcon iconId={notebookFoldersAvailable ? 'folderOpen' : 'folder'} className="notebook-sidebar-switcher-icon" />
+              <span className="notebook-sidebar-switcher-name">{activeNotebookName}</span>
+              {notebookFoldersAvailable ? (
+                <AppIcon
+                  iconId={notebookSwitcherOpen ? 'minimize' : 'maximize'}
+                  className="notebook-sidebar-switcher-chevron"
+                />
+              ) : null}
+            </button>
+            {notebookSwitcherOpen && notebookFoldersAvailable ? (
+              <div className="notebook-sidebar-switcher-popover" role="menu" aria-label="Notebook switcher">
+                <div className="notebook-sidebar-switcher-list">
+                  {notebookRows.length > 0 ? (
+                    notebookRows.map((notebook) => (
+                      <button
+                        key={notebook.notebookId ?? notebook.notebookPath}
+                        type="button"
+                        role="menuitem"
+                        className={`notebook-sidebar-switcher-row ${notebook.isActive ? 'is-active' : ''} ${notebook.available ? '' : 'is-missing'}`.trim()}
+                        disabled={!notebook.available || notebook.isActive}
+                        onClick={() => switchNotebookFromSidebar(notebook)}
+                        title={notebook.notebookPath}
+                      >
+                        <AppIcon
+                          iconId={notebook.available ? 'folderOpen' : 'folder'}
+                          className="notebook-sidebar-switcher-row-icon"
+                        />
+                        <span className="notebook-sidebar-switcher-row-copy">
+                          <strong>{notebook.notebookName}</strong>
+                          <small>{notebook.isActive ? 'current notebook' : notebook.available ? notebook.notebookPath : 'folder missing'}</small>
+                        </span>
+                        <span className="notebook-sidebar-switcher-row-status">
+                          {notebook.isActive ? 'current' : notebook.available ? 'switch' : 'missing'}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="notebook-sidebar-switcher-empty">No remembered notebooks.</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="notebook-sidebar-switcher-open"
+                  onClick={openNotebookFromSidebar}
+                >
+                  <AppIcon iconId="folderOpen" className="notebook-sidebar-switcher-row-icon" />
+                  <span>Open Notebook...</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        <button
+          className="notebook-icon-button notebook-sidebar-footer-action notebook-sidebar-open-button"
+          type="button"
+          onClick={openNotebookFromSidebar}
+          disabled={!notebookFoldersAvailable}
+          aria-label="Open notebook"
+          title={notebookFoldersAvailable ? 'Open notebook...' : 'Notebook folders are available in the desktop app'}
+        >
+          <AppIcon iconId="folderOpen" className="notebook-sidebar-footer-icon" />
+        </button>
+        <button
+          className="notebook-icon-button notebook-sidebar-footer-action notebook-sidebar-toggle"
+          type="button"
+          onClick={toggleSidebarCollapsed}
+          aria-label={state.ui.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={state.ui.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          <AppIcon
+            iconId={state.ui.sidebarCollapsed ? 'arrowRightFromLine' : 'arrowLeftFromLine'}
+            className="notebook-sidebar-toggle-icon"
+          />
+        </button>
       </div>
     )
   }
@@ -8410,26 +8598,7 @@ export function NotebookApp() {
             <span className="notebook-sidebar-resize-capsule" aria-hidden="true" />
           </button>
         ) : null}
-        <button
-          className="notebook-icon-button notebook-sidebar-toggle"
-          type="button"
-          onClick={() =>
-            mutateState((previous) => ({
-              ...previous,
-              ui: {
-                ...previous.ui,
-                sidebarCollapsed: !previous.ui.sidebarCollapsed,
-              },
-            }))
-          }
-          aria-label={state.ui.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          title={state.ui.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          <AppIcon
-            iconId={state.ui.sidebarCollapsed ? 'arrowRightFromLine' : 'arrowLeftFromLine'}
-            className="notebook-sidebar-toggle-icon"
-          />
-        </button>
+        {renderSidebarNotebookFooter()}
       </aside>
       <main className="notebook-main">
         {viewMode === 'main' ? (
