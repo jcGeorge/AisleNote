@@ -19,6 +19,7 @@ export const GENERAL_ICON_IDS = [
   'plus',
   'trash',
   'lock',
+  'gripVertical',
   'folder',
   'folderOpen',
   'cornerRightDown',
@@ -172,6 +173,16 @@ export const APP_ICON_DEFINITIONS = {
       { tag: 'circle', cx: '12', cy: '16', r: '1' },
       { tag: 'rect', x: '3', y: '10', width: '18', height: '12', rx: '2' },
       { tag: 'path', d: 'M7 10V7a5 5 0 0 1 10 0v3' },
+    ],
+  },
+  gripVertical: {
+    shapes: [
+      { tag: 'circle', cx: '9', cy: '5', r: '1' },
+      { tag: 'circle', cx: '15', cy: '5', r: '1' },
+      { tag: 'circle', cx: '9', cy: '12', r: '1' },
+      { tag: 'circle', cx: '15', cy: '12', r: '1' },
+      { tag: 'circle', cx: '9', cy: '19', r: '1' },
+      { tag: 'circle', cx: '15', cy: '19', r: '1' },
     ],
   },
   folder: {

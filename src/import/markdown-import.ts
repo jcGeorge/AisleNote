@@ -18,7 +18,8 @@ import {
   WIKI_NOTE_REFERENCE_RE,
 } from '../notes/note-references'
 import { parseSavedState } from '../state/app-state'
-import { createRandomId, type IdGenerator } from '../state/navigation-ids'
+import { collectNotebookIds, insertNotebookItem, openNotebookTemporaryTab } from '../state/notebook'
+import { createRandomId, createReservedIdAllocator, type IdGenerator } from '../state/navigation-ids'
 import { migrateAisleTags } from '../tags/tags.js'
 
 export type MarkdownImportFile = {
@@ -79,6 +80,7 @@ export type BuildMarkdownImportStateOptions = {
 }
 
 export type ImportMarkdownNotebookOptions = BuildMarkdownImportStateOptions & {
+  rootName?: string
   assetRoots?: MarkdownImportAssetRoot[]
   assets?: MarkdownImportAssetPayload[]
   readAsset?: (request: MarkdownImportReadAssetRequest) => Promise<MarkdownImportReadAssetResult>
@@ -88,6 +90,11 @@ export type ImportMarkdownNotebookOptions = BuildMarkdownImportStateOptions & {
 export type MarkdownImportResult = {
   state: AppState
   summary: MarkdownImportSummary
+}
+
+export type MarkdownImportMergeResult = MarkdownImportResult & {
+  rootFolderId: string
+  activeNoteId: string
 }
 
 type MutableNotebookFolder = NotebookFolder
@@ -104,6 +111,15 @@ type ImportedNoteSource = {
 
 type BuildStateResult = MarkdownImportResult & {
   sources: ImportedNoteSource[]
+}
+
+type BuildBundleResult = {
+  rootItems: NotebookTreeItem[]
+  noteBodies: NoteBody[]
+  noteAisleBodies: NoteAisleBody[]
+  sources: ImportedNoteSource[]
+  summary: MarkdownImportSummary
+  activeNoteId: string
 }
 
 type NoteLookup = Map<string, ImportedNoteSource | null>
@@ -539,19 +555,8 @@ function replaceAisleBodyMarkdown(state: AppState, aisleBodyId: string, markdown
   }
 }
 
-export function buildMarkdownImportState(
-  files: MarkdownImportFile[],
-  options: BuildMarkdownImportStateOptions = {},
-): BuildStateResult {
-  const idGenerator = options.idGenerator ?? createRandomId
-  const now = options.now ?? (() => new Date().toISOString())
-  const baseState = parseSavedState(null)
-  const rootItems: NotebookTreeItem[] = []
-  const foldersByPath = new Map<string, MutableNotebookFolder>()
-  const noteBodies: NoteBody[] = []
-  const noteAisleBodies: NoteAisleBody[] = []
-  const sources: ImportedNoteSource[] = []
-  const summary: MarkdownImportSummary = {
+function createMarkdownImportSummary(): MarkdownImportSummary {
+  return {
     folders: 0,
     notes: 0,
     noteBodies: 0,
@@ -560,6 +565,20 @@ export function buildMarkdownImportState(
     missingAssets: 0,
     warnings: [],
   }
+}
+
+function buildMarkdownImportBundle(
+  files: MarkdownImportFile[],
+  options: BuildMarkdownImportStateOptions = {},
+): BuildBundleResult {
+  const idGenerator = options.idGenerator ?? createRandomId
+  const now = options.now ?? (() => new Date().toISOString())
+  const rootItems: NotebookTreeItem[] = []
+  const foldersByPath = new Map<string, MutableNotebookFolder>()
+  const noteBodies: NoteBody[] = []
+  const noteAisleBodies: NoteAisleBody[] = []
+  const sources: ImportedNoteSource[] = []
+  const summary = createMarkdownImportSummary()
   let activeNoteId = ''
 
   const getFolder = (parts: string[]): MutableNotebookFolder | null => {
@@ -633,6 +652,22 @@ export function buildMarkdownImportState(
       summary.noteBodies += 1
     })
 
+  return {
+    rootItems,
+    noteBodies,
+    noteAisleBodies,
+    sources,
+    summary,
+    activeNoteId,
+  }
+}
+
+export function buildMarkdownImportState(
+  files: MarkdownImportFile[],
+  options: BuildMarkdownImportStateOptions = {},
+): BuildStateResult {
+  const built = buildMarkdownImportBundle(files, options)
+  const baseState = parseSavedState(null)
   const scratchpadBodyId = baseState.scratchpad?.noteBodyId
   const scratchpadBodies = scratchpadBodyId ? baseState.noteBodies.filter((body) => body.id === scratchpadBodyId) : []
   const scratchpadAisleBodyIds = new Set(
@@ -645,17 +680,62 @@ export function buildMarkdownImportState(
       ...baseState,
       notebook: {
         ...baseState.notebook,
-        activeNoteId,
-        openTabs: activeNoteId ? [{ noteId: activeNoteId, status: 'temporary' }] : [],
-        items: rootItems,
+        activeNoteId: built.activeNoteId,
+        openTabs: built.activeNoteId ? [{ noteId: built.activeNoteId, status: 'temporary' }] : [],
+        items: built.rootItems,
         deletedItems: [],
       },
-      noteBodies: [...noteBodies, ...scratchpadBodies],
-      noteAisleBodies: [...noteAisleBodies, ...scratchpadAisleBodies],
+      noteBodies: [...built.noteBodies, ...scratchpadBodies],
+      noteAisleBodies: [...built.noteAisleBodies, ...scratchpadAisleBodies],
     },
-    summary,
-    sources,
+    summary: built.summary,
+    sources: built.sources,
   }
+}
+
+async function rewriteImportedMarkdownInState(
+  state: AppState,
+  sources: ImportedNoteSource[],
+  summary: MarkdownImportSummary,
+  options: ImportMarkdownNotebookOptions,
+): Promise<AppState> {
+  const lookup = buildNoteLookup(sources)
+  const roots = getAssetRoots(options)
+  const assets = getAssetMap(options.assets)
+  const importAsset = options.importAsset ?? defaultImportAsset
+  const importedAssetUrls = new Map<string, string>()
+  let rewrittenState = state
+
+  for (const source of sources) {
+    const aisleBody = rewrittenState.noteAisleBodies?.find((body) => body.id === source.aisleBodyId)
+    let markdown = aisleBody?.markdown ?? ''
+    markdown = rewriteWikiNoteReferences(markdown, rewrittenState, source, lookup, summary)
+    markdown = await rewriteWikiAssets(markdown, source, {
+      roots,
+      assets,
+      readAsset: options.readAsset,
+      importAsset,
+      importedAssetUrls,
+      summary,
+    })
+    markdown = await rewriteMarkdownLinks(markdown, rewrittenState, source, lookup, {
+      roots,
+      assets,
+      readAsset: options.readAsset,
+      importAsset,
+      importedAssetUrls,
+      summary,
+    })
+    rewrittenState = replaceAisleBodyMarkdown(rewrittenState, source.aisleBodyId, markdown)
+  }
+
+  return rewrittenState
+}
+
+function getMarkdownImportRootTitle(options: ImportMarkdownNotebookOptions): string {
+  const sourceRoot = options.assetRoots?.find((root) => root.id === DEFAULT_ASSET_ROOT_ID) ?? options.assetRoots?.[0]
+  const title = String(options.rootName ?? sourceRoot?.name ?? 'Markdown import').trim()
+  return title || 'Markdown import'
 }
 
 export async function importMarkdownNotebook(
@@ -663,39 +743,50 @@ export async function importMarkdownNotebook(
   options: ImportMarkdownNotebookOptions = {},
 ): Promise<MarkdownImportResult> {
   const built = buildMarkdownImportState(files, options)
-  const lookup = buildNoteLookup(built.sources)
-  const roots = getAssetRoots(options)
-  const assets = getAssetMap(options.assets)
-  const importAsset = options.importAsset ?? defaultImportAsset
-  const importedAssetUrls = new Map<string, string>()
-  let state = built.state
-
-  for (const source of built.sources) {
-    const aisleBody = state.noteAisleBodies?.find((body) => body.id === source.aisleBodyId)
-    let markdown = aisleBody?.markdown ?? ''
-    markdown = rewriteWikiNoteReferences(markdown, state, source, lookup, built.summary)
-    markdown = await rewriteWikiAssets(markdown, source, {
-      roots,
-      assets,
-      readAsset: options.readAsset,
-      importAsset,
-      importedAssetUrls,
-      summary: built.summary,
-    })
-    markdown = await rewriteMarkdownLinks(markdown, state, source, lookup, {
-      roots,
-      assets,
-      readAsset: options.readAsset,
-      importAsset,
-      importedAssetUrls,
-      summary: built.summary,
-    })
-    state = replaceAisleBodyMarkdown(state, source.aisleBodyId, markdown)
-  }
+  const state = await rewriteImportedMarkdownInState(built.state, built.sources, built.summary, options)
 
   return {
     state,
     summary: built.summary,
+  }
+}
+
+export async function importMarkdownIntoExistingNotebook(
+  state: AppState,
+  files: MarkdownImportFile[],
+  options: ImportMarkdownNotebookOptions = {},
+): Promise<MarkdownImportMergeResult> {
+  const idGenerator = createReservedIdAllocator(collectNotebookIds(state), options.idGenerator ?? createRandomId)
+  const rootFolderId = idGenerator()
+  const built = buildMarkdownImportBundle(files, { ...options, idGenerator })
+  const rootFolder: NotebookFolder = {
+    type: 'folder',
+    id: rootFolderId,
+    title: getMarkdownImportRootTitle(options),
+    children: built.rootItems,
+  }
+  built.summary.folders += 1
+
+  let mergedState: AppState = {
+    ...state,
+    notebook: insertNotebookItem(state.notebook, rootFolder, null),
+    noteBodies: [...state.noteBodies, ...built.noteBodies],
+    noteAisleBodies: [...(state.noteAisleBodies ?? []), ...built.noteAisleBodies],
+  }
+  mergedState = await rewriteImportedMarkdownInState(mergedState, built.sources, built.summary, options)
+
+  if (built.activeNoteId) {
+    mergedState = {
+      ...mergedState,
+      notebook: openNotebookTemporaryTab(mergedState.notebook, built.activeNoteId),
+    }
+  }
+
+  return {
+    state: mergedState,
+    summary: built.summary,
+    rootFolderId,
+    activeNoteId: built.activeNoteId,
   }
 }
 

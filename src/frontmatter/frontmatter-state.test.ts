@@ -5,6 +5,7 @@ import {
   buildFrontmatterModalDraftForAisle,
   disableInvalidComputedFrontmatterRows,
   normalizeFrontmatterDraftRows,
+  reorderFrontmatterTemplatesByInsertion,
   resolveFrontmatterRowComputedForType,
   type FrontmatterRowDraft,
 } from './frontmatter-state'
@@ -140,6 +141,22 @@ function createState(): AppState {
 }
 
 describe('frontmatter structured row state', () => {
+  it('reorders templates by before and after insertion targets', () => {
+    const templates: FrontmatterTemplate[] = [
+      { id: 'template-a', name: 'a', fields: [] },
+      { id: 'template-b', name: 'b', fields: [] },
+      { id: 'template-c', name: 'c', fields: [] },
+    ]
+
+    expect(
+      reorderFrontmatterTemplatesByInsertion(templates, 'template-a', 'template-c', 'after').map((candidate) => candidate.id),
+    ).toEqual(['template-b', 'template-c', 'template-a'])
+    expect(
+      reorderFrontmatterTemplatesByInsertion(templates, 'template-c', 'template-a', 'before').map((candidate) => candidate.id),
+    ).toEqual(['template-c', 'template-a', 'template-b'])
+    expect(reorderFrontmatterTemplatesByInsertion(templates, 'missing', 'template-a', 'before')).toBe(templates)
+  })
+
   it('opens existing derived frontmatter with template rows and manual extras', () => {
     const draft = buildFrontmatterModalDraftForAisle(createState(), 'body-1', 'aisle-body-1', location)
 

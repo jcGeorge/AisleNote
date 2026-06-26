@@ -355,6 +355,19 @@ export function buildWikiReferenceIndex(appState) {
   return { notes, noteIndexes, noteByLocationKey }
 }
 
+const wikiReferenceIndexCache = new WeakMap()
+
+export function getCachedWikiReferenceIndex(appState) {
+  if (!appState || (typeof appState !== 'object' && typeof appState !== 'function')) {
+    return buildWikiReferenceIndex(appState)
+  }
+  const cached = wikiReferenceIndexCache.get(appState)
+  if (cached) return cached
+  const index = buildWikiReferenceIndex(appState)
+  wikiReferenceIndexCache.set(appState, index)
+  return index
+}
+
 export function parseWikiReferenceToken(token) {
   const match = String(token ?? '').trim().match(WIKI_NOTE_REFERENCE_TOKEN_RE)
   if (!match) return null
@@ -412,7 +425,7 @@ export function getWikiReferenceDisplayText(token) {
 export function resolveWikiReferenceToken(appState, token) {
   const parsed = parseWikiReferenceToken(token)
   if (!parsed) return null
-  const index = buildWikiReferenceIndex(appState)
+  const index = getCachedWikiReferenceIndex(appState)
   const note = resolveIndexedHandle(index.noteIndexes, parsed.noteHandle)
   if (!note) return null
 
@@ -456,7 +469,7 @@ export function resolveWikiReferenceToken(appState, token) {
 export function resolveMarkdownNoteReferenceToken(appState, token) {
   const parsed = parseMarkdownNoteReferenceToken(token)
   if (!parsed) return null
-  const index = buildWikiReferenceIndex(appState)
+  const index = getCachedWikiReferenceIndex(appState)
   const note = resolveIndexedHandle(index.noteIndexes, parsed.noteHandle)
   if (!note) return null
 
@@ -573,7 +586,7 @@ export function buildMarkdownNoteReferenceToken({ embed = false, target, label =
 export function getCanonicalWikiTargetForPayload(appState, payload) {
   const target = normalizeLocation(payload?.target ?? payload)
   if (!target) return null
-  const index = buildWikiReferenceIndex(appState)
+  const index = getCachedWikiReferenceIndex(appState)
   const note = index.noteByLocationKey.get(buildLocationKey(target))
   if (!note) return null
   if (payload?.previewStart === 'last-position' || payload?.startAt === 'last-position') {

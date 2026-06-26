@@ -23,6 +23,10 @@ import {
 import { terminalBlockLandingPlugin } from './terminal-block-landing'
 import { createMediaLinkPlugin } from './media-link-plugin'
 import { createNotePreviewPlugin } from './note-preview-plugin'
+import {
+  insertMarkdownNoteReferenceTokenIntoView,
+  type MarkdownNoteReferenceInsertionRange,
+} from './note-reference-insertion'
 import { sanitizeEditorHtml } from './editor-sanitizer'
 import {
   applyMarkdownHighlightDelimitersToEditorDisplay,
@@ -88,7 +92,10 @@ import {
 import { getUrlLinkPromptDraftFromSelection } from './url-link-prompt'
 import { recordDiagnosticEvent } from '../diagnostics/diagnostic-logger'
 import { installCompletedTaskCheckboxBehavior } from './task-behavior'
-import { resolveMarkdownNoteReferenceToken } from '../notes/note-references'
+import {
+  resolveMarkdownNoteReferenceDestination,
+  resolveMarkdownNoteReferenceToken,
+} from '../notes/note-references'
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import {
   collapseNotebookEditorMarkdownSnapshots,
@@ -176,9 +183,35 @@ const AISLE_EDITOR_INTERSECTION_ROOT_MARGIN = '240px'
 const DISPLAY_RESTORE_MAX_FRAME_ATTEMPTS = 8
 const EDITOR_APP_STATE_COMMIT_DEBOUNCE_MS = 300
 const EDITOR_APP_STATE_COMMIT_MAX_WAIT_MS = 1200
+const NOTEBOOK_EDITOR_TIMING_DIAGNOSTIC_THRESHOLD_MS = 50
+const NOTEBOOK_EDITOR_TIMING_WARNING_THRESHOLD_MS = 100
 
 function countMarkdownLinks(markdown: string): number {
   return String(markdown ?? '').match(/\[[^\]\n]+\]\((?:https?:\/\/|#aislenote-note\/)[^)]+\)/gi)?.length ?? 0
+}
+
+function getNotebookEditorPerfNow(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now()
+}
+
+function roundDiagnosticMs(durationMs: number): number {
+  return Math.round(durationMs * 10) / 10
+}
+
+function recordNotebookEditorTiming(
+  event: string,
+  durationMs: number,
+  details: Record<string, unknown>,
+  thresholdMs = NOTEBOOK_EDITOR_TIMING_DIAGNOSTIC_THRESHOLD_MS,
+): void {
+  if (durationMs < thresholdMs) return
+  recordDiagnosticEvent('editor', event, {
+    level: durationMs >= NOTEBOOK_EDITOR_TIMING_WARNING_THRESHOLD_MS ? 'warning' : 'info',
+    durationMs: roundDiagnosticMs(durationMs),
+    details,
+  })
 }
 
 function buildMountedAisleIds({
@@ -308,6 +341,19 @@ function focusEditorWithoutScrolling(editor: Editor | null): boolean {
   }
 }
 
+function isPlainPrimaryEditorClick(event: MouseEvent): boolean {
+  return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
+}
+
+export function resolveEditorInternalNoteLinkTarget(
+  appState: AppState | null | undefined,
+  href: string,
+  label: string,
+): NoteLocation | null {
+  if (!appState) return null
+  return resolveMarkdownNoteReferenceDestination(appState, href, label, false)?.target ?? null
+}
+
 export function useNotebookAisleEditors({
   viewMode,
   noteId,
@@ -360,6 +406,8 @@ export function useNotebookAisleEditors({
   const aislesRef = useRef(aisles)
   const hotkeysRef = useRef(hotkeys)
   const isMacPlatformRef = useRef(isMacPlatform)
+  const getAppStateRef = useRef(getAppState)
+  const onOpenNoteReferenceRef = useRef(onOpenNoteReference)
   const onOpenShortcutMenuRef = useRef(onOpenShortcutMenu)
   const onOpenTableOfContentsRef = useRef(onOpenTableOfContents)
   const onOpenUrlLinkPromptRef = useRef(onOpenUrlLinkPrompt)
@@ -373,6 +421,8 @@ export function useNotebookAisleEditors({
   aislesRef.current = aisles
   hotkeysRef.current = hotkeys
   isMacPlatformRef.current = isMacPlatform
+  getAppStateRef.current = getAppState
+  onOpenNoteReferenceRef.current = onOpenNoteReference
   onOpenShortcutMenuRef.current = onOpenShortcutMenu
   onOpenTableOfContentsRef.current = onOpenTableOfContents
   onOpenUrlLinkPromptRef.current = onOpenUrlLinkPrompt
@@ -534,6 +584,38 @@ export function useNotebookAisleEditors({
     [commitAisleMarkdown, markLocalStateEchoForAisleBody],
   )
 
+  const getMarkdownSnapshotForMeta = useCallback((meta: NotebookAisleEditorMeta) => {
+    const useCachedProgrammaticMarkdown =
+      meta.programmaticMarkdownUpdatePending &&
+      !meta.userEditedSinceProgrammaticUpdate &&
+      !meta.displayRestoreReady
+    const shouldReadLiveMarkdown =
+      !useCachedProgrammaticMarkdown &&
+      (meta.aisleId === activeEditorAisleIdRef.current || meta.userEditedSinceProgrammaticUpdate)
+    const previousMarkdown = meta.markdown
+    const markdown = shouldReadLiveMarkdown ? getEditorMarkdownForPersistence(meta.editor) : meta.markdown
+    let revision = meta.revision
+    if (shouldReadLiveMarkdown) {
+      meta.programmaticMarkdownUpdatePending = false
+      meta.userEditedSinceProgrammaticUpdate = false
+    }
+    if (markdown !== previousMarkdown) {
+      revision = nextEditorMarkdownRevision()
+      meta.markdown = markdown
+      meta.revision = revision
+      markUserEditedAisleBodyAtCurrentExternalVersion(meta.aisleBodyId)
+      lastMarkdownByAisleBodyRef.current.set(meta.aisleBodyId, markdown)
+      revisionByAisleBodyRef.current.set(meta.aisleBodyId, revision)
+      syncMountedEditorsForAisleBody(meta, markdown, revision)
+    }
+    return {
+      markdown,
+      revision,
+      source: shouldReadLiveMarkdown ? 'live' : 'cached',
+      changed: markdown !== previousMarkdown,
+    }
+  }, [markUserEditedAisleBodyAtCurrentExternalVersion, nextEditorMarkdownRevision, syncMountedEditorsForAisleBody])
+
   const clearScheduledEditorAppStateCommit = useCallback(() => {
     if (typeof window === 'undefined') return
     if (pendingAppStateCommitTimerRef.current !== null) {
@@ -547,9 +629,11 @@ export function useNotebookAisleEditors({
   }, [])
 
   const flushPendingEditorAppStateCommit = useCallback(() => {
+    const startedAt = getNotebookEditorPerfNow()
     clearScheduledEditorAppStateCommit()
     const pendingRevisions = pendingAppStateCommitRevisionsByAisleBodyRef.current
     if (pendingRevisions.size <= 0) return
+    const pendingAisleBodyCount = pendingRevisions.size
     pendingAppStateCommitRevisionsByAisleBodyRef.current = new Map()
 
     const snapshotsByAisleBodyId = new Map<string, {
@@ -557,31 +641,22 @@ export function useNotebookAisleEditors({
       markdown: string
       revision: number
     }>()
+    let liveReadCount = 0
+    let cachedReadCount = 0
+    let changedCount = 0
 
     editorMetaRef.current.forEach((meta) => {
       const pendingRevision = pendingRevisions.get(meta.aisleBodyId)
       if (pendingRevision === undefined) return
-      const useCachedMarkdown =
-        meta.programmaticMarkdownUpdatePending &&
-        !meta.userEditedSinceProgrammaticUpdate &&
-        !meta.displayRestoreReady
-      const markdown = useCachedMarkdown ? meta.markdown : getEditorMarkdownForPersistence(meta.editor)
-      let revision = meta.revision
-      if (!useCachedMarkdown) meta.programmaticMarkdownUpdatePending = false
-      if (markdown !== meta.markdown) {
-        revision = nextEditorMarkdownRevision()
-        meta.markdown = markdown
-        meta.revision = revision
-        markUserEditedAisleBodyAtCurrentExternalVersion(meta.aisleBodyId)
-        lastMarkdownByAisleBodyRef.current.set(meta.aisleBodyId, markdown)
-        revisionByAisleBodyRef.current.set(meta.aisleBodyId, revision)
-        syncMountedEditorsForAisleBody(meta, markdown, revision)
-      }
+      const snapshotMarkdown = getMarkdownSnapshotForMeta(meta)
+      if (snapshotMarkdown.source === 'live') liveReadCount += 1
+      else cachedReadCount += 1
+      if (snapshotMarkdown.changed) changedCount += 1
 
       const snapshot = {
         aisleBodyId: meta.aisleBodyId,
-        markdown,
-        revision: Math.max(revision, pendingRevision),
+        markdown: snapshotMarkdown.markdown,
+        revision: Math.max(snapshotMarkdown.revision, pendingRevision),
       }
       const current = snapshotsByAisleBodyId.get(meta.aisleBodyId)
       if (!current || snapshot.revision >= current.revision) {
@@ -592,12 +667,20 @@ export function useNotebookAisleEditors({
     snapshotsByAisleBodyId.forEach((snapshot) => {
       commitEditorOriginatedAisleMarkdown(snapshot.aisleBodyId, snapshot.markdown, snapshot.revision)
     })
+    recordNotebookEditorTiming('notebook-pending-commit-flush', getNotebookEditorPerfNow() - startedAt, {
+      noteId,
+      pendingAisleBodyCount,
+      committedAisleBodyCount: snapshotsByAisleBodyId.size,
+      mountedEditorCount: editorMetaRef.current.size,
+      liveReadCount,
+      cachedReadCount,
+      changedCount,
+    })
   }, [
     clearScheduledEditorAppStateCommit,
     commitEditorOriginatedAisleMarkdown,
-    markUserEditedAisleBodyAtCurrentExternalVersion,
-    nextEditorMarkdownRevision,
-    syncMountedEditorsForAisleBody,
+    getMarkdownSnapshotForMeta,
+    noteId,
   ])
 
   const schedulePendingEditorAppStateCommit = useCallback(() => {
@@ -772,44 +855,45 @@ export function useNotebookAisleEditors({
   )
 
   const getMountedEditorMarkdownSnapshots = useCallback((): NotebookEditorMarkdownSnapshot[] => {
+    const startedAt = getNotebookEditorPerfNow()
     reconcileMountedEditorsFromExternalState()
+    let liveReadCount = 0
+    let cachedReadCount = 0
+    let changedCount = 0
     const snapshots = Array.from(editorMetaRef.current.values()).map((meta) => {
-      const useCachedMarkdown =
-        meta.programmaticMarkdownUpdatePending &&
-        !meta.userEditedSinceProgrammaticUpdate &&
-        !meta.displayRestoreReady
-      const markdown = useCachedMarkdown ? meta.markdown : getEditorMarkdownForPersistence(meta.editor)
-      if (!useCachedMarkdown) meta.programmaticMarkdownUpdatePending = false
-      if (markdown !== meta.markdown) {
-        const revision = nextEditorMarkdownRevision()
-        meta.markdown = markdown
-        meta.revision = revision
-        markUserEditedAisleBodyAtCurrentExternalVersion(meta.aisleBodyId)
-        lastMarkdownByAisleBodyRef.current.set(meta.aisleBodyId, markdown)
-        revisionByAisleBodyRef.current.set(meta.aisleBodyId, revision)
-        syncMountedEditorsForAisleBody(meta, markdown, revision)
-      }
+      const snapshotMarkdown = getMarkdownSnapshotForMeta(meta)
+      if (snapshotMarkdown.source === 'live') liveReadCount += 1
+      else cachedReadCount += 1
+      if (snapshotMarkdown.changed) changedCount += 1
       return {
         noteId,
         noteBodyId: meta.noteBodyId,
         aisleId: meta.aisleId,
         aisleBodyId: meta.aisleBodyId,
-        markdown,
-        revision: meta.revision,
+        markdown: snapshotMarkdown.markdown,
+        revision: snapshotMarkdown.revision,
         active: meta.aisleId === activeEditorAisleIdRef.current,
       }
     })
-    collapseNotebookEditorMarkdownSnapshots(snapshots).forEach((snapshot) => {
+    const collapsedSnapshots = collapseNotebookEditorMarkdownSnapshots(snapshots)
+    collapsedSnapshots.forEach((snapshot) => {
       markLocalStateEchoForAisleBody(snapshot.aisleBodyId, snapshot.markdown, snapshot.revision ?? 0)
+    })
+    recordNotebookEditorTiming('notebook-mounted-snapshot-collection', getNotebookEditorPerfNow() - startedAt, {
+      noteId,
+      mountedEditorCount: editorMetaRef.current.size,
+      snapshotCount: snapshots.length,
+      collapsedSnapshotCount: collapsedSnapshots.length,
+      liveReadCount,
+      cachedReadCount,
+      changedCount,
     })
     return snapshots
   }, [
-    markUserEditedAisleBodyAtCurrentExternalVersion,
+    getMarkdownSnapshotForMeta,
     markLocalStateEchoForAisleBody,
-    nextEditorMarkdownRevision,
     noteId,
     reconcileMountedEditorsFromExternalState,
-    syncMountedEditorsForAisleBody,
   ])
 
   const commitMountedEditorMarkdownNow = useCallback(() => {
@@ -887,6 +971,9 @@ export function useNotebookAisleEditors({
   const destroyEditor = useCallback((editorKey: string, captureContent = false) => {
     const meta = editorMetaRef.current.get(editorKey)
     if (!meta) return
+    const startedAt = getNotebookEditorPerfNow()
+    const mountedEditorCountBefore = editorMetaRef.current.size
+    const wasActiveEditor = editorRef.current === meta.editor
     if (captureContent) {
       try {
         flushPendingEditorAppStateCommit()
@@ -910,7 +997,17 @@ export function useNotebookAisleEditors({
       activeEditorAisleIdRef.current = ''
     }
     editorMetaRef.current.delete(editorKey)
-  }, [commitEditorMarkdown, editorRef, flushPendingEditorAppStateCommit])
+    recordNotebookEditorTiming('notebook-editor-destroy', getNotebookEditorPerfNow() - startedAt, {
+      noteId,
+      noteBodyId: meta.noteBodyId,
+      aisleId: meta.aisleId,
+      aisleBodyId: meta.aisleBodyId,
+      captureContent,
+      wasActiveEditor,
+      mountedEditorCountBefore,
+      mountedEditorCountAfter: editorMetaRef.current.size,
+    })
+  }, [commitEditorMarkdown, editorRef, flushPendingEditorAppStateCommit, noteId])
 
   useEffect(() => () => {
     Array.from(editorMetaRef.current.keys()).forEach((editorKey) => destroyEditor(editorKey, true))
@@ -1142,7 +1239,20 @@ export function useNotebookAisleEditors({
         const anchor = target?.closest<HTMLAnchorElement>('a[href]')
         if (!anchor || !root.contains(anchor) || !anchor.closest('.ProseMirror[contenteditable="true"]')) return
         const href = anchor.getAttribute('href')?.trim() ?? ''
-        if (!href || !openExternalWebUrl(href)) return
+        if (!href) return
+
+        const noteTarget = isPlainPrimaryEditorClick(event)
+          ? resolveEditorInternalNoteLinkTarget(getAppStateRef.current?.() ?? null, href, anchor.textContent ?? '')
+          : null
+        if (noteTarget && onOpenNoteReferenceRef.current) {
+          event.preventDefault()
+          event.stopPropagation()
+          event.stopImmediatePropagation()
+          onOpenNoteReferenceRef.current(noteTarget)
+          return
+        }
+
+        if (!openExternalWebUrl(href)) return
         event.preventDefault()
         event.stopPropagation()
         event.stopImmediatePropagation()
@@ -1167,6 +1277,7 @@ export function useNotebookAisleEditors({
         () => root.removeEventListener('mouseup', handleEditorQueryProbe),
       ]
 
+      const mountStartedAt = getNotebookEditorPerfNow()
       try {
         editor = new Editor({
           el: root,
@@ -1244,6 +1355,16 @@ export function useNotebookAisleEditors({
           activeEditorAisleIdRef.current = aisle.id
           scheduleToolbarFormatStateSync()
         }
+        recordNotebookEditorTiming('notebook-editor-mount', getNotebookEditorPerfNow() - mountStartedAt, {
+          noteId,
+          noteBodyId,
+          aisleId: aisle.id,
+          aisleBodyId: aisle.aisleBodyId,
+          markdownLength: aisle.markdown.length,
+          pluginCount: editorPlugins.length,
+          mountedEditorCount: editorMetaRef.current.size,
+          active: aisle.id === resolvedActiveAisleId,
+        })
       } catch (error) {
         cleanupFns.forEach((cleanup) => cleanup())
         try {
@@ -1557,6 +1678,38 @@ export function useNotebookAisleEditors({
       markEditorUserEditIntentForEditor,
       notifyNoteMentionQueryChange,
       pushToast,
+    ],
+  )
+
+  const insertNoteReferenceAtSelection = useCallback(
+    (token: string, range?: MarkdownNoteReferenceInsertionRange | null) => {
+      const editor = editorRef.current
+      if (!editor) {
+        pushToast('Open a note before inserting note content.', 'warning')
+        return false
+      }
+      if (!token) return true
+
+      const view = getWysiwygView(editor)
+      markEditorUserEditIntentForEditor(editor)
+      if (insertMarkdownNoteReferenceTokenIntoView(view, token, range)) {
+        finishEditorOperation(editorOperationRuntime, editor, { commitMode: 'deferred', syncToolbar: true })
+        notifyNoteMentionQueryChange(editor)
+        return true
+      }
+
+      return range
+        ? replaceActiveEditorRangeWithText(range.from, range.to, token)
+        : insertTextFromContextMenu(token)
+    },
+    [
+      editorOperationRuntime,
+      editorRef,
+      insertTextFromContextMenu,
+      markEditorUserEditIntentForEditor,
+      notifyNoteMentionQueryChange,
+      pushToast,
+      replaceActiveEditorRangeWithText,
     ],
   )
 
@@ -1939,6 +2092,7 @@ export function useNotebookAisleEditors({
     insertNamedUrlLink,
     insertUrlLink,
     insertTextAtSelection: insertTextFromContextMenu,
+    insertNoteReferenceAtSelection,
     replaceActiveEditorRangeWithText,
     commitActiveEditorMarkdownNow,
     commitMountedEditorMarkdownNow,

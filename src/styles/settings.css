@@ -245,6 +245,133 @@
   margin-bottom: 0.6rem;
 }
 
+.frontmatter-template-settings-layout {
+  display: grid;
+  grid-template-columns: minmax(11rem, 0.32fr) minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: start;
+  margin-top: 0.8rem;
+}
+
+.frontmatter-template-list-panel,
+.frontmatter-template-editor {
+  min-width: 0;
+}
+
+.frontmatter-template-list-panel {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.frontmatter-template-editor {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.frontmatter-template-list-header {
+  color: var(--settings-help-text);
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.frontmatter-template-list {
+  display: grid;
+  gap: 0.32rem;
+}
+
+.frontmatter-template-list-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.7rem minmax(0, 1fr);
+  gap: 0.35rem;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+  min-height: 2.35rem;
+  padding: 0.35rem 0.5rem 0.35rem 0.28rem;
+  border: 1px solid var(--settings-control-border);
+  border-radius: 0.42rem;
+  background: var(--settings-control-bg);
+  color: var(--settings-control-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+
+.frontmatter-template-list-item:hover {
+  border-color: var(--settings-action-hover-border);
+  background: var(--settings-action-hover-bg);
+  color: var(--settings-action-hover-text);
+}
+
+.frontmatter-template-list-item:focus-visible {
+  outline: 2px solid var(--settings-control-focus-border);
+  outline-offset: 2px;
+}
+
+.frontmatter-template-list-item.is-selected {
+  border-color: var(--settings-section-tab-active-border);
+  background: var(--settings-section-tab-active-bg);
+  color: var(--settings-section-tab-active-text);
+}
+
+.frontmatter-template-list-item.is-dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+
+.frontmatter-template-list-item.is-drop-before::before,
+.frontmatter-template-list-item.is-drop-after::after {
+  content: '';
+  position: absolute;
+  left: 0.28rem;
+  right: 0.28rem;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--settings-section-tab-active-border);
+  pointer-events: none;
+}
+
+.frontmatter-template-list-item.is-drop-before::before {
+  top: -0.22rem;
+}
+
+.frontmatter-template-list-item.is-drop-after::after {
+  bottom: -0.22rem;
+}
+
+.frontmatter-template-drag-handle {
+  display: inline-grid;
+  place-items: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  color: var(--settings-help-text);
+  cursor: grab;
+}
+
+.frontmatter-template-list-item.is-selected .frontmatter-template-drag-handle {
+  color: currentColor;
+}
+
+.frontmatter-template-list-item.is-dragging .frontmatter-template-drag-handle {
+  cursor: grabbing;
+}
+
+.frontmatter-template-drag-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.frontmatter-template-list-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .frontmatter-template-field-row {
   display: grid;
   grid-template-columns: minmax(9rem, 1fr) minmax(6.75rem, 9rem) minmax(6.75rem, 9rem) minmax(13rem, 1.5fr) 2.45rem 2.45rem;

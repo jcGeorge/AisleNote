@@ -66,6 +66,33 @@ export type BuildFrontmatterDataResult =
     }
   | { ok: false; message: string }
 
+export type FrontmatterTemplateDropPosition = 'before' | 'after'
+
+export function reorderFrontmatterTemplatesByInsertion(
+  templates: FrontmatterTemplate[],
+  sourceTemplateId: string,
+  targetTemplateId: string,
+  position: FrontmatterTemplateDropPosition,
+): FrontmatterTemplate[] {
+  if (!sourceTemplateId || !targetTemplateId || sourceTemplateId === targetTemplateId) return templates
+
+  const sourceIndex = templates.findIndex((template) => template.id === sourceTemplateId)
+  const targetIndex = templates.findIndex((template) => template.id === targetTemplateId)
+  if (sourceIndex < 0 || targetIndex < 0) return templates
+
+  const next = [...templates]
+  const [sourceTemplate] = next.splice(sourceIndex, 1)
+  if (!sourceTemplate) return templates
+
+  const nextTargetIndex = next.findIndex((template) => template.id === targetTemplateId)
+  if (nextTargetIndex < 0) return templates
+
+  const insertIndex = position === 'before' ? nextTargetIndex : nextTargetIndex + 1
+  next.splice(insertIndex, 0, sourceTemplate)
+
+  return next.every((template, index) => template.id === templates[index]?.id) ? templates : next
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }

@@ -25,7 +25,7 @@ describe('notebook aisle editor task checkbox wiring', () => {
     expect(source).toContain('placeEditorCaretAtClientPoint(editor ?? null, options.focusAtClientPoint)')
   })
 
-  it('keeps lifecycle display-restoration guards while user and snapshot commits read live markdown', () => {
+  it('keeps lifecycle display-restoration guards while snapshots use dirty-only live reads', () => {
     expect(source).toContain('displayRestoreReady: boolean')
     expect(source).toContain("type NotebookEditorMarkdownCommitSource = 'user' | 'programmatic' | 'lifecycle'")
     expect(source).toContain('const DISPLAY_RESTORE_MAX_FRAME_ATTEMPTS = 8')
@@ -45,9 +45,12 @@ describe('notebook aisle editor task checkbox wiring', () => {
     expect(commitBody).toContain('!meta.userEditedSinceProgrammaticUpdate')
     expect(commitBody).toContain('getEditorMarkdownForPersistence(editor)')
     expect(snapshotBody).toContain('reconcileMountedEditorsFromExternalState()')
-    expect(snapshotBody).toContain('!meta.userEditedSinceProgrammaticUpdate')
-    expect(snapshotBody).toContain('const markdown = useCachedMarkdown ? meta.markdown : getEditorMarkdownForPersistence(meta.editor)')
-    expect(snapshotBody).toContain('revision: meta.revision')
+    expect(source).toContain('const getMarkdownSnapshotForMeta = useCallback')
+    expect(source).toContain('const shouldReadLiveMarkdown =')
+    expect(source).toContain('meta.aisleId === activeEditorAisleIdRef.current || meta.userEditedSinceProgrammaticUpdate')
+    expect(source).toContain('const markdown = shouldReadLiveMarkdown ? getEditorMarkdownForPersistence(meta.editor) : meta.markdown')
+    expect(snapshotBody).toContain('const snapshotMarkdown = getMarkdownSnapshotForMeta(meta)')
+    expect(snapshotBody).toContain('revision: snapshotMarkdown.revision')
     expect(snapshotBody).toContain('active: meta.aisleId === activeEditorAisleIdRef.current')
     expect(source).toContain("commitEditorMarkdown(meta, meta.editor, 'lifecycle')")
     expect(source).toContain('programmaticMarkdownUpdatePending: true')
@@ -222,6 +225,29 @@ describe('notebook aisle editor task checkbox wiring', () => {
     expect(source).toContain('const scrollToAisleRange = useCallback')
     expect(source).toContain('return meta ? scrollToRange(meta.editor, from, to) : false')
     expect(source).toContain('scrollToAisleRange,')
+  })
+
+  it('routes internal note reference insertions through a note-aware ProseMirror path', () => {
+    expect(source).toContain("import {\n  insertMarkdownNoteReferenceTokenIntoView,")
+    expect(source).toContain('const insertNoteReferenceAtSelection = useCallback')
+    expect(source).toContain('insertMarkdownNoteReferenceTokenIntoView(view, token, range)')
+    expect(source).toContain('finishEditorOperation(editorOperationRuntime, editor, { commitMode: \'deferred\', syncToolbar: true })')
+    expect(source).toContain('notifyNoteMentionQueryChange(editor)')
+    expect(source).toContain('insertNoteReferenceAtSelection,')
+  })
+
+  it('resolves active editor internal note-link clicks before external URL handling', () => {
+    expect(source).toContain('export function resolveEditorInternalNoteLinkTarget')
+    expect(source).toContain('const getAppStateRef = useRef(getAppState)')
+    expect(source).toContain('const onOpenNoteReferenceRef = useRef(onOpenNoteReference)')
+    expect(source).toContain('const noteTarget = isPlainPrimaryEditorClick(event)')
+    expect(source).toContain('resolveEditorInternalNoteLinkTarget(getAppStateRef.current?.() ?? null, href, anchor.textContent ?? \'\')')
+    expect(source).toContain('onOpenNoteReferenceRef.current(noteTarget)')
+
+    const clickHandlerStart = source.indexOf('const handleLinkClick = (event: MouseEvent) => {')
+    const clickHandlerEnd = source.indexOf('root.addEventListener(\'focusin\', handleFocus)', clickHandlerStart)
+    const clickHandler = source.slice(clickHandlerStart, clickHandlerEnd)
+    expect(clickHandler.indexOf('resolveEditorInternalNoteLinkTarget')).toBeLessThan(clickHandler.indexOf('openExternalWebUrl(href)'))
   })
 })
 

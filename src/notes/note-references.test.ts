@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { AppState, NoteLocation } from '../types/app'
 import { getHeadingOutlineFromMarkdown } from '../editor/heading-outline'
 import {
+  buildWikiReferenceIndex,
+  getCachedWikiReferenceIndex,
+} from '../markdown/note-context-tokens.js'
+import {
   buildInternalNoteLinkToken,
   buildPreviewToken,
   parsePreviewReferences,
@@ -57,6 +61,26 @@ function createReferenceState(): AppState {
 const specsLocation: NoteLocation = { noteId: 'note-b' }
 
 describe('notebook note references', () => {
+  it('keeps direct wiki reference index builds uncached', () => {
+    const state = createReferenceState()
+
+    expect(buildWikiReferenceIndex(state)).not.toBe(buildWikiReferenceIndex(state))
+  })
+
+  it('caches wiki reference indexes by immutable app state identity', () => {
+    const state = createReferenceState()
+    const cached = getCachedWikiReferenceIndex(state)
+
+    expect(getCachedWikiReferenceIndex(state)).toBe(cached)
+  })
+
+  it('uses a separate cached wiki reference index for a new app state object', () => {
+    const state = createReferenceState()
+    const nextState = structuredClone(state)
+
+    expect(getCachedWikiReferenceIndex(nextState)).not.toBe(getCachedWikiReferenceIndex(state))
+  })
+
   it('builds and resolves markdown note links with noteId targets', () => {
     const state = createReferenceState()
     const token = buildInternalNoteLinkToken(state, specsLocation)

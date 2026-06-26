@@ -74,7 +74,9 @@ import {
   disableInvalidComputedFrontmatterRows,
   makeFrontmatterRowsManual,
   normalizeFrontmatterDraftRows,
+  reorderFrontmatterTemplatesByInsertion,
   resolveFrontmatterRowComputedForType,
+  type FrontmatterTemplateDropPosition,
   type FrontmatterRowDraft,
 } from '../frontmatter/frontmatter-state'
 import {
@@ -123,6 +125,7 @@ import { TableControlsOverlay } from '../components/editor/TableControlsOverlay'
 import { ListReorderControlsOverlay } from '../components/editor/ListReorderControlsOverlay'
 import { ImageToolsOverlay } from '../components/editor/ImageToolsOverlay'
 import { MediaToolsOverlay } from '../components/editor/MediaToolsOverlay'
+import { recordDiagnosticEvent } from '../diagnostics/diagnostic-logger'
 import { AisleEditModal } from '../components/notes/AisleEditModal'
 import {
   NotebookEditorContextMenu,
@@ -186,7 +189,7 @@ import {
 import { MAX_AISLE_WARNING_MESSAGE, MAX_NOTE_AISLES } from '../editor/aisle-edit-draft'
 import { parseSavedState } from '../state/app-state'
 import { createRandomId, createReservedIdAllocator } from '../state/navigation-ids'
-import { importMarkdownNotebook } from '../import/markdown-import'
+import { importMarkdownIntoExistingNotebook } from '../import/markdown-import'
 import { usePersistentAppState } from '../storage/usePersistentAppState'
 import { useStorageProfileController } from '../storage/useStorageProfileController'
 import {
@@ -432,6 +435,9 @@ const TAG_AUTOCOMPLETE_RECENT_STORAGE_KEY = 'aislenote:tag-autocomplete-recent:v
 const NOTEBOOK_SETUP_APP_NAME = 'AisleNote'
 const NOTEBOOK_SETUP_LOGO_SRC = './favicon.svg'
 const CLOSED_NOTE_TAB_HISTORY_LIMIT = 20
+const NOTEBOOK_NAVIGATION_TIMING_DIAGNOSTIC_THRESHOLD_MS = 50
+const NOTEBOOK_NAVIGATION_TIMING_WARNING_THRESHOLD_MS = 100
+const NOTEBOOK_NAVIGATION_FOCUS_TIMING_DIAGNOSTIC_THRESHOLD_MS = 16
 
 const UTILITY_VIEW_MODES = ['settings', 'messages', 'about', 'trash'] as const
 type UtilityViewMode = typeof UTILITY_VIEW_MODES[number]
@@ -507,6 +513,30 @@ const NOTEBOOK_TREE_SORT_OPTIONS: Array<{ id: TabSortMode; label: string }> = [
 
 const SETTINGS_SECTION_SET = new Set<SettingsSection>(SETTINGS_SECTION_TABS.map((tab) => tab.id))
 const DATA_SECTION_SET = new Set<DataSettingsSection>(DATA_SECTION_TABS.map((tab) => tab.id))
+
+function getNotebookAppPerfNow(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now()
+}
+
+function roundNotebookAppDiagnosticMs(durationMs: number): number {
+  return Math.round(durationMs * 10) / 10
+}
+
+function recordNotebookNavigationTiming(
+  event: string,
+  durationMs: number,
+  details: Record<string, unknown>,
+  thresholdMs = NOTEBOOK_NAVIGATION_TIMING_DIAGNOSTIC_THRESHOLD_MS,
+): void {
+  if (durationMs < thresholdMs) return
+  recordDiagnosticEvent('navigation', event, {
+    level: durationMs >= NOTEBOOK_NAVIGATION_TIMING_WARNING_THRESHOLD_MS ? 'warning' : 'info',
+    durationMs: roundNotebookAppDiagnosticMs(durationMs),
+    details,
+  })
+}
 const DELETED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: 'short',
   day: 'numeric',
@@ -644,6 +674,13 @@ export type NotebookFrontmatterModalState = {
   selectedTemplateId: string
   templateDerived: boolean
   isTemplateSuggestionDraft: boolean
+}
+
+const FRONTMATTER_TEMPLATE_DRAG_MIME = 'application/x-aislenote-frontmatter-template'
+
+type FrontmatterTemplateDropTarget = {
+  templateId: string
+  position: FrontmatterTemplateDropPosition
 }
 
 type NoteActionPickerSource = 'mention' | 'toolbar-link' | 'context-note-link' | 'context-note-preview' | 'whole-note-copy'
@@ -2715,6 +2752,8 @@ export function NotebookApp() {
   const [frontmatterModal, setFrontmatterModal] = useState<NotebookFrontmatterModalState | null>(null)
   const [frontmatterDraft, setFrontmatterDraft] = useState<AppState['frontmatter']>(() => state.frontmatter)
   const [frontmatterFixedListOptionDrafts, setFrontmatterFixedListOptionDrafts] = useState<Record<string, string>>({})
+  const [draggingFrontmatterTemplateId, setDraggingFrontmatterTemplateId] = useState('')
+  const [frontmatterTemplateDropTarget, setFrontmatterTemplateDropTarget] = useState<FrontmatterTemplateDropTarget | null>(null)
   const [editingShortcut, setEditingShortcut] = useState<ShortcutId | null>(null)
   const [shortcutMenuSettingsOpen, setShortcutMenuSettingsOpen] = useState(false)
   const [tableOfContentsPanels, setTableOfContentsPanels] = useState<TableOfContentsPanelsState | null>(null)
@@ -3141,6 +3180,8 @@ export function NotebookApp() {
     if (JSON.stringify(frontmatterDraft) === JSON.stringify(frontmatterStateSnapshotRef.current)) {
       setFrontmatterDraft(state.frontmatter)
       setFrontmatterFixedListOptionDrafts({})
+      setDraggingFrontmatterTemplateId('')
+      setFrontmatterTemplateDropTarget(null)
     }
     frontmatterStateSnapshotRef.current = state.frontmatter
   }, [frontmatterDraft, state.frontmatter])
@@ -3837,11 +3878,39 @@ export function NotebookApp() {
       location: NotebookNavigationLocation,
       options: { tabDisposition?: NotebookTabOpenDisposition; restoreClosedTab?: ClosedNotebookTab } = {},
     ) => {
+      const navigationStartedAt = getNotebookAppPerfNow()
+      const navigationKind = options.restoreClosedTab
+        ? 'restore-closed-tab'
+        : options.tabDisposition ?? 'temporary'
+      let phaseStartedAt = getNotebookAppPerfNow()
       notebookEditors.flushPendingEditorAppStateCommit()
+      const flushDurationMs = getNotebookAppPerfNow() - phaseStartedAt
+      phaseStartedAt = getNotebookAppPerfNow()
       const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
+      const snapshotDurationMs = getNotebookAppPerfNow() - phaseStartedAt
+      const snapshotCount = snapshots.length
+      const collapsedSnapshotCount = new Set(snapshots.map((snapshot) => snapshot.aisleBodyId).filter(Boolean)).size
+      phaseStartedAt = getNotebookAppPerfNow()
       const snapshotState = applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots)
+      const snapshotApplyDurationMs = getNotebookAppPerfNow() - phaseStartedAt
+      phaseStartedAt = getNotebookAppPerfNow()
       const resolvedLocation = resolveNotebookNavigationLocation(snapshotState, location)
-      if (!resolvedLocation) return false
+      const resolveDurationMs = getNotebookAppPerfNow() - phaseStartedAt
+      if (!resolvedLocation) {
+        recordNotebookNavigationTiming('notebook-navigation', getNotebookAppPerfNow() - navigationStartedAt, {
+          result: 'unresolved',
+          navigationKind,
+          requestedNoteId: location.noteId,
+          requestedAisleId: location.aisleId ?? '',
+          flushDurationMs: roundNotebookAppDiagnosticMs(flushDurationMs),
+          snapshotDurationMs: roundNotebookAppDiagnosticMs(snapshotDurationMs),
+          snapshotApplyDurationMs: roundNotebookAppDiagnosticMs(snapshotApplyDurationMs),
+          resolveDurationMs: roundNotebookAppDiagnosticMs(resolveDurationMs),
+          snapshotCount,
+          collapsedSnapshotCount,
+        })
+        return false
+      }
       const targetNoteBodyId = findNotebookNote(snapshotState.notebook.items, resolvedLocation.noteId)?.note.noteBodyId ?? ''
 
       pendingFocusToAisleIdRef.current = resolvedLocation.aisleId || null
@@ -3850,6 +3919,7 @@ export function NotebookApp() {
       setActiveAisleId(resolvedLocation.aisleId)
       setSelectedFolderId('')
       clearNotebookNavigationTransientUi()
+      phaseStartedAt = getNotebookAppPerfNow()
       mutateState((previous) => {
         const previousWithEditorContent = applyNotebookEditorMarkdownSnapshotsToState(previous, snapshots)
         const previousWithCursor = applyActiveCursorToState(previousWithEditorContent)
@@ -3867,6 +3937,7 @@ export function NotebookApp() {
           notebook,
         }
       })
+      const mutateStateDurationMs = getNotebookAppPerfNow() - phaseStartedAt
       setViewMode('main')
       setScratchpadActive(false)
       scheduleAisleFocusScroll(targetNoteBodyId, resolvedLocation.aisleId)
@@ -3875,10 +3946,41 @@ export function NotebookApp() {
         const active = getActiveNoteModel(stateRef.current)
         if (!active || active.noteId !== resolvedLocation.noteId) return
         if (!active.noteBody.aisles.some((aisle) => aisle.id === resolvedLocation.aisleId)) return
-        notebookEditors.activateAisleEditor(buildAisleEditorKey(active.noteBody.id, resolvedLocation.aisleId), {
+        const focusStartedAt = getNotebookAppPerfNow()
+        const activated = notebookEditors.activateAisleEditor(buildAisleEditorKey(active.noteBody.id, resolvedLocation.aisleId), {
           focus: true,
           source: 'programmatic',
         })
+        recordNotebookNavigationTiming(
+          'notebook-navigation-focus-activation',
+          getNotebookAppPerfNow() - focusStartedAt,
+          {
+            navigationKind,
+            noteId: resolvedLocation.noteId,
+            noteBodyId: active.noteBody.id,
+            aisleId: resolvedLocation.aisleId,
+            activated,
+            mountedEditorCount: notebookEditors.mountedAisleIds.size,
+          },
+          NOTEBOOK_NAVIGATION_FOCUS_TIMING_DIAGNOSTIC_THRESHOLD_MS,
+        )
+      })
+      recordNotebookNavigationTiming('notebook-navigation', getNotebookAppPerfNow() - navigationStartedAt, {
+        result: 'applied',
+        navigationKind,
+        requestedNoteId: location.noteId,
+        requestedAisleId: location.aisleId ?? '',
+        noteId: resolvedLocation.noteId,
+        noteBodyId: targetNoteBodyId,
+        aisleId: resolvedLocation.aisleId,
+        flushDurationMs: roundNotebookAppDiagnosticMs(flushDurationMs),
+        snapshotDurationMs: roundNotebookAppDiagnosticMs(snapshotDurationMs),
+        snapshotApplyDurationMs: roundNotebookAppDiagnosticMs(snapshotApplyDurationMs),
+        resolveDurationMs: roundNotebookAppDiagnosticMs(resolveDurationMs),
+        mutateStateDurationMs: roundNotebookAppDiagnosticMs(mutateStateDurationMs),
+        snapshotCount,
+        collapsedSnapshotCount,
+        mountedEditorCount: notebookEditors.mountedAisleIds.size,
       })
       return true
     },
@@ -3944,17 +4046,41 @@ export function NotebookApp() {
 
   const closeNoteTab = useCallback(
     (noteId: string) => {
+      const navigationStartedAt = getNotebookAppPerfNow()
+      let phaseStartedAt = getNotebookAppPerfNow()
       notebookEditors.flushPendingEditorAppStateCommit()
+      const flushDurationMs = getNotebookAppPerfNow() - phaseStartedAt
+      phaseStartedAt = getNotebookAppPerfNow()
       const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
+      const snapshotDurationMs = getNotebookAppPerfNow() - phaseStartedAt
+      const snapshotCount = snapshots.length
+      const collapsedSnapshotCount = new Set(snapshots.map((snapshot) => snapshot.aisleBodyId).filter(Boolean)).size
+      phaseStartedAt = getNotebookAppPerfNow()
       const snapshotState = applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots)
+      const snapshotApplyDurationMs = getNotebookAppPerfNow() - phaseStartedAt
+      phaseStartedAt = getNotebookAppPerfNow()
       const closedTab = getClosedNotebookTab(snapshotState.notebook, noteId)
       const nextNotebook = closeNotebookTab(snapshotState.notebook, noteId)
       const activeChanged = nextNotebook.activeNoteId !== snapshotState.notebook.activeNoteId
       const resolvedLocation = activeChanged && nextNotebook.activeNoteId
         ? resolveNotebookNavigationLocation({ ...snapshotState, notebook: nextNotebook }, { noteId: nextNotebook.activeNoteId })
         : null
+      const resolveDurationMs = getNotebookAppPerfNow() - phaseStartedAt
 
-      if (activeChanged && !resolvedLocation) return
+      if (activeChanged && !resolvedLocation) {
+        recordNotebookNavigationTiming('notebook-tab-close-navigation', getNotebookAppPerfNow() - navigationStartedAt, {
+          result: 'unresolved',
+          closedNoteId: noteId,
+          activeChanged,
+          flushDurationMs: roundNotebookAppDiagnosticMs(flushDurationMs),
+          snapshotDurationMs: roundNotebookAppDiagnosticMs(snapshotDurationMs),
+          snapshotApplyDurationMs: roundNotebookAppDiagnosticMs(snapshotApplyDurationMs),
+          resolveDurationMs: roundNotebookAppDiagnosticMs(resolveDurationMs),
+          snapshotCount,
+          collapsedSnapshotCount,
+        })
+        return
+      }
       rememberClosedNoteTab(closedTab)
 
       if (noteId === renamingTreeItemId) {
@@ -3971,14 +4097,31 @@ export function NotebookApp() {
         clearNotebookNavigationTransientUi()
       }
 
+      phaseStartedAt = getNotebookAppPerfNow()
       mutateState((previous) => {
         const previousWithEditorContent = applyNotebookEditorMarkdownSnapshotsToState(previous, snapshots)
         const previousWithCursor = applyActiveCursorToState(previousWithEditorContent)
         const notebook = closeNotebookTab(previousWithCursor.notebook, noteId)
         return notebook === previousWithCursor.notebook ? previousWithCursor : { ...previousWithCursor, notebook }
       })
+      const mutateStateDurationMs = getNotebookAppPerfNow() - phaseStartedAt
 
-      if (!resolvedLocation) return
+      if (!resolvedLocation) {
+        recordNotebookNavigationTiming('notebook-tab-close-navigation', getNotebookAppPerfNow() - navigationStartedAt, {
+          result: 'closed-inactive',
+          closedNoteId: noteId,
+          activeChanged,
+          flushDurationMs: roundNotebookAppDiagnosticMs(flushDurationMs),
+          snapshotDurationMs: roundNotebookAppDiagnosticMs(snapshotDurationMs),
+          snapshotApplyDurationMs: roundNotebookAppDiagnosticMs(snapshotApplyDurationMs),
+          resolveDurationMs: roundNotebookAppDiagnosticMs(resolveDurationMs),
+          mutateStateDurationMs: roundNotebookAppDiagnosticMs(mutateStateDurationMs),
+          snapshotCount,
+          collapsedSnapshotCount,
+          mountedEditorCount: notebookEditors.mountedAisleIds.size,
+        })
+        return
+      }
       setViewMode('main')
       setScratchpadActive(false)
       const targetNoteBodyId = findNotebookNote(nextNotebook.items, resolvedLocation.noteId)?.note.noteBodyId ?? ''
@@ -3988,10 +4131,40 @@ export function NotebookApp() {
         const active = getActiveNoteModel(stateRef.current)
         if (!active || active.noteId !== resolvedLocation.noteId) return
         if (!active.noteBody.aisles.some((aisle) => aisle.id === resolvedLocation.aisleId)) return
-        notebookEditors.activateAisleEditor(buildAisleEditorKey(active.noteBody.id, resolvedLocation.aisleId), {
+        const focusStartedAt = getNotebookAppPerfNow()
+        const activated = notebookEditors.activateAisleEditor(buildAisleEditorKey(active.noteBody.id, resolvedLocation.aisleId), {
           focus: true,
           source: 'programmatic',
         })
+        recordNotebookNavigationTiming(
+          'notebook-navigation-focus-activation',
+          getNotebookAppPerfNow() - focusStartedAt,
+          {
+            navigationKind: 'close-tab',
+            noteId: resolvedLocation.noteId,
+            noteBodyId: active.noteBody.id,
+            aisleId: resolvedLocation.aisleId,
+            activated,
+            mountedEditorCount: notebookEditors.mountedAisleIds.size,
+          },
+          NOTEBOOK_NAVIGATION_FOCUS_TIMING_DIAGNOSTIC_THRESHOLD_MS,
+        )
+      })
+      recordNotebookNavigationTiming('notebook-tab-close-navigation', getNotebookAppPerfNow() - navigationStartedAt, {
+        result: 'switched-active',
+        closedNoteId: noteId,
+        noteId: resolvedLocation.noteId,
+        noteBodyId: targetNoteBodyId,
+        aisleId: resolvedLocation.aisleId,
+        activeChanged,
+        flushDurationMs: roundNotebookAppDiagnosticMs(flushDurationMs),
+        snapshotDurationMs: roundNotebookAppDiagnosticMs(snapshotDurationMs),
+        snapshotApplyDurationMs: roundNotebookAppDiagnosticMs(snapshotApplyDurationMs),
+        resolveDurationMs: roundNotebookAppDiagnosticMs(resolveDurationMs),
+        mutateStateDurationMs: roundNotebookAppDiagnosticMs(mutateStateDurationMs),
+        snapshotCount,
+        collapsedSnapshotCount,
+        mountedEditorCount: notebookEditors.mountedAisleIds.size,
       })
     },
     [
@@ -4398,14 +4571,23 @@ export function NotebookApp() {
       }
       if (result.kind === 'markdown-folder' || result.kind === 'markdown-zip') {
         try {
-          const imported = await importMarkdownNotebook(result.files, {
+          const latest = getLatestNotebookStateFromMountedEditors()
+          const imported = await importMarkdownIntoExistingNotebook(latest.state, result.files, {
+            rootName: result.rootName,
             assetRoots: result.assetRoots,
             assets: result.kind === 'markdown-zip' ? result.assets : undefined,
             readAsset: result.kind === 'markdown-folder' && window.electronAPI?.readFolderImportAsset
               ? (payload) => window.electronAPI!.readFolderImportAsset!({ sourceId: result.sourceId, ...payload })
               : undefined,
           })
-          setState(imported.state)
+          mutateState(() => ({
+            ...imported.state,
+            ui: revealNotebookTreeForCreatedItem(imported.state.ui, [imported.rootFolderId]),
+          }))
+          setScratchpadActive(false)
+          setSelectedFolderId(imported.rootFolderId)
+          setSelectedTreeNoteIds([])
+          setTreeSelectionAnchorNoteId('')
         } catch (error) {
           window.alert(error instanceof Error ? error.message : 'Markdown import failed.')
           return
@@ -4415,7 +4597,7 @@ export function NotebookApp() {
       }
       window.alert('Selected file is not an AisleNote notebook or Markdown import source.')
     })
-  }, [setState])
+  }, [getLatestNotebookStateFromMountedEditors, mutateState, setState])
 
   const exportNotebook = useCallback(() => {
     if (!window.electronAPI?.exportNotebookFolder) {
@@ -5273,12 +5455,13 @@ export function NotebookApp() {
     (target: NoteLocation, kind: 'note-link' | 'note-preview', options: NotebookNoteActionPickerActionOptions = {}) => {
       const token = buildNotebookNoteReferenceInsertionText(stateRef.current, target, kind, options)
       const currentPicker = noteActionPicker
-      if (currentPicker?.source === 'mention' && currentPicker.mentionRange) {
-        notebookEditors.replaceActiveEditorRangeWithText(currentPicker.mentionRange.from, currentPicker.mentionRange.to, token)
-      } else if (currentPicker?.insertRange) {
-        notebookEditors.replaceActiveEditorRangeWithText(currentPicker.insertRange.from, currentPicker.insertRange.to, token)
+      const insertRange = currentPicker?.source === 'mention'
+        ? currentPicker.mentionRange ?? null
+        : currentPicker?.insertRange ?? null
+      if (insertRange) {
+        notebookEditors.insertNoteReferenceAtSelection(token, insertRange)
       } else {
-        notebookEditors.insertTextAtSelection(token)
+        notebookEditors.insertNoteReferenceAtSelection(token)
       }
       closeNoteActionPicker()
     },
@@ -6302,7 +6485,7 @@ export function NotebookApp() {
             </button>
           </div>
           <p className="notebook-settings-help">
-            Import replaces the current notebook with an AisleNote notebook, notebook ZIP, Markdown folder, or Markdown ZIP.
+            AisleNote notebook imports replace the current notebook. Markdown folder and ZIP imports add a new top-level folder.
           </p>
         </div>
       ) : null}
@@ -6458,6 +6641,72 @@ export function NotebookApp() {
 
     const updateFrontmatterDraft = (update: (frontmatter: AppState['frontmatter']) => AppState['frontmatter']) => {
       setFrontmatterDraft((previous) => update(previous))
+    }
+
+    const selectFrontmatterTemplate = (templateId: string) => {
+      updateFrontmatterDraft((frontmatter) => ({
+        ...frontmatter,
+        settingsTemplateId: templateId,
+      }))
+    }
+
+    const clearFrontmatterTemplateDrag = () => {
+      setDraggingFrontmatterTemplateId('')
+      setFrontmatterTemplateDropTarget(null)
+    }
+
+    const getFrontmatterTemplateDropTarget = (
+      event: ReactDragEvent<HTMLElement>,
+      templateId: string,
+    ): FrontmatterTemplateDropTarget => {
+      const rect = event.currentTarget.getBoundingClientRect()
+      return {
+        templateId,
+        position: event.clientY < rect.top + rect.height / 2 ? 'before' : 'after',
+      }
+    }
+
+    const readFrontmatterTemplateDragId = (event: ReactDragEvent<HTMLElement>) =>
+      draggingFrontmatterTemplateId
+      || event.dataTransfer.getData(FRONTMATTER_TEMPLATE_DRAG_MIME)
+      || event.dataTransfer.getData('text/plain')
+
+    const updateFrontmatterTemplateDropTarget = (event: ReactDragEvent<HTMLElement>, templateId: string) => {
+      const sourceTemplateId = readFrontmatterTemplateDragId(event)
+      if (!sourceTemplateId || sourceTemplateId === templateId) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+      const nextTarget = getFrontmatterTemplateDropTarget(event, templateId)
+      setFrontmatterTemplateDropTarget((previous) =>
+        previous?.templateId === nextTarget.templateId && previous.position === nextTarget.position ? previous : nextTarget,
+      )
+    }
+
+    const dropFrontmatterTemplate = (event: ReactDragEvent<HTMLElement>, templateId: string) => {
+      const sourceTemplateId = readFrontmatterTemplateDragId(event)
+      const target =
+        frontmatterTemplateDropTarget?.templateId === templateId
+          ? frontmatterTemplateDropTarget
+          : getFrontmatterTemplateDropTarget(event, templateId)
+      event.preventDefault()
+      event.stopPropagation()
+      clearFrontmatterTemplateDrag()
+      if (!sourceTemplateId || sourceTemplateId === templateId) return
+      const fallbackTemplateId = activeTemplate?.id ?? ''
+      updateFrontmatterDraft((frontmatter) => {
+        const nextTemplates = reorderFrontmatterTemplatesByInsertion(
+          frontmatter.templates,
+          sourceTemplateId,
+          target.templateId,
+          target.position,
+        )
+        if (nextTemplates === frontmatter.templates) return frontmatter
+        return {
+          ...frontmatter,
+          templates: nextTemplates,
+          settingsTemplateId: frontmatter.settingsTemplateId || fallbackTemplateId,
+        }
+      })
     }
 
     const updateFrontmatterTemplate = (templateId: string, patch: Partial<Pick<FrontmatterTemplate, 'name'>>) => {
@@ -6675,232 +6924,263 @@ export function NotebookApp() {
     return (
       <section className="notebook-settings-section" aria-label="Frontmatter settings">
         <p className="notebook-settings-help">Template changes apply only after saving.</p>
-        <div className="settings-hotkey-row">
-          <label className="settings-hotkey-label" htmlFor="notebook-settings-frontmatter-template">
-            template
-          </label>
-          <select
-            id="notebook-settings-frontmatter-template"
-            className="settings-select-input settings-shortcut-select"
-            value={activeTemplate?.id ?? ''}
-            onChange={(event) =>
-              updateFrontmatterDraft((frontmatter) => ({
-                ...frontmatter,
-                settingsTemplateId: event.target.value,
-              }))
-            }
-          >
-            {templates.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="notebook-settings-actions">
-          <button
-            type="button"
-            className="notebook-settings-action"
-            onClick={() => {
-              const template: FrontmatterTemplate = {
-                id: createFrontmatterTemplateId(),
-                name: 'new template',
-                fields: [],
-              }
-              updateFrontmatterDraft((frontmatter) => ({
-                ...frontmatter,
-                templates: [...frontmatter.templates, template],
-                settingsTemplateId: template.id,
-              }))
-            }}
-          >
-            New template
-          </button>
-          <button
-            type="button"
-            className="notebook-settings-action"
-            disabled={!activeTemplate || templates.length <= 1}
-            onClick={() => {
-              if (!activeTemplate) return
-              updateFrontmatterDraft((frontmatter) => {
-                const nextTemplates = frontmatter.templates.filter((template) => template.id !== activeTemplate.id)
-                return {
-                  ...frontmatter,
-                  templates: nextTemplates,
-                  settingsTemplateId: frontmatter.settingsTemplateId === activeTemplate.id ? '' : frontmatter.settingsTemplateId,
-                  lastAppliedTemplateId:
-                    frontmatter.lastAppliedTemplateId === activeTemplate.id ? '' : frontmatter.lastAppliedTemplateId,
-                }
-              })
-            }}
-          >
-            Delete template
-          </button>
-          <button
-            type="button"
-            className="notebook-settings-action"
-            disabled={!frontmatterDraftDirty}
-            onClick={() => {
-              setFrontmatterFixedListOptionDrafts({})
-              setFrontmatterDraft(stateRef.current.frontmatter)
-            }}
-          >
-            Discard changes
-          </button>
-          <button
-            type="button"
-            className="notebook-settings-action"
-            disabled={!frontmatterDraftDirty}
-            onClick={saveFrontmatterTemplates}
-          >
-            Save template
-          </button>
-        </div>
-        {activeTemplate ? (
-          <>
-            <label className="settings-modal-field">
-              <span>name</span>
-              <input
-                type="text"
-                className="settings-text-input"
-                value={activeTemplate.name}
-                onChange={(event) => updateFrontmatterTemplate(activeTemplate.id, { name: event.target.value })}
-              />
-            </label>
-            <div className="settings-divider" />
-            <div className="frontmatter-template-fields">
-              <div className="frontmatter-template-field-row frontmatter-template-field-header" aria-hidden="true">
-                <span>key</span>
-                <span>type</span>
-                <span>computed</span>
-                <span>default value</span>
-                <span>lock</span>
-                <span>action</span>
-              </div>
-              {activeTemplate.fields.map((field) => (
-                <div key={field.id} className={`frontmatter-template-field-row ${field.computed !== 'none' ? 'is-computed' : ''}`}>
+        <div className="frontmatter-template-settings-layout">
+          <aside className="frontmatter-template-list-panel" aria-label="Frontmatter template list">
+            <div className="frontmatter-template-list-header">templates</div>
+            <div className="frontmatter-template-list" aria-label="frontmatter templates">
+              {templates.map((template) => {
+                const selected = activeTemplate?.id === template.id
+                const dropPosition =
+                  frontmatterTemplateDropTarget?.templateId === template.id ? frontmatterTemplateDropTarget.position : null
+                return (
+                  <button
+                    key={template.id}
+                    type="button"
+                    className={[
+                      'frontmatter-template-list-item',
+                      selected ? 'is-selected' : '',
+                      draggingFrontmatterTemplateId === template.id ? 'is-dragging' : '',
+                      dropPosition === 'before' ? 'is-drop-before' : '',
+                      dropPosition === 'after' ? 'is-drop-after' : '',
+                    ].filter(Boolean).join(' ')}
+                    draggable
+                    aria-current={selected ? 'true' : undefined}
+                    aria-label={`Select frontmatter template ${template.name}`}
+                    data-app-tooltip="Drag to reorder"
+                    onClick={() => selectFrontmatterTemplate(template.id)}
+                    onDragStart={(event) => {
+                      setDraggingFrontmatterTemplateId(template.id)
+                      setFrontmatterTemplateDropTarget(null)
+                      event.dataTransfer.effectAllowed = 'move'
+                      event.dataTransfer.setData(FRONTMATTER_TEMPLATE_DRAG_MIME, template.id)
+                      event.dataTransfer.setData('text/plain', template.id)
+                    }}
+                    onDragEnter={(event) => updateFrontmatterTemplateDropTarget(event, template.id)}
+                    onDragOver={(event) => updateFrontmatterTemplateDropTarget(event, template.id)}
+                    onDragLeave={(event) => {
+                      if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+                      if (frontmatterTemplateDropTarget?.templateId === template.id) setFrontmatterTemplateDropTarget(null)
+                    }}
+                    onDrop={(event) => dropFrontmatterTemplate(event, template.id)}
+                    onDragEnd={clearFrontmatterTemplateDrag}
+                  >
+                    <span className="frontmatter-template-drag-handle" aria-hidden="true">
+                      <AppIcon iconId="gripVertical" className="frontmatter-template-drag-icon" />
+                    </span>
+                    <span className="frontmatter-template-list-name">{template.name}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </aside>
+          <div className="frontmatter-template-editor">
+            <div className="notebook-settings-actions">
+              <button
+                type="button"
+                className="notebook-settings-action"
+                onClick={() => {
+                  const template: FrontmatterTemplate = {
+                    id: createFrontmatterTemplateId(),
+                    name: 'new template',
+                    fields: [],
+                  }
+                  updateFrontmatterDraft((frontmatter) => ({
+                    ...frontmatter,
+                    templates: [...frontmatter.templates, template],
+                    settingsTemplateId: template.id,
+                  }))
+                }}
+              >
+                New template
+              </button>
+              <button
+                type="button"
+                className="notebook-settings-action"
+                disabled={!activeTemplate || templates.length <= 1}
+                onClick={() => {
+                  if (!activeTemplate) return
+                  updateFrontmatterDraft((frontmatter) => {
+                    const nextTemplates = frontmatter.templates.filter((template) => template.id !== activeTemplate.id)
+                    return {
+                      ...frontmatter,
+                      templates: nextTemplates,
+                      settingsTemplateId: frontmatter.settingsTemplateId === activeTemplate.id ? '' : frontmatter.settingsTemplateId,
+                      lastAppliedTemplateId:
+                        frontmatter.lastAppliedTemplateId === activeTemplate.id ? '' : frontmatter.lastAppliedTemplateId,
+                    }
+                  })
+                }}
+              >
+                Delete template
+              </button>
+              <button
+                type="button"
+                className="notebook-settings-action"
+                disabled={!frontmatterDraftDirty}
+                onClick={() => {
+                  setFrontmatterFixedListOptionDrafts({})
+                  clearFrontmatterTemplateDrag()
+                  setFrontmatterDraft(stateRef.current.frontmatter)
+                }}
+              >
+                Discard changes
+              </button>
+              <button
+                type="button"
+                className="notebook-settings-action"
+                disabled={!frontmatterDraftDirty}
+                onClick={saveFrontmatterTemplates}
+              >
+                Save template
+              </button>
+            </div>
+            {activeTemplate ? (
+              <>
+                <label className="settings-modal-field">
+                  <span>name</span>
                   <input
                     type="text"
-                    className="settings-text-input frontmatter-key-input"
-                    aria-label="Frontmatter key"
-                    value={field.key}
-                    onChange={(event) =>
-                      updateFrontmatterTemplateField(activeTemplate.id, field.id, { key: event.target.value })
-                    }
+                    className="settings-text-input"
+                    value={activeTemplate.name}
+                    onChange={(event) => updateFrontmatterTemplate(activeTemplate.id, { name: event.target.value })}
                   />
-                  <select
-                    className="settings-select-input frontmatter-type-select"
-                    aria-label="Frontmatter type"
-                    value={field.type}
-                    onChange={(event) => {
-                      const type = event.target.value as FrontmatterTemplateField['type']
-                      const options = type === 'fixedList'
-                        ? getEditableFixedListOptions(field.options, field.defaultValue)
-                        : undefined
-                      updateFrontmatterTemplateField(activeTemplate.id, field.id, {
-                        type,
-                        defaultValue: type === 'boolean'
-                          ? (isFrontmatterBooleanTrue(field.defaultValue) ? 'true' : 'false')
-                          : type === 'date' || type === 'datetime'
-                            ? getFrontmatterDraftValueForType(type, field.defaultValue)
-                            : type === 'fixedList'
-                              ? resolveFrontmatterFixedListValues(options, field.defaultValue).join(', ')
-                            : field.defaultValue,
-                        options,
-                        computed: isFrontmatterComputedValueCompatibleWithFieldType(field.computed, type)
-                          ? field.computed
-                          : 'none',
-                      })
-                    }}
-                  >
-                    {FRONTMATTER_FIELD_TYPES.map((type) => (
-                      <option key={type} value={type}>
-                        {getFrontmatterTypeLabel(type)}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    className="settings-select-input frontmatter-computed-select"
-                    value={field.computed}
-                    aria-label="Frontmatter computed value"
-                    onChange={(event) =>
-                      updateFrontmatterTemplateField(activeTemplate.id, field.id, {
-                        computed: event.target.value as FrontmatterTemplateField['computed'],
-                      })
-                    }
-                  >
-                    {getFrontmatterComputedValuesForFieldType(field.type).map((computed) => (
-                      <option key={computed} value={computed}>
-                        {computed}
-                      </option>
-                    ))}
-                  </select>
-                  {renderFrontmatterDefaultControl(activeTemplate.id, field)}
-                  <span
-                    className={`frontmatter-computed-lock ${field.computed !== 'none' ? 'is-visible' : ''}`}
-                    aria-label={field.computed !== 'none' ? 'Computed values cannot be manually changed.' : undefined}
-                    data-app-tooltip={field.computed !== 'none' ? 'Computed values cannot be manually changed.' : undefined}
-                  >
-                    {field.computed !== 'none' ? <AppIcon iconId="lock" className="frontmatter-template-lock-icon" /> : null}
-                  </span>
-                  <button
-                    type="button"
-                    className="notebook-settings-action frontmatter-template-remove-btn"
-                    aria-label={`Remove ${field.key || 'frontmatter field'}`}
-                    data-app-tooltip="Remove field"
-                    onClick={() =>
-                      updateFrontmatterDraft((frontmatter) => ({
-                        ...frontmatter,
-                        templates: frontmatter.templates.map((template) =>
-                          template.id === activeTemplate.id
-                            ? {
-                                ...template,
-                                fields: template.fields.filter((candidate) => candidate.id !== field.id),
-                              }
-                            : template,
-                        ),
-                      }))
-                    }
-                  >
-                    <AppIcon iconId="trash" className="frontmatter-template-remove-icon" />
-                  </button>
+                </label>
+                <div className="settings-divider" />
+                <div className="frontmatter-template-fields">
+                  <div className="frontmatter-template-field-row frontmatter-template-field-header" aria-hidden="true">
+                    <span>key</span>
+                    <span>type</span>
+                    <span>computed</span>
+                    <span>default value</span>
+                    <span>lock</span>
+                    <span>action</span>
+                  </div>
+                  {activeTemplate.fields.map((field) => (
+                    <div key={field.id} className={`frontmatter-template-field-row ${field.computed !== 'none' ? 'is-computed' : ''}`}>
+                      <input
+                        type="text"
+                        className="settings-text-input frontmatter-key-input"
+                        aria-label="Frontmatter key"
+                        value={field.key}
+                        onChange={(event) =>
+                          updateFrontmatterTemplateField(activeTemplate.id, field.id, { key: event.target.value })
+                        }
+                      />
+                      <select
+                        className="settings-select-input frontmatter-type-select"
+                        aria-label="Frontmatter type"
+                        value={field.type}
+                        onChange={(event) => {
+                          const type = event.target.value as FrontmatterTemplateField['type']
+                          const options = type === 'fixedList'
+                            ? getEditableFixedListOptions(field.options, field.defaultValue)
+                            : undefined
+                          updateFrontmatterTemplateField(activeTemplate.id, field.id, {
+                            type,
+                            defaultValue: type === 'boolean'
+                              ? (isFrontmatterBooleanTrue(field.defaultValue) ? 'true' : 'false')
+                              : type === 'date' || type === 'datetime'
+                                ? getFrontmatterDraftValueForType(type, field.defaultValue)
+                                : type === 'fixedList'
+                                  ? resolveFrontmatterFixedListValues(options, field.defaultValue).join(', ')
+                                : field.defaultValue,
+                            options,
+                            computed: isFrontmatterComputedValueCompatibleWithFieldType(field.computed, type)
+                              ? field.computed
+                              : 'none',
+                          })
+                        }}
+                      >
+                        {FRONTMATTER_FIELD_TYPES.map((type) => (
+                          <option key={type} value={type}>
+                            {getFrontmatterTypeLabel(type)}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        className="settings-select-input frontmatter-computed-select"
+                        value={field.computed}
+                        aria-label="Frontmatter computed value"
+                        onChange={(event) =>
+                          updateFrontmatterTemplateField(activeTemplate.id, field.id, {
+                            computed: event.target.value as FrontmatterTemplateField['computed'],
+                          })
+                        }
+                      >
+                        {getFrontmatterComputedValuesForFieldType(field.type).map((computed) => (
+                          <option key={computed} value={computed}>
+                            {computed}
+                          </option>
+                        ))}
+                      </select>
+                      {renderFrontmatterDefaultControl(activeTemplate.id, field)}
+                      <span
+                        className={`frontmatter-computed-lock ${field.computed !== 'none' ? 'is-visible' : ''}`}
+                        aria-label={field.computed !== 'none' ? 'Computed values cannot be manually changed.' : undefined}
+                        data-app-tooltip={field.computed !== 'none' ? 'Computed values cannot be manually changed.' : undefined}
+                      >
+                        {field.computed !== 'none' ? <AppIcon iconId="lock" className="frontmatter-template-lock-icon" /> : null}
+                      </span>
+                      <button
+                        type="button"
+                        className="notebook-settings-action frontmatter-template-remove-btn"
+                        aria-label={`Remove ${field.key || 'frontmatter field'}`}
+                        data-app-tooltip="Remove field"
+                        onClick={() =>
+                          updateFrontmatterDraft((frontmatter) => ({
+                            ...frontmatter,
+                            templates: frontmatter.templates.map((template) =>
+                              template.id === activeTemplate.id
+                                ? {
+                                    ...template,
+                                    fields: template.fields.filter((candidate) => candidate.id !== field.id),
+                                  }
+                                : template,
+                            ),
+                          }))
+                        }
+                      >
+                        <AppIcon iconId="trash" className="frontmatter-template-remove-icon" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <button
-              type="button"
-              className="notebook-settings-action"
-              onClick={() => {
-                const existingKeys = new Set(activeTemplate.fields.map((field) => field.key.trim()).filter(Boolean))
-                let key = 'field'
-                let index = 2
-                while (existingKeys.has(key)) {
-                  key = `field ${index}`
-                  index += 1
-                }
-                const field: FrontmatterTemplateField = {
-                  id: createFrontmatterTemplateId(),
-                  key,
-                  type: 'text',
-                  defaultValue: '',
-                  computed: 'none',
-                }
-                updateFrontmatterDraft((frontmatter) => ({
-                  ...frontmatter,
-                  templates: frontmatter.templates.map((template) =>
-                    template.id === activeTemplate.id
-                      ? { ...template, fields: [...template.fields, field] }
-                      : template,
-                  ),
-                }))
-              }}
-            >
-              Add field
-            </button>
-          </>
-        ) : (
-          <p className="notebook-settings-help">Create a template to add default frontmatter fields.</p>
-        )}
+                <button
+                  type="button"
+                  className="notebook-settings-action"
+                  onClick={() => {
+                    const existingKeys = new Set(activeTemplate.fields.map((field) => field.key.trim()).filter(Boolean))
+                    let key = 'field'
+                    let index = 2
+                    while (existingKeys.has(key)) {
+                      key = `field ${index}`
+                      index += 1
+                    }
+                    const field: FrontmatterTemplateField = {
+                      id: createFrontmatterTemplateId(),
+                      key,
+                      type: 'text',
+                      defaultValue: '',
+                      computed: 'none',
+                    }
+                    updateFrontmatterDraft((frontmatter) => ({
+                      ...frontmatter,
+                      templates: frontmatter.templates.map((template) =>
+                        template.id === activeTemplate.id
+                          ? { ...template, fields: [...template.fields, field] }
+                          : template,
+                      ),
+                    }))
+                  }}
+                >
+                  Add field
+                </button>
+              </>
+            ) : (
+              <p className="notebook-settings-help">Create a template to add default frontmatter fields.</p>
+            )}
+          </div>
+        </div>
       </section>
     )
   }

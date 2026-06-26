@@ -75,6 +75,17 @@ describe('notebook settings access', () => {
     expect(notebookAppSource).not.toContain('Math.max(1, Math.min(12')
   })
 
+  it('supports dragging frontmatter templates to reorder the settings list', () => {
+    expect(notebookAppSource).toContain('FRONTMATTER_TEMPLATE_DRAG_MIME')
+    expect(notebookAppSource).toContain('reorderFrontmatterTemplatesByInsertion')
+    expect(notebookAppSource).toContain('className="frontmatter-template-list"')
+    expect(notebookAppSource).toContain('iconId="gripVertical"')
+    expect(notebookAppSource).toContain('onDragStart={(event) => {')
+    expect(notebookAppSource).toContain('onDrop={(event) => dropFrontmatterTemplate(event, template.id)}')
+    expect(settingsCssSource).toContain('.frontmatter-template-settings-layout')
+    expect(settingsCssSource).toContain('.frontmatter-template-list-item.is-drop-before::before')
+  })
+
   it('keeps notebook settings labels normal weight and switches pill-shaped', () => {
     expect(appCssSource).toContain('.notebook-utility-content label:not([class])')
     expect(appCssSource).toContain('font-weight: 400;')

@@ -38,4 +38,16 @@ describe('Notebook link insertion routing', () => {
     expect(appSource).toContain("onInsertNoteLink={() => openContextNoteReferencePicker('note-link')}")
     expect(appSource).toContain("onInsertNotePreview={() => openContextNoteReferencePicker('note-preview')}")
   })
+
+  it('inserts notebook note references through the note-aware editor API', () => {
+    const insertStart = appSource.indexOf('const insertNotebookNoteReference = useCallback')
+    const insertEnd = appSource.indexOf('const applyNotebookNoteCopyAction = useCallback', insertStart)
+    const insertBody = appSource.slice(insertStart, insertEnd)
+
+    expect(insertBody).toContain('const insertRange = currentPicker?.source === \'mention\'')
+    expect(insertBody).toContain('notebookEditors.insertNoteReferenceAtSelection(token, insertRange)')
+    expect(insertBody).toContain('notebookEditors.insertNoteReferenceAtSelection(token)')
+    expect(insertBody).not.toContain('notebookEditors.insertTextAtSelection(token)')
+    expect(insertBody).not.toContain('notebookEditors.replaceActiveEditorRangeWithText')
+  })
 })

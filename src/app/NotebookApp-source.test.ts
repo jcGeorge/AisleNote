@@ -158,7 +158,11 @@ describe('NotebookApp large notebook performance wiring', () => {
   it('flushes debounced editor changes before state-backed navigation, search, find, and storage reads', () => {
     expect(source).toContain('notebookEditors.flushPendingEditorAppStateCommit()')
     expect(source).toMatch(/const getLatestNotebookStateFromMountedEditors = useCallback\(\(\) => {\s*notebookEditors\.flushPendingEditorAppStateCommit\(\)/)
-    expect(source).toMatch(/const applyNotebookNavigationLocation = useCallback\(\s*\(\s*location: NotebookNavigationLocation,\s*options: \{ tabDisposition\?: NotebookTabOpenDisposition; restoreClosedTab\?: ClosedNotebookTab \} = \{\},\s*\) => {\s*notebookEditors\.flushPendingEditorAppStateCommit\(\)/)
+    const navigationStart = source.indexOf('const applyNotebookNavigationLocation = useCallback')
+    const navigationEnd = source.indexOf('const selectNoteTab = useCallback', navigationStart)
+    const navigationBody = source.slice(navigationStart, navigationEnd)
+    expect(navigationBody).toContain('notebookEditors.flushPendingEditorAppStateCommit()')
+    expect(navigationBody).toContain("recordNotebookNavigationTiming('notebook-navigation'")
     expect(source).toMatch(/const updateSidebarSearchQuery = useCallback\(\s*\(nextQuery: string\) => {\s*notebookEditors\.flushPendingEditorAppStateCommit\(\)/)
     expect(source).toMatch(/const updateFindReplaceQuery = useCallback\(\(nextQuery: string\) => {\s*notebookEditors\.flushPendingEditorAppStateCommit\(\)/)
   })
