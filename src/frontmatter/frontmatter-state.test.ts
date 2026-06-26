@@ -5,7 +5,9 @@ import {
   buildFrontmatterModalDraftForAisle,
   disableInvalidComputedFrontmatterRows,
   normalizeFrontmatterDraftRows,
-  reorderFrontmatterTemplatesByInsertion,
+  reorderFrontmatterItemsByTargetIndex,
+  reorderFrontmatterRowsByInsertion,
+  reorderFrontmatterTemplateFieldsByTargetIndex,
   resolveFrontmatterRowComputedForType,
   type FrontmatterRowDraft,
 } from './frontmatter-state'
@@ -141,20 +143,79 @@ function createState(): AppState {
 }
 
 describe('frontmatter structured row state', () => {
-  it('reorders templates by before and after insertion targets', () => {
-    const templates: FrontmatterTemplate[] = [
-      { id: 'template-a', name: 'a', fields: [] },
-      { id: 'template-b', name: 'b', fields: [] },
-      { id: 'template-c', name: 'c', fields: [] },
+  it('reorders frontmatter items by target insertion index', () => {
+    const items = [
+      { id: 'item-a', label: 'a' },
+      { id: 'item-b', label: 'b' },
+      { id: 'item-c', label: 'c' },
     ]
 
-    expect(
-      reorderFrontmatterTemplatesByInsertion(templates, 'template-a', 'template-c', 'after').map((candidate) => candidate.id),
-    ).toEqual(['template-b', 'template-c', 'template-a'])
-    expect(
-      reorderFrontmatterTemplatesByInsertion(templates, 'template-c', 'template-a', 'before').map((candidate) => candidate.id),
-    ).toEqual(['template-c', 'template-a', 'template-b'])
-    expect(reorderFrontmatterTemplatesByInsertion(templates, 'missing', 'template-a', 'before')).toBe(templates)
+    expect(reorderFrontmatterItemsByTargetIndex(items, 'item-a', 3).map((item) => item.id)).toEqual([
+      'item-b',
+      'item-c',
+      'item-a',
+    ])
+    expect(reorderFrontmatterItemsByTargetIndex(items, 'item-c', 0).map((item) => item.id)).toEqual([
+      'item-c',
+      'item-a',
+      'item-b',
+    ])
+    expect(reorderFrontmatterItemsByTargetIndex(items, 'item-b', 1)).toBe(items)
+    expect(reorderFrontmatterItemsByTargetIndex(items, 'item-b', 2)).toBe(items)
+    expect(reorderFrontmatterItemsByTargetIndex(items, 'missing', 1)).toBe(items)
+  })
+
+  it('reorders fields only on the selected frontmatter template', () => {
+    const templates: FrontmatterTemplate[] = [
+      {
+        id: 'template-a',
+        name: 'a',
+        fields: [
+          { id: 'field-a', key: 'a', type: 'text', defaultValue: 'A', computed: 'none' },
+          { id: 'field-b', key: 'b', type: 'number', defaultValue: '2', computed: 'none' },
+          { id: 'field-c', key: 'c', type: 'boolean', defaultValue: 'true', computed: 'none' },
+        ],
+      },
+      {
+        id: 'template-b',
+        name: 'b',
+        fields: [
+          { id: 'field-d', key: 'd', type: 'text', defaultValue: 'D', computed: 'none' },
+        ],
+      },
+    ]
+
+    const reordered = reorderFrontmatterTemplateFieldsByTargetIndex(templates, 'template-a', 'field-a', 3)
+
+    expect(reordered.map((candidate) => candidate.id)).toEqual(['template-a', 'template-b'])
+    expect(reordered[0]?.fields.map((field) => field.id)).toEqual(['field-b', 'field-c', 'field-a'])
+    expect(reordered[0]?.fields.find((field) => field.id === 'field-a')).toMatchObject({
+      key: 'a',
+      type: 'text',
+      defaultValue: 'A',
+    })
+    expect(reordered[1]).toBe(templates[1])
+    expect(reorderFrontmatterTemplateFieldsByTargetIndex(templates, 'template-b', 'missing', 1)).toBe(templates)
+  })
+
+  it('reorders rows by before and after insertion targets', () => {
+    const rows: FrontmatterRowDraft[] = [
+      { id: 'row-a', key: 'a', type: 'text', value: '', computed: 'none' },
+      { id: 'row-b', key: 'b', type: 'text', value: '', computed: 'none' },
+      { id: 'row-c', key: 'c', type: 'text', value: '', computed: 'none' },
+    ]
+
+    expect(reorderFrontmatterRowsByInsertion(rows, 'row-a', 'row-c', 'after').map((row) => row.id)).toEqual([
+      'row-b',
+      'row-c',
+      'row-a',
+    ])
+    expect(reorderFrontmatterRowsByInsertion(rows, 'row-c', 'row-a', 'before').map((row) => row.id)).toEqual([
+      'row-c',
+      'row-a',
+      'row-b',
+    ])
+    expect(reorderFrontmatterRowsByInsertion(rows, 'missing', 'row-a', 'before')).toBe(rows)
   })
 
   it('opens existing derived frontmatter with template rows and manual extras', () => {
@@ -173,6 +234,149 @@ describe('frontmatter structured row state', () => {
       value: 'kept',
       derived: false,
     })
+  })
+
+  it('preserves mixed saved frontmatter row order while inserting new template fields by neighbor', () => {
+    const state = createState()
+    const mixedState: AppState = {
+      ...state,
+      noteAisleBodies: state.noteAisleBodies.map((body) => ({
+        ...body,
+        frontmatter: {
+          extra: 'kept',
+          status: 'ready',
+          created: '2024-01-02',
+        },
+      })),
+    }
+
+    const draft = buildFrontmatterModalDraftForAisle(mixedState, 'body-1', 'aisle-body-1', location)
+
+    expect(draft.rows.map((row) => row.key)).toEqual([
+      'extra',
+      'status',
+      'created',
+      'title',
+      'folder',
+      'path',
+      'linked',
+      'tags',
+    ])
+  })
+
+  it('saves rows in visible order', () => {
+    const result = buildFrontmatterDataFromRows(createState(), 'body-1', location, [
+      { id: 'manual:extra', key: 'extra', type: 'text', value: 'kept', computed: 'none', derived: false },
+      {
+        id: 'template:status',
+        key: 'status',
+        type: 'text',
+        value: 'ready',
+        computed: 'none',
+        templateFieldId: 'status',
+        derived: true,
+      },
+      {
+        id: 'template:created',
+        key: 'created',
+        type: 'date',
+        value: '',
+        computed: 'createdAt',
+        computedEnabled: true,
+        templateFieldId: 'created',
+        derived: true,
+      },
+    ], {
+      aisleBodyId: 'aisle-body-1',
+      selectedTemplateId: template.id,
+      templateDerived: true,
+    })
+
+    expect(result).toMatchObject({ ok: true })
+    expect(result.ok ? Object.keys(result.frontmatter ?? {}) : []).toEqual(['extra', 'status', 'created'])
+  })
+
+  it('places newly added template rows between existing template neighbors', () => {
+    const neighborTemplate: FrontmatterTemplate = {
+      id: 'neighbor-template',
+      name: 'neighbor',
+      fields: [
+        { id: 'status', key: 'status', type: 'text', defaultValue: 'draft', computed: 'none' },
+        { id: 'title', key: 'title', type: 'text', defaultValue: '', computed: 'noteTitle' },
+        { id: 'created', key: 'created', type: 'date', defaultValue: '', computed: 'createdAt' },
+      ],
+    }
+    const state = createState()
+    const neighborState: AppState = {
+      ...state,
+      frontmatter: {
+        templates: [neighborTemplate],
+        settingsTemplateId: neighborTemplate.id,
+        lastAppliedTemplateId: neighborTemplate.id,
+      },
+      noteAisleBodies: state.noteAisleBodies.map((body) => ({
+        ...body,
+        frontmatter: {
+          status: 'ready',
+          created: '2024-01-02',
+        },
+        frontmatterMeta: {
+          templateId: neighborTemplate.id,
+          templateDerived: true,
+          templateFieldOrigins: {
+            status: { templateId: neighborTemplate.id, fieldId: 'status' },
+            created: { templateId: neighborTemplate.id, fieldId: 'created' },
+          },
+          computedFields: { created: 'createdAt' },
+        },
+      })),
+    }
+
+    const draft = buildFrontmatterModalDraftForAisle(neighborState, 'body-1', 'aisle-body-1', location)
+
+    expect(draft.rows.map((row) => row.key)).toEqual(['status', 'title', 'created'])
+  })
+
+  it('keeps removed derived template rows removed when restoring order', () => {
+    const neighborTemplate: FrontmatterTemplate = {
+      id: 'neighbor-template',
+      name: 'neighbor',
+      fields: [
+        { id: 'status', key: 'status', type: 'text', defaultValue: 'draft', computed: 'none' },
+        { id: 'title', key: 'title', type: 'text', defaultValue: '', computed: 'noteTitle' },
+        { id: 'created', key: 'created', type: 'date', defaultValue: '', computed: 'createdAt' },
+      ],
+    }
+    const state = createState()
+    const removedState: AppState = {
+      ...state,
+      frontmatter: {
+        templates: [neighborTemplate],
+        settingsTemplateId: neighborTemplate.id,
+        lastAppliedTemplateId: neighborTemplate.id,
+      },
+      noteAisleBodies: state.noteAisleBodies.map((body) => ({
+        ...body,
+        frontmatter: {
+          status: 'ready',
+          created: '2024-01-02',
+        },
+        frontmatterMeta: {
+          templateId: neighborTemplate.id,
+          templateDerived: true,
+          templateFieldOrigins: {
+            status: { templateId: neighborTemplate.id, fieldId: 'status' },
+            created: { templateId: neighborTemplate.id, fieldId: 'created' },
+          },
+          templateRemovedFieldIds: ['title'],
+          computedFields: { created: 'createdAt' },
+        },
+      })),
+    }
+
+    const draft = buildFrontmatterModalDraftForAisle(removedState, 'body-1', 'aisle-body-1', location)
+
+    expect(draft.rows.map((row) => row.key)).toEqual(['status', 'created'])
   })
 
   it('opens blank frontmatter as an unsaved last-applied template suggestion', () => {

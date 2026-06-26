@@ -71,6 +71,11 @@ import {
   readNotebookStructureClipboardPayloadFromDataTransfer,
   type NotebookStructureClipboardPayload,
 } from '../notes/notebook-structure-clipboard'
+import {
+  readFrontmatterClipboardPayloadFromDataTransfer,
+  readFrontmatterClipboardPayloadFromNavigator,
+  type FrontmatterClipboardPayload,
+} from '../frontmatter/frontmatter-clipboard'
 import { applyEditorNewlineOperation } from './newline-operations'
 import { applyListToolbarCommand, type ToolbarListCommand } from './list-marker-commands'
 import { getNewlineShortcutIdForEvent, normalizeHotkeySettings } from '../hotkeys/shortcuts'
@@ -167,6 +172,7 @@ type UseNotebookAisleEditorsOptions = {
   getAppState?: () => AppState
   onOpenNoteReference?: (target: NoteLocation) => void
   onNotebookStructurePaste?: (payload: NotebookStructureClipboardPayload, aisleId: string) => boolean
+  onFrontmatterPaste?: (payload: FrontmatterClipboardPayload, aisleId: string) => boolean
   hotkeys: AppState['hotkeys']
   isMacPlatform: boolean
   onOpenShortcutMenu?: (request: { aisleId: string; anchor: { top: number; left: number } }) => void
@@ -373,6 +379,7 @@ export function useNotebookAisleEditors({
   getAppState,
   onOpenNoteReference,
   onNotebookStructurePaste,
+  onFrontmatterPaste,
   hotkeys,
   isMacPlatform,
   onOpenShortcutMenu,
@@ -408,6 +415,7 @@ export function useNotebookAisleEditors({
   const isMacPlatformRef = useRef(isMacPlatform)
   const getAppStateRef = useRef(getAppState)
   const onOpenNoteReferenceRef = useRef(onOpenNoteReference)
+  const onFrontmatterPasteRef = useRef(onFrontmatterPaste)
   const onOpenShortcutMenuRef = useRef(onOpenShortcutMenu)
   const onOpenTableOfContentsRef = useRef(onOpenTableOfContents)
   const onOpenUrlLinkPromptRef = useRef(onOpenUrlLinkPrompt)
@@ -423,6 +431,7 @@ export function useNotebookAisleEditors({
   isMacPlatformRef.current = isMacPlatform
   getAppStateRef.current = getAppState
   onOpenNoteReferenceRef.current = onOpenNoteReference
+  onFrontmatterPasteRef.current = onFrontmatterPaste
   onOpenShortcutMenuRef.current = onOpenShortcutMenu
   onOpenTableOfContentsRef.current = onOpenTableOfContents
   onOpenUrlLinkPromptRef.current = onOpenUrlLinkPrompt
@@ -1160,6 +1169,16 @@ export function useNotebookAisleEditors({
         setActiveEditor(aisle.id)
       }
       const handlePaste = (event: ClipboardEvent) => {
+        const frontmatterPayload = readFrontmatterClipboardPayloadFromDataTransfer(event.clipboardData, {
+          allowYamlFallback: false,
+        })
+        if (frontmatterPayload && onFrontmatterPasteRef.current?.(frontmatterPayload, aisle.id)) {
+          event.preventDefault()
+          event.stopPropagation()
+          event.stopImmediatePropagation()
+          return
+        }
+
         const payload = readNotebookStructureClipboardPayloadFromDataTransfer(event.clipboardData)
         if (!payload || !onNotebookStructurePaste?.(payload, aisle.id)) return
         markEditorUserEditIntent(editorKey)
@@ -1756,6 +1775,14 @@ export function useNotebookAisleEditors({
       }
       void (async () => {
         if (action === 'paste') {
+          const frontmatterPayload = await readFrontmatterClipboardPayloadFromNavigator(undefined, {
+            allowYamlFallback: false,
+          })
+          const targetAisleId = activeEditorAisleIdRef.current
+          if (frontmatterPayload && targetAisleId && onFrontmatterPasteRef.current?.(frontmatterPayload, targetAisleId)) {
+            return
+          }
+
           const payload = await readTableSelectionClipboardPayloadFromClipboard()
           const view = getWysiwygView(editor)
           if (payload && insertTableSelectionClipboardPayloadIntoView(view, payload)) {

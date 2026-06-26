@@ -1,5 +1,8 @@
+import React from 'react'
 import type { TipDefinition, TipId } from '../../tips/tips'
 import { AppIcon } from '../icons/AppIcon'
+
+void React
 
 type TipHostProps = {
   tips: TipDefinition[]

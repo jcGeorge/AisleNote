@@ -1,5 +1,8 @@
+import React from 'react'
 import type { ToastState } from '../../types/app'
 import { orderToastsForDisplay } from './toast-stack'
+
+void React
 
 type ToastHostProps = {
   toasts: ToastState[]

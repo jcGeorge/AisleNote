@@ -162,7 +162,9 @@ describe('notebook editor context menu wiring', () => {
     expect(notebookAppSource).toContain(
       "addAisle(destination === 'new-aisle-left' ? 'left' : 'right', aisleId, result.markdown)",
     )
+    expect(notebookAppSource).toContain('pasteFrontmatterClipboard(aisleId)')
     expect(notebookAppSource).toContain('pasteNotebookStructureClipboard(aisleId)')
+    expect(notebookAppSource).toContain('buildFrontmatterClipboardPasteForAisle(')
     expect(notebookAppSource).toContain('buildNotebookStructureClipboardPayload(currentState')
     expect(notebookAppSource).toContain('writeNotebookStructureClipboardPayload(result.payload, result.markdown)')
     expect(notebookAppSource).toContain('onCommand={notebookEditors.runCommand}')
@@ -175,6 +177,9 @@ describe('notebook editor context menu wiring', () => {
     expect(notebookAppSource).toContain('pendingEditorCount: latest.pendingEditorCount')
     expect(notebookAppSource).toContain('revealNoteLocation(payload)')
     expect(notebookEditorsSource).toContain('onNotebookStructurePaste')
+    expect(notebookEditorsSource).toContain('onFrontmatterPaste')
+    expect(notebookEditorsSource).toContain('readFrontmatterClipboardPayloadFromDataTransfer(event.clipboardData, {')
+    expect(notebookEditorsSource).toContain('readFrontmatterClipboardPayloadFromNavigator(undefined, {')
     expect(notebookEditorsSource).toContain('readNotebookStructureClipboardPayloadFromDataTransfer(event.clipboardData)')
     expect(notebookEditorsSource).toContain('readClipboardMarkdownForPaste')
     expect(notebookEditorsSource).toContain('insertVisualClipboardMarkdownIntoView')

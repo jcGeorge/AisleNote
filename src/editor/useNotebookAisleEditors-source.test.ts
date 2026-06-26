@@ -249,6 +249,25 @@ describe('notebook aisle editor task checkbox wiring', () => {
     const clickHandler = source.slice(clickHandlerStart, clickHandlerEnd)
     expect(clickHandler.indexOf('resolveEditorInternalNoteLinkTarget')).toBeLessThan(clickHandler.indexOf('openExternalWebUrl(href)'))
   })
+
+  it('handles frontmatter clipboard paste before normal editor content paste', () => {
+    expect(source).toContain("from '../frontmatter/frontmatter-clipboard'")
+    expect(source).toContain('onFrontmatterPaste?: (payload: FrontmatterClipboardPayload, aisleId: string) => boolean')
+    expect(source).toContain('const onFrontmatterPasteRef = useRef(onFrontmatterPaste)')
+    expect(source).toContain('onFrontmatterPasteRef.current = onFrontmatterPaste')
+    expect(source).toContain('readFrontmatterClipboardPayloadFromDataTransfer(event.clipboardData, {')
+    expect(source).toContain('allowYamlFallback: false')
+    expect(source).toContain('onFrontmatterPasteRef.current?.(frontmatterPayload, aisle.id)')
+    expect(source).toContain('readFrontmatterClipboardPayloadFromNavigator(undefined, {')
+    expect(source).toContain('onFrontmatterPasteRef.current?.(frontmatterPayload, targetAisleId)')
+
+    const pasteHandlerStart = source.indexOf('const handlePaste = (event: ClipboardEvent) => {')
+    const pasteHandlerEnd = source.indexOf('const handleKeyDown = (event: KeyboardEvent) => {', pasteHandlerStart)
+    const pasteHandler = source.slice(pasteHandlerStart, pasteHandlerEnd)
+    expect(pasteHandler.indexOf('readFrontmatterClipboardPayloadFromDataTransfer')).toBeLessThan(
+      pasteHandler.indexOf('readNotebookStructureClipboardPayloadFromDataTransfer'),
+    )
+  })
 })
 
 describe('notebook aisle editor heading collapse wiring', () => {

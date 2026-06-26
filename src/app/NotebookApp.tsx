@@ -74,11 +74,18 @@ import {
   disableInvalidComputedFrontmatterRows,
   makeFrontmatterRowsManual,
   normalizeFrontmatterDraftRows,
-  reorderFrontmatterTemplatesByInsertion,
+  reorderFrontmatterItemsByTargetIndex,
+  reorderFrontmatterTemplateFieldsByTargetIndex,
   resolveFrontmatterRowComputedForType,
-  type FrontmatterTemplateDropPosition,
   type FrontmatterRowDraft,
 } from '../frontmatter/frontmatter-state'
+import {
+  buildFrontmatterClipboardPayload,
+  buildFrontmatterClipboardPasteForAisle,
+  readFrontmatterClipboardPayloadFromNavigator,
+  writeFrontmatterClipboardPayload,
+  type FrontmatterClipboardPayload,
+} from '../frontmatter/frontmatter-clipboard'
 import {
   buildNoteLocationKey,
 } from '../notes/note-locations'
@@ -125,7 +132,23 @@ import { TableControlsOverlay } from '../components/editor/TableControlsOverlay'
 import { ListReorderControlsOverlay } from '../components/editor/ListReorderControlsOverlay'
 import { ImageToolsOverlay } from '../components/editor/ImageToolsOverlay'
 import { MediaToolsOverlay } from '../components/editor/MediaToolsOverlay'
-import { recordDiagnosticEvent } from '../diagnostics/diagnostic-logger'
+import {
+  configureDiagnosticLogging,
+  createMainThreadHeartbeat,
+  recordDiagnosticEvent,
+} from '../diagnostics/diagnostic-logger'
+import {
+  orderDiagnosticDaysForDisplay,
+  type DiagnosticLogDisplayLimit,
+  type DiagnosticLogEntry,
+  type DiagnosticLogLevelFilter,
+  type DiagnosticLogMode,
+} from '../diagnostics/diagnostic-log'
+import {
+  listDiagnosticLogDays,
+  readDiagnosticLogEntries,
+  subscribeDiagnosticLogChanges,
+} from '../diagnostics/diagnostic-log-store'
 import { AisleEditModal } from '../components/notes/AisleEditModal'
 import {
   NotebookEditorContextMenu,
@@ -137,6 +160,8 @@ import {
   type NotebookEditorCopyAsMode,
   type NotebookEditorPasteDestination,
 } from '../components/overlays/NotebookEditorContextMenu'
+import { TipHost } from '../components/overlays/TipHost'
+import { ToastHost } from '../components/overlays/ToastHost'
 import { AppIcon } from '../components/icons/AppIcon'
 import { SidebarSearchPanel } from '../components/navigation/SidebarSearchPanel'
 import { AboutView } from '../components/about/AboutView'
@@ -192,6 +217,7 @@ import { createRandomId, createReservedIdAllocator } from '../state/navigation-i
 import { importMarkdownIntoExistingNotebook } from '../import/markdown-import'
 import { usePersistentAppState } from '../storage/usePersistentAppState'
 import { useStorageProfileController } from '../storage/useStorageProfileController'
+import { useAppNotifications } from './useAppNotifications'
 import {
   APP_THEME_IDS,
   CUSTOM_THEME_IDS,
@@ -438,6 +464,8 @@ const CLOSED_NOTE_TAB_HISTORY_LIMIT = 20
 const NOTEBOOK_NAVIGATION_TIMING_DIAGNOSTIC_THRESHOLD_MS = 50
 const NOTEBOOK_NAVIGATION_TIMING_WARNING_THRESHOLD_MS = 100
 const NOTEBOOK_NAVIGATION_FOCUS_TIMING_DIAGNOSTIC_THRESHOLD_MS = 16
+const NOTEBOOK_FRONTMATTER_TIMING_DIAGNOSTIC_THRESHOLD_MS = 16
+const NOTEBOOK_FRONTMATTER_TIMING_WARNING_THRESHOLD_MS = 100
 
 const UTILITY_VIEW_MODES = ['settings', 'messages', 'about', 'trash'] as const
 type UtilityViewMode = typeof UTILITY_VIEW_MODES[number]
@@ -533,6 +561,20 @@ function recordNotebookNavigationTiming(
   if (durationMs < thresholdMs) return
   recordDiagnosticEvent('navigation', event, {
     level: durationMs >= NOTEBOOK_NAVIGATION_TIMING_WARNING_THRESHOLD_MS ? 'warning' : 'info',
+    durationMs: roundNotebookAppDiagnosticMs(durationMs),
+    details,
+  })
+}
+
+function recordNotebookFrontmatterTiming(
+  event: string,
+  durationMs: number,
+  details: Record<string, unknown>,
+  thresholdMs = NOTEBOOK_FRONTMATTER_TIMING_DIAGNOSTIC_THRESHOLD_MS,
+): void {
+  if (durationMs < thresholdMs) return
+  recordDiagnosticEvent('frontmatter', event, {
+    level: durationMs >= NOTEBOOK_FRONTMATTER_TIMING_WARNING_THRESHOLD_MS ? 'warning' : 'info',
     durationMs: roundNotebookAppDiagnosticMs(durationMs),
     details,
   })
@@ -676,11 +718,41 @@ export type NotebookFrontmatterModalState = {
   isTemplateSuggestionDraft: boolean
 }
 
-const FRONTMATTER_TEMPLATE_DRAG_MIME = 'application/x-aislenote-frontmatter-template'
+const FRONTMATTER_TEMPLATE_FIELD_DRAG_MIME = 'application/x-aislenote-frontmatter-template-field'
+const FRONTMATTER_ROW_DRAG_MIME = 'application/x-aislenote-frontmatter-row'
 
-type FrontmatterTemplateDropTarget = {
-  templateId: string
-  position: FrontmatterTemplateDropPosition
+type FrontmatterListDropRect = {
+  index: number
+  top: number
+  bottom: number
+}
+
+function readFrontmatterListDropRects(container: HTMLElement | null, rowSelector: string): FrontmatterListDropRect[] {
+  return Array.from(container?.querySelectorAll<HTMLElement>(rowSelector) ?? []).map((element, index) => {
+    const rect = element.getBoundingClientRect()
+    return {
+      index,
+      top: rect.top,
+      bottom: rect.bottom,
+    }
+  })
+}
+
+function getFrontmatterListDropIndexFromPointer(
+  rects: FrontmatterListDropRect[],
+  pointerY: number,
+  itemCount: number,
+): number {
+  const boundedItemCount = Math.max(0, itemCount)
+  const itemRects = rects.slice(0, boundedItemCount)
+  if (boundedItemCount === 0 || itemRects.length === 0) return 0
+
+  for (const rect of itemRects) {
+    const midpoint = rect.top + (rect.bottom - rect.top) / 2
+    if (pointerY < midpoint) return rect.index
+  }
+
+  return boundedItemCount
 }
 
 type NoteActionPickerSource = 'mention' | 'toolbar-link' | 'context-note-link' | 'context-note-preview' | 'whole-note-copy'
@@ -1630,6 +1702,7 @@ export function NotebookFrontmatterModal({
   onToggleTemplateDerived,
   onEditTemplate,
   onFilterTemplate,
+  onCopyFrontmatter,
 }: {
   modal: NotebookFrontmatterModalState | null
   templates: FrontmatterTemplate[]
@@ -1641,14 +1714,29 @@ export function NotebookFrontmatterModal({
   onToggleTemplateDerived: (modal: NotebookFrontmatterModalState, templateDerived: boolean) => NotebookFrontmatterModalState
   onEditTemplate: (templateId: string) => void
   onFilterTemplate: (modal: NotebookFrontmatterModalState) => void
+  onCopyFrontmatter: (modal: NotebookFrontmatterModalState) => Promise<string | null>
 }) {
   const [error, setError] = useState('')
   const [warnings, setWarnings] = useState<string[]>([])
+  const frontmatterRowListRef = useRef<HTMLDivElement | null>(null)
+  const frontmatterRowRectsRef = useRef<FrontmatterListDropRect[]>([])
+  const frontmatterRowDragIdRef = useRef('')
+  const frontmatterRowDropIndexRef = useRef<number | null>(null)
+  const [draggingFrontmatterRowId, setDraggingFrontmatterRowId] = useState('')
+  const [frontmatterRowDropIndex, setFrontmatterRowDropIndex] = useState<number | null>(null)
+  const clearFrontmatterRowDrag = () => {
+    frontmatterRowRectsRef.current = []
+    frontmatterRowDragIdRef.current = ''
+    frontmatterRowDropIndexRef.current = null
+    setDraggingFrontmatterRowId('')
+    setFrontmatterRowDropIndex(null)
+  }
 
   useEffect(() => {
     if (!modal) return
     setError('')
     setWarnings([])
+    clearFrontmatterRowDrag()
   }, [modal?.noteBodyId, modal?.aisleBodyId])
 
   if (!modal) return null
@@ -1664,6 +1752,59 @@ export function NotebookFrontmatterModal({
   }
   const updateRow = (rowId: string, patch: Partial<FrontmatterRowDraft>) => {
     updateRows((rows) => rows.map((row) => (row.id === rowId ? { ...row, ...patch } : row)))
+  }
+  const updateFrontmatterRowDropIndex = (nextIndex: number | null) => {
+    if (frontmatterRowDropIndexRef.current === nextIndex) return
+    frontmatterRowDropIndexRef.current = nextIndex
+    setFrontmatterRowDropIndex(nextIndex)
+  }
+  const readFrontmatterRowDragId = (event: ReactDragEvent<HTMLElement>) =>
+    frontmatterRowDragIdRef.current
+    || draggingFrontmatterRowId
+    || event.dataTransfer.getData(FRONTMATTER_ROW_DRAG_MIME)
+  const refreshFrontmatterRowRects = () => {
+    frontmatterRowRectsRef.current = readFrontmatterListDropRects(
+      frontmatterRowListRef.current,
+      '[data-frontmatter-row-id]',
+    )
+    return frontmatterRowRectsRef.current
+  }
+  const getFrontmatterRowDropIndex = (event: ReactDragEvent<HTMLElement>) => {
+    const rects =
+      frontmatterRowRectsRef.current.length === modal.rows.length
+        ? frontmatterRowRectsRef.current
+        : refreshFrontmatterRowRects()
+    return getFrontmatterListDropIndexFromPointer(rects, event.clientY, modal.rows.length)
+  }
+  const updateFrontmatterRowDropTarget = (event: ReactDragEvent<HTMLElement>) => {
+    const sourceRowId = readFrontmatterRowDragId(event)
+    if (!sourceRowId) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    updateFrontmatterRowDropIndex(getFrontmatterRowDropIndex(event))
+  }
+  const dropFrontmatterRow = (event: ReactDragEvent<HTMLElement>) => {
+    const sourceRowId = readFrontmatterRowDragId(event)
+    const targetIndex = frontmatterRowDropIndexRef.current ?? getFrontmatterRowDropIndex(event)
+    event.preventDefault()
+    event.stopPropagation()
+    clearFrontmatterRowDrag()
+    if (!sourceRowId) return
+    updateRows((rows) => reorderFrontmatterItemsByTargetIndex(rows, sourceRowId, targetIndex))
+  }
+  const copyFrontmatter = () => {
+    void onCopyFrontmatter(modal).then((message) => {
+      if (message) {
+        setError(message)
+        setWarnings([])
+        return
+      }
+      setError('')
+      setWarnings([])
+    }).catch(() => {
+      setError('Clipboard copy is unavailable here.')
+      setWarnings([])
+    })
   }
   const createRowKey = () => {
     const existingKeys = new Set(modal.rows.map((row) => row.key.trim()).filter(Boolean))
@@ -1840,6 +1981,16 @@ export function NotebookFrontmatterModal({
         <header className="modal-card-header">
           <h2>Frontmatter</h2>
           <div className="frontmatter-modal-header-actions">
+            <button
+              type="button"
+              className="btn btn-sm settings-action-btn frontmatter-copy-btn"
+              onClick={(event) => {
+                copyFrontmatter()
+                if (event.detail > 0) event.currentTarget.blur()
+              }}
+            >
+              Copy FM
+            </button>
             {selectedTemplate && modal.templateDerived && !modal.isTemplateSuggestionDraft ? (
               <button
                 type="button"
@@ -1935,8 +2086,21 @@ export function NotebookFrontmatterModal({
               Suggested from "{selectedTemplate.name}". These rows are not saved on this aisle yet.
             </div>
           ) : null}
-          <div className="frontmatter-row-editor" aria-label="frontmatter rows">
+          <div
+            ref={frontmatterRowListRef}
+            className="frontmatter-row-editor"
+            aria-label="frontmatter rows"
+            onDragEnter={updateFrontmatterRowDropTarget}
+            onDragOver={updateFrontmatterRowDropTarget}
+            onDragLeave={(event) => {
+              const relatedTarget = event.relatedTarget as Node | null
+              if (relatedTarget && event.currentTarget.contains(relatedTarget)) return
+              if (relatedTarget) updateFrontmatterRowDropIndex(null)
+            }}
+            onDrop={dropFrontmatterRow}
+          >
             <div className="frontmatter-row frontmatter-row-header" aria-hidden="true">
+              <span />
               <span>key</span>
               <span>type</span>
               <span>value</span>
@@ -1945,10 +2109,40 @@ export function NotebookFrontmatterModal({
               <span>action</span>
             </div>
             {modal.rows.length > 0 ? (
-              modal.rows.map((row) => {
+              modal.rows.map((row, index) => {
                 const derivedTitle = row.derived && selectedTemplate ? selectedTemplate.name : undefined
                 return (
-                  <div key={row.id} className={`frontmatter-row ${row.derived ? 'is-derived' : ''} ${isComputedLocked(row) ? 'is-locked' : ''}`}>
+                  <div
+                    key={row.id}
+                    data-frontmatter-row-id={row.id}
+                    className={[
+                      'frontmatter-row',
+                      row.derived ? 'is-derived' : '',
+                      isComputedLocked(row) ? 'is-locked' : '',
+                      draggingFrontmatterRowId === row.id ? 'is-dragging' : '',
+                      frontmatterRowDropIndex === index ? 'is-drop-index-before' : '',
+                      frontmatterRowDropIndex === modal.rows.length && index === modal.rows.length - 1 ? 'is-drop-index-after' : '',
+                    ].filter(Boolean).join(' ')}
+                  >
+                    <button
+                      type="button"
+                      className="frontmatter-row-drag-handle"
+                      aria-label={`Reorder ${row.key || 'frontmatter row'}`}
+                      data-app-tooltip="Drag to reorder"
+                      draggable
+                      onDragStart={(event) => {
+                        frontmatterRowDragIdRef.current = row.id
+                        frontmatterRowRectsRef.current = refreshFrontmatterRowRects()
+                        setDraggingFrontmatterRowId(row.id)
+                        updateFrontmatterRowDropIndex(null)
+                        event.dataTransfer.effectAllowed = 'move'
+                        event.dataTransfer.setData(FRONTMATTER_ROW_DRAG_MIME, row.id)
+                        event.dataTransfer.setData('text/plain', row.id)
+                      }}
+                      onDragEnd={clearFrontmatterRowDrag}
+                    >
+                      <AppIcon iconId="gripVertical" className="frontmatter-row-drag-icon" />
+                    </button>
                     <input
                       type="text"
                       className="settings-text-input frontmatter-row-key-input"
@@ -2707,6 +2901,52 @@ function NotebookNameDialog({
   )
 }
 
+function FrontmatterTemplateDeleteDialog({
+  templateName,
+  onCancel,
+  onConfirm,
+}: {
+  templateName: string
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="modal-backdrop notebook-modal-backdrop" role="presentation" onMouseDown={onCancel}>
+      <section
+        className="modal-card notebook-frontmatter-modal frontmatter-template-delete-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="frontmatter-template-delete-title"
+        onMouseDown={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') onCancel()
+        }}
+      >
+        <header className="modal-card-header">
+          <h2 id="frontmatter-template-delete-title">Delete template</h2>
+          <button type="button" className="app-close-button" aria-label="Close delete template dialog" onClick={onCancel}>
+            <AppIcon iconId="x" className="app-close-button-icon" />
+          </button>
+        </header>
+        <div className="notebook-frontmatter-body">
+          <p className="frontmatter-template-delete-message">
+            Are you sure you want to delete this template? This cannot be undone.
+          </p>
+          <p className="frontmatter-template-delete-name">{templateName}</p>
+        </div>
+        <footer className="modal-card-footer">
+          <button type="button" className="notebook-settings-action" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" className="notebook-settings-action app-danger-btn" onClick={onConfirm}>
+            Delete template
+          </button>
+        </footer>
+      </section>
+    </div>
+  )
+}
+
 export function NotebookApp() {
   const { state, setState, stateRef, externalStateLoadVersion, commitAppStateNow } = usePersistentAppState()
   const [viewMode, setViewMode] = useState<ViewMode>('main')
@@ -2752,11 +2992,23 @@ export function NotebookApp() {
   const [frontmatterModal, setFrontmatterModal] = useState<NotebookFrontmatterModalState | null>(null)
   const [frontmatterDraft, setFrontmatterDraft] = useState<AppState['frontmatter']>(() => state.frontmatter)
   const [frontmatterFixedListOptionDrafts, setFrontmatterFixedListOptionDrafts] = useState<Record<string, string>>({})
-  const [draggingFrontmatterTemplateId, setDraggingFrontmatterTemplateId] = useState('')
-  const [frontmatterTemplateDropTarget, setFrontmatterTemplateDropTarget] = useState<FrontmatterTemplateDropTarget | null>(null)
+  const [frontmatterTemplateDeleteTargetId, setFrontmatterTemplateDeleteTargetId] = useState('')
+  const frontmatterTemplateFieldListRef = useRef<HTMLDivElement | null>(null)
+  const frontmatterTemplateFieldRectsRef = useRef<FrontmatterListDropRect[]>([])
+  const frontmatterTemplateFieldDragIdRef = useRef('')
+  const frontmatterTemplateFieldDropIndexRef = useRef<number | null>(null)
+  const [draggingFrontmatterTemplateFieldId, setDraggingFrontmatterTemplateFieldId] = useState('')
+  const [frontmatterTemplateFieldDropIndex, setFrontmatterTemplateFieldDropIndex] = useState<number | null>(null)
   const [editingShortcut, setEditingShortcut] = useState<ShortcutId | null>(null)
   const [shortcutMenuSettingsOpen, setShortcutMenuSettingsOpen] = useState(false)
   const [tableOfContentsPanels, setTableOfContentsPanels] = useState<TableOfContentsPanelsState | null>(null)
+  const [diagnosticDays, setDiagnosticDays] = useState<string[]>([])
+  const [selectedDiagnosticDay, setSelectedDiagnosticDay] = useState('')
+  const [diagnosticEntries, setDiagnosticEntries] = useState<DiagnosticLogEntry[]>([])
+  const [diagnosticLevelFilter, setDiagnosticLevelFilter] = useState<DiagnosticLogLevelFilter>('all')
+  const [diagnosticDisplayLimit, setDiagnosticDisplayLimit] = useState<DiagnosticLogDisplayLimit>(500)
+  const [diagnosticMode, setDiagnosticMode] = useState<DiagnosticLogMode>('actionable')
+  const [diagnosticCaptureEnabled, setDiagnosticCaptureEnabled] = useState(true)
   const [expandedTrashItemId, setExpandedTrashItemId] = useState('')
   const [runtimeVersion, setRuntimeVersion] = useState('')
   const [zoomHudPercent, setZoomHudPercent] = useState<number | null>(null)
@@ -2787,6 +3039,7 @@ export function NotebookApp() {
   const openTableOfContentsForAisleRef = useRef<((aisleId: string) => void) | null>(null)
   const tagAutocompleteRefreshRef = useRef<(() => void) | null>(null)
   const frontmatterStateSnapshotRef = useRef(state.frontmatter)
+  const selectedDiagnosticDayRef = useRef('')
   const skipNextTreeRenameCommitRef = useRef(false)
   const zoomHudTimeoutRef = useRef<number | null>(null)
   const sidebarResizeRef = useRef<{
@@ -2795,6 +3048,17 @@ export function NotebookApp() {
     startWidth: number
   } | null>(null)
   const isMacPlatform = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
+  const appNotifications = useAppNotifications({
+    state,
+    stateRef,
+    setState,
+    isMacPlatform,
+  })
+  const pushAppToastRef = useRef(appNotifications.pushToast)
+  pushAppToastRef.current = appNotifications.pushToast
+  const pushAppToast = useCallback((message: string, tone?: ToastTone, durationMs?: number) => {
+    pushAppToastRef.current(message, tone, durationMs)
+  }, [])
   const sidebarRevealLabel = useMemo(
     () => getNotebookSidebarRevealLabel(
       typeof window !== 'undefined'
@@ -2861,6 +3125,61 @@ export function NotebookApp() {
       clearZoomHudTimeout()
       unsubscribe?.()
     }
+  }, [])
+
+  const loadDiagnosticDays = useCallback(async (preferredDay?: string) => {
+    const days = orderDiagnosticDaysForDisplay(await listDiagnosticLogDays())
+    setDiagnosticDays(days)
+    setSelectedDiagnosticDay((currentDay) => {
+      if (preferredDay && days.includes(preferredDay)) return preferredDay
+      if (currentDay && days.includes(currentDay)) return currentDay
+      return days[0] ?? ''
+    })
+  }, [])
+
+  useEffect(() => {
+    void loadDiagnosticDays()
+  }, [loadDiagnosticDays])
+
+  useEffect(() => {
+    selectedDiagnosticDayRef.current = selectedDiagnosticDay
+  }, [selectedDiagnosticDay])
+
+  useEffect(() => {
+    if (!selectedDiagnosticDay) {
+      setDiagnosticEntries([])
+      return undefined
+    }
+    let canceled = false
+    void readDiagnosticLogEntries(selectedDiagnosticDay)
+      .then((entries) => {
+        if (!canceled) setDiagnosticEntries(entries)
+      })
+      .catch(() => {
+        if (!canceled) setDiagnosticEntries([])
+      })
+    return () => {
+      canceled = true
+    }
+  }, [selectedDiagnosticDay])
+
+  useEffect(
+    () =>
+      subscribeDiagnosticLogChanges((entry) => {
+        setDiagnosticDays((currentDays) => orderDiagnosticDaysForDisplay([entry.dayKey, ...currentDays]))
+        setSelectedDiagnosticDay((currentDay) => currentDay || entry.dayKey)
+        if (selectedDiagnosticDayRef.current && selectedDiagnosticDayRef.current !== entry.dayKey) return
+        setDiagnosticEntries((currentEntries) =>
+          currentEntries.some((candidate) => candidate.id === entry.id) ? currentEntries : [...currentEntries, entry],
+        )
+      }),
+    [],
+  )
+
+  useEffect(() => {
+    const heartbeat = createMainThreadHeartbeat()
+    heartbeat.start()
+    return () => heartbeat.stop()
   }, [])
 
   const toolbarState = useEditorToolbarState({
@@ -3180,8 +3499,12 @@ export function NotebookApp() {
     if (JSON.stringify(frontmatterDraft) === JSON.stringify(frontmatterStateSnapshotRef.current)) {
       setFrontmatterDraft(state.frontmatter)
       setFrontmatterFixedListOptionDrafts({})
-      setDraggingFrontmatterTemplateId('')
-      setFrontmatterTemplateDropTarget(null)
+      frontmatterTemplateFieldRectsRef.current = []
+      frontmatterTemplateFieldDragIdRef.current = ''
+      frontmatterTemplateFieldDropIndexRef.current = null
+      setDraggingFrontmatterTemplateFieldId('')
+      setFrontmatterTemplateFieldDropIndex(null)
+      setFrontmatterTemplateDeleteTargetId('')
     }
     frontmatterStateSnapshotRef.current = state.frontmatter
   }, [frontmatterDraft, state.frontmatter])
@@ -3552,6 +3875,85 @@ export function NotebookApp() {
     [mutateState],
   )
 
+  const applyFrontmatterClipboardPaste = useCallback(
+    (payload: FrontmatterClipboardPayload, aisleId: string) => {
+      const startedAt = getNotebookAppPerfNow()
+      let resultStatus = 'applied'
+      let noteId = ''
+      let noteBodyId = ''
+      let aisleBodyId = ''
+      let warningCount = 0
+      if (scratchpadActiveRef.current) {
+        resultStatus = 'scratchpad-ignored'
+        recordNotebookFrontmatterTiming(
+          'frontmatter-clipboard-apply',
+          getNotebookAppPerfNow() - startedAt,
+          {
+            result: resultStatus,
+            aisleId,
+          },
+          0,
+        )
+        return true
+      }
+      let blockedMessage = ''
+      let warningMessages: string[] = []
+      mutateState((previous) => {
+        const notePath = findNotebookNote(previous.notebook.items, previous.notebook.activeNoteId)
+        const noteBody = notePath ? previous.noteBodies.find((body) => body.id === notePath.note.noteBodyId) ?? null : null
+        const aisle = noteBody?.aisles.find((candidate) => candidate.id === aisleId) ?? null
+        noteId = notePath?.note.id ?? ''
+        noteBodyId = noteBody?.id ?? ''
+        aisleBodyId = aisle?.aisleBodyId ?? ''
+        if (!notePath || !noteBody || !aisle) {
+          resultStatus = 'blocked-missing-note'
+          blockedMessage = 'Open a note before pasting frontmatter.'
+          return previous
+        }
+
+        const result = buildFrontmatterClipboardPasteForAisle(
+          previous,
+          noteBody.id,
+          aisle.aisleBodyId,
+          { noteId: notePath.note.id },
+          payload,
+        )
+        if (result.status === 'blocked') {
+          resultStatus = 'blocked'
+          blockedMessage = result.message
+          return previous
+        }
+
+        warningMessages = result.warnings
+        warningCount = result.warnings.length
+        resultStatus = warningCount > 0 ? 'applied-with-warnings' : 'applied'
+        return updateAisleBodyFrontmatterInState(previous, aisle.aisleBodyId, result.frontmatter, result.saveOptions)
+      })
+      recordNotebookFrontmatterTiming(
+        'frontmatter-clipboard-apply',
+        getNotebookAppPerfNow() - startedAt,
+        {
+          result: resultStatus,
+          noteId,
+          noteBodyId,
+          aisleId,
+          aisleBodyId,
+          warningCount,
+        },
+        0,
+      )
+      if (blockedMessage) {
+        window.alert(blockedMessage)
+        return true
+      }
+      if (warningMessages.length > 0) {
+        pushAppToast(warningMessages.join('\n'), 'warning', 9000)
+      }
+      return true
+    },
+    [mutateState, pushAppToast],
+  )
+
   const insertAisleFromNewlineShortcut = useCallback((side: 'left' | 'right', aisleId: string, markdown: string) => {
     addAisleFromNewlineRef.current?.(side, aisleId, markdown)
   }, [])
@@ -3625,12 +4027,14 @@ export function NotebookApp() {
     getAppState: () => stateRef.current,
     onOpenNoteReference: openNoteReferenceFromEditor,
     onNotebookStructurePaste: applyNotebookStructureClipboardPaste,
+    onFrontmatterPaste: applyFrontmatterClipboardPaste,
     hotkeys: state.hotkeys,
     isMacPlatform,
     onOpenShortcutMenu: openShortcutMenuFromEditor,
     onOpenTableOfContents: openTableOfContentsFromEditorShortcut,
     onOpenUrlLinkPrompt: openUrlLinkPrompt,
     onInsertAisleFromNewline: insertAisleFromNewlineShortcut,
+    pushToast: pushAppToast,
     externalStateLoadVersion,
   })
 
@@ -3653,6 +4057,49 @@ export function NotebookApp() {
   })
   tagAutocompleteRefreshRef.current = tagAutocompleteController.refreshQuery
 
+  const diagnosticMountedEditorCount = notebookEditors.mountedAisleIds.size
+  useEffect(
+    () =>
+      configureDiagnosticLogging(
+        () => ({
+          viewMode,
+          activeNoteId: activeModel?.noteId ?? state.notebook.activeNoteId ?? '',
+          activeNoteBodyId: activeModel?.noteBody.id ?? '',
+          activeAisleId: renderedActiveAisleId,
+          mountedEditorCount: diagnosticMountedEditorCount,
+          openTabCount: state.notebook.openTabs?.length ?? 0,
+          scratchpadActive,
+          messagesSection,
+        }),
+        () => diagnosticCaptureEnabled,
+      ),
+    [
+      activeModel?.noteBody.id,
+      activeModel?.noteId,
+      diagnosticCaptureEnabled,
+      diagnosticMountedEditorCount,
+      messagesSection,
+      renderedActiveAisleId,
+      scratchpadActive,
+      state.notebook.activeNoteId,
+      state.notebook.openTabs,
+      viewMode,
+    ],
+  )
+
+  const openDiagnosticsFolder = useCallback(() => {
+    const openFolder = typeof window !== 'undefined' ? window.electronAPI?.openDiagnosticsFolder : undefined
+    if (!openFolder) {
+      pushAppToast('Diagnostics folder is only available in the desktop app.', 'warning')
+      return
+    }
+    void openFolder()
+      .then((result) => {
+        if (!result.ok) pushAppToast(result.error || 'Could not open diagnostics folder.', 'error')
+      })
+      .catch(() => pushAppToast('Could not open diagnostics folder.', 'error'))
+  }, [pushAppToast])
+
   const activateEditorFromAssetTarget = useCallback(
     (target: EventTarget | null) => {
       const element = target instanceof Element ? target : null
@@ -3670,9 +4117,7 @@ export function NotebookApp() {
     notebookEditors.flushPendingEditorAppStateCommit()
   }, [notebookEditors])
 
-  const pushEditorToolToast = useCallback((message: string, tone?: ToastTone) => {
-    if (tone === 'warning' || tone === 'error') window.alert(message)
-  }, [])
+  const pushEditorToolToast = pushAppToast
 
   const imageToolsController = useImageTools({
     editorRef,
@@ -3815,9 +4260,7 @@ export function NotebookApp() {
     })
   }, [commitAppStateNow, getLatestNotebookStateFromMountedEditors])
 
-  const pushStorageToast = useCallback((message: string, tone?: ToastTone) => {
-    if (tone === 'warning' || tone === 'error') window.alert(message)
-  }, [])
+  const pushStorageToast = pushAppToast
 
   const storageProfileController = useStorageProfileController({
     pushToast: pushStorageToast,
@@ -5451,6 +5894,33 @@ export function NotebookApp() {
     [applyNotebookStructureClipboardPaste],
   )
 
+  const pasteFrontmatterClipboard = useCallback(
+    async (aisleId: string) => {
+      const startedAt = getNotebookAppPerfNow()
+      let resultStatus = 'empty'
+      try {
+        const payload = await readFrontmatterClipboardPayloadFromNavigator(undefined, { allowYamlFallback: false })
+        resultStatus = payload ? 'frontmatter-payload' : 'empty'
+        return payload ? applyFrontmatterClipboardPaste(payload, aisleId) : false
+      } catch {
+        resultStatus = 'error'
+        pushAppToast('Clipboard paste is unavailable here.', 'warning')
+        return false
+      } finally {
+        recordNotebookFrontmatterTiming(
+          'frontmatter-clipboard-read',
+          getNotebookAppPerfNow() - startedAt,
+          {
+            result: resultStatus,
+            aisleId,
+          },
+          0,
+        )
+      }
+    },
+    [applyFrontmatterClipboardPaste, pushAppToast],
+  )
+
   const insertNotebookNoteReference = useCallback(
     (target: NoteLocation, kind: 'note-link' | 'note-preview', options: NotebookNoteActionPickerActionOptions = {}) => {
       const token = buildNotebookNoteReferenceInsertionText(stateRef.current, target, kind, options)
@@ -5764,34 +6234,130 @@ export function NotebookApp() {
     [filterAisleFrontmatterTemplate],
   )
 
+  const copyFrontmatterFromModal = useCallback(
+    async (modal: NotebookFrontmatterModalState): Promise<string | null> => {
+      const startedAt = getNotebookAppPerfNow()
+      let resultStatus = 'copied'
+      let warningCount = 0
+      try {
+        const computedRepair = disableInvalidComputedFrontmatterRows(modal.rows)
+        if (computedRepair.warnings.length > 0) {
+          resultStatus = 'computed-repair-warning'
+          warningCount = computedRepair.warnings.length
+          setFrontmatterModal({
+            ...modal,
+            rows: computedRepair.rows,
+          })
+          return computedRepair.warnings.join('\n')
+        }
+        const result = buildFrontmatterDataFromRows(stateRef.current, modal.noteBodyId, modal.location, computedRepair.rows, {
+          selectedTemplateId: modal.selectedTemplateId,
+          templateDerived: modal.templateDerived,
+          aisleBodyId: modal.aisleBodyId,
+        })
+        if (!result.ok) {
+          resultStatus = 'blocked'
+          return result.message
+        }
+        if (result.warnings.length > 0) {
+          resultStatus = 'warning'
+          warningCount = result.warnings.length
+          return result.warnings.join('\n')
+        }
+
+        const copied = await writeFrontmatterClipboardPayload(
+          buildFrontmatterClipboardPayload(result.frontmatter, {
+            templateId: modal.selectedTemplateId || null,
+            templateDerived: modal.templateDerived,
+            templateFieldOrigins: result.templateFieldOrigins,
+            templateRemovedFieldIds: result.templateRemovedFieldIds,
+            computedFields: result.computedFields,
+          }),
+        )
+        resultStatus = copied ? 'copied' : 'clipboard-unavailable'
+        return copied ? null : 'Clipboard copy is unavailable here.'
+      } catch (error) {
+        resultStatus = 'error'
+        throw error
+      } finally {
+        recordNotebookFrontmatterTiming(
+          'frontmatter-clipboard-copy',
+          getNotebookAppPerfNow() - startedAt,
+          {
+            result: resultStatus,
+            noteBodyId: modal.noteBodyId,
+            aisleId: modal.aisleId,
+            aisleBodyId: modal.aisleBodyId,
+            rowCount: modal.rows.length,
+            selectedTemplateId: modal.selectedTemplateId || '',
+            templateDerived: modal.templateDerived,
+            warningCount,
+          },
+          0,
+        )
+      }
+    },
+    [stateRef],
+  )
+
   const saveFrontmatter = useCallback(
     (modal: NotebookFrontmatterModalState) => {
-      const computedRepair = disableInvalidComputedFrontmatterRows(modal.rows)
-      if (computedRepair.warnings.length > 0) {
-        setFrontmatterModal({
-          ...modal,
-          rows: computedRepair.rows,
-        })
-        return computedRepair.warnings
-      }
-      const result = buildFrontmatterDataFromRows(stateRef.current, modal.noteBodyId, modal.location, computedRepair.rows, {
-        selectedTemplateId: modal.selectedTemplateId,
-        templateDerived: modal.templateDerived,
-        aisleBodyId: modal.aisleBodyId,
-      })
-      if (!result.ok) return result.message
-      if (result.warnings.length > 0) return result.warnings
-      mutateState((previous) =>
-        updateAisleBodyFrontmatterInState(previous, modal.aisleBodyId, result.frontmatter, {
-          templateId: modal.selectedTemplateId || null,
+      const startedAt = getNotebookAppPerfNow()
+      let resultStatus = 'saved'
+      let warningCount = 0
+      try {
+        const computedRepair = disableInvalidComputedFrontmatterRows(modal.rows)
+        if (computedRepair.warnings.length > 0) {
+          resultStatus = 'computed-repair-warning'
+          warningCount = computedRepair.warnings.length
+          setFrontmatterModal({
+            ...modal,
+            rows: computedRepair.rows,
+          })
+          return computedRepair.warnings
+        }
+        const result = buildFrontmatterDataFromRows(stateRef.current, modal.noteBodyId, modal.location, computedRepair.rows, {
+          selectedTemplateId: modal.selectedTemplateId,
           templateDerived: modal.templateDerived,
-          templateFieldOrigins: result.templateFieldOrigins,
-          templateRemovedFieldIds: result.templateRemovedFieldIds,
-          computedFields: result.computedFields,
-        }),
-      )
-      setFrontmatterModal(null)
-      return null
+          aisleBodyId: modal.aisleBodyId,
+        })
+        if (!result.ok) {
+          resultStatus = 'blocked'
+          return result.message
+        }
+        if (result.warnings.length > 0) {
+          resultStatus = 'warning'
+          warningCount = result.warnings.length
+          return result.warnings
+        }
+        mutateState((previous) =>
+          updateAisleBodyFrontmatterInState(previous, modal.aisleBodyId, result.frontmatter, {
+            templateId: modal.selectedTemplateId || null,
+            templateDerived: modal.templateDerived,
+            templateFieldOrigins: result.templateFieldOrigins,
+            templateRemovedFieldIds: result.templateRemovedFieldIds,
+            computedFields: result.computedFields,
+          }),
+        )
+        setFrontmatterModal(null)
+        return null
+      } finally {
+        recordNotebookFrontmatterTiming(
+          'frontmatter-save',
+          getNotebookAppPerfNow() - startedAt,
+          {
+            result: resultStatus,
+            noteBodyId: modal.noteBodyId,
+            aisleId: modal.aisleId,
+            aisleBodyId: modal.aisleBodyId,
+            rowCount: modal.rows.length,
+            selectedTemplateId: modal.selectedTemplateId || '',
+            templateDerived: modal.templateDerived,
+            warningCount,
+          },
+          0,
+        )
+      }
     },
     [mutateState, stateRef],
   )
@@ -6055,7 +6621,11 @@ export function NotebookApp() {
       aisleId: string,
     ) => {
       if (action === 'paste' && destination === 'here') {
-        void pasteNotebookStructureClipboard(aisleId)
+        void pasteFrontmatterClipboard(aisleId)
+          .then((handled) => {
+            if (handled) return true
+            return pasteNotebookStructureClipboard(aisleId)
+          })
           .then((handled) => {
             if (!handled) notebookEditors.runClipboardAction(action)
           })
@@ -6075,7 +6645,7 @@ export function NotebookApp() {
         })
         .catch(() => undefined)
     },
-    [addAisle, notebookEditors, pasteNotebookStructureClipboard],
+    [addAisle, notebookEditors, pasteFrontmatterClipboard, pasteNotebookStructureClipboard],
   )
 
   const insertEditorContextAisle = useCallback(
@@ -6643,68 +7213,140 @@ export function NotebookApp() {
       setFrontmatterDraft((previous) => update(previous))
     }
 
+    const updateFrontmatterTemplateFieldDropIndex = (nextIndex: number | null) => {
+      if (frontmatterTemplateFieldDropIndexRef.current === nextIndex) return
+      frontmatterTemplateFieldDropIndexRef.current = nextIndex
+      setFrontmatterTemplateFieldDropIndex(nextIndex)
+    }
+
+    const clearFrontmatterTemplateFieldDrag = () => {
+      frontmatterTemplateFieldRectsRef.current = []
+      frontmatterTemplateFieldDragIdRef.current = ''
+      frontmatterTemplateFieldDropIndexRef.current = null
+      setDraggingFrontmatterTemplateFieldId('')
+      setFrontmatterTemplateFieldDropIndex(null)
+    }
+
     const selectFrontmatterTemplate = (templateId: string) => {
+      clearFrontmatterTemplateFieldDrag()
       updateFrontmatterDraft((frontmatter) => ({
         ...frontmatter,
         settingsTemplateId: templateId,
       }))
     }
 
-    const clearFrontmatterTemplateDrag = () => {
-      setDraggingFrontmatterTemplateId('')
-      setFrontmatterTemplateDropTarget(null)
-    }
-
-    const getFrontmatterTemplateDropTarget = (
-      event: ReactDragEvent<HTMLElement>,
-      templateId: string,
-    ): FrontmatterTemplateDropTarget => {
-      const rect = event.currentTarget.getBoundingClientRect()
-      return {
-        templateId,
-        position: event.clientY < rect.top + rect.height / 2 ? 'before' : 'after',
+    const createFrontmatterTemplate = () => {
+      const template: FrontmatterTemplate = {
+        id: createFrontmatterTemplateId(),
+        name: 'new template',
+        fields: [],
       }
+      clearFrontmatterTemplateFieldDrag()
+      setFrontmatterTemplateDeleteTargetId('')
+      updateFrontmatterDraft((frontmatter) => ({
+        ...frontmatter,
+        templates: [...frontmatter.templates, template],
+        settingsTemplateId: template.id,
+      }))
     }
 
-    const readFrontmatterTemplateDragId = (event: ReactDragEvent<HTMLElement>) =>
-      draggingFrontmatterTemplateId
-      || event.dataTransfer.getData(FRONTMATTER_TEMPLATE_DRAG_MIME)
-      || event.dataTransfer.getData('text/plain')
+    const deleteFrontmatterTemplate = (templateId: string) => {
+      if (templates.length <= 1) return
+      clearFrontmatterTemplateFieldDrag()
+      setFrontmatterFixedListOptionDrafts({})
+      setFrontmatterTemplateDeleteTargetId('')
+      updateFrontmatterDraft((frontmatter) => {
+        const nextTemplates = frontmatter.templates.filter((template) => template.id !== templateId)
+        return {
+          ...frontmatter,
+          templates: nextTemplates,
+          settingsTemplateId:
+            frontmatter.settingsTemplateId === templateId
+              ? nextTemplates[0]?.id ?? ''
+              : frontmatter.settingsTemplateId,
+          lastAppliedTemplateId:
+            frontmatter.lastAppliedTemplateId === templateId ? '' : frontmatter.lastAppliedTemplateId,
+        }
+      })
+    }
 
-    const updateFrontmatterTemplateDropTarget = (event: ReactDragEvent<HTMLElement>, templateId: string) => {
-      const sourceTemplateId = readFrontmatterTemplateDragId(event)
-      if (!sourceTemplateId || sourceTemplateId === templateId) return
+    const addFrontmatterTemplateField = () => {
+      if (!activeTemplate) return
+      const existingKeys = new Set(activeTemplate.fields.map((field) => field.key.trim()).filter(Boolean))
+      let key = 'field'
+      let index = 2
+      while (existingKeys.has(key)) {
+        key = `field ${index}`
+        index += 1
+      }
+      const field: FrontmatterTemplateField = {
+        id: createFrontmatterTemplateId(),
+        key,
+        type: 'text',
+        defaultValue: '',
+        computed: 'none',
+      }
+      updateFrontmatterDraft((frontmatter) => ({
+        ...frontmatter,
+        templates: frontmatter.templates.map((template) =>
+          template.id === activeTemplate.id
+            ? { ...template, fields: [...template.fields, field] }
+            : template,
+        ),
+      }))
+    }
+
+    const readFrontmatterTemplateFieldDragId = (event: ReactDragEvent<HTMLElement>) =>
+      frontmatterTemplateFieldDragIdRef.current
+      || draggingFrontmatterTemplateFieldId
+      || event.dataTransfer.getData(FRONTMATTER_TEMPLATE_FIELD_DRAG_MIME)
+
+    const refreshFrontmatterTemplateFieldRects = () => {
+      frontmatterTemplateFieldRectsRef.current = readFrontmatterListDropRects(
+        frontmatterTemplateFieldListRef.current,
+        '[data-frontmatter-template-field-id]',
+      )
+      return frontmatterTemplateFieldRectsRef.current
+    }
+
+    const getFrontmatterTemplateFieldDropIndex = (event: ReactDragEvent<HTMLElement>) => {
+      const fieldCount = activeTemplate?.fields.length ?? 0
+      const rects =
+        frontmatterTemplateFieldRectsRef.current.length === fieldCount
+          ? frontmatterTemplateFieldRectsRef.current
+          : refreshFrontmatterTemplateFieldRects()
+      return getFrontmatterListDropIndexFromPointer(rects, event.clientY, fieldCount)
+    }
+
+    const updateFrontmatterTemplateFieldDropTarget = (event: ReactDragEvent<HTMLElement>) => {
+      if (!activeTemplate) return
+      const sourceFieldId = readFrontmatterTemplateFieldDragId(event)
+      if (!sourceFieldId) return
       event.preventDefault()
       event.dataTransfer.dropEffect = 'move'
-      const nextTarget = getFrontmatterTemplateDropTarget(event, templateId)
-      setFrontmatterTemplateDropTarget((previous) =>
-        previous?.templateId === nextTarget.templateId && previous.position === nextTarget.position ? previous : nextTarget,
-      )
+      updateFrontmatterTemplateFieldDropIndex(getFrontmatterTemplateFieldDropIndex(event))
     }
 
-    const dropFrontmatterTemplate = (event: ReactDragEvent<HTMLElement>, templateId: string) => {
-      const sourceTemplateId = readFrontmatterTemplateDragId(event)
-      const target =
-        frontmatterTemplateDropTarget?.templateId === templateId
-          ? frontmatterTemplateDropTarget
-          : getFrontmatterTemplateDropTarget(event, templateId)
+    const dropFrontmatterTemplateField = (event: ReactDragEvent<HTMLElement>) => {
+      if (!activeTemplate) return
+      const sourceFieldId = readFrontmatterTemplateFieldDragId(event)
+      const targetIndex = frontmatterTemplateFieldDropIndexRef.current ?? getFrontmatterTemplateFieldDropIndex(event)
       event.preventDefault()
       event.stopPropagation()
-      clearFrontmatterTemplateDrag()
-      if (!sourceTemplateId || sourceTemplateId === templateId) return
-      const fallbackTemplateId = activeTemplate?.id ?? ''
+      clearFrontmatterTemplateFieldDrag()
+      if (!sourceFieldId) return
       updateFrontmatterDraft((frontmatter) => {
-        const nextTemplates = reorderFrontmatterTemplatesByInsertion(
+        const nextTemplates = reorderFrontmatterTemplateFieldsByTargetIndex(
           frontmatter.templates,
-          sourceTemplateId,
-          target.templateId,
-          target.position,
+          activeTemplate.id,
+          sourceFieldId,
+          targetIndex,
         )
         if (nextTemplates === frontmatter.templates) return frontmatter
         return {
           ...frontmatter,
           templates: nextTemplates,
-          settingsTemplateId: frontmatter.settingsTemplateId || fallbackTemplateId,
+          settingsTemplateId: frontmatter.settingsTemplateId || activeTemplate.id,
         }
       })
     }
@@ -6920,134 +7562,80 @@ export function NotebookApp() {
         frontmatter: nextFrontmatter,
       }))
     }
+    const deleteTargetTemplate = templates.find((template) => template.id === frontmatterTemplateDeleteTargetId) ?? null
 
     return (
+      <>
       <section className="notebook-settings-section" aria-label="Frontmatter settings">
         <p className="notebook-settings-help">Template changes apply only after saving.</p>
         <div className="frontmatter-template-settings-layout">
-          <aside className="frontmatter-template-list-panel" aria-label="Frontmatter template list">
-            <div className="frontmatter-template-list-header">templates</div>
-            <div className="frontmatter-template-list" aria-label="frontmatter templates">
-              {templates.map((template) => {
-                const selected = activeTemplate?.id === template.id
-                const dropPosition =
-                  frontmatterTemplateDropTarget?.templateId === template.id ? frontmatterTemplateDropTarget.position : null
-                return (
-                  <button
-                    key={template.id}
-                    type="button"
-                    className={[
-                      'frontmatter-template-list-item',
-                      selected ? 'is-selected' : '',
-                      draggingFrontmatterTemplateId === template.id ? 'is-dragging' : '',
-                      dropPosition === 'before' ? 'is-drop-before' : '',
-                      dropPosition === 'after' ? 'is-drop-after' : '',
-                    ].filter(Boolean).join(' ')}
-                    draggable
-                    aria-current={selected ? 'true' : undefined}
-                    aria-label={`Select frontmatter template ${template.name}`}
-                    data-app-tooltip="Drag to reorder"
-                    onClick={() => selectFrontmatterTemplate(template.id)}
-                    onDragStart={(event) => {
-                      setDraggingFrontmatterTemplateId(template.id)
-                      setFrontmatterTemplateDropTarget(null)
-                      event.dataTransfer.effectAllowed = 'move'
-                      event.dataTransfer.setData(FRONTMATTER_TEMPLATE_DRAG_MIME, template.id)
-                      event.dataTransfer.setData('text/plain', template.id)
-                    }}
-                    onDragEnter={(event) => updateFrontmatterTemplateDropTarget(event, template.id)}
-                    onDragOver={(event) => updateFrontmatterTemplateDropTarget(event, template.id)}
-                    onDragLeave={(event) => {
-                      if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
-                      if (frontmatterTemplateDropTarget?.templateId === template.id) setFrontmatterTemplateDropTarget(null)
-                    }}
-                    onDrop={(event) => dropFrontmatterTemplate(event, template.id)}
-                    onDragEnd={clearFrontmatterTemplateDrag}
-                  >
-                    <span className="frontmatter-template-drag-handle" aria-hidden="true">
-                      <AppIcon iconId="gripVertical" className="frontmatter-template-drag-icon" />
-                    </span>
-                    <span className="frontmatter-template-list-name">{template.name}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </aside>
           <div className="frontmatter-template-editor">
-            <div className="notebook-settings-actions">
-              <button
-                type="button"
-                className="notebook-settings-action"
-                onClick={() => {
-                  const template: FrontmatterTemplate = {
-                    id: createFrontmatterTemplateId(),
-                    name: 'new template',
-                    fields: [],
-                  }
-                  updateFrontmatterDraft((frontmatter) => ({
-                    ...frontmatter,
-                    templates: [...frontmatter.templates, template],
-                    settingsTemplateId: template.id,
-                  }))
-                }}
-              >
-                New template
-              </button>
-              <button
-                type="button"
-                className="notebook-settings-action"
-                disabled={!activeTemplate || templates.length <= 1}
-                onClick={() => {
-                  if (!activeTemplate) return
-                  updateFrontmatterDraft((frontmatter) => {
-                    const nextTemplates = frontmatter.templates.filter((template) => template.id !== activeTemplate.id)
-                    return {
-                      ...frontmatter,
-                      templates: nextTemplates,
-                      settingsTemplateId: frontmatter.settingsTemplateId === activeTemplate.id ? '' : frontmatter.settingsTemplateId,
-                      lastAppliedTemplateId:
-                        frontmatter.lastAppliedTemplateId === activeTemplate.id ? '' : frontmatter.lastAppliedTemplateId,
-                    }
-                  })
-                }}
-              >
-                Delete template
-              </button>
-              <button
-                type="button"
-                className="notebook-settings-action"
-                disabled={!frontmatterDraftDirty}
-                onClick={() => {
-                  setFrontmatterFixedListOptionDrafts({})
-                  clearFrontmatterTemplateDrag()
-                  setFrontmatterDraft(stateRef.current.frontmatter)
-                }}
-              >
-                Discard changes
-              </button>
-              <button
-                type="button"
-                className="notebook-settings-action"
-                disabled={!frontmatterDraftDirty}
-                onClick={saveFrontmatterTemplates}
-              >
-                Save template
-              </button>
+            <div className="frontmatter-template-toolbar">
+              <label className="frontmatter-template-control frontmatter-template-select-field">
+                <span>template</span>
+                <select
+                  className="settings-select-input frontmatter-template-select"
+                  value={activeTemplate?.id ?? ''}
+                  disabled={templates.length === 0}
+                  onChange={(event) => selectFrontmatterTemplate(event.target.value)}
+                >
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="frontmatter-template-control frontmatter-template-name-field">
+                <span>name</span>
+                <input
+                  type="text"
+                  className="settings-text-input"
+                  value={activeTemplate?.name ?? ''}
+                  disabled={!activeTemplate}
+                  onChange={(event) => {
+                    if (!activeTemplate) return
+                    updateFrontmatterTemplate(activeTemplate.id, { name: event.target.value })
+                  }}
+                />
+              </label>
+              <div className="frontmatter-template-actions">
+                <button
+                  type="button"
+                  className="notebook-settings-action"
+                  onClick={createFrontmatterTemplate}
+                >
+                  New template
+                </button>
+                <button
+                  type="button"
+                  className="notebook-settings-action"
+                  disabled={!activeTemplate || templates.length <= 1}
+                  onClick={() => {
+                    if (activeTemplate) setFrontmatterTemplateDeleteTargetId(activeTemplate.id)
+                  }}
+                >
+                  Delete template
+                </button>
+              </div>
             </div>
+            <div className="settings-divider" />
             {activeTemplate ? (
               <>
-                <label className="settings-modal-field">
-                  <span>name</span>
-                  <input
-                    type="text"
-                    className="settings-text-input"
-                    value={activeTemplate.name}
-                    onChange={(event) => updateFrontmatterTemplate(activeTemplate.id, { name: event.target.value })}
-                  />
-                </label>
-                <div className="settings-divider" />
-                <div className="frontmatter-template-fields">
+                <div
+                  ref={frontmatterTemplateFieldListRef}
+                  className="frontmatter-template-fields"
+                  onDragEnter={updateFrontmatterTemplateFieldDropTarget}
+                  onDragOver={updateFrontmatterTemplateFieldDropTarget}
+                  onDragLeave={(event) => {
+                    const relatedTarget = event.relatedTarget as Node | null
+                    if (relatedTarget && event.currentTarget.contains(relatedTarget)) return
+                    if (relatedTarget) updateFrontmatterTemplateFieldDropIndex(null)
+                  }}
+                  onDrop={dropFrontmatterTemplateField}
+                >
                   <div className="frontmatter-template-field-row frontmatter-template-field-header" aria-hidden="true">
+                    <span />
                     <span>key</span>
                     <span>type</span>
                     <span>computed</span>
@@ -7055,8 +7643,39 @@ export function NotebookApp() {
                     <span>lock</span>
                     <span>action</span>
                   </div>
-                  {activeTemplate.fields.map((field) => (
-                    <div key={field.id} className={`frontmatter-template-field-row ${field.computed !== 'none' ? 'is-computed' : ''}`}>
+                  {activeTemplate.fields.map((field, index) => (
+                    <div
+                      key={field.id}
+                      data-frontmatter-template-field-id={field.id}
+                      className={[
+                        'frontmatter-template-field-row',
+                        field.computed !== 'none' ? 'is-computed' : '',
+                        draggingFrontmatterTemplateFieldId === field.id ? 'is-dragging' : '',
+                        frontmatterTemplateFieldDropIndex === index ? 'is-drop-index-before' : '',
+                        frontmatterTemplateFieldDropIndex === activeTemplate.fields.length && index === activeTemplate.fields.length - 1
+                          ? 'is-drop-index-after'
+                          : '',
+                      ].filter(Boolean).join(' ')}
+                    >
+                      <button
+                        type="button"
+                        className="frontmatter-template-field-drag-handle"
+                        aria-label={`Reorder ${field.key || 'frontmatter field'}`}
+                        data-app-tooltip="Drag to reorder"
+                        draggable
+                        onDragStart={(event) => {
+                          frontmatterTemplateFieldDragIdRef.current = field.id
+                          frontmatterTemplateFieldRectsRef.current = refreshFrontmatterTemplateFieldRects()
+                          setDraggingFrontmatterTemplateFieldId(field.id)
+                          updateFrontmatterTemplateFieldDropIndex(null)
+                          event.dataTransfer.effectAllowed = 'move'
+                          event.dataTransfer.setData(FRONTMATTER_TEMPLATE_FIELD_DRAG_MIME, field.id)
+                          event.dataTransfer.setData('text/plain', field.id)
+                        }}
+                        onDragEnd={clearFrontmatterTemplateFieldDrag}
+                      >
+                        <AppIcon iconId="gripVertical" className="frontmatter-template-field-drag-icon" />
+                      </button>
                       <input
                         type="text"
                         className="settings-text-input frontmatter-key-input"
@@ -7144,44 +7763,56 @@ export function NotebookApp() {
                       </button>
                     </div>
                   ))}
+                  <div className="frontmatter-template-add-field-row">
+                    <button
+                      type="button"
+                      className="frontmatter-template-add-field-btn"
+                      aria-label="Add field"
+                      data-app-tooltip="Add field"
+                      onClick={addFrontmatterTemplateField}
+                    >
+                      <AppIcon iconId="plus" className="frontmatter-template-add-field-icon" />
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  className="notebook-settings-action"
-                  onClick={() => {
-                    const existingKeys = new Set(activeTemplate.fields.map((field) => field.key.trim()).filter(Boolean))
-                    let key = 'field'
-                    let index = 2
-                    while (existingKeys.has(key)) {
-                      key = `field ${index}`
-                      index += 1
-                    }
-                    const field: FrontmatterTemplateField = {
-                      id: createFrontmatterTemplateId(),
-                      key,
-                      type: 'text',
-                      defaultValue: '',
-                      computed: 'none',
-                    }
-                    updateFrontmatterDraft((frontmatter) => ({
-                      ...frontmatter,
-                      templates: frontmatter.templates.map((template) =>
-                        template.id === activeTemplate.id
-                          ? { ...template, fields: [...template.fields, field] }
-                          : template,
-                      ),
-                    }))
-                  }}
-                >
-                  Add field
-                </button>
               </>
             ) : (
               <p className="notebook-settings-help">Create a template to add default frontmatter fields.</p>
             )}
+            <div className="frontmatter-template-footer-actions">
+              <button
+                type="button"
+                className="notebook-settings-action"
+                disabled={!frontmatterDraftDirty}
+                onClick={() => {
+                  setFrontmatterFixedListOptionDrafts({})
+                  clearFrontmatterTemplateFieldDrag()
+                  setFrontmatterTemplateDeleteTargetId('')
+                  setFrontmatterDraft(stateRef.current.frontmatter)
+                }}
+              >
+                Discard changes
+              </button>
+              <button
+                type="button"
+                className="notebook-settings-action"
+                disabled={!frontmatterDraftDirty}
+                onClick={saveFrontmatterTemplates}
+              >
+                Save template
+              </button>
+            </div>
           </div>
         </div>
       </section>
+      {deleteTargetTemplate ? (
+        <FrontmatterTemplateDeleteDialog
+          templateName={deleteTargetTemplate.name}
+          onCancel={() => setFrontmatterTemplateDeleteTargetId('')}
+          onConfirm={() => deleteFrontmatterTemplate(deleteTargetTemplate.id)}
+        />
+      ) : null}
+      </>
     )
   }
 
@@ -7322,6 +7953,23 @@ export function NotebookApp() {
         section={messagesSection}
         messages={state.messages ?? []}
         toastHistory={state.toastHistory ?? []}
+        diagnosticDays={diagnosticDays}
+        selectedDiagnosticDay={selectedDiagnosticDay}
+        diagnosticEntries={diagnosticEntries}
+        diagnosticLevelFilter={diagnosticLevelFilter}
+        diagnosticDisplayLimit={diagnosticDisplayLimit}
+        diagnosticMode={diagnosticMode}
+        diagnosticCaptureEnabled={diagnosticCaptureEnabled}
+        onDiagnosticDayChange={setSelectedDiagnosticDay}
+        onDiagnosticLevelFilterChange={setDiagnosticLevelFilter}
+        onDiagnosticDisplayLimitChange={setDiagnosticDisplayLimit}
+        onDiagnosticModeChange={setDiagnosticMode}
+        onDiagnosticCaptureEnabledChange={setDiagnosticCaptureEnabled}
+        onOpenDiagnosticsFolder={
+          typeof window !== 'undefined' && typeof window.electronAPI?.openDiagnosticsFolder === 'function'
+            ? openDiagnosticsFolder
+            : undefined
+        }
         onDismissMessage={(messageId) =>
           mutateState((previous) => ({
             ...previous,
@@ -7998,6 +8646,7 @@ export function NotebookApp() {
         onToggleTemplateDerived={toggleFrontmatterTemplateDerived}
         onEditTemplate={editFrontmatterTemplateFromModal}
         onFilterTemplate={filterFrontmatterTemplateFromModal}
+        onCopyFrontmatter={copyFrontmatterFromModal}
       />
       <AisleEditModal
         open={aisleEditModalOpen && Boolean(activeModel)}
@@ -8010,6 +8659,12 @@ export function NotebookApp() {
         onApply={applyAisleEditDraftToActiveNote}
         onWarn={(message) => window.alert(message)}
       />
+      <ToastHost
+        toasts={appNotifications.toasts}
+        onToastMouseEnter={appNotifications.pauseToastDismissals}
+        onToastMouseLeave={appNotifications.resumeToastDismissals}
+      />
+      <TipHost tips={appNotifications.visibleTipDefinitions} onDismissTip={appNotifications.dismissTip} />
     </div>
   )
 }

@@ -66,31 +66,64 @@ export type BuildFrontmatterDataResult =
     }
   | { ok: false; message: string }
 
-export type FrontmatterTemplateDropPosition = 'before' | 'after'
+export type FrontmatterDropPosition = 'before' | 'after'
+export type FrontmatterRowDropPosition = FrontmatterDropPosition
 
-export function reorderFrontmatterTemplatesByInsertion(
+export function reorderFrontmatterItemsByTargetIndex<T extends { id: string }>(
+  items: T[],
+  sourceItemId: string,
+  targetIndex: number,
+): T[] {
+  if (!sourceItemId) return items
+
+  const sourceIndex = items.findIndex((item) => item.id === sourceItemId)
+  if (sourceIndex < 0) return items
+
+  const boundedTargetIndex = Math.min(Math.max(Math.floor(targetIndex), 0), items.length)
+  if (boundedTargetIndex === sourceIndex || boundedTargetIndex === sourceIndex + 1) return items
+
+  const next = [...items]
+  const [sourceItem] = next.splice(sourceIndex, 1)
+  if (!sourceItem) return items
+
+  const adjustedTargetIndex = sourceIndex < boundedTargetIndex ? boundedTargetIndex - 1 : boundedTargetIndex
+  next.splice(adjustedTargetIndex, 0, sourceItem)
+
+  return next.every((item, index) => item.id === items[index]?.id) ? items : next
+}
+
+export function reorderFrontmatterTemplateFieldsByTargetIndex(
   templates: FrontmatterTemplate[],
-  sourceTemplateId: string,
-  targetTemplateId: string,
-  position: FrontmatterTemplateDropPosition,
+  templateId: string,
+  sourceFieldId: string,
+  targetIndex: number,
 ): FrontmatterTemplate[] {
-  if (!sourceTemplateId || !targetTemplateId || sourceTemplateId === targetTemplateId) return templates
+  if (!templateId || !sourceFieldId) return templates
 
-  const sourceIndex = templates.findIndex((template) => template.id === sourceTemplateId)
-  const targetIndex = templates.findIndex((template) => template.id === targetTemplateId)
-  if (sourceIndex < 0 || targetIndex < 0) return templates
+  let changed = false
+  const nextTemplates = templates.map((template) => {
+    if (template.id !== templateId) return template
+    const nextFields = reorderFrontmatterItemsByTargetIndex(template.fields, sourceFieldId, targetIndex)
+    if (nextFields === template.fields) return template
+    changed = true
+    return { ...template, fields: nextFields }
+  })
 
-  const next = [...templates]
-  const [sourceTemplate] = next.splice(sourceIndex, 1)
-  if (!sourceTemplate) return templates
+  return changed ? nextTemplates : templates
+}
 
-  const nextTargetIndex = next.findIndex((template) => template.id === targetTemplateId)
-  if (nextTargetIndex < 0) return templates
+export function reorderFrontmatterRowsByInsertion(
+  rows: FrontmatterRowDraft[],
+  sourceRowId: string,
+  targetRowId: string,
+  position: FrontmatterRowDropPosition,
+): FrontmatterRowDraft[] {
+  if (!sourceRowId || !targetRowId || sourceRowId === targetRowId) return rows
 
-  const insertIndex = position === 'before' ? nextTargetIndex : nextTargetIndex + 1
-  next.splice(insertIndex, 0, sourceTemplate)
+  const targetIndex = rows.findIndex((row) => row.id === targetRowId)
+  if (targetIndex < 0) return rows
 
-  return next.every((template, index) => template.id === templates[index]?.id) ? templates : next
+  return reorderFrontmatterItemsByTargetIndex(rows, sourceRowId, position === 'before' ? targetIndex : targetIndex + 1)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -393,11 +426,12 @@ export function buildFrontmatterRowsForAisle(
     ? resolveFrontmatterReferencesForState(state, getTargetFrontmatter(state, noteBodyId, aisleBodyId))
     : null
   const context = buildFrontmatterContext(state, location, new Date(), noteBodyId, aisleBodyId)
-  const rows: FrontmatterRowDraft[] = []
   const templateKeys = new Set<string>()
   const derived = Boolean(template && (options.derived ?? meta?.templateDerived))
   const templateFieldByKey = new Map<string, FrontmatterTemplateField>()
   const consumedExistingKeys = new Set<string>()
+  const derivedEntries: Array<{ fieldId: string; row: FrontmatterRowDraft }> = []
+  const derivedRowByExistingKey = new Map<string, FrontmatterRowDraft>()
 
   for (const field of template?.fields ?? []) {
     const key = field.key.trim()
@@ -416,15 +450,32 @@ export function buildFrontmatterRowsForAisle(
       consumedExistingKeys.add(row.key)
       const originKey = originKeys.get(field.id)
       if (originKey) consumedExistingKeys.add(originKey)
-      rows.push(row)
+      derivedEntries.push({ fieldId: field.id, row })
+      if (existing && Object.prototype.hasOwnProperty.call(existing, row.key)) {
+        derivedRowByExistingKey.set(row.key, row)
+      }
+      if (existing && originKey && Object.prototype.hasOwnProperty.call(existing, originKey)) {
+        derivedRowByExistingKey.set(originKey, row)
+      }
     }
   }
 
-  if (!includeExisting || !existing) return rows
+  if (!includeExisting || !existing) return derivedEntries.map((entry) => entry.row)
+
+  const rows: FrontmatterRowDraft[] = []
+  const emittedDerivedFieldIds = new Set<string>()
+
   Object.entries(existing).forEach(([key, value], index) => {
-    if (!key.trim() || consumedExistingKeys.has(key)) return
-    const origin = meta?.templateFieldOrigins?.[key]
-    if (template && derived && origin?.templateId === template.id) return
+    if (!key.trim()) return
+    const derivedRow = derivedRowByExistingKey.get(key)
+    if (derivedRow?.templateFieldId) {
+      if (!emittedDerivedFieldIds.has(derivedRow.templateFieldId)) {
+        rows.push(derivedRow)
+        emittedDerivedFieldIds.add(derivedRow.templateFieldId)
+      }
+      return
+    }
+    if (consumedExistingKeys.has(key)) return
     rows.push(buildManualRow(
       key,
       value,
@@ -432,6 +483,32 @@ export function buildFrontmatterRowsForAisle(
       derived ? templateFieldByKey.get(key) : undefined,
       meta?.computedFields?.[key],
     ))
+  })
+
+  const findTemplateRowIndex = (fieldId: string) =>
+    rows.findIndex((row) => row.derived && row.templateFieldId === fieldId)
+
+  derivedEntries.forEach((entry, entryIndex) => {
+    if (emittedDerivedFieldIds.has(entry.fieldId)) return
+    let insertIndex = -1
+    for (let previousIndex = entryIndex - 1; previousIndex >= 0; previousIndex -= 1) {
+      const previousRowIndex = findTemplateRowIndex(derivedEntries[previousIndex].fieldId)
+      if (previousRowIndex >= 0) {
+        insertIndex = previousRowIndex + 1
+        break
+      }
+    }
+    if (insertIndex < 0) {
+      for (let nextIndex = entryIndex + 1; nextIndex < derivedEntries.length; nextIndex += 1) {
+        const nextRowIndex = findTemplateRowIndex(derivedEntries[nextIndex].fieldId)
+        if (nextRowIndex >= 0) {
+          insertIndex = nextRowIndex
+          break
+        }
+      }
+    }
+    rows.splice(insertIndex < 0 ? rows.length : insertIndex, 0, entry.row)
+    emittedDerivedFieldIds.add(entry.fieldId)
   })
 
   return rows

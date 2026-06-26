@@ -1854,11 +1854,11 @@
 
 .notebook-frontmatter-body .frontmatter-row-editor {
   max-height: none;
-  min-width: 760px;
+  min-width: 800px;
 }
 
 .notebook-frontmatter-body .frontmatter-row {
-  grid-template-columns: minmax(128px, 1fr) minmax(104px, 0.7fr) minmax(168px, 1.25fr) 72px 64px auto;
+  grid-template-columns: 32px minmax(128px, 1fr) minmax(104px, 0.7fr) minmax(168px, 1.25fr) 72px 64px auto;
 }
 
 .notebook-frontmatter-body .frontmatter-row-header {

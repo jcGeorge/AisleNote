@@ -265,10 +265,6 @@
     grid-template-columns: 1fr;
   }
 
-  .frontmatter-template-list {
-    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
-  }
-
   .frontmatter-template-field-row {
     grid-template-columns: 1fr;
     align-items: stretch;

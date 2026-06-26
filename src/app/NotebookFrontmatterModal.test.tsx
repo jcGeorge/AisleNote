@@ -1,10 +1,13 @@
 import React from 'react'
+import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type { FrontmatterTemplate } from '../types/app'
 import type { NotebookFrontmatterModalState } from './NotebookApp'
 
 let NotebookFrontmatterModal: typeof import('./NotebookApp').NotebookFrontmatterModal
+const notebookAppSource = readFileSync(new URL('./NotebookApp.tsx', import.meta.url), 'utf8')
+const overlaysCss = readFileSync(new URL('../styles/overlays.css', import.meta.url), 'utf8')
 
 beforeAll(async () => {
   if (typeof globalThis.Element === 'undefined') {
@@ -67,6 +70,7 @@ function renderModal(state = modal(), templateList: FrontmatterTemplate[] = [tem
       onToggleTemplateDerived={vi.fn((current) => current)}
       onEditTemplate={vi.fn()}
       onFilterTemplate={vi.fn()}
+      onCopyFrontmatter={vi.fn(async () => null)}
     />,
   )
 }
@@ -144,6 +148,14 @@ describe('NotebookFrontmatterModal', () => {
     expect(html).toContain('frontmatter-filter-template-btn')
   })
 
+  it('renders the frontmatter copy action in the modal header', () => {
+    const html = renderModal()
+
+    expect(html).toContain('>Copy FM</button>')
+    expect(html).toContain('frontmatter-copy-btn')
+    expect(html).not.toContain('frontmatter-paste-btn')
+  })
+
   it('renders row actions as trash icon buttons', () => {
     const html = renderModal()
 
@@ -151,6 +163,29 @@ describe('NotebookFrontmatterModal', () => {
     expect(html).toContain('data-app-icon="trash"')
     expect(html).toContain('aria-label="Remove status"')
     expect(html).not.toContain('>Remove</button>')
+  })
+
+  it('renders row reorder handles as draggable grip buttons', () => {
+    const html = renderModal()
+
+    expect(html).toContain('frontmatter-row-drag-handle')
+    expect(html).toContain('data-app-icon="gripVertical"')
+    expect(html).toContain('aria-label="Reorder status"')
+    expect(html).toContain('draggable="true"')
+  })
+
+  it('uses container-level row drop indexes for frontmatter row reordering', () => {
+    expect(notebookAppSource).toContain('frontmatterRowDropIndex')
+    expect(notebookAppSource).toContain('data-frontmatter-row-id')
+    expect(notebookAppSource).toContain('reorderFrontmatterItemsByTargetIndex(rows, sourceRowId, targetIndex)')
+    expect(notebookAppSource).not.toContain('dropFrontmatterRow(event, row.id)')
+  })
+
+  it('defines stable row drag handle and drop indicator styles', () => {
+    expect(overlaysCss).toContain('grid-template-columns: 2.35rem')
+    expect(overlaysCss).toContain('.frontmatter-row.is-drop-index-before::before')
+    expect(overlaysCss).toContain('.frontmatter-row.is-drop-index-after::after')
+    expect(overlaysCss).toContain('.frontmatter-row-drag-handle')
   })
 
   it('renders fixed list template values as a checkbox dropdown', () => {
