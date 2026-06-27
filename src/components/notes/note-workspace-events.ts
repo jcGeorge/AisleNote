@@ -20,12 +20,16 @@ export function getAisleActivationPointerFromNoteWorkspaceEvent(
 
 export function getAisleActivationPointerFromNoteWorkspaceMouseEvent(
   event: Pick<MouseEvent, 'button' | 'clientX' | 'clientY' | 'detail'>,
+  target: EventTarget | null = null,
 ): { clientX: number; clientY: number; mode: 'coordinate' | 'focus-only' } | undefined {
   if (event.button !== 0) return undefined
   return {
     clientX: event.clientX,
     clientY: event.clientY,
-    mode: event.detail > 1 ? 'focus-only' : 'coordinate',
+    mode:
+      event.detail > 1 || isNoteWorkspaceEditableProseMirrorTarget(target)
+        ? 'focus-only'
+        : 'coordinate',
   }
 }
 
@@ -34,6 +38,7 @@ type ClosestCapableTarget = {
 }
 
 const AISLE_ACTIVATION_SUPPRESS_SELECTOR = '[data-note-workspace-skip-aisle-activation="true"]'
+const AISLE_ACTIVATION_EDITABLE_PROSEMIRROR_SELECTOR = '.ProseMirror[contenteditable="true"]'
 const AISLE_ACTIVATION_RIGHT_SIDE_BLOCK_SELECTOR = 'table, img'
 const AISLE_ACTIVATION_INTERACTIVE_SIDE_TARGET_SELECTOR = [
   'a',
@@ -79,6 +84,11 @@ function getClosestCapableTarget(target: EventTarget | null): ClosestCapableTarg
   if (canResolveClosestElement(target)) return target
   const parentElement = (target as { parentElement?: EventTarget | null } | null)?.parentElement ?? null
   return canResolveClosestElement(parentElement) ? parentElement : null
+}
+
+export function isNoteWorkspaceEditableProseMirrorTarget(target: EventTarget | null): boolean {
+  const closestTarget = getClosestCapableTarget(target)
+  return Boolean(closestTarget?.closest(AISLE_ACTIVATION_EDITABLE_PROSEMIRROR_SELECTOR))
 }
 
 function closestDomElement(target: DomElementLike | null | undefined, selector: string): DomElementLike | null {

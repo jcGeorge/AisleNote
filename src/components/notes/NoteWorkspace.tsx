@@ -593,7 +593,7 @@ export function NoteWorkspace({
         }}
         onMouseDownCapture={(event) => {
           if (!shouldActivateAisleFromNoteWorkspacePointer(event.button)) return
-          const pointer = getAisleActivationPointerFromNoteWorkspaceMouseEvent(event.nativeEvent)
+          const pointer = getAisleActivationPointerFromNoteWorkspaceMouseEvent(event.nativeEvent, event.target)
           const gutterTarget = activateAisleFromWorkspaceTarget(event.target, pointer)
           if (gutterTarget) {
             event.preventDefault()

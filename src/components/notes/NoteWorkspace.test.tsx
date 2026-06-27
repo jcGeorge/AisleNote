@@ -992,24 +992,45 @@ describe('NoteWorkspace aisle mounting', () => {
   })
 
   it('captures first-click coordinates only for primary mouse aisle activation', () => {
-    expect(getAisleActivationPointerFromNoteWorkspaceMouseEvent({
-      button: 0,
-      clientX: 24,
-      clientY: 48,
-      detail: 1,
-    } as MouseEvent)).toEqual({ clientX: 24, clientY: 48, mode: 'coordinate' })
-    expect(getAisleActivationPointerFromNoteWorkspaceMouseEvent({
-      button: 0,
-      clientX: 24,
-      clientY: 48,
-      detail: 2,
-    } as MouseEvent)).toEqual({ clientX: 24, clientY: 48, mode: 'focus-only' })
-    expect(getAisleActivationPointerFromNoteWorkspaceMouseEvent({
-      button: 0,
-      clientX: 24,
-      clientY: 48,
-      detail: 3,
-    } as MouseEvent)).toEqual({ clientX: 24, clientY: 48, mode: 'focus-only' })
+    const editableProseMirrorTarget = {
+      closest: (selector: string) => selector === '.ProseMirror[contenteditable="true"]' ? {} : null,
+    } as unknown as EventTarget
+    const outsideEditableTarget = {
+      closest: () => null,
+    } as unknown as EventTarget
+
+    expect(
+      getAisleActivationPointerFromNoteWorkspaceMouseEvent({
+        button: 0,
+        clientX: 24,
+        clientY: 48,
+        detail: 1,
+      } as MouseEvent, outsideEditableTarget),
+    ).toEqual({ clientX: 24, clientY: 48, mode: 'coordinate' })
+    expect(
+      getAisleActivationPointerFromNoteWorkspaceMouseEvent({
+        button: 0,
+        clientX: 24,
+        clientY: 48,
+        detail: 1,
+      } as MouseEvent, editableProseMirrorTarget),
+    ).toEqual({ clientX: 24, clientY: 48, mode: 'focus-only' })
+    expect(
+      getAisleActivationPointerFromNoteWorkspaceMouseEvent({
+        button: 0,
+        clientX: 24,
+        clientY: 48,
+        detail: 2,
+      } as MouseEvent, outsideEditableTarget),
+    ).toEqual({ clientX: 24, clientY: 48, mode: 'focus-only' })
+    expect(
+      getAisleActivationPointerFromNoteWorkspaceMouseEvent({
+        button: 0,
+        clientX: 24,
+        clientY: 48,
+        detail: 3,
+      } as MouseEvent, outsideEditableTarget),
+    ).toEqual({ clientX: 24, clientY: 48, mode: 'focus-only' })
     expect(getAisleActivationPointerFromNoteWorkspaceMouseEvent({
       button: 1,
       clientX: 24,
@@ -1049,7 +1070,7 @@ describe('NoteWorkspace aisle mounting', () => {
       clientY: 48,
       pointerType: 'touch',
     } as PointerEvent)).toBeUndefined()
-    expect(noteWorkspaceSource).toContain('getAisleActivationPointerFromNoteWorkspaceMouseEvent(event.nativeEvent)')
+    expect(noteWorkspaceSource).toContain('getAisleActivationPointerFromNoteWorkspaceMouseEvent(event.nativeEvent, event.target)')
   })
 
   it('detects blank gutter clicks to the right of a table', () => {
