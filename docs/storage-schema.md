@@ -1,8 +1,8 @@
 # Storage Schema
 
-This document describes the current desktop on-disk notebook format.
+This document describes the current desktop on-disk vault format.
 
-The notebook source of truth is the named notebook folder. It contains a root manifest, visible Markdown note files, imported/editor assets, and `.aislenote/` metadata files that preserve app structure and editor state. Electron user settings live outside the selected notebook folder at `<electron-user-data>/settings/app-settings.json` and move only through explicit user-settings import/export.
+The vault source of truth is the named vault folder. It contains a root manifest, visible Markdown note files, imported/editor assets, and `.aislenote/` metadata files that preserve app structure and editor state. Electron user settings live outside the selected vault folder at `<electron-user-data>/settings/app-settings.json` and move only through explicit user-settings import/export.
 
 The design goals are:
 
@@ -16,7 +16,7 @@ The design goals are:
 ## Root Layout
 
 ```text
-<notebook-folder>/
+<vault-folder>/
   manifest.json
   <root-note-title>--<id-hash>.md
   <folder-title>--<id-hash>/
@@ -27,7 +27,7 @@ The design goals are:
   assets/
     asset-<content-hash>.<ext>
   .aislenote/
-    notebook-index.json
+    vault-index.json
     navigation-state.json
     note-registry.json
     trash-index.json
@@ -71,7 +71,7 @@ Note contents are stored in `.md` files.
 
 - A note with one aisle is stored as `<note-title>--<id-hash>.md`.
 - A note with multiple aisles is stored as a folder containing `aisle N--<id-hash>.md` files.
-- The folder tree in `.aislenote/notebook-index.json` records the logical notebook hierarchy and the visible file paths.
+- The folder tree in `.aislenote/vault-index.json` records the logical vault hierarchy and the visible file paths.
 - Shared aisle bodies can have multiple visible Markdown mirrors. On load, the newest changed mirror wins and is written back to every mirror on the next save.
 - Aisle bodies without a visible Markdown mirror, such as deleted or scratchpad-only content, are preserved in `.aislenote/note-registry.json`.
 
@@ -110,7 +110,7 @@ Example:
 
 Trash is modeled explicitly, not as a boolean field on active notes.
 
-`.aislenote/trash-index.json` tracks deleted notebook items, their original parent folder/index, and deletion timestamps. Deleted note bodies and aisle bodies remain available through `.aislenote/note-registry.json`.
+`.aislenote/trash-index.json` tracks deleted vault items, their original parent folder/index, and deletion timestamps. Deleted note bodies and aisle bodies remain available through `.aislenote/note-registry.json`.
 
 ## Manifest Responsibilities
 
@@ -121,7 +121,7 @@ Trash is modeled explicitly, not as a boolean field on active notes.
 Stores:
 
 - `schemaVersion: 2`
-- `notebookId`
+- `vaultId`
 - `createdBy: "aislenote"`
 - `files`: paths to the `.aislenote/` split files
 - optional sync metadata
@@ -134,17 +134,17 @@ Does not store:
 - Markdown body text
 - user frontmatter values
 - binary asset contents
-- the full notebook tree
+- the full vault tree
 
 Example:
 
 ```json
 {
   "schemaVersion": 2,
-  "notebookId": "notebook-id",
+  "vaultId": "vault-id",
   "createdBy": "aislenote",
   "files": {
-    "notebookIndex": ".aislenote/notebook-index.json",
+    "vaultIndex": ".aislenote/vault-index.json",
     "navigationState": ".aislenote/navigation-state.json",
     "noteRegistry": ".aislenote/note-registry.json",
     "trashIndex": ".aislenote/trash-index.json",
@@ -161,27 +161,27 @@ Example:
 
 All split files live under `.aislenote/`.
 
-- `notebook-index.json`: active note ID, notebook folder/note tree, generated file paths, and notebook settings.
+- `vault-index.json`: active note ID, vault folder/note tree, generated file paths, and vault settings.
 - `navigation-state.json`: active note ID and view mode.
 - `note-registry.json`: note body records and aisle body records, including content hashes, frontmatter metadata, tags, inline preserved Markdown, and mirror paths.
-- `trash-index.json`: deleted notebook items and restore metadata.
+- `trash-index.json`: deleted vault items and restore metadata.
 - `frontmatter-settings.json`: frontmatter templates, selected settings template, and last applied template.
-- `editor-state.json`: notebook-local editor/view state, including scratchpad reference, sidebar state, collapsed folders, toast history, cursor locations, heading collapse state, and aisle widths. Portable user preferences such as theme, hotkeys, toolbar layouts, custom themes, and settings tabs live in app settings instead.
+- `editor-state.json`: vault-local editor/view state, including scratchpad reference, sidebar state, collapsed folders, toast history, cursor locations, heading collapse state, and aisle widths. Portable user preferences such as theme, hotkeys, toolbar layouts, custom themes, and settings tabs live in app settings instead.
 - `messages.json`: persisted app messages.
 - `sync-state.json`: sync metadata.
 
-Portable user preferences live in `<electron-user-data>/settings/app-settings.json`, not in the selected notebook folder. Active notebook loads overlay those app settings onto notebook data; notebook import and inspection paths can opt out of that overlay. Missing optional split files fall back to defaults where the loader has a defined fallback.
+Portable user preferences live in `<electron-user-data>/settings/app-settings.json`, not in the selected vault folder. Active vault loads overlay those app settings onto vault data; vault import and inspection paths can opt out of that overlay. Missing optional split files fall back to defaults where the loader has a defined fallback.
 
 ## Import Behavior
 
-Notebook imports replace the current notebook folder contents. Supported import sources are:
+Vault imports replace the current vault folder contents. Supported import sources are:
 
-- AisleNote notebook folders
-- AisleNote notebook ZIPs
+- AisleNote vault folders
+- AisleNote vault ZIPs
 - Markdown folders
 - Markdown ZIPs
 
-Markdown import maps every Markdown file to one note and every containing directory to a notebook folder. Root Markdown files become root notes. Frontmatter, visible tags, resolvable Obsidian links, and local assets are converted into the app's notebook model where possible.
+Markdown import maps every Markdown file to one note and every containing directory to a vault folder. Root Markdown files become root notes. Frontmatter, visible tags, resolvable Obsidian links, and local assets are converted into the app's vault model where possible.
 
 ## Recommended Field Strategy
 
@@ -211,16 +211,16 @@ Current health behavior:
 
 Storage health UI should surface:
 
-- current notebook folder path
+- current vault folder path
 - schema version
 - writable/paused state
-- notebook folder health (`healthy`, `warning`, or `error`)
+- vault folder health (`healthy`, `warning`, or `error`)
 - issue codes/messages/paths
 - reveal folder and retry reload actions
 
 ## Browser Adapter
 
-Browser builds persist the same logical notebook tree in IndexedDB as virtual files. Browser and mobile runtimes may keep an app-private virtual `notes/` prefix internally because it is not a user-visible filesystem notebook folder.
+Browser builds persist the same logical vault tree in IndexedDB as virtual files. Browser and mobile runtimes may keep an app-private virtual `notes/` prefix internally because it is not a user-visible filesystem vault folder.
 
 Browser storage should remain logically compatible with the Electron filesystem adapter for:
 
@@ -233,4 +233,4 @@ Browser storage should remain logically compatible with the Electron filesystem 
 
 ## Legacy Storage
 
-Pre-production notebook folders are not loaded or migrated. Electron expects `manifest.json` at the notebook root for an existing notebook folder. Unsupported schema versions are not silently migrated or overwritten.
+Pre-production vault folders are not loaded or migrated. Electron expects `manifest.json` at the vault root for an existing vault folder. Unsupported schema versions are not silently migrated or overwritten.

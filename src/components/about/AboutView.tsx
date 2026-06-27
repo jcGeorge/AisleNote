@@ -34,7 +34,7 @@ export function AboutViewContent({
       <div className="utility-page-card about-view-card">
         <h2>AisleNote</h2>
         <p>
-          AisleNote is a local-first notebook for organizing notes in folders, with aisle-based editing inside each note.
+          AisleNote is a local-first vault for organizing notes in folders, with aisle-based editing inside each note.
         </p>
         <p>
           Toolbar and app icons include icons from Lucide.dev.

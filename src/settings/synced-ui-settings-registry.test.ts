@@ -64,7 +64,7 @@ describe('synced UI settings registry', () => {
     expect(normalized).not.toHaveProperty('showParentHomeTab')
     expect(normalizeRegisteredSyncedUiSetting('findReplaceMode', 'bad')).toBe('find')
     expect(normalizeRegisteredSyncedUiSetting('findReplaceScope', 'bad')).toBe('note')
-    expect(normalizeRegisteredSyncedUiSetting('findReplaceScope', 'notebook')).toBe('notebook')
+    expect(normalizeRegisteredSyncedUiSetting('findReplaceScope', 'vault')).toBe('vault')
     expect(normalizeRegisteredSyncedUiSetting('lastLinkInsertMode', 'note')).toBe('note-link')
     expect(normalizeRegisteredSyncedUiSetting('lastNoteCopyMode', 'linked')).toBe('synced')
     expect(normalizeRegisteredSyncedUiSetting('tabRenameEnterBehavior', 'bad')).toBe('goes-to-note')

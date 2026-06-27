@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest'
 import type { AppState } from '../types/app'
 import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from './shortcuts'
 import {
-  createNotebookMouseHistoryNavigationRecord,
-  getNotebookHistoryNavigationDirection,
-  getNotebookHotkeyIntent,
-  getNotebookMouseHistoryNavigationDirection,
-  shouldSuppressNotebookMouseHistoryFollowup,
-  shouldIgnoreNotebookHotkeyEvent,
-  updateNotebookMouseHistoryNavigationRecordForFollowup,
-} from './useNotebookHotkeys'
+  createVaultMouseHistoryNavigationRecord,
+  getVaultHistoryNavigationDirection,
+  getVaultHotkeyIntent,
+  getVaultMouseHistoryNavigationDirection,
+  shouldSuppressVaultMouseHistoryFollowup,
+  shouldIgnoreVaultHotkeyEvent,
+  updateVaultMouseHistoryNavigationRecordForFollowup,
+} from './useVaultHotkeys'
 
 const defaultHotkeys: AppState['hotkeys'] = {
   shortcuts: DEFAULT_SHORTCUTS,
@@ -32,16 +32,16 @@ function keyboardEvent(
   } as KeyboardEvent
 }
 
-describe('notebook hotkey intents', () => {
+describe('vault hotkey intents', () => {
   it('resolves mod comma to open settings on mac and windows', () => {
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent(',', { code: 'Comma', metaKey: true }),
       hotkeys: defaultHotkeys,
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('openSettings')
 
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent(',', { code: 'Comma', ctrlKey: true }),
       hotkeys: defaultHotkeys,
       isMacPlatform: false,
@@ -49,7 +49,7 @@ describe('notebook hotkey intents', () => {
     })).toBe('openSettings')
   })
 
-  it('resolves notebook creation, filtering, aisle, and strikethrough shortcuts', () => {
+  it('resolves vault creation, filtering, aisle, and strikethrough shortcuts', () => {
     const hotkeys: AppState['hotkeys'] = {
       ...defaultHotkeys,
       shortcuts: {
@@ -59,79 +59,79 @@ describe('notebook hotkey intents', () => {
       },
     }
 
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('n', { code: 'KeyN', metaKey: true }),
       hotkeys,
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('newNote')
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('N', { code: 'KeyN', metaKey: true, shiftKey: true }),
       hotkeys,
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('newFolder')
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('w', { code: 'KeyW', metaKey: true }),
       hotkeys,
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('closeCurrentNote')
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('w', { code: 'KeyW', ctrlKey: true }),
       hotkeys,
       isMacPlatform: false,
       viewMode: 'main',
     })).toBe('closeCurrentNote')
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('t', { code: 'KeyT', metaKey: true }),
       hotkeys,
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('toggleNotesTrash')
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('f', { code: 'KeyF', metaKey: true }),
       hotkeys,
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('toggleNotesFilter')
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('[', { code: 'BracketLeft', altKey: true }),
       hotkeys,
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('cycleAislePrev')
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent(']', { code: 'BracketRight', altKey: true }),
       hotkeys,
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('cycleAisleNext')
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('X', { code: 'KeyX', metaKey: true, shiftKey: true }),
       hotkeys,
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('formatStrikethrough')
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('Tab', { code: 'Tab', ctrlKey: true }),
       hotkeys,
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('cyclePinnedNoteTabNext')
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('Tab', { code: 'Tab', ctrlKey: true, shiftKey: true }),
       hotkeys,
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('cyclePinnedNoteTabPrev')
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('T', { code: 'KeyT', metaKey: true, shiftKey: true }),
       hotkeys,
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('reopenClosedNoteTab')
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('T', { code: 'KeyT', ctrlKey: true, shiftKey: true }),
       hotkeys,
       isMacPlatform: false,
@@ -140,37 +140,37 @@ describe('notebook hotkey intents', () => {
   })
 
   it('exposes scratchpad toggle but keeps main-editor-only commands in the main view', () => {
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('s', { code: 'KeyS', metaKey: true }),
       hotkeys: defaultHotkeys,
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('toggleNotesScratchpad')
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('s', { code: 'KeyS', metaKey: true }),
       hotkeys: defaultHotkeys,
       isMacPlatform: true,
       viewMode: 'settings',
     })).toBe('toggleNotesScratchpad')
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('[', { code: 'BracketLeft', altKey: true }),
       hotkeys: defaultHotkeys,
       isMacPlatform: true,
       viewMode: 'settings',
     })).toBeNull()
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('w', { code: 'KeyW', metaKey: true }),
       hotkeys: defaultHotkeys,
       isMacPlatform: true,
       viewMode: 'settings',
     })).toBeNull()
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('Tab', { code: 'Tab', ctrlKey: true }),
       hotkeys: defaultHotkeys,
       isMacPlatform: true,
       viewMode: 'settings',
     })).toBeNull()
-    expect(getNotebookHotkeyIntent({
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('T', { code: 'KeyT', metaKey: true, shiftKey: true }),
       hotkeys: defaultHotkeys,
       isMacPlatform: true,
@@ -184,8 +184,8 @@ describe('notebook hotkey intents', () => {
     } as unknown as EventTarget
     const event = keyboardEvent('a', { code: 'KeyA', target: editableTarget })
 
-    expect(shouldIgnoreNotebookHotkeyEvent(event)).toBe(true)
-    expect(getNotebookHotkeyIntent({
+    expect(shouldIgnoreVaultHotkeyEvent(event)).toBe(true)
+    expect(getVaultHotkeyIntent({
       event,
       hotkeys: defaultHotkeys,
       isMacPlatform: true,
@@ -194,63 +194,63 @@ describe('notebook hotkey intents', () => {
   })
 
   it('recognizes restored history navigation keys without using Mac command arrows', () => {
-    expect(getNotebookHistoryNavigationDirection(
+    expect(getVaultHistoryNavigationDirection(
       keyboardEvent('[', { code: 'BracketLeft', metaKey: true }),
       true,
     )).toBe(-1)
-    expect(getNotebookHistoryNavigationDirection(
+    expect(getVaultHistoryNavigationDirection(
       keyboardEvent(']', { code: 'BracketRight', metaKey: true }),
       true,
     )).toBe(1)
-    expect(getNotebookHistoryNavigationDirection(
+    expect(getVaultHistoryNavigationDirection(
       keyboardEvent('ArrowLeft', { code: 'ArrowLeft', altKey: true }),
       false,
     )).toBe(-1)
-    expect(getNotebookHistoryNavigationDirection(
+    expect(getVaultHistoryNavigationDirection(
       keyboardEvent('ArrowRight', { code: 'ArrowRight', altKey: true }),
       false,
     )).toBe(1)
-    expect(getNotebookHistoryNavigationDirection(
+    expect(getVaultHistoryNavigationDirection(
       keyboardEvent('BrowserBack', { code: 'BrowserBack' }),
       true,
     )).toBe(-1)
-    expect(getNotebookHistoryNavigationDirection(
+    expect(getVaultHistoryNavigationDirection(
       keyboardEvent('BrowserForward', { code: 'BrowserForward' }),
       false,
     )).toBe(1)
-    expect(getNotebookHistoryNavigationDirection(
+    expect(getVaultHistoryNavigationDirection(
       keyboardEvent('ArrowLeft', { code: 'ArrowLeft', metaKey: true }),
       true,
     )).toBeNull()
-    expect(getNotebookHistoryNavigationDirection(
+    expect(getVaultHistoryNavigationDirection(
       keyboardEvent('ArrowRight', { code: 'ArrowRight', metaKey: true }),
       true,
     )).toBeNull()
   })
 
   it('recognizes mouse side buttons for history navigation', () => {
-    expect(getNotebookMouseHistoryNavigationDirection({ button: 3 })).toBe(-1)
-    expect(getNotebookMouseHistoryNavigationDirection({ button: 4 })).toBe(1)
-    expect(getNotebookMouseHistoryNavigationDirection({ button: 0 })).toBeNull()
-    expect(getNotebookMouseHistoryNavigationDirection({ button: 3, defaultPrevented: true })).toBeNull()
+    expect(getVaultMouseHistoryNavigationDirection({ button: 3 })).toBe(-1)
+    expect(getVaultMouseHistoryNavigationDirection({ button: 4 })).toBe(1)
+    expect(getVaultMouseHistoryNavigationDirection({ button: 0 })).toBeNull()
+    expect(getVaultMouseHistoryNavigationDirection({ button: 3, defaultPrevented: true })).toBeNull()
   })
 
   it('creates early mouse history records for side buttons only', () => {
-    expect(createNotebookMouseHistoryNavigationRecord({ button: 3 })).toEqual({ button: 3, released: false })
-    expect(createNotebookMouseHistoryNavigationRecord({ button: 4 })).toEqual({ button: 4, released: false })
-    expect(createNotebookMouseHistoryNavigationRecord({ button: 0 })).toBeNull()
+    expect(createVaultMouseHistoryNavigationRecord({ button: 3 })).toEqual({ button: 3, released: false })
+    expect(createVaultMouseHistoryNavigationRecord({ button: 4 })).toEqual({ button: 4, released: false })
+    expect(createVaultMouseHistoryNavigationRecord({ button: 0 })).toBeNull()
   })
 
   it('dedupes later mouse events from the same side-button navigation', () => {
-    const record = createNotebookMouseHistoryNavigationRecord({ button: 3 })
+    const record = createVaultMouseHistoryNavigationRecord({ button: 3 })
 
-    expect(shouldSuppressNotebookMouseHistoryFollowup({ button: 3 }, record, 'press')).toBe(true)
-    expect(shouldSuppressNotebookMouseHistoryFollowup({ button: 4 }, record, 'press')).toBe(false)
+    expect(shouldSuppressVaultMouseHistoryFollowup({ button: 3 }, record, 'press')).toBe(true)
+    expect(shouldSuppressVaultMouseHistoryFollowup({ button: 4 }, record, 'press')).toBe(false)
 
-    const released = updateNotebookMouseHistoryNavigationRecordForFollowup(record, 'release')
+    const released = updateVaultMouseHistoryNavigationRecordForFollowup(record, 'release')
     expect(released).toEqual({ button: 3, released: true })
-    expect(shouldSuppressNotebookMouseHistoryFollowup({ button: 3 }, released, 'press')).toBe(false)
-    expect(shouldSuppressNotebookMouseHistoryFollowup({ button: 3 }, released, 'auxclick')).toBe(true)
-    expect(updateNotebookMouseHistoryNavigationRecordForFollowup(released, 'auxclick')).toBeNull()
+    expect(shouldSuppressVaultMouseHistoryFollowup({ button: 3 }, released, 'press')).toBe(false)
+    expect(shouldSuppressVaultMouseHistoryFollowup({ button: 3 }, released, 'auxclick')).toBe(true)
+    expect(updateVaultMouseHistoryNavigationRecordForFollowup(released, 'auxclick')).toBeNull()
   })
 })

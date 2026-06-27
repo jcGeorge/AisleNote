@@ -1,6 +1,6 @@
 # AisleNote
 
-AisleNote is a local-first React/Electron note workspace with notebooks, folders, notes, trash, aisles, image handling, and keyboard shortcuts.
+AisleNote is a local-first React/Electron note workspace with vaults, folders, notes, trash, aisles, image handling, and keyboard shortcuts.
 
 ## Architecture Map
 
@@ -60,7 +60,7 @@ npm run package:win
 
 The expected output is `release/AisleNote-0.0.0-x64-portable.exe`. Electron Builder also creates an unpacked app folder under `release/win-unpacked/`; smoke test both `release/win-unpacked/AisleNote.exe` and the portable `.exe`.
 
-The MVP smoke test is: open the app, create the default notebook, save a note, close and reopen with the data still present, verify file/image dialogs, export a notebook, and confirm external links open in the browser. The executable is unsigned, so Windows SmartScreen warnings are expected.
+The MVP smoke test is: open the app, create the default vault, save a note, close and reopen with the data still present, verify file/image dialogs, export a vault, and confirm external links open in the browser. The executable is unsigned, so Windows SmartScreen warnings are expected.
 
 `npm run lint` is expected to exit successfully. Existing `react-hooks/exhaustive-deps` warnings mark known ref-heavy areas that should be retired as those controllers are split.
 

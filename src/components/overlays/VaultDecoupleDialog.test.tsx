@@ -1,12 +1,12 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { NotebookDecoupleDialog } from './NotebookDecoupleDialog'
+import { VaultDecoupleDialog } from './VaultDecoupleDialog'
 
-describe('NotebookDecoupleDialog', () => {
-  it('renders vertical notebook-only decouple rows without a default selection', () => {
+describe('VaultDecoupleDialog', () => {
+  it('renders vertical vault-only decouple rows without a default selection', () => {
     const html = renderToStaticMarkup(
-      <NotebookDecoupleDialog
+      <VaultDecoupleDialog
         title="De-couple aisle"
         description="This aisle currently shares content."
         rows={[
@@ -50,14 +50,14 @@ describe('NotebookDecoupleDialog', () => {
 
   it('renders selected rows with the decouple caution stripe and validation errors', () => {
     const html = renderToStaticMarkup(
-      <NotebookDecoupleDialog
+      <VaultDecoupleDialog
         title="De-couple note"
         description="Choose notes."
         rows={[
           {
             key: 'note-1',
             label: 'Active',
-            primaryLabel: 'Notebook',
+            primaryLabel: 'Vault',
             secondaryLabel: 'Active',
             noteId: 'note-1',
             noteBodyId: 'body-1',

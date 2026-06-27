@@ -14,7 +14,7 @@ import {
   type TagFilterOccurrence,
   type TagFilterSortMode,
 } from '../tags/tag-filter'
-import { getNotebookIndexContext, type NotebookIndexContext } from './notebook-index-context'
+import { getVaultIndexContext, type VaultIndexContext } from './vault-index-context'
 
 export type NoteFilterOptionType =
   | 'tag'
@@ -194,9 +194,9 @@ function finalizeIndex(
 function buildTagNoteFilterIndex(
   state: AppState,
   selectedKeys: string[],
-  context?: NotebookIndexContext,
+  context?: VaultIndexContext,
 ): NoteFilterIndex {
-  const indexContext = getNotebookIndexContext(state, context)
+  const indexContext = getVaultIndexContext(state, context)
   const normalizedSelectedKeys = normalizeSelectedKeys('tags', selectedKeys)
   const tagIndex = buildTagFilterIndex(state, normalizedSelectedKeys, indexContext)
   const options: NoteFilterOption[] = tagIndex.availableTags.map((tag) => ({
@@ -223,7 +223,7 @@ function buildOptionLabel(locations: NormalLocation[], fallback: string): string
   return first.folderPath ? `${first.folderPath} / ${first.noteName}` : first.noteName
 }
 
-function getBodyAisles(context: NotebookIndexContext, noteBodyId: string) {
+function getBodyAisles(context: VaultIndexContext, noteBodyId: string) {
   return context.noteBodiesById.get(noteBodyId)?.aisles ?? []
 }
 
@@ -236,9 +236,9 @@ function getNoteLocationFromEntry(entry: NormalLocation): NoteLocation {
 function buildSyncedFilterIndex(
   state: AppState,
   selectedKeys: string[],
-  context?: NotebookIndexContext,
+  context?: VaultIndexContext,
 ): NoteFilterIndex {
-  const indexContext = getNotebookIndexContext(state, context)
+  const indexContext = getVaultIndexContext(state, context)
   const locations = indexContext.locations
   const options: NoteFilterOption[] = []
   const occurrences: NoteFilterOccurrence[] = []
@@ -303,9 +303,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function buildFrontmatterNoteFilterIndex(
   state: AppState,
   selectedKeys: string[],
-  context?: NotebookIndexContext,
+  context?: VaultIndexContext,
 ): NoteFilterIndex {
-  const indexContext = getNotebookIndexContext(state, context)
+  const indexContext = getVaultIndexContext(state, context)
   const locations = indexContext.locations
   const templatesById = indexContext.templatesById
   const optionsByKey = new Map<string, NoteFilterOption>()
@@ -457,9 +457,9 @@ export function extractMediaFilterReferences(markdown: string): ExtractedMediaFi
 function buildMediaNoteFilterIndex(
   state: AppState,
   selectedKeys: string[],
-  context?: NotebookIndexContext,
+  context?: VaultIndexContext,
 ): NoteFilterIndex {
-  const indexContext = getNotebookIndexContext(state, context)
+  const indexContext = getVaultIndexContext(state, context)
   const locations = indexContext.locations
   const optionsByKey = new Map<string, NoteFilterOption>()
   const occurrences: NoteFilterOccurrence[] = []
@@ -520,7 +520,7 @@ export function buildNoteFilterIndex(
   state: AppState,
   kind: NoteFilterKind,
   selectedKeys: string[] = [],
-  context?: NotebookIndexContext,
+  context?: VaultIndexContext,
 ): NoteFilterIndex {
   if (kind === 'tags') return buildTagNoteFilterIndex(state, selectedKeys, context)
   if (kind === 'synced') return buildSyncedFilterIndex(state, selectedKeys, context)

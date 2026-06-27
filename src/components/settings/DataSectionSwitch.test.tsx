@@ -13,7 +13,7 @@ describe('DataSectionSwitch', () => {
     expect(html).toContain('role="radiogroup" aria-labelledby="settings-data-section-label"')
     expect(html).toContain('aria-checked="false" class="settings-segmented-option ">transfer</button>')
     expect(html).not.toContain('>settings</button>')
-    expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">notebooks</button>')
+    expect(html).toContain('aria-checked="true" class="settings-segmented-option is-selected">vaults</button>')
     expect(html).toContain('aria-checked="false" class="settings-segmented-option ">trash</button>')
   })
 })

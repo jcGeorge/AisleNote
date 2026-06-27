@@ -287,11 +287,11 @@ export const syncNoteAisleBodyMarkdownInState = (
 }
 
 export const applyNoteLocationToState = (previous: AppState, location: NoteLocation): AppState => {
-  if (!location.noteId || previous.notebook.activeNoteId === location.noteId) return previous
+  if (!location.noteId || previous.vault.activeNoteId === location.noteId) return previous
   return {
     ...previous,
-    notebook: {
-      ...previous.notebook,
+    vault: {
+      ...previous.vault,
       activeNoteId: location.noteId,
     },
   }

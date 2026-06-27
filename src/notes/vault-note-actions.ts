@@ -2,20 +2,20 @@ import type { AppState, NoteAisle, NoteAisleBody, NoteBody, NoteLocation } from 
 import { MAX_NOTE_AISLES } from '../editor/aisle-edit-draft'
 import { createReservedIdAllocator, type IdGenerator } from '../state/navigation-ids'
 import {
-  collectNotebookIds,
+  collectVaultIds,
   createNoteBodyWithAisle,
-  findNotebookNote,
-  replaceNotebookNoteBodyId,
-} from '../state/notebook'
+  findVaultNote,
+  replaceVaultNoteBodyId,
+} from '../state/vault'
 import { buildInternalNoteLinkToken, buildMarkdownNoteReferenceToken, buildPreviewToken, parseMarkdownNoteReferenceToken } from './note-references'
-import { getNotebookNotePathLabel } from '../state/notebook'
+import { getVaultNotePathLabel } from '../state/vault'
 import { buildNoteLocationKey, getLocationInfo, listNoteLocationsForBody } from './note-locations'
 import { listLinkedAisleSlotsForAisleBody } from './aisle-links'
 
-export type NotebookNoteReferenceActionKind = 'note-link' | 'note-preview'
-export type NotebookNoteCopyMode = 'independent' | 'synced'
+export type VaultNoteReferenceActionKind = 'note-link' | 'note-preview'
+export type VaultNoteCopyMode = 'independent' | 'synced'
 
-export type NotebookNoteActionResult =
+export type VaultNoteActionResult =
   | {
       status: 'ok'
       state: AppState
@@ -26,11 +26,11 @@ export type NotebookNoteActionResult =
       message: string
     }
 
-export type DecoupleNotebookNoteLocationsResult =
+export type DecoupleVaultNoteLocationsResult =
   | { status: 'applied'; state: AppState; changedCount: number }
   | { status: 'blocked'; state: AppState; message: string }
 
-export type NotebookDecoupleRow = {
+export type VaultDecoupleRow = {
   key: string
   label: string
   primaryLabel: string
@@ -41,10 +41,10 @@ export type NotebookDecoupleRow = {
   aisleBodyId?: string
 }
 
-const TARGET_NOTE_MISSING_MESSAGE = 'Choose a notebook note that still exists.'
+const TARGET_NOTE_MISSING_MESSAGE = 'Choose a vault note that still exists.'
 const ACTIVE_NOTE_MISSING_MESSAGE = 'Open a note before using note actions.'
 const MAX_AISLE_COPY_MESSAGE = `That copy would exceed the ${MAX_NOTE_AISLES} aisle limit for a note.`
-const ROOT_NOTEBOOK_LABEL = 'Notebook'
+const ROOT_VAULT_LABEL = 'Vault'
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -54,10 +54,10 @@ function getNoteBody(state: AppState, noteBodyId: string): NoteBody | null {
   return state.noteBodies.find((body) => body.id === noteBodyId) ?? null
 }
 
-function formatNotebookFolderLabel(folderPath: string): string {
+function formatVaultFolderLabel(folderPath: string): string {
   return folderPath
     ? folderPath.split('/').filter(Boolean).join(' > ')
-    : ROOT_NOTEBOOK_LABEL
+    : ROOT_VAULT_LABEL
 }
 
 function cloneAisleBody(source: NoteAisleBody | undefined, id: string, timestamp: string): NoteAisleBody {
@@ -81,7 +81,7 @@ function cloneAisleBody(source: NoteAisleBody | undefined, id: string, timestamp
 function buildReplacementAisles(
   state: AppState,
   targetBody: NoteBody,
-  mode: NotebookNoteCopyMode,
+  mode: VaultNoteCopyMode,
   idGenerator: IdGenerator,
 ): { aisles: NoteAisle[]; aisleBodies: NoteAisleBody[] } {
   if (mode === 'synced') {
@@ -127,10 +127,10 @@ function buildClonedNoteBody(
   }
 }
 
-export function buildNotebookNoteReferenceInsertionText(
+export function buildVaultNoteReferenceInsertionText(
   state: AppState,
   target: NoteLocation,
-  kind: NotebookNoteReferenceActionKind,
+  kind: VaultNoteReferenceActionKind,
   options: { aisleId?: string } = {},
 ): string {
   if (kind !== 'note-preview') return buildInternalNoteLinkToken(state, target)
@@ -153,12 +153,12 @@ export function replaceFocusedAisleFromTargetNote(
     activeNoteId: string
     focusedAisleId: string
     targetNoteId: string
-    mode: NotebookNoteCopyMode
+    mode: VaultNoteCopyMode
     idGenerator?: IdGenerator
   },
-): NotebookNoteActionResult {
-  const activePath = findNotebookNote(state.notebook.items, options.activeNoteId)
-  const targetPath = findNotebookNote(state.notebook.items, options.targetNoteId)
+): VaultNoteActionResult {
+  const activePath = findVaultNote(state.vault.items, options.activeNoteId)
+  const targetPath = findVaultNote(state.vault.items, options.targetNoteId)
   if (!activePath) return { status: 'blocked', message: ACTIVE_NOTE_MISSING_MESSAGE }
   if (!targetPath || targetPath.note.id === activePath.note.id) {
     return { status: 'blocked', message: TARGET_NOTE_MISSING_MESSAGE }
@@ -175,7 +175,7 @@ export function replaceFocusedAisleFromTargetNote(
     return { status: 'blocked', message: MAX_AISLE_COPY_MESSAGE }
   }
 
-  const idGenerator = options.idGenerator ?? createReservedIdAllocator(collectNotebookIds(state))
+  const idGenerator = options.idGenerator ?? createReservedIdAllocator(collectVaultIds(state))
   const replacement = buildReplacementAisles(state, targetBody, options.mode, idGenerator)
   const nextBody: NoteBody = {
     ...activeBody,
@@ -203,12 +203,12 @@ export function replaceActiveNoteBodyFromTargetNote(
   options: {
     activeNoteId: string
     targetNoteId: string
-    mode: NotebookNoteCopyMode
+    mode: VaultNoteCopyMode
     idGenerator?: IdGenerator
   },
-): NotebookNoteActionResult {
-  const activePath = findNotebookNote(state.notebook.items, options.activeNoteId)
-  const targetPath = findNotebookNote(state.notebook.items, options.targetNoteId)
+): VaultNoteActionResult {
+  const activePath = findVaultNote(state.vault.items, options.activeNoteId)
+  const targetPath = findVaultNote(state.vault.items, options.targetNoteId)
   if (!activePath) return { status: 'blocked', message: ACTIVE_NOTE_MISSING_MESSAGE }
   if (!targetPath || targetPath.note.id === activePath.note.id) {
     return { status: 'blocked', message: TARGET_NOTE_MISSING_MESSAGE }
@@ -218,7 +218,7 @@ export function replaceActiveNoteBodyFromTargetNote(
   if (!targetBody) return { status: 'blocked', message: TARGET_NOTE_MISSING_MESSAGE }
 
   if (options.mode === 'synced') {
-    const idGenerator = options.idGenerator ?? createReservedIdAllocator(collectNotebookIds(state))
+    const idGenerator = options.idGenerator ?? createReservedIdAllocator(collectVaultIds(state))
     const replacement = buildReplacementAisles(state, targetBody, 'synced', idGenerator)
     const timestamp = nowIso()
     const noteBody: NoteBody = {
@@ -232,20 +232,20 @@ export function replaceActiveNoteBodyFromTargetNote(
       status: 'ok',
       state: {
         ...state,
-        notebook: replaceNotebookNoteBodyId(state.notebook, activePath.note.id, noteBody.id),
+        vault: replaceVaultNoteBodyId(state.vault, activePath.note.id, noteBody.id),
         noteBodies: [...state.noteBodies, noteBody],
       },
       activeAisleId: noteBody.aisles[0]?.id,
     }
   }
 
-  const idGenerator = options.idGenerator ?? createReservedIdAllocator(collectNotebookIds(state))
+  const idGenerator = options.idGenerator ?? createReservedIdAllocator(collectVaultIds(state))
   const cloned = buildClonedNoteBody(state, targetBody, idGenerator)
   return {
     status: 'ok',
     state: {
       ...state,
-      notebook: replaceNotebookNoteBodyId(state.notebook, activePath.note.id, cloned.noteBody.id),
+      vault: replaceVaultNoteBodyId(state.vault, activePath.note.id, cloned.noteBody.id),
       noteBodies: [...state.noteBodies, cloned.noteBody],
       noteAisleBodies: [...(state.noteAisleBodies ?? []), ...cloned.aisleBodies],
     },
@@ -253,13 +253,13 @@ export function replaceActiveNoteBodyFromTargetNote(
   }
 }
 
-export function getNotebookNoteDecoupleRows(state: AppState, noteBodyId: string): NotebookDecoupleRow[] {
+export function getVaultNoteDecoupleRows(state: AppState, noteBodyId: string): VaultDecoupleRow[] {
   return listNoteLocationsForBody(state, noteBodyId).map((location) => {
     const info = getLocationInfo(state, location)
     return {
       key: buildNoteLocationKey(location),
       label: location.label || location.title,
-      primaryLabel: formatNotebookFolderLabel(info.folderPath),
+      primaryLabel: formatVaultFolderLabel(info.folderPath),
       secondaryLabel: info.title,
       noteId: location.noteId,
       noteBodyId,
@@ -267,13 +267,13 @@ export function getNotebookNoteDecoupleRows(state: AppState, noteBodyId: string)
   })
 }
 
-export function decoupleNotebookNoteLocationsInState(
+export function decoupleVaultNoteLocationsInState(
   state: AppState,
   noteBodyId: string,
   keepLocationKeys: Set<string>,
   keepData: boolean,
-  idGenerator: IdGenerator = createReservedIdAllocator(collectNotebookIds(state)),
-): DecoupleNotebookNoteLocationsResult {
+  idGenerator: IdGenerator = createReservedIdAllocator(collectVaultIds(state)),
+): DecoupleVaultNoteLocationsResult {
   const locations = listNoteLocationsForBody(state, noteBodyId)
   if (locations.length <= 0) {
     return { status: 'blocked', state, message: 'Synced note no longer exists.' }
@@ -286,7 +286,7 @@ export function decoupleNotebookNoteLocationsInState(
   if (locationsToDecouple.length <= 0) return { status: 'applied', state, changedCount: 0 }
 
   const sourceBody = getNoteBody(state, noteBodyId)
-  let notebook = state.notebook
+  let vault = state.vault
   const noteBodies: NoteBody[] = []
   const aisleBodies: NoteAisleBody[] = []
 
@@ -302,7 +302,7 @@ export function decoupleNotebookNoteLocationsInState(
         })()
     noteBodies.push(cloned.noteBody)
     aisleBodies.push(...cloned.aisleBodies)
-    notebook = replaceNotebookNoteBodyId(notebook, location.noteId, cloned.noteBody.id)
+    vault = replaceVaultNoteBodyId(vault, location.noteId, cloned.noteBody.id)
   }
 
   return {
@@ -310,18 +310,18 @@ export function decoupleNotebookNoteLocationsInState(
     changedCount: locationsToDecouple.length,
     state: {
       ...state,
-      notebook,
+      vault,
       noteBodies: [...state.noteBodies, ...noteBodies],
       noteAisleBodies: [...(state.noteAisleBodies ?? []), ...aisleBodies],
     },
   }
 }
 
-export function getNotebookAisleDecoupleRows(state: AppState, aisleBodyId: string): NotebookDecoupleRow[] {
+export function getVaultAisleDecoupleRows(state: AppState, aisleBodyId: string): VaultDecoupleRow[] {
   return listLinkedAisleSlotsForAisleBody(state, aisleBodyId).map((slot) => ({
     key: slot.key,
     label: slot.label,
-    primaryLabel: formatNotebookFolderLabel(slot.parentName),
+    primaryLabel: formatVaultFolderLabel(slot.parentName),
     secondaryLabel: `${slot.noteName} / aisle ${slot.aisleIndex + 1}`,
     noteId: slot.locationKey,
     noteBodyId: slot.noteBodyId,
@@ -350,7 +350,7 @@ export function getNotePreviewRenderMarkdown(
     return {
       status: 'blocked',
       title: info.title,
-      breadcrumb: getNotebookNotePathLabel(state.notebook.items, target.noteId),
+      breadcrumb: getVaultNotePathLabel(state.vault.items, target.noteId),
       markdown: '',
     }
   }
@@ -360,7 +360,7 @@ export function getNotePreviewRenderMarkdown(
   return {
     status: 'ok',
     title: info.title,
-    breadcrumb: getNotebookNotePathLabel(state.notebook.items, target.noteId),
+    breadcrumb: getVaultNotePathLabel(state.vault.items, target.noteId),
     markdown: selectedAisle ? sourceBodies.get(selectedAisle.aisleBodyId) ?? '' : '',
   }
 }

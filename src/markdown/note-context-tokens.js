@@ -240,7 +240,7 @@ function resolveIndexedHandle(indexes, handle) {
   return shortId ? indexes.byShortId.get(shortId) ?? null : null
 }
 
-function walkNotebookNotes(items, visitor, path = []) {
+function walkVaultNotes(items, visitor, path = []) {
   for (const item of ensureArray(items)) {
     if (!item?.id) continue
     const nextPath = [...path, item]
@@ -249,7 +249,7 @@ function walkNotebookNotes(items, visitor, path = []) {
       continue
     }
     if (item.type === 'folder') {
-      walkNotebookNotes(item.children, visitor, nextPath)
+      walkVaultNotes(item.children, visitor, nextPath)
     }
   }
 }
@@ -345,7 +345,7 @@ export function buildWikiReferenceIndex(appState) {
   const noteAllocator = createStoragePathAllocator()
   const notes = []
 
-  walkNotebookNotes(appState?.notebook?.items, (note, path) => {
+  walkVaultNotes(appState?.vault?.items, (note, path) => {
     const entry = createNoteEntry({ appState, note, path, noteAllocator })
     if (entry) notes.push(entry)
   })

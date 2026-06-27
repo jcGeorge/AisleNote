@@ -12,7 +12,7 @@ function match(id: string, snippet = 'matching text'): FindReplaceMatch {
     context: {
       folderId: 'folder-a',
       folderName: 'Folder A',
-      folderPath: 'Notebook / Folder A',
+      folderPath: 'Vault / Folder A',
       noteId: 'note-a',
       noteName: 'Note A',
       noteKind: 'note',
@@ -105,7 +105,7 @@ describe('FindReplacePanel', () => {
 
     expect(html).toContain('2 of 2')
     expect(html).not.toContain('matching text')
-    expect(html).not.toContain('Notebook / Folder A')
+    expect(html).not.toContain('Vault / Folder A')
     expect(html).not.toContain('find-replace-result')
   })
 

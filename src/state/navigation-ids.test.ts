@@ -38,10 +38,10 @@ describe('navigation id helpers', () => {
     expect(allocate()).toBe('fresh-2')
   })
 
-  it('collects ids across notebook items, note bodies, aisles, and app-level projections', () => {
+  it('collects ids across vault items, note bodies, aisles, and app-level projections', () => {
     const state = createDefaultAppState()
-    state.notebook.activeNoteId = 'note-live'
-    state.notebook.items = [
+    state.vault.activeNoteId = 'note-live'
+    state.vault.items = [
       {
         type: 'folder',
         id: 'folder-live',
@@ -56,7 +56,7 @@ describe('navigation id helpers', () => {
         ],
       },
     ]
-    state.notebook.deletedItems = [
+    state.vault.deletedItems = [
       {
         id: 'deleted-entry',
         deletedAt: 1,

@@ -50,10 +50,10 @@ function renderPreview(markdown: string) {
 }
 
 describe('markdown preview tag appearance', () => {
-  it('marks encoded bracket-wrapped internal note hrefs as notebook links', () => {
+  it('marks encoded bracket-wrapped internal note hrefs as vault links', () => {
     const state: AppState = {
       theme: 'dark',
-      notebook: {
+      vault: {
         activeNoteId: 'note-source',
         items: [
           { type: 'note', id: 'note-source', title: 'Source', noteBodyId: 'body-source' },

@@ -1,64 +1,64 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { AppState, ViewMode } from '../types/app'
-import { findNotebookNote } from '../state/notebook'
+import { findVaultNote } from '../state/vault'
 
-export const MAX_NOTEBOOK_NAVIGATION_HISTORY_ENTRIES = 100
+export const MAX_VAULT_NAVIGATION_HISTORY_ENTRIES = 100
 
-export type NotebookNavigationLocation = {
+export type VaultNavigationLocation = {
   noteId: string
   aisleId?: string
 }
 
-export type ResolvedNotebookNavigationLocation = {
+export type ResolvedVaultNavigationLocation = {
   noteId: string
   aisleId: string
 }
 
-export type NotebookNavigationHistoryEntry = {
+export type VaultNavigationHistoryEntry = {
   noteId: string
 }
 
-export type NotebookNavigationHistoryState = {
-  entries: NotebookNavigationHistoryEntry[]
+export type VaultNavigationHistoryState = {
+  entries: VaultNavigationHistoryEntry[]
   index: number
 }
 
-export type NotebookNavigationResult = {
-  state: NotebookNavigationHistoryState
-  location: NotebookNavigationLocation | null
+export type VaultNavigationResult = {
+  state: VaultNavigationHistoryState
+  location: VaultNavigationLocation | null
 }
 
-export function createNotebookNavigationHistoryState(): NotebookNavigationHistoryState {
+export function createVaultNavigationHistoryState(): VaultNavigationHistoryState {
   return {
     entries: [],
     index: -1,
   }
 }
 
-export function areNotebookNavigationLocationsEqual(
-  left: NotebookNavigationLocation,
-  right: NotebookNavigationLocation,
+export function areVaultNavigationLocationsEqual(
+  left: VaultNavigationLocation,
+  right: VaultNavigationLocation,
 ): boolean {
   return left.noteId.trim() === right.noteId.trim()
 }
 
-function normalizeNotebookNavigationHistoryEntry(location: NotebookNavigationLocation): NotebookNavigationHistoryEntry {
+function normalizeVaultNavigationHistoryEntry(location: VaultNavigationLocation): VaultNavigationHistoryEntry {
   return {
     noteId: location.noteId.trim(),
   }
 }
 
-export function pushNotebookNavigationLocation(
-  state: NotebookNavigationHistoryState,
-  nextLocation: NotebookNavigationLocation,
-  maxEntries = MAX_NOTEBOOK_NAVIGATION_HISTORY_ENTRIES,
-): NotebookNavigationHistoryState {
-  const location = normalizeNotebookNavigationHistoryEntry(nextLocation)
+export function pushVaultNavigationLocation(
+  state: VaultNavigationHistoryState,
+  nextLocation: VaultNavigationLocation,
+  maxEntries = MAX_VAULT_NAVIGATION_HISTORY_ENTRIES,
+): VaultNavigationHistoryState {
+  const location = normalizeVaultNavigationHistoryEntry(nextLocation)
   if (!location.noteId) return state
 
   const activeEntries = state.entries.slice(0, state.index + 1)
   const current = activeEntries.at(-1)
-  if (current && areNotebookNavigationLocationsEqual(current, location)) return state
+  if (current && areVaultNavigationLocationsEqual(current, location)) return state
 
   const entries = [...activeEntries, location]
   const boundedMaxEntries = Math.max(1, Math.floor(maxEntries))
@@ -69,11 +69,11 @@ export function pushNotebookNavigationLocation(
   }
 }
 
-export function navigateNotebookNavigationHistoryBy(
-  state: NotebookNavigationHistoryState,
+export function navigateVaultNavigationHistoryBy(
+  state: VaultNavigationHistoryState,
   delta: number,
-  resolveLocation: (location: NotebookNavigationLocation) => NotebookNavigationLocation | null,
-): NotebookNavigationResult {
+  resolveLocation: (location: VaultNavigationLocation) => VaultNavigationLocation | null,
+): VaultNavigationResult {
   const step = delta < 0 ? -1 : delta > 0 ? 1 : 0
   if (!step || state.entries.length === 0 || state.index < 0) {
     return { state, location: null }
@@ -86,7 +86,7 @@ export function navigateNotebookNavigationHistoryBy(
   while (targetIndex >= 0 && targetIndex < entries.length) {
     const resolvedLocation = resolveLocation(entries[targetIndex])
     if (resolvedLocation) {
-      entries[targetIndex] = normalizeNotebookNavigationHistoryEntry(resolvedLocation)
+      entries[targetIndex] = normalizeVaultNavigationHistoryEntry(resolvedLocation)
       return {
         state: {
           entries,
@@ -100,7 +100,7 @@ export function navigateNotebookNavigationHistoryBy(
     if (targetIndex <= index) index -= 1
     if (entries.length === 0) {
       return {
-        state: createNotebookNavigationHistoryState(),
+        state: createVaultNavigationHistoryState(),
         location: null,
       }
     }
@@ -117,11 +117,11 @@ export function navigateNotebookNavigationHistoryBy(
   }
 }
 
-export function resolveNotebookNavigationLocation(
+export function resolveVaultNavigationLocation(
   state: AppState,
-  location: NotebookNavigationLocation,
-): ResolvedNotebookNavigationLocation | null {
-  const notePath = findNotebookNote(state.notebook.items, location.noteId)
+  location: VaultNavigationLocation,
+): ResolvedVaultNavigationLocation | null {
+  const notePath = findVaultNote(state.vault.items, location.noteId)
   if (!notePath) return null
 
   const noteBody = state.noteBodies.find((candidate) => candidate.id === notePath.note.noteBodyId) ?? null
@@ -139,7 +139,7 @@ export function resolveNotebookNavigationLocation(
   }
 }
 
-export function useNotebookNavigationHistory({
+export function useVaultNavigationHistory({
   viewMode,
   activeNoteId,
   resolveLocation,
@@ -147,11 +147,11 @@ export function useNotebookNavigationHistory({
 }: {
   viewMode: ViewMode
   activeNoteId: string
-  resolveLocation: (location: NotebookNavigationLocation) => NotebookNavigationLocation | null
-  onApplyLocation: (location: NotebookNavigationLocation) => void
+  resolveLocation: (location: VaultNavigationLocation) => VaultNavigationLocation | null
+  onApplyLocation: (location: VaultNavigationLocation) => void
 }) {
-  const historyRef = useRef<NotebookNavigationHistoryState>(createNotebookNavigationHistoryState())
-  const applyingHistoryLocationRef = useRef<NotebookNavigationLocation | null>(null)
+  const historyRef = useRef<VaultNavigationHistoryState>(createVaultNavigationHistoryState())
+  const applyingHistoryLocationRef = useRef<VaultNavigationLocation | null>(null)
   const resolveLocationRef = useRef(resolveLocation)
   const onApplyLocationRef = useRef(onApplyLocation)
   resolveLocationRef.current = resolveLocation
@@ -166,14 +166,14 @@ export function useNotebookNavigationHistory({
     const applyingLocation = applyingHistoryLocationRef.current
     if (applyingLocation) {
       applyingHistoryLocationRef.current = null
-      if (areNotebookNavigationLocationsEqual(applyingLocation, snapshot)) return
+      if (areVaultNavigationLocationsEqual(applyingLocation, snapshot)) return
     }
 
-    historyRef.current = pushNotebookNavigationLocation(historyRef.current, snapshot)
+    historyRef.current = pushVaultNavigationLocation(historyRef.current, snapshot)
   }, [activeNoteId, viewMode])
 
-  const navigateNotebookHistoryBy = useCallback((delta: number) => {
-    const result = navigateNotebookNavigationHistoryBy(historyRef.current, delta, (location) =>
+  const navigateVaultHistoryBy = useCallback((delta: number) => {
+    const result = navigateVaultNavigationHistoryBy(historyRef.current, delta, (location) =>
       resolveLocationRef.current(location),
     )
     historyRef.current = result.state
@@ -185,6 +185,6 @@ export function useNotebookNavigationHistory({
   }, [])
 
   return {
-    navigateNotebookHistoryBy,
+    navigateVaultHistoryBy,
   }
 }

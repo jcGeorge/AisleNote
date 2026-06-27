@@ -29,7 +29,7 @@ function renderModal(
       frontmatterAisleIds={options.frontmatterAisleIds}
       initialStagedDecoupleAisleIds={options.initialStagedDecoupleAisleIds}
       initialStagedRemoveFrontmatterAisleIds={options.initialStagedRemoveFrontmatterAisleIds}
-      getNotePreviewLabel={() => 'Notebook / Folder / Note'}
+      getNotePreviewLabel={() => 'Vault / Folder / Note'}
       onCancel={() => undefined}
       onApply={() => undefined}
       onWarn={() => undefined}
@@ -161,7 +161,7 @@ describe('AisleEditModal', () => {
     expect(html).not.toContain('&lt;div')
   })
 
-  it('renders note preview markdown without custom notebook preview state in the edit modal', () => {
+  it('renders note preview markdown without custom vault preview state in the edit modal', () => {
     const token = '![Child note](<Child note--123abc>)'
     const html = renderModal([aisle('a', `${token}\n\nregular text`)])
 

@@ -14,7 +14,7 @@ import type {
   NoteBody,
   NoteLocation,
 } from '../types/app'
-import { listNotebookNotes } from '../state/notebook'
+import { listVaultNotes } from '../state/vault'
 import { isNoteBodyLinked } from '../notes/link-status'
 import { getLocationInfo } from '../notes/note-locations'
 import {
@@ -390,7 +390,7 @@ export function resolveFrontmatterReferencesForState(
   if (!frontmatter) return null
   let changed = false
   const next: FrontmatterData = {}
-  const noteTitlesByBodyId = new Map(listNotebookNotes(state.notebook.items).map(({ note }) => [note.noteBodyId, note.title]))
+  const noteTitlesByBodyId = new Map(listVaultNotes(state.vault.items).map(({ note }) => [note.noteBodyId, note.title]))
 
   for (const [key, value] of Object.entries(frontmatter)) {
     if (!isRecord(value) || typeof value.id !== 'string') {

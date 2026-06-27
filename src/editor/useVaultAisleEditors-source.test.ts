@@ -1,17 +1,17 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-const source = readFileSync(new URL('./useNotebookAisleEditors.ts', import.meta.url), 'utf8')
+const source = readFileSync(new URL('./useVaultAisleEditors.ts', import.meta.url), 'utf8')
 
-describe('notebook aisle editor task checkbox wiring', () => {
+describe('vault aisle editor task checkbox wiring', () => {
   it('registers raw inline span support with Toast UI', () => {
     expect(source).toContain("import { AISLENOTE_TOAST_HTML_RENDERER } from './toast-inline-html-renderer'")
     expect(source).toContain('customHTMLRenderer: AISLENOTE_TOAST_HTML_RENDERER')
   })
 
   it('fails closed after a Toast UI editor mount error for the same aisle revision', () => {
-    expect(source).toContain('type NotebookAisleEditorMountFailure = {')
-    expect(source).toContain('const failedEditorMountsRef = useRef<Map<string, NotebookAisleEditorMountFailure>>(new Map())')
+    expect(source).toContain('type VaultAisleEditorMountFailure = {')
+    expect(source).toContain('const failedEditorMountsRef = useRef<Map<string, VaultAisleEditorMountFailure>>(new Map())')
     expect(source).toContain('const [failedEditorMountAisleIds, setFailedEditorMountAisleIds] = useState<Set<string>>(() => new Set())')
     expect(source).toContain('const hasMatchingEditorMountFailure = useCallback')
     expect(source).toContain('failure.markdown === aisle.markdown')
@@ -44,7 +44,7 @@ describe('notebook aisle editor task checkbox wiring', () => {
 
   it('keeps lifecycle display-restoration guards while snapshots use dirty-only live reads', () => {
     expect(source).toContain('displayRestoreReady: boolean')
-    expect(source).toContain("type NotebookEditorMarkdownCommitSource = 'user' | 'programmatic' | 'lifecycle'")
+    expect(source).toContain("type VaultEditorMarkdownCommitSource = 'user' | 'programmatic' | 'lifecycle'")
     expect(source).toContain('const DISPLAY_RESTORE_MAX_FRAME_ATTEMPTS = 8')
     expect(source).toContain('const restoreEditorDisplayWhenReady = useCallback')
     expect(source).toContain('if (result.displayReady) {')
@@ -56,7 +56,7 @@ describe('notebook aisle editor task checkbox wiring', () => {
     const commitBody = source.slice(commitIndex, snapshotIndex)
     const snapshotBody = source.slice(snapshotIndex, source.indexOf('const commitMountedEditorMarkdownNow', snapshotIndex))
 
-    expect(commitBody).toContain("source: NotebookEditorMarkdownCommitSource = 'user'")
+    expect(commitBody).toContain("source: VaultEditorMarkdownCommitSource = 'user'")
     expect(commitBody).toContain("source === 'lifecycle' && !meta.displayRestoreReady")
     expect(commitBody).toContain("source === 'programmatic'")
     expect(commitBody).toContain('!meta.userEditedSinceProgrammaticUpdate')
@@ -87,8 +87,8 @@ describe('notebook aisle editor task checkbox wiring', () => {
   })
 
   it('acknowledges local state echoes without rewriting the mounted source editor', () => {
-    expect(source).toContain('type NotebookEditorLocalStateEcho = {')
-    expect(source).toContain('const localStateEchoByAisleBodyRef = useRef<Map<string, NotebookEditorLocalStateEcho>>(new Map())')
+    expect(source).toContain('type VaultEditorLocalStateEcho = {')
+    expect(source).toContain('const localStateEchoByAisleBodyRef = useRef<Map<string, VaultEditorLocalStateEcho>>(new Map())')
     expect(source).toContain('const markLocalStateEchoForAisleBody = useCallback')
     expect(source).toContain('canonicalMarkdown: normalizeMarkdownForPersistence(markdown)')
     expect(source).toContain('externalStateLoadVersion: externalStateLoadVersionRef.current')
@@ -131,7 +131,7 @@ describe('notebook aisle editor task checkbox wiring', () => {
     expect(source).toContain('syncMountedEditorsForAisleBody(meta, nextMarkdown, revision)')
     expect(source).toContain('cachedMarkdown !== aisle.markdown && existing.markdown !== cachedMarkdown')
     expect(source).toContain('cachedMarkdown === aisle.markdown && existing.markdown !== aisle.markdown')
-    expect(source).toContain('collapseNotebookEditorMarkdownSnapshots(getMountedEditorMarkdownSnapshots()).forEach((snapshot) => {')
+    expect(source).toContain('collapseVaultEditorMarkdownSnapshots(getMountedEditorMarkdownSnapshots()).forEach((snapshot) => {')
     expect(source).toContain('markLocalStateEchoForAisleBody(snapshot.aisleBodyId, snapshot.markdown, snapshot.revision ?? 0)')
     expect(source).toContain('revision: revisionByAisleBodyRef.current.get(aisle.aisleBodyId) ?? 0')
     expect(source).toContain('revisionByAisleBodyRef.current.set(meta.aisleBodyId, revision)')
@@ -282,12 +282,12 @@ describe('notebook aisle editor task checkbox wiring', () => {
     const pasteHandlerEnd = source.indexOf('const handleKeyDown = (event: KeyboardEvent) => {', pasteHandlerStart)
     const pasteHandler = source.slice(pasteHandlerStart, pasteHandlerEnd)
     expect(pasteHandler.indexOf('readFrontmatterClipboardPayloadFromDataTransfer')).toBeLessThan(
-      pasteHandler.indexOf('readNotebookStructureClipboardPayloadFromDataTransfer'),
+      pasteHandler.indexOf('readVaultStructureClipboardPayloadFromDataTransfer'),
     )
   })
 })
 
-describe('notebook aisle editor heading collapse wiring', () => {
+describe('vault aisle editor heading collapse wiring', () => {
   it('installs the heading collapse plugin with persisted collapse state', () => {
     expect(source).toContain("import { headingCollapsePlugin } from './heading-collapse-plugin'")
     expect(source).toContain("import { getCollapsedHeadingKeysForAisle } from './heading-collapse-state'")

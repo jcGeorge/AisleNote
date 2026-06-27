@@ -263,13 +263,13 @@
   --monet-editor-toolbar-active-bg: var(--editor-toolbar-active-bg);
 }
 
-.app-shell.theme-cheese .notebook-utility-header {
-  border-bottom-color: color-mix(in srgb, var(--notebook-sidebar-bg) 72%, var(--app-border));
-  background: var(--notebook-sidebar-bg);
+.app-shell.theme-cheese .vault-utility-header {
+  border-bottom-color: color-mix(in srgb, var(--vault-sidebar-bg) 72%, var(--app-border));
+  background: var(--vault-sidebar-bg);
 }
 
 .app-shell.theme-cheese .note-shared-toolbar {
-  border-bottom-color: color-mix(in srgb, var(--notebook-sidebar-bg) 72%, var(--app-border));
+  border-bottom-color: color-mix(in srgb, var(--vault-sidebar-bg) 72%, var(--app-border));
 }
 
 .theme-cheese .trash-home-actions .btn-outline-light {

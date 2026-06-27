@@ -28,29 +28,29 @@ function addNoteBodyId(ids, value) {
   if (typeof value === 'string' && value) ids.add(value)
 }
 
-function collectNotebookItemBodyIds(item, ids) {
+function collectVaultItemBodyIds(item, ids) {
   if (!isRecord(item)) return
   if (item.type === 'note') {
     addNoteBodyId(ids, item.noteBodyId)
     return
   }
   if (item.type === 'folder') {
-    ensureArray(item.children).forEach((child) => collectNotebookItemBodyIds(child, ids))
+    ensureArray(item.children).forEach((child) => collectVaultItemBodyIds(child, ids))
   }
 }
 
 export function collectReferencedNoteBodyIdsFromAppState(appState) {
   const ids = new Set()
   if (isRecord(appState?.scratchpad)) addNoteBodyId(ids, appState.scratchpad.noteBodyId)
-  const notebook = isRecord(appState?.notebook) ? appState.notebook : {}
-  ensureArray(notebook.items).forEach((item) => collectNotebookItemBodyIds(item, ids))
-  ensureArray(notebook.deletedItems).forEach((entry) => {
-    if (isRecord(entry)) collectNotebookItemBodyIds(entry.item, ids)
+  const vault = isRecord(appState?.vault) ? appState.vault : {}
+  ensureArray(vault.items).forEach((item) => collectVaultItemBodyIds(item, ids))
+  ensureArray(vault.deletedItems).forEach((entry) => {
+    if (isRecord(entry)) collectVaultItemBodyIds(entry.item, ids)
   })
   return ids
 }
 
-export function reconcileNotebookStorageState(appState) {
+export function reconcileVaultStorageState(appState) {
   if (!isRecord(appState)) return appState
   return {
     ...appState,

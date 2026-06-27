@@ -10,7 +10,7 @@ describe('AboutView', () => {
     )
 
     expect(html).toContain('AisleNote')
-    expect(html).toContain('local-first notebook')
+    expect(html).toContain('local-first vault')
     expect(html).toContain('folders')
     expect(html).toContain('Lucide.dev')
     expect(html).toContain('1.2.3')

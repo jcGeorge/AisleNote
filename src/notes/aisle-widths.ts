@@ -1,5 +1,5 @@
 import type { AppState, NoteBody } from '../types/app'
-import { listNotebookNotes } from '../state/notebook'
+import { listVaultNotes } from '../state/vault'
 import { buildNoteLocationKey } from './note-locations'
 
 export type AisleWidthsByLocation = Record<string, Record<string, number>>
@@ -72,7 +72,7 @@ export function buildLiveAisleWidthLocationMap(appState: AppState): Map<string, 
   const result = new Map<string, Set<string>>()
   const bodiesById = getBodyById(appState)
 
-  listNotebookNotes(appState.notebook.items).forEach(({ note }) => {
+  listVaultNotes(appState.vault.items).forEach(({ note }) => {
     addLocationAisleIds(result, buildNoteLocationKey({ noteId: note.id }), bodiesById.get(note.noteBodyId))
   })
 

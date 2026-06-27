@@ -52,7 +52,7 @@ describe('Electron app state coordinator', () => {
     expect(coordinator.getLoadResult().revision).toBe(2)
   })
 
-  it('remembers post-save storage fingerprints without reloading the saved notebook', () => {
+  it('remembers post-save storage fingerprints without reloading the saved vault', () => {
     const load = vi.fn(() => ({ ok: true, serializedState: '{"theme":"cheese"}', source: 'hybrid' }))
     const save = vi.fn(() => ({ storageFingerprint: 'storage-fingerprint-1' }))
     const coordinator = createAppStateCoordinator({

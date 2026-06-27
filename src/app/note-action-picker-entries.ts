@@ -1,12 +1,12 @@
 import type { NoteSearchEntry } from '../notes/note-locations'
 import { filterNoteSearchEntries } from '../notes/note-locations'
-import type { NotebookNoteActionPickerAction } from '../components/overlays/NotebookNoteActionPicker'
+import type { VaultNoteActionPickerAction } from '../components/overlays/VaultNoteActionPicker'
 
 export function getNoteActionPickerActionsForNote(
-  actions: NotebookNoteActionPickerAction[],
+  actions: VaultNoteActionPickerAction[],
   noteId: string,
   activeNoteId: string,
-): NotebookNoteActionPickerAction[] {
+): VaultNoteActionPickerAction[] {
   if (!activeNoteId || noteId !== activeNoteId) return actions
   return actions.filter((action) => action === 'note-link')
 }
@@ -19,7 +19,7 @@ export function filterNoteActionPickerEntries(
     activeNoteId,
     limit = 10,
   }: {
-    actions: NotebookNoteActionPickerAction[]
+    actions: VaultNoteActionPickerAction[]
     activeNoteId: string
     limit?: number
   },

@@ -2,28 +2,28 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_STATE } from '../state/app-state'
 import { getEditorContentStateMutationVersion } from '../storage/persistence-scheduling'
 import {
-  applyNotebookEditorMarkdownSnapshotsToState,
-  collapseNotebookEditorMarkdownSnapshots,
-  commitNotebookAisleMarkdownInState,
-} from './notebook-editor-persistence'
+  applyVaultEditorMarkdownSnapshotsToState,
+  collapseVaultEditorMarkdownSnapshots,
+  commitVaultAisleMarkdownInState,
+} from './vault-editor-persistence'
 
-describe('notebook editor persistence commits', () => {
-  it('marks editor-content mutations only when notebook markdown changes', () => {
+describe('vault editor persistence commits', () => {
+  it('marks editor-content mutations only when vault markdown changes', () => {
     const aisleBodyId = DEFAULT_STATE.noteAisleBodies[0]?.id ?? ''
     const initialVersion = getEditorContentStateMutationVersion()
 
-    const unchanged = commitNotebookAisleMarkdownInState(DEFAULT_STATE, aisleBodyId, '')
+    const unchanged = commitVaultAisleMarkdownInState(DEFAULT_STATE, aisleBodyId, '')
     expect(unchanged).toBe(DEFAULT_STATE)
     expect(getEditorContentStateMutationVersion()).toBe(initialVersion)
 
-    const changed = commitNotebookAisleMarkdownInState(DEFAULT_STATE, aisleBodyId, 'persist me')
+    const changed = commitVaultAisleMarkdownInState(DEFAULT_STATE, aisleBodyId, 'persist me')
     expect(changed).not.toBe(DEFAULT_STATE)
     expect(getEditorContentStateMutationVersion()).toBe(initialVersion + 1)
   })
 
   it('applies mounted editor snapshots to a concrete next state', () => {
     const state = structuredClone(DEFAULT_STATE)
-    const note = state.notebook.items.find((item) => item.type === 'note')
+    const note = state.vault.items.find((item) => item.type === 'note')
     if (!note || note.type !== 'note') throw new Error('default state note missing')
     const noteBody = state.noteBodies.find((body) => body.id === note.noteBodyId)
     const aisle = noteBody?.aisles[0]
@@ -31,7 +31,7 @@ describe('notebook editor persistence commits', () => {
     expect(aisle).toBeDefined()
 
     const initialVersion = getEditorContentStateMutationVersion()
-    const nextState = applyNotebookEditorMarkdownSnapshotsToState(state, [{
+    const nextState = applyVaultEditorMarkdownSnapshotsToState(state, [{
       noteId: note.id,
       noteBodyId: noteBody?.id ?? '',
       aisleId: aisle?.id ?? '',
@@ -46,7 +46,7 @@ describe('notebook editor persistence commits', () => {
 
   it('collapses synced aisle snapshots by shared body before applying them', () => {
     const state = structuredClone(DEFAULT_STATE)
-    const note = state.notebook.items.find((item) => item.type === 'note')
+    const note = state.vault.items.find((item) => item.type === 'note')
     if (!note || note.type !== 'note') throw new Error('default state note missing')
     const noteBody = state.noteBodies.find((body) => body.id === note.noteBodyId)
     const aisle = noteBody?.aisles[0]
@@ -54,7 +54,7 @@ describe('notebook editor persistence commits', () => {
     expect(aisle).toBeDefined()
 
     const initialVersion = getEditorContentStateMutationVersion()
-    const nextState = applyNotebookEditorMarkdownSnapshotsToState(state, [
+    const nextState = applyVaultEditorMarkdownSnapshotsToState(state, [
       {
         noteId: 'older-note',
         noteBodyId: 'older-body',
@@ -78,7 +78,7 @@ describe('notebook editor persistence commits', () => {
   })
 
   it('prefers the active editor when synced snapshot revisions tie', () => {
-    const snapshots = collapseNotebookEditorMarkdownSnapshots([
+    const snapshots = collapseVaultEditorMarkdownSnapshots([
       {
         noteId: 'note-inactive',
         noteBodyId: 'body-inactive',
@@ -103,7 +103,7 @@ describe('notebook editor persistence commits', () => {
   })
 
   it('uses a stable note body and aisle order when synced snapshot revisions and active state tie', () => {
-    const snapshots = collapseNotebookEditorMarkdownSnapshots([
+    const snapshots = collapseVaultEditorMarkdownSnapshots([
       {
         noteId: 'note-a',
         noteBodyId: 'body-a',
@@ -138,7 +138,7 @@ describe('notebook editor persistence commits', () => {
       { id: 'other-body', markdown: 'other markdown' },
     ]
 
-    const nextState = applyNotebookEditorMarkdownSnapshotsToState(state, [{
+    const nextState = applyVaultEditorMarkdownSnapshotsToState(state, [{
       noteId: 'note-a',
       noteBodyId: 'body-a',
       aisleId: 'aisle-a',

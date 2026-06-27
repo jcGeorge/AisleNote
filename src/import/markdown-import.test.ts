@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import type { AppState, NotebookFolder } from '../types/app'
+import type { AppState, VaultFolder } from '../types/app'
 import { getAisleMarkdown } from '../notes/note-markdown'
 import { DEFAULT_SCRATCHPAD_MARKDOWN, createDefaultAppState } from '../state/default-app-state.js'
-import { findNotebookFolder, findNotebookNote } from '../state/notebook'
+import { findVaultFolder, findVaultNote } from '../state/vault'
 import {
   buildMarkdownImportState,
-  importMarkdownIntoExistingNotebook,
-  importMarkdownNotebook,
+  importMarkdownIntoExistingVault,
+  importMarkdownVault,
   type MarkdownImportAssetPayload,
 } from './markdown-import'
 
@@ -24,14 +24,14 @@ function idSequence(ids: string[]) {
 }
 
 function getMarkdownForTitle(result: ReturnType<typeof buildMarkdownImportState>, title: string): string {
-  const note = findNotebookNote(result.state.notebook.items, result.sources.find((source) => source.title === title)?.noteId ?? '')
+  const note = findVaultNote(result.state.vault.items, result.sources.find((source) => source.title === title)?.noteId ?? '')
   const body = result.state.noteBodies.find((candidate) => candidate.id === note?.note.noteBodyId)
   const aisle = body?.aisles[0]
   return aisle ? getAisleMarkdown(aisle, result.state.noteAisleBodies) : ''
 }
 
-function getImportedMarkdownForTitle(result: Awaited<ReturnType<typeof importMarkdownNotebook>>, title: string): string {
-  const stack = [...result.state.notebook.items]
+function getImportedMarkdownForTitle(result: Awaited<ReturnType<typeof importMarkdownVault>>, title: string): string {
+  const stack = [...result.state.vault.items]
   let noteSource = stack.shift()
   while (noteSource) {
     if (noteSource.type === 'note' && noteSource.title === title) break
@@ -45,7 +45,7 @@ function getImportedMarkdownForTitle(result: Awaited<ReturnType<typeof importMar
 }
 
 function getMarkdownForNoteId(state: AppState, noteId: string): string {
-  const note = findNotebookNote(state.notebook.items, noteId)
+  const note = findVaultNote(state.vault.items, noteId)
   const body = state.noteBodies.find((candidate) => candidate.id === note?.note.noteBodyId)
   const aisle = body?.aisles[0]
   return aisle ? getAisleMarkdown(aisle, state.noteAisleBodies) : ''
@@ -62,15 +62,15 @@ describe('Markdown folder import', () => {
       now: () => '2026-06-22T00:00:00.000Z',
     })
 
-    expect(result.state.notebook.items.map((item) => item.title)).toEqual(['Books', 'Root'])
-    const books = result.state.notebook.items[0]
+    expect(result.state.vault.items.map((item) => item.title)).toEqual(['Books', 'Root'])
+    const books = result.state.vault.items[0]
     expect(books?.type).toBe('folder')
     if (books?.type === 'folder') {
       expect(books.children.map((item) => item.title)).toEqual(['Intro', 'Ontology'])
       expect(books.children[1]?.type).toBe('folder')
     }
-    expect(result.state.notebook.activeNoteId).toBe(result.sources[0]?.noteId)
-    expect(result.state.notebook.openTabs).toEqual([
+    expect(result.state.vault.activeNoteId).toBe(result.sources[0]?.noteId)
+    expect(result.state.vault.openTabs).toEqual([
       { noteId: result.sources[0]?.noteId, status: 'temporary' },
     ])
     expect(result.state.scratchpad?.noteBodyId).toBeTruthy()
@@ -82,16 +82,16 @@ describe('Markdown folder import', () => {
     expect(result.summary).toMatchObject({ folders: 2, notes: 3, noteBodies: 3 })
   })
 
-  it('adds a Markdown import as a fresh top-level folder without replacing existing notebook folders', async () => {
+  it('adds a Markdown import as a fresh top-level folder without replacing existing vault folders', async () => {
     const state = createDefaultAppState() as AppState
-    const retainedNoteId = state.notebook.activeNoteId
-    state.notebook.items = [
-      ...state.notebook.items,
+    const retainedNoteId = state.vault.activeNoteId
+    state.vault.items = [
+      ...state.vault.items,
       { type: 'folder', id: 'folder-projects', title: 'Projects', children: [] },
       { type: 'folder', id: 'existing-duplicate-folder', title: 'Import Source', children: [] },
     ]
-    state.notebook.openTabs = [{ noteId: retainedNoteId, status: 'retained' }]
-    state.notebook.deletedItems = [{
+    state.vault.openTabs = [{ noteId: retainedNoteId, status: 'retained' }]
+    state.vault.deletedItems = [{
       id: 'deleted-1',
       deletedAt: 1,
       item: { type: 'folder', id: 'deleted-folder', title: 'Deleted', children: [] },
@@ -101,7 +101,7 @@ describe('Markdown folder import', () => {
     const existingNoteBodies = state.noteBodies.length
     const existingAisleBodies = state.noteAisleBodies.length
 
-    const result = await importMarkdownIntoExistingNotebook(state, [
+    const result = await importMarkdownIntoExistingVault(state, [
       { relativePath: 'Intro.md', markdown: 'See [[Detail]].' },
       { relativePath: 'Nested/Detail.md', markdown: 'detail' },
     ], {
@@ -122,22 +122,22 @@ describe('Markdown folder import', () => {
       now: () => '2026-06-22T00:00:00.000Z',
     })
 
-    const duplicateFolders = result.state.notebook.items.filter(
-      (item): item is NotebookFolder => item.type === 'folder' && item.title === 'Import Source',
+    const duplicateFolders = result.state.vault.items.filter(
+      (item): item is VaultFolder => item.type === 'folder' && item.title === 'Import Source',
     )
-    const importedFolder = findNotebookFolder(result.state.notebook.items, result.rootFolderId)?.folder
+    const importedFolder = findVaultFolder(result.state.vault.items, result.rootFolderId)?.folder
 
     expect(result.rootFolderId).toBe('import-root')
     expect(duplicateFolders.map((folder) => folder.id)).toEqual(['existing-duplicate-folder', 'import-root'])
     expect(importedFolder?.children.map((item) => item.title)).toEqual(['Intro', 'Nested'])
-    expect(findNotebookFolder(result.state.notebook.items, 'folder-projects')?.folder.title).toBe('Projects')
-    expect(result.state.notebook.deletedItems).toEqual(state.notebook.deletedItems)
-    expect(result.state.notebook.settings).toEqual(state.notebook.settings)
+    expect(findVaultFolder(result.state.vault.items, 'folder-projects')?.folder.title).toBe('Projects')
+    expect(result.state.vault.deletedItems).toEqual(state.vault.deletedItems)
+    expect(result.state.vault.settings).toEqual(state.vault.settings)
     expect(result.state.scratchpad).toEqual(state.scratchpad)
     expect(result.state.noteBodies).toHaveLength(existingNoteBodies + 2)
     expect(result.state.noteAisleBodies).toHaveLength(existingAisleBodies + 2)
-    expect(result.state.notebook.activeNoteId).toBe('import-note-intro')
-    expect(result.state.notebook.openTabs).toEqual([
+    expect(result.state.vault.activeNoteId).toBe('import-note-intro')
+    expect(result.state.vault.openTabs).toEqual([
       { noteId: retainedNoteId, status: 'retained' },
       { noteId: 'import-note-intro', status: 'temporary' },
     ])
@@ -172,7 +172,7 @@ describe('Markdown folder import', () => {
   })
 
   it('rewrites resolvable Obsidian note links and reports unresolved references', async () => {
-    const result = await importMarkdownNotebook([
+    const result = await importMarkdownVault([
       { relativePath: 'Notes/Source.md', markdown: 'See [[Target|the target]] and ![[Target#Intro]] and [[Missing]].' },
       { relativePath: 'Notes/Target.md', markdown: '# Intro\nTarget body' },
     ], {
@@ -188,7 +188,7 @@ describe('Markdown folder import', () => {
   })
 
   it('leaves ambiguous Obsidian note links unresolved with a warning', async () => {
-    const result = await importMarkdownNotebook([
+    const result = await importMarkdownVault([
       { relativePath: 'A/Dupe.md', markdown: 'a' },
       { relativePath: 'B/Dupe.md', markdown: 'b' },
       { relativePath: 'Source.md', markdown: '[[Dupe]]' },
@@ -227,7 +227,7 @@ describe('Markdown folder import', () => {
         mimeType: 'application/pdf',
       },
     ]
-    const result = await importMarkdownNotebook([
+    const result = await importMarkdownVault([
       {
         relativePath: 'Ministry/Flag/Etc.md',
         markdown: '![[Pasted Graphic.png]]\n![local](../local.png)\n[report](docs/report.pdf)\n![[Missing.png]]',

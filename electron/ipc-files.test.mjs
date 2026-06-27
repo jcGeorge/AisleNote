@@ -34,7 +34,7 @@ function createHandlers(selectedPath) {
   return handlers
 }
 
-describe('notebook import file IPC', () => {
+describe('vault import file IPC', () => {
   it('opens Markdown folders with selected-folder and Obsidian-vault asset roots', async () => {
     const root = tempRoot()
     const vaultRoot = path.join(root, 'Vault')
@@ -46,7 +46,7 @@ describe('notebook import file IPC', () => {
     writeFileSync(path.join(vaultRoot, 'Z-Assets', 'Pasted Graphic.png'), 'image-bytes')
 
     const handlers = createHandlers(sourceRoot)
-    const openResult = await handlers.get('open-notebook-import-source')()
+    const openResult = await handlers.get('open-vault-import-source')()
 
     expect(openResult).toMatchObject({
       canceled: false,
@@ -71,7 +71,7 @@ describe('notebook import file IPC', () => {
     expect(readResult.mimeType).toBe('image/png')
   })
 
-  it('falls back from non-notebook ZIPs to Markdown ZIP import results', async () => {
+  it('falls back from non-vault ZIPs to Markdown ZIP import results', async () => {
     const root = tempRoot()
     const zipPath = path.join(root, 'obsidian-export.zip')
     const zip = new JSZip()
@@ -81,7 +81,7 @@ describe('notebook import file IPC', () => {
     writeFileSync(zipPath, await zip.generateAsync({ type: 'nodebuffer' }))
 
     const handlers = createHandlers(zipPath)
-    const openResult = await handlers.get('open-notebook-import-source')()
+    const openResult = await handlers.get('open-vault-import-source')()
 
     expect(openResult).toMatchObject({
       canceled: false,
@@ -102,7 +102,7 @@ describe('notebook import file IPC', () => {
     symlinkSync(path.join(sourceRoot, 'Note.md'), path.join(sourceRoot, 'Linked.md'))
 
     const handlers = createHandlers(sourceRoot)
-    const openResult = await handlers.get('open-notebook-import-source')()
+    const openResult = await handlers.get('open-vault-import-source')()
 
     expect(openResult).toMatchObject({
       canceled: false,

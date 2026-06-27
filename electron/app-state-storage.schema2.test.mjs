@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   getUserSettingsFilePath,
   loadAppStateResult,
-  resolveNotebookItemLocationRevealPath,
+  resolveVaultItemLocationRevealPath,
   resolveNoteLocationRevealPath,
   saveAppState,
   writeAssetToProfile,
@@ -29,7 +29,7 @@ afterEach(() => {
 function appState(overrides = {}) {
   return {
     theme: 'cheese',
-    notebook: {
+    vault: {
       activeNoteId: 'note-root',
       items: [
         {
@@ -133,8 +133,8 @@ function linkedAisleAppState() {
   const state = appState()
   return {
     ...state,
-    notebook: {
-      ...state.notebook,
+    vault: {
+      ...state.vault,
       activeNoteId: 'note-linked-a',
       items: [
         { type: 'note', id: 'note-linked-a', title: 'Linked A', noteBodyId: 'body-linked-a' },
@@ -169,8 +169,8 @@ function pathFromRoot(root, relativePath) {
   return relativePath ? path.join(root, ...relativePath.split('/')) : root
 }
 
-function readNotebookIndex(root) {
-  return JSON.parse(readFileSync(pathFromRoot(root, '.aislenote/notebook-index.json'), 'utf8'))
+function readVaultIndex(root) {
+  return JSON.parse(readFileSync(pathFromRoot(root, '.aislenote/vault-index.json'), 'utf8'))
 }
 
 function writeLegacyPortableSettingsToEditorState(root, state) {
@@ -191,19 +191,19 @@ function writeLegacyPortableSettingsToEditorState(root, state) {
   )
 }
 
-function findNotebookIndexItem(items, itemId) {
+function findVaultIndexItem(items, itemId) {
   for (const item of items ?? []) {
     if ((item.type === 'note' || item.type === 'folder') && item.id === itemId) return item
     if (item.type === 'folder') {
-      const child = findNotebookIndexItem(item.children, itemId)
+      const child = findVaultIndexItem(item.children, itemId)
       if (child) return child
     }
   }
   return null
 }
 
-function findNotebookIndexNote(root, noteId) {
-  const item = findNotebookIndexItem(readNotebookIndex(root).items, noteId)
+function findVaultIndexNote(root, noteId) {
+  const item = findVaultIndexItem(readVaultIndex(root).items, noteId)
   expect(item?.type).toBe('note')
   return item
 }
@@ -225,20 +225,20 @@ describe('schema 2 app-state storage', () => {
   it('saves and loads root notes, nested folders, duplicate names, multi-aisle folders, frontmatter, scratchpad, and trash', () => {
     const root = tempRoot()
     const state = appState()
-    state.notebook.openTabs = [
+    state.vault.openTabs = [
       { noteId: 'note-root', status: 'retained' },
       { noteId: 'note-duplicate-a', status: 'temporary' },
     ]
 
     const saveResult = saveAppState(root, JSON.stringify(state))
     expect(saveResult.ok).toBe(true)
-    expect(existsSync(path.join(root, '.aislenote', 'notebook-index.json'))).toBe(true)
-    const index = readNotebookIndex(root)
-    const inbox = findNotebookIndexItem(index.items, 'note-root')
-    const projects = findNotebookIndexItem(index.items, 'folder-projects')
-    const duplicateA = findNotebookIndexItem(index.items, 'note-duplicate-a')
-    const duplicateB = findNotebookIndexItem(index.items, 'note-duplicate-b')
-    const multi = findNotebookIndexItem(index.items, 'note-multi')
+    expect(existsSync(path.join(root, '.aislenote', 'vault-index.json'))).toBe(true)
+    const index = readVaultIndex(root)
+    const inbox = findVaultIndexItem(index.items, 'note-root')
+    const projects = findVaultIndexItem(index.items, 'folder-projects')
+    const duplicateA = findVaultIndexItem(index.items, 'note-duplicate-a')
+    const duplicateB = findVaultIndexItem(index.items, 'note-duplicate-b')
+    const multi = findVaultIndexItem(index.items, 'note-multi')
 
     expect(index.openTabs).toEqual([
       { noteId: 'note-root', status: 'retained' },
@@ -260,45 +260,45 @@ describe('schema 2 app-state storage', () => {
     expect(existsSync(pathFromRoot(root, duplicateB.file))).toBe(true)
 
     const reloaded = loadState(root)
-    expect(reloaded.notebook.openTabs).toEqual(index.openTabs)
-    expect(reloaded.notebook.items[1].children).toHaveLength(3)
+    expect(reloaded.vault.openTabs).toEqual(index.openTabs)
+    expect(reloaded.vault.items[1].children).toHaveLength(3)
     expect(reloaded.noteAisleBodies.find((body) => body.id === 'aisle-body-root').frontmatter).toEqual({ status: 'open' })
     expect(reloaded.noteAisleBodies.find((body) => body.id === 'aisle-body-deleted').markdown).toBe('deleted markdown')
     expect(reloaded.noteAisleBodies.find((body) => body.id === 'aisle-body-scratch').markdown).toBe('scratch markdown')
   })
 
-  it('loads older notebook indexes without open tab state', () => {
+  it('loads older vault indexes without open tab state', () => {
     const root = tempRoot()
     const state = appState()
     const saveResult = saveAppState(root, JSON.stringify(state))
     expect(saveResult.ok).toBe(true)
 
-    const indexPath = pathFromRoot(root, '.aislenote/notebook-index.json')
+    const indexPath = pathFromRoot(root, '.aislenote/vault-index.json')
     const index = JSON.parse(readFileSync(indexPath, 'utf8'))
     delete index.openTabs
     writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`, 'utf8')
 
     const reloaded = loadState(root)
-    expect(reloaded.notebook.openTabs).toEqual([{ noteId: 'note-root', status: 'temporary' }])
+    expect(reloaded.vault.openTabs).toEqual([{ noteId: 'note-root', status: 'temporary' }])
   })
 
-  it('overlays app-support user settings when loading different notebooks', () => {
+  it('overlays app-support user settings when loading different vaults', () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
-    const notebookAPath = path.join(root, 'notebook-a')
-    const notebookBPath = path.join(root, 'notebook-b')
-    const notebookA = appState()
-    notebookA.theme = 'light'
-    notebookA.hotkeys.shortcuts.openSettings = 'Ctrl+Alt+,'
-    notebookA.ui = {
-      ...notebookA.ui,
+    const vaultAPath = path.join(root, 'vault-a')
+    const vaultBPath = path.join(root, 'vault-b')
+    const vaultA = appState()
+    vaultA.theme = 'light'
+    vaultA.hotkeys.shortcuts.openSettings = 'Ctrl+Alt+,'
+    vaultA.ui = {
+      ...vaultA.ui,
       sidebarWidth: 333,
       settingsSection: 'data',
     }
-    const notebookB = appState()
-    notebookB.theme = 'cheese'
-    notebookB.ui = {
-      ...notebookB.ui,
+    const vaultB = appState()
+    vaultB.theme = 'cheese'
+    vaultB.ui = {
+      ...vaultB.ui,
       sidebarWidth: 444,
       settingsSection: 'hotkeys',
     }
@@ -312,15 +312,15 @@ describe('schema 2 app-state storage', () => {
       toolbarLayouts: [{ id: 'main', name: 'Main', items: [] }],
     }
 
-    saveAppState(notebookAPath, JSON.stringify(notebookA))
-    saveAppState(notebookBPath, JSON.stringify(notebookB))
-    writeLegacyPortableSettingsToEditorState(notebookAPath, notebookA)
-    writeLegacyPortableSettingsToEditorState(notebookBPath, notebookB)
+    saveAppState(vaultAPath, JSON.stringify(vaultA))
+    saveAppState(vaultBPath, JSON.stringify(vaultB))
+    writeLegacyPortableSettingsToEditorState(vaultAPath, vaultA)
+    writeLegacyPortableSettingsToEditorState(vaultBPath, vaultB)
     writeAppSettingsForState(userDataPath, JSON.stringify(appSettingsState))
 
-    const loadedA = JSON.parse(loadAppStateResult(notebookAPath, { userSettingsRoot: userDataPath }).serializedState)
-    const loadedB = JSON.parse(loadAppStateResult(notebookBPath, { userSettingsRoot: userDataPath }).serializedState)
-    const rawA = JSON.parse(loadAppStateResult(notebookAPath, {
+    const loadedA = JSON.parse(loadAppStateResult(vaultAPath, { userSettingsRoot: userDataPath }).serializedState)
+    const loadedB = JSON.parse(loadAppStateResult(vaultBPath, { userSettingsRoot: userDataPath }).serializedState)
+    const rawA = JSON.parse(loadAppStateResult(vaultAPath, {
       userSettingsRoot: userDataPath,
       includeUserSettings: false,
     }).serializedState)
@@ -338,7 +338,7 @@ describe('schema 2 app-state storage', () => {
     expect(rawA.ui.settingsSection).toBe('data')
   })
 
-  it('writes portable app settings outside the notebook and keeps editor-state notebook-local', () => {
+  it('writes portable app settings outside the vault and keeps editor-state vault-local', () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
     const state = appState()
@@ -414,7 +414,7 @@ describe('schema 2 app-state storage', () => {
     const uuidMultiNoteId = '550e8400-e29b-41d4-a716-446655440002'
     const unicodeTitle = '2026/06/20: \u65e5\u672c\u8a9e * Notes?'
 
-    state.notebook.items.push(
+    state.vault.items.push(
       { type: 'folder', id: '550e8400-e29b-41d4-a716-446655440003', title: 'Duplicate Folder', children: [] },
       { type: 'folder', id: '550e8400-e29b-41d4-a716-446655440004', title: 'Duplicate Folder', children: [] },
       { type: 'note', id: uuidNoteId, title: unicodeTitle, noteBodyId: 'body-unicode' },
@@ -441,12 +441,12 @@ describe('schema 2 app-state storage', () => {
 
     const saveResult = saveAppState(root, JSON.stringify(state))
     expect(saveResult.ok).toBe(true)
-    const index = readNotebookIndex(root)
-    const firstFolder = findNotebookIndexItem(index.items, '550e8400-e29b-41d4-a716-446655440003')
-    const secondFolder = findNotebookIndexItem(index.items, '550e8400-e29b-41d4-a716-446655440004')
-    const unicodeNote = findNotebookIndexItem(index.items, uuidNoteId)
-    const longNote = findNotebookIndexItem(index.items, uuidLongNoteId)
-    const multiNote = findNotebookIndexItem(index.items, uuidMultiNoteId)
+    const index = readVaultIndex(root)
+    const firstFolder = findVaultIndexItem(index.items, '550e8400-e29b-41d4-a716-446655440003')
+    const secondFolder = findVaultIndexItem(index.items, '550e8400-e29b-41d4-a716-446655440004')
+    const unicodeNote = findVaultIndexItem(index.items, uuidNoteId)
+    const longNote = findVaultIndexItem(index.items, uuidLongNoteId)
+    const multiNote = findVaultIndexItem(index.items, uuidMultiNoteId)
 
     expect(firstFolder.path).not.toBe(secondFolder.path)
     expect(firstFolder.path).toMatch(/^Duplicate Folder--[a-f0-9]{8}$/)
@@ -467,19 +467,19 @@ describe('schema 2 app-state storage', () => {
     expect(readFileSync(pathFromRoot(root, unicodeNote.file), 'utf8')).toBe('unicode markdown')
 
     const reloaded = loadState(root)
-    expect(reloaded.notebook.items.find((item) => item.id === uuidNoteId).title).toBe(unicodeTitle)
+    expect(reloaded.vault.items.find((item) => item.id === uuidNoteId).title).toBe(unicodeTitle)
     expect(reloaded.noteAisleBodies.find((body) => body.id === 'aisle-body-uuid-multi-b').markdown).toBe('multi b')
   })
 
   it('updates a shared note body when only one linked mirror changes', () => {
     const root = tempRoot()
     saveAppState(root, JSON.stringify(appState()))
-    const duplicateA = findNotebookIndexNote(root, 'note-duplicate-a')
-    const duplicateB = findNotebookIndexNote(root, 'note-duplicate-b')
+    const duplicateA = findVaultIndexNote(root, 'note-duplicate-a')
+    const duplicateB = findVaultIndexNote(root, 'note-duplicate-b')
     writeFileSync(pathFromRoot(root, duplicateA.file), 'changed once')
 
     const reloaded = loadState(root)
-    const linkedNotes = reloaded.notebook.items[1].children.filter((item) => item.title === 'Duplicate')
+    const linkedNotes = reloaded.vault.items[1].children.filter((item) => item.title === 'Duplicate')
     expect(new Set(linkedNotes.map((item) => item.noteBodyId))).toEqual(new Set(['body-linked']))
     const linkedBodies = reloaded.noteAisleBodies.filter((body) => body.id === 'aisle-body-linked')
     expect(linkedBodies).toHaveLength(1)
@@ -494,8 +494,8 @@ describe('schema 2 app-state storage', () => {
   it('keeps linked note mirrors and uses the newest changed mirror when multiple versions conflict', () => {
     const root = tempRoot()
     saveAppState(root, JSON.stringify(appState()))
-    const duplicateA = findNotebookIndexNote(root, 'note-duplicate-a')
-    const duplicateB = findNotebookIndexNote(root, 'note-duplicate-b')
+    const duplicateA = findVaultIndexNote(root, 'note-duplicate-a')
+    const duplicateB = findVaultIndexNote(root, 'note-duplicate-b')
     const older = new Date('2026-01-01T00:00:00.000Z')
     const newer = new Date('2026-01-01T00:00:10.000Z')
     writeFileSync(pathFromRoot(root, duplicateA.file), 'changed a')
@@ -504,7 +504,7 @@ describe('schema 2 app-state storage', () => {
     utimesSync(pathFromRoot(root, duplicateB.file), newer, newer)
 
     const reloaded = loadState(root)
-    const linkedNotes = reloaded.notebook.items[1].children.filter((item) => item.title === 'Duplicate')
+    const linkedNotes = reloaded.vault.items[1].children.filter((item) => item.title === 'Duplicate')
     expect(new Set(linkedNotes.map((item) => item.noteBodyId))).toEqual(new Set(['body-linked']))
     expect(reloaded.noteAisleBodies.filter((body) => body.id === 'aisle-body-linked')).toHaveLength(1)
     expect(reloaded.noteAisleBodies.find((body) => body.id === 'aisle-body-linked').markdown).toBe('changed b')
@@ -514,8 +514,8 @@ describe('schema 2 app-state storage', () => {
   it('updates linked aisle mirrors across different note bodies from one externally changed file', () => {
     const root = tempRoot()
     saveAppState(root, JSON.stringify(linkedAisleAppState()))
-    const noteA = findNotebookIndexNote(root, 'note-linked-a')
-    const noteB = findNotebookIndexNote(root, 'note-linked-b')
+    const noteA = findVaultIndexNote(root, 'note-linked-a')
+    const noteB = findVaultIndexNote(root, 'note-linked-b')
     writeFileSync(pathFromRoot(root, noteA.file), 'external aisle edit')
 
     const reloaded = loadState(root)
@@ -534,8 +534,8 @@ describe('schema 2 app-state storage', () => {
   it('uses the newest changed linked aisle mirror without decoupling different note bodies', () => {
     const root = tempRoot()
     saveAppState(root, JSON.stringify(linkedAisleAppState()))
-    const noteA = findNotebookIndexNote(root, 'note-linked-a')
-    const noteB = findNotebookIndexNote(root, 'note-linked-b')
+    const noteA = findVaultIndexNote(root, 'note-linked-a')
+    const noteB = findVaultIndexNote(root, 'note-linked-b')
     const older = new Date('2026-01-01T00:00:00.000Z')
     const newer = new Date('2026-01-01T00:00:10.000Z')
     writeFileSync(pathFromRoot(root, noteA.file), 'older linked aisle edit')
@@ -564,8 +564,8 @@ describe('schema 2 app-state storage', () => {
   it('writes assets and resolves visible note reveal paths', () => {
     const root = tempRoot()
     saveAppState(root, JSON.stringify(appState()))
-    const inbox = findNotebookIndexNote(root, 'note-root')
-    const multi = findNotebookIndexNote(root, 'note-multi')
+    const inbox = findVaultIndexNote(root, 'note-root')
+    const multi = findVaultIndexNote(root, 'note-multi')
     const aisleB = multi.aisleFiles.find((aisleFile) => aisleFile.aisleId === 'aisle-multi-b')
     const asset = writeAssetToProfile(root, Buffer.from('asset'), 'png')
     const reveal = resolveNoteLocationRevealPath(root, { type: 'live-note', location: { noteId: 'note-root' } })
@@ -584,21 +584,21 @@ describe('schema 2 app-state storage', () => {
     })
   })
 
-  it('resolves notebook note and folder items for sidebar reveal actions', () => {
+  it('resolves vault note and folder items for sidebar reveal actions', () => {
     const root = tempRoot()
     saveAppState(root, JSON.stringify(appState()))
-    const inbox = findNotebookIndexNote(root, 'note-root')
-    const projects = findNotebookIndexItem(readNotebookIndex(root).items, 'folder-projects')
+    const inbox = findVaultIndexNote(root, 'note-root')
+    const projects = findVaultIndexItem(readVaultIndex(root).items, 'folder-projects')
 
-    expect(resolveNotebookItemLocationRevealPath(root, { itemId: 'note-root', itemType: 'note' })).toMatchObject({
+    expect(resolveVaultItemLocationRevealPath(root, { itemId: 'note-root', itemType: 'note' })).toMatchObject({
       ok: true,
       rootRelativePath: inbox.file,
     })
-    expect(resolveNotebookItemLocationRevealPath(root, { itemId: 'folder-projects', itemType: 'folder' })).toMatchObject({
+    expect(resolveVaultItemLocationRevealPath(root, { itemId: 'folder-projects', itemType: 'folder' })).toMatchObject({
       ok: true,
       rootRelativePath: projects.path,
     })
-    expect(resolveNotebookItemLocationRevealPath(root, { itemId: 'folder-projects', itemType: 'note' })).toMatchObject({
+    expect(resolveVaultItemLocationRevealPath(root, { itemId: 'folder-projects', itemType: 'note' })).toMatchObject({
       ok: false,
     })
   })

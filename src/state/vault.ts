@@ -1,43 +1,43 @@
 import type {
   AppState,
-  DeletedNotebookItem,
+  DeletedVaultItem,
   NoteAisle,
   NoteAisleBody,
   NoteBody,
-  NotebookFolder,
-  NotebookNote,
-  NotebookState,
-  NotebookTab,
-  NotebookTabStatus,
-  NotebookTreeItem,
+  VaultFolder,
+  VaultNote,
+  VaultState,
+  VaultTab,
+  VaultTabStatus,
+  VaultTreeItem,
   TabSortMode,
 } from '../types/app'
 import { cloneNoteBodyAsIndependentCopy } from '../notes/aisle-body-state'
 import { createRandomId, createReservedIdAllocator, type IdGenerator } from './navigation-ids'
 
-export type NotebookItemPathSegment = {
+export type VaultItemPathSegment = {
   id: string
   title: string
-  type: NotebookTreeItem['type'] | 'root'
+  type: VaultTreeItem['type'] | 'root'
 }
 
-export type NotebookNotePath = {
-  note: NotebookNote
+export type VaultNotePath = {
+  note: VaultNote
   parentFolderId: string | null
-  path: NotebookItemPathSegment[]
+  path: VaultItemPathSegment[]
 }
 
 type WalkContext = {
   parentFolderId: string | null
   index: number
-  path: NotebookItemPathSegment[]
+  path: VaultItemPathSegment[]
 }
 
-export type NotebookWalkEntry = WalkContext & {
-  item: NotebookTreeItem
+export type VaultWalkEntry = WalkContext & {
+  item: VaultTreeItem
 }
 
-export type CreatedNotebookNote = {
+export type CreatedVaultNote = {
   state: AppState
   noteId: string
   noteBodyId: string
@@ -45,14 +45,14 @@ export type CreatedNotebookNote = {
   aisleBodyId: string
 }
 
-export type CreatedNotebookFolder = {
+export type CreatedVaultFolder = {
   state: AppState
   folderId: string
 }
 
-export type NotebookTabOpenDisposition = NotebookTabStatus | 'preserve'
+export type VaultTabOpenDisposition = VaultTabStatus | 'preserve'
 
-export type ClosedNotebookTab = NotebookTab & {
+export type ClosedVaultTab = VaultTab & {
   index: number
 }
 
@@ -65,7 +65,7 @@ function ensureTitle(title: string, fallback: string): string {
   return trimmed.length > 0 ? trimmed : fallback
 }
 
-export function createNotebookNote(title: string, noteBodyId: string, idGenerator: IdGenerator = createRandomId): NotebookNote {
+export function createVaultNote(title: string, noteBodyId: string, idGenerator: IdGenerator = createRandomId): VaultNote {
   return {
     type: 'note',
     id: idGenerator(),
@@ -74,11 +74,11 @@ export function createNotebookNote(title: string, noteBodyId: string, idGenerato
   }
 }
 
-export function createNotebookFolder(
+export function createVaultFolder(
   title: string,
-  children: NotebookTreeItem[] = [],
+  children: VaultTreeItem[] = [],
   idGenerator: IdGenerator = createRandomId,
-): NotebookFolder {
+): VaultFolder {
   return {
     type: 'folder',
     id: idGenerator(),
@@ -128,15 +128,15 @@ export function createNoteBodyWithAisle(
   }
 }
 
-export function createDefaultNotebookState(idGenerator: IdGenerator = createRandomId): {
-  notebook: NotebookState
+export function createDefaultVaultState(idGenerator: IdGenerator = createRandomId): {
+  vault: VaultState
   noteBodies: NoteBody[]
   noteAisleBodies: NoteAisleBody[]
 } {
   const { noteBody, aisleBody } = createNoteBodyWithAisle('', idGenerator)
-  const note = createNotebookNote('Welcome', noteBody.id, idGenerator)
+  const note = createVaultNote('Welcome', noteBody.id, idGenerator)
   return {
-    notebook: {
+    vault: {
       activeNoteId: note.id,
       openTabs: [{ noteId: note.id, status: 'temporary' }],
       items: [note],
@@ -150,9 +150,9 @@ export function createDefaultNotebookState(idGenerator: IdGenerator = createRand
   }
 }
 
-export function walkNotebookItems(
-  items: NotebookTreeItem[],
-  visitor: (entry: NotebookWalkEntry) => void | false,
+export function walkVaultItems(
+  items: VaultTreeItem[],
+  visitor: (entry: VaultWalkEntry) => void | false,
   context: Omit<WalkContext, 'index'> = { parentFolderId: null, path: [] },
 ): false | void {
   for (let index = 0; index < items.length; index += 1) {
@@ -166,7 +166,7 @@ export function walkNotebookItems(
     })
     if (result === false) return false
     if (item.type === 'folder') {
-      const childResult = walkNotebookItems(item.children, visitor, {
+      const childResult = walkVaultItems(item.children, visitor, {
         parentFolderId: item.id,
         path,
       })
@@ -175,9 +175,9 @@ export function walkNotebookItems(
   }
 }
 
-export function listNotebookNotes(items: NotebookTreeItem[]): NotebookNotePath[] {
-  const notes: NotebookNotePath[] = []
-  walkNotebookItems(items, ({ item, parentFolderId, path }) => {
+export function listVaultNotes(items: VaultTreeItem[]): VaultNotePath[] {
+  const notes: VaultNotePath[] = []
+  walkVaultItems(items, ({ item, parentFolderId, path }) => {
     if (item.type === 'note') {
       notes.push({
         note: item,
@@ -189,17 +189,17 @@ export function listNotebookNotes(items: NotebookTreeItem[]): NotebookNotePath[]
   return notes
 }
 
-export function listNotebookFolders(items: NotebookTreeItem[]): Array<{ folder: NotebookFolder; path: NotebookItemPathSegment[] }> {
-  const folders: Array<{ folder: NotebookFolder; path: NotebookItemPathSegment[] }> = []
-  walkNotebookItems(items, ({ item, path }) => {
+export function listVaultFolders(items: VaultTreeItem[]): Array<{ folder: VaultFolder; path: VaultItemPathSegment[] }> {
+  const folders: Array<{ folder: VaultFolder; path: VaultItemPathSegment[] }> = []
+  walkVaultItems(items, ({ item, path }) => {
     if (item.type === 'folder') folders.push({ folder: item, path })
   })
   return folders
 }
 
-export function findNotebookItem(items: NotebookTreeItem[], itemId: string): NotebookWalkEntry | null {
-  let found: NotebookWalkEntry | null = null
-  walkNotebookItems(items, (entry) => {
+export function findVaultItem(items: VaultTreeItem[], itemId: string): VaultWalkEntry | null {
+  let found: VaultWalkEntry | null = null
+  walkVaultItems(items, (entry) => {
     if (entry.item.id === itemId) {
       found = entry
       return false
@@ -209,8 +209,8 @@ export function findNotebookItem(items: NotebookTreeItem[], itemId: string): Not
   return found
 }
 
-export function findNotebookNote(items: NotebookTreeItem[], noteId: string): NotebookNotePath | null {
-  const entry = findNotebookItem(items, noteId)
+export function findVaultNote(items: VaultTreeItem[], noteId: string): VaultNotePath | null {
+  const entry = findVaultItem(items, noteId)
   if (!entry || entry.item.type !== 'note') return null
   return {
     note: entry.item,
@@ -219,11 +219,11 @@ export function findNotebookNote(items: NotebookTreeItem[], noteId: string): Not
   }
 }
 
-export function findNotebookFolder(
-  items: NotebookTreeItem[],
+export function findVaultFolder(
+  items: VaultTreeItem[],
   folderId: string,
-): { folder: NotebookFolder; parentFolderId: string | null; path: NotebookItemPathSegment[] } | null {
-  const entry = findNotebookItem(items, folderId)
+): { folder: VaultFolder; parentFolderId: string | null; path: VaultItemPathSegment[] } | null {
+  const entry = findVaultItem(items, folderId)
   if (!entry || entry.item.type !== 'folder') return null
   return {
     folder: entry.item,
@@ -232,9 +232,9 @@ export function findNotebookFolder(
   }
 }
 
-export function getFirstNotebookNote(items: NotebookTreeItem[]): NotebookNote | null {
-  let first: NotebookNote | null = null
-  walkNotebookItems(items, ({ item }) => {
+export function getFirstVaultNote(items: VaultTreeItem[]): VaultNote | null {
+  let first: VaultNote | null = null
+  walkVaultItems(items, ({ item }) => {
     if (item.type === 'note') {
       first = item
       return false
@@ -244,38 +244,38 @@ export function getFirstNotebookNote(items: NotebookTreeItem[]): NotebookNote | 
   return first
 }
 
-export function getNotebookNoteIdSet(items: NotebookTreeItem[]): Set<string> {
+export function getVaultNoteIdSet(items: VaultTreeItem[]): Set<string> {
   const noteIds = new Set<string>()
-  walkNotebookItems(items, ({ item }) => {
+  walkVaultItems(items, ({ item }) => {
     if (item.type === 'note') noteIds.add(item.id)
   })
   return noteIds
 }
 
-function normalizeNotebookTabStatus(status: unknown): NotebookTabStatus {
+function normalizeVaultTabStatus(status: unknown): VaultTabStatus {
   return status === 'retained' ? 'retained' : 'temporary'
 }
 
-function isNotebookTabRecord(value: unknown): value is Record<string, unknown> {
+function isVaultTabRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-export function normalizeNotebookTabsForItems(
+export function normalizeVaultTabsForItems(
   rawTabs: unknown,
-  items: NotebookTreeItem[],
+  items: VaultTreeItem[],
   activeNoteId = '',
-): NotebookTab[] {
-  const noteIds = getNotebookNoteIdSet(items)
-  const tabs: NotebookTab[] = []
+): VaultTab[] {
+  const noteIds = getVaultNoteIdSet(items)
+  const tabs: VaultTab[] = []
   const tabNoteIds = new Set<string>()
   let hasTemporaryTab = false
 
   if (Array.isArray(rawTabs)) {
     rawTabs.forEach((rawTab) => {
-      if (!isNotebookTabRecord(rawTab)) return
+      if (!isVaultTabRecord(rawTab)) return
       const noteId = typeof rawTab.noteId === 'string' ? rawTab.noteId.trim() : ''
       if (!noteId || !noteIds.has(noteId) || tabNoteIds.has(noteId)) return
-      const status = normalizeNotebookTabStatus(rawTab.status)
+      const status = normalizeVaultTabStatus(rawTab.status)
       if (status === 'temporary') {
         if (hasTemporaryTab) return
         hasTemporaryTab = true
@@ -285,12 +285,12 @@ export function normalizeNotebookTabsForItems(
     })
   }
 
-  const fallbackNoteId = noteIds.has(activeNoteId) ? activeNoteId : getFirstNotebookNote(items)?.id ?? ''
+  const fallbackNoteId = noteIds.has(activeNoteId) ? activeNoteId : getFirstVaultNote(items)?.id ?? ''
   if (!fallbackNoteId) return tabs
 
   if (!tabNoteIds.has(fallbackNoteId)) {
     const temporaryIndex = tabs.findIndex((tab) => tab.status === 'temporary')
-    const fallbackTab: NotebookTab = { noteId: fallbackNoteId, status: 'temporary' }
+    const fallbackTab: VaultTab = { noteId: fallbackNoteId, status: 'temporary' }
     if (temporaryIndex >= 0) {
       tabNoteIds.delete(tabs[temporaryIndex]?.noteId ?? '')
       tabs[temporaryIndex] = fallbackTab
@@ -302,21 +302,21 @@ export function normalizeNotebookTabsForItems(
   return tabs
 }
 
-function notebookTabsEqual(left: readonly NotebookTab[] | undefined, right: readonly NotebookTab[]): boolean {
+function vaultTabsEqual(left: readonly VaultTab[] | undefined, right: readonly VaultTab[]): boolean {
   if (!left || left.length !== right.length) return false
   return left.every((tab, index) => tab.noteId === right[index]?.noteId && tab.status === right[index]?.status)
 }
 
-export function normalizeNotebookOpenTabs(notebook: NotebookState): NotebookState {
-  const openTabs = normalizeNotebookTabsForItems(notebook.openTabs, notebook.items, notebook.activeNoteId)
-  return notebookTabsEqual(notebook.openTabs, openTabs) ? notebook : { ...notebook, openTabs }
+export function normalizeVaultOpenTabs(vault: VaultState): VaultState {
+  const openTabs = normalizeVaultTabsForItems(vault.openTabs, vault.items, vault.activeNoteId)
+  return vaultTabsEqual(vault.openTabs, openTabs) ? vault : { ...vault, openTabs }
 }
 
-function setNotebookActiveTab(notebook: NotebookState, noteId: string, disposition: NotebookTabOpenDisposition): NotebookState {
-  const notePath = findNotebookNote(notebook.items, noteId)
-  if (!notePath) return normalizeNotebookOpenTabs(notebook)
+function setVaultActiveTab(vault: VaultState, noteId: string, disposition: VaultTabOpenDisposition): VaultState {
+  const notePath = findVaultNote(vault.items, noteId)
+  if (!notePath) return normalizeVaultOpenTabs(vault)
 
-  const normalized = normalizeNotebookOpenTabs(notebook)
+  const normalized = normalizeVaultOpenTabs(vault)
   const openTabs = [...(normalized.openTabs ?? [])]
   const existingIndex = openTabs.findIndex((tab) => tab.noteId === noteId)
 
@@ -324,7 +324,7 @@ function setNotebookActiveTab(notebook: NotebookState, noteId: string, dispositi
     if (disposition === 'retained' && openTabs[existingIndex]?.status === 'temporary') {
       openTabs[existingIndex] = { noteId, status: 'retained' }
     }
-    return normalizeNotebookOpenTabs({
+    return normalizeVaultOpenTabs({
       ...normalized,
       activeNoteId: noteId,
       openTabs,
@@ -332,7 +332,7 @@ function setNotebookActiveTab(notebook: NotebookState, noteId: string, dispositi
   }
 
   if (disposition === 'preserve') {
-    return normalizeNotebookOpenTabs({
+    return normalizeVaultOpenTabs({
       ...normalized,
       activeNoteId: noteId,
     })
@@ -340,44 +340,44 @@ function setNotebookActiveTab(notebook: NotebookState, noteId: string, dispositi
 
   if (disposition === 'temporary') {
     const temporaryIndex = openTabs.findIndex((tab) => tab.status === 'temporary')
-    const temporaryTab: NotebookTab = { noteId, status: 'temporary' }
+    const temporaryTab: VaultTab = { noteId, status: 'temporary' }
     if (temporaryIndex >= 0) openTabs[temporaryIndex] = temporaryTab
     else openTabs.push(temporaryTab)
   } else {
     openTabs.push({ noteId, status: 'retained' })
   }
 
-  return normalizeNotebookOpenTabs({
+  return normalizeVaultOpenTabs({
     ...normalized,
     activeNoteId: noteId,
     openTabs,
   })
 }
 
-export function openNotebookTemporaryTab(notebook: NotebookState, noteId: string): NotebookState {
-  return setNotebookActiveTab(notebook, noteId, 'temporary')
+export function openVaultTemporaryTab(vault: VaultState, noteId: string): VaultState {
+  return setVaultActiveTab(vault, noteId, 'temporary')
 }
 
-export function openNotebookRetainedTab(notebook: NotebookState, noteId: string): NotebookState {
-  return setNotebookActiveTab(notebook, noteId, 'retained')
+export function openVaultRetainedTab(vault: VaultState, noteId: string): VaultState {
+  return setVaultActiveTab(vault, noteId, 'retained')
 }
 
-export function focusNotebookOpenTab(notebook: NotebookState, noteId: string): NotebookState {
-  return setNotebookActiveTab(notebook, noteId, 'preserve')
+export function focusVaultOpenTab(vault: VaultState, noteId: string): VaultState {
+  return setVaultActiveTab(vault, noteId, 'preserve')
 }
 
-export function promoteNotebookTemporaryTab(notebook: NotebookState, noteId: string): NotebookState {
-  const normalized = normalizeNotebookOpenTabs(notebook)
+export function promoteVaultTemporaryTab(vault: VaultState, noteId: string): VaultState {
+  const normalized = normalizeVaultOpenTabs(vault)
   const openTabs = (normalized.openTabs ?? []).map((tab) =>
     tab.noteId === noteId && tab.status === 'temporary'
       ? { ...tab, status: 'retained' as const }
       : tab,
   )
-  return notebookTabsEqual(normalized.openTabs, openTabs) ? normalized : { ...normalized, openTabs }
+  return vaultTabsEqual(normalized.openTabs, openTabs) ? normalized : { ...normalized, openTabs }
 }
 
-export function getNotebookRetainedTabCycleTarget(notebook: NotebookState, direction: -1 | 1): string {
-  const normalized = normalizeNotebookOpenTabs(notebook)
+export function getVaultRetainedTabCycleTarget(vault: VaultState, direction: -1 | 1): string {
+  const normalized = normalizeVaultOpenTabs(vault)
   const openTabs = normalized.openTabs ?? []
   const retainedTabs = openTabs
     .map((tab, index) => ({ ...tab, index }))
@@ -398,25 +398,25 @@ export function getNotebookRetainedTabCycleTarget(notebook: NotebookState, direc
   return target?.noteId ?? ''
 }
 
-export function getClosedNotebookTab(notebook: NotebookState, noteId: string): ClosedNotebookTab | null {
-  const normalized = normalizeNotebookOpenTabs(notebook)
+export function getClosedVaultTab(vault: VaultState, noteId: string): ClosedVaultTab | null {
+  const normalized = normalizeVaultOpenTabs(vault)
   const openTabs = normalized.openTabs ?? []
   const index = openTabs.findIndex((tab) => tab.noteId === noteId)
   const tab = openTabs[index]
   return tab ? { ...tab, index } : null
 }
 
-export function restoreClosedNotebookTab(notebook: NotebookState, closedTab: ClosedNotebookTab): NotebookState {
-  if (!findNotebookNote(notebook.items, closedTab.noteId)) return normalizeNotebookOpenTabs(notebook)
+export function restoreClosedVaultTab(vault: VaultState, closedTab: ClosedVaultTab): VaultState {
+  if (!findVaultNote(vault.items, closedTab.noteId)) return normalizeVaultOpenTabs(vault)
 
-  const normalized = normalizeNotebookOpenTabs(notebook)
+  const normalized = normalizeVaultOpenTabs(vault)
   const openTabs = [...(normalized.openTabs ?? [])]
   const existingIndex = openTabs.findIndex((tab) => tab.noteId === closedTab.noteId)
   if (existingIndex >= 0) {
     if (closedTab.status === 'retained' && openTabs[existingIndex]?.status === 'temporary') {
       openTabs[existingIndex] = { noteId: closedTab.noteId, status: 'retained' }
     }
-    return normalizeNotebookOpenTabs({
+    return normalizeVaultOpenTabs({
       ...normalized,
       activeNoteId: closedTab.noteId,
       openTabs,
@@ -429,22 +429,22 @@ export function restoreClosedNotebookTab(notebook: NotebookState, closedTab: Clo
   const boundedIndex = Math.max(0, Math.min(closedTab.index, nextOpenTabs.length))
   nextOpenTabs.splice(boundedIndex, 0, { noteId: closedTab.noteId, status: closedTab.status })
 
-  return normalizeNotebookOpenTabs({
+  return normalizeVaultOpenTabs({
     ...normalized,
     activeNoteId: closedTab.noteId,
     openTabs: nextOpenTabs,
   })
 }
 
-export function closeNotebookTab(notebook: NotebookState, noteId: string): NotebookState {
-  const normalized = normalizeNotebookOpenTabs(notebook)
+export function closeVaultTab(vault: VaultState, noteId: string): VaultState {
+  const normalized = normalizeVaultOpenTabs(vault)
   const openTabs = normalized.openTabs ?? []
   const closingIndex = openTabs.findIndex((tab) => tab.noteId === noteId)
   if (closingIndex < 0) return normalized
 
   const nextOpenTabs = openTabs.filter((tab) => tab.noteId !== noteId)
   if (normalized.activeNoteId !== noteId) {
-    return normalizeNotebookOpenTabs({
+    return normalizeVaultOpenTabs({
       ...normalized,
       openTabs: nextOpenTabs,
     })
@@ -452,23 +452,23 @@ export function closeNotebookTab(notebook: NotebookState, noteId: string): Noteb
 
   const nextActiveTab = nextOpenTabs[closingIndex] ?? nextOpenTabs[closingIndex - 1] ?? null
   if (nextActiveTab) {
-    return normalizeNotebookOpenTabs({
+    return normalizeVaultOpenTabs({
       ...normalized,
       activeNoteId: nextActiveTab.noteId,
       openTabs: nextOpenTabs,
     })
   }
 
-  const fallbackNoteId = getFirstNotebookNote(normalized.items)?.id ?? ''
-  return normalizeNotebookOpenTabs({
+  const fallbackNoteId = getFirstVaultNote(normalized.items)?.id ?? ''
+  return normalizeVaultOpenTabs({
     ...normalized,
     activeNoteId: fallbackNoteId,
     openTabs: fallbackNoteId ? [{ noteId: fallbackNoteId, status: 'temporary' }] : [],
   })
 }
 
-export function reorderNotebookTabs(notebook: NotebookState, sourceNoteId: string, targetIndex: number): NotebookState {
-  const normalized = normalizeNotebookOpenTabs(notebook)
+export function reorderVaultTabs(vault: VaultState, sourceNoteId: string, targetIndex: number): VaultState {
+  const normalized = normalizeVaultOpenTabs(vault)
   const openTabs = [...(normalized.openTabs ?? [])]
   const sourceIndex = openTabs.findIndex((tab) => tab.noteId === sourceNoteId)
   if (sourceIndex < 0) return normalized
@@ -476,53 +476,53 @@ export function reorderNotebookTabs(notebook: NotebookState, sourceNoteId: strin
   if (!tab) return normalized
   const boundedIndex = Math.max(0, Math.min(targetIndex, openTabs.length))
   openTabs.splice(boundedIndex, 0, tab)
-  return notebookTabsEqual(normalized.openTabs, openTabs) ? normalized : { ...normalized, openTabs }
+  return vaultTabsEqual(normalized.openTabs, openTabs) ? normalized : { ...normalized, openTabs }
 }
 
-export function getContainingFolderId(items: NotebookTreeItem[], itemId: string): string | null {
-  const entry = findNotebookItem(items, itemId)
+export function getContainingFolderId(items: VaultTreeItem[], itemId: string): string | null {
+  const entry = findVaultItem(items, itemId)
   return entry?.parentFolderId ?? null
 }
 
-export function getNotebookNoteFolderPath(items: NotebookTreeItem[], noteId: string): NotebookItemPathSegment[] {
-  const notePath = findNotebookNote(items, noteId)
+export function getVaultNoteFolderPath(items: VaultTreeItem[], noteId: string): VaultItemPathSegment[] {
+  const notePath = findVaultNote(items, noteId)
   if (!notePath) return []
   return notePath.path.slice(0, -1)
 }
 
-export function getNotebookNotePathLabel(items: NotebookTreeItem[], noteId: string): string {
-  const notePath = findNotebookNote(items, noteId)
+export function getVaultNotePathLabel(items: VaultTreeItem[], noteId: string): string {
+  const notePath = findVaultNote(items, noteId)
   if (!notePath) return ''
   return notePath.path.map((segment) => segment.title).join('/')
 }
 
-export function getNotebookFolderPathLabel(items: NotebookTreeItem[], folderId: string | null): string {
+export function getVaultFolderPathLabel(items: VaultTreeItem[], folderId: string | null): string {
   if (!folderId) return ''
-  const folder = findNotebookFolder(items, folderId)
+  const folder = findVaultFolder(items, folderId)
   if (!folder) return ''
   return folder.path.map((segment) => segment.title).join('/')
 }
 
-export function ensureValidActiveNote(notebook: NotebookState): NotebookState {
-  if (findNotebookNote(notebook.items, notebook.activeNoteId)) return normalizeNotebookOpenTabs(notebook)
-  const firstNote = getFirstNotebookNote(notebook.items)
+export function ensureValidActiveNote(vault: VaultState): VaultState {
+  if (findVaultNote(vault.items, vault.activeNoteId)) return normalizeVaultOpenTabs(vault)
+  const firstNote = getFirstVaultNote(vault.items)
   if (firstNote) {
-    return normalizeNotebookOpenTabs({
-      ...notebook,
+    return normalizeVaultOpenTabs({
+      ...vault,
       activeNoteId: firstNote.id,
     })
   }
-  return normalizeNotebookOpenTabs({
-    ...notebook,
+  return normalizeVaultOpenTabs({
+    ...vault,
     activeNoteId: '',
   })
 }
 
 function updateFolderChildren(
-  items: NotebookTreeItem[],
+  items: VaultTreeItem[],
   folderId: string | null,
-  updater: (children: NotebookTreeItem[]) => NotebookTreeItem[],
-): { items: NotebookTreeItem[]; changed: boolean } {
+  updater: (children: VaultTreeItem[]) => VaultTreeItem[],
+): { items: VaultTreeItem[]; changed: boolean } {
   if (folderId === null) {
     return { items: updater(items), changed: true }
   }
@@ -549,18 +549,18 @@ function updateFolderChildren(
   return { items: nextItems, changed }
 }
 
-const NOTEBOOK_ITEM_TITLE_COLLATOR = new Intl.Collator(undefined, {
+const VAULT_ITEM_TITLE_COLLATOR = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: 'base',
 })
 
-type NotebookSortDirection = 'asc' | 'desc'
-type NotebookDateSortField = 'createdAt' | 'updatedAt'
-type NotebookSortDescriptor =
-  | { kind: 'title'; direction: NotebookSortDirection }
-  | { kind: 'date'; direction: NotebookSortDirection; field: NotebookDateSortField }
+type VaultSortDirection = 'asc' | 'desc'
+type VaultDateSortField = 'createdAt' | 'updatedAt'
+type VaultSortDescriptor =
+  | { kind: 'title'; direction: VaultSortDirection }
+  | { kind: 'date'; direction: VaultSortDirection; field: VaultDateSortField }
 
-function getNotebookSortDescriptor(sortMode: TabSortMode): NotebookSortDescriptor {
+function getVaultSortDescriptor(sortMode: TabSortMode): VaultSortDescriptor {
   switch (sortMode) {
     case 'alpha-asc':
       return { kind: 'title', direction: 'asc' }
@@ -577,25 +577,25 @@ function getNotebookSortDescriptor(sortMode: TabSortMode): NotebookSortDescripto
   }
 }
 
-function normalizeNotebookSortTimestamp(value: string | undefined): number | null {
+function normalizeVaultSortTimestamp(value: string | undefined): number | null {
   if (!value) return null
   const timestamp = new Date(value).getTime()
   return Number.isFinite(timestamp) ? timestamp : null
 }
 
-function getNotebookItemDateSortValue(
-  item: NotebookTreeItem,
-  field: NotebookDateSortField,
+function getVaultItemDateSortValue(
+  item: VaultTreeItem,
+  field: VaultDateSortField,
   noteBodiesById: Map<string, NoteBody>,
 ): number | null {
   if (item.type === 'note') {
-    return normalizeNotebookSortTimestamp(noteBodiesById.get(item.noteBodyId)?.[field])
+    return normalizeVaultSortTimestamp(noteBodiesById.get(item.noteBodyId)?.[field])
   }
 
   let folderTimestamp: number | null = null
-  walkNotebookItems(item.children, ({ item: child }) => {
+  walkVaultItems(item.children, ({ item: child }) => {
     if (child.type !== 'note') return undefined
-    const childTimestamp = normalizeNotebookSortTimestamp(noteBodiesById.get(child.noteBodyId)?.[field])
+    const childTimestamp = normalizeVaultSortTimestamp(noteBodiesById.get(child.noteBodyId)?.[field])
     if (childTimestamp === null) return undefined
     if (folderTimestamp === null) {
       folderTimestamp = childTimestamp
@@ -609,24 +609,24 @@ function getNotebookItemDateSortValue(
   return folderTimestamp
 }
 
-function sortNotebookSiblingItems(
-  items: NotebookTreeItem[],
+function sortVaultSiblingItems(
+  items: VaultTreeItem[],
   sortMode: TabSortMode,
   noteBodiesById: Map<string, NoteBody>,
-): NotebookTreeItem[] {
-  const descriptor = getNotebookSortDescriptor(sortMode)
+): VaultTreeItem[] {
+  const descriptor = getVaultSortDescriptor(sortMode)
   const sortedItems = items
     .map((item, index) => ({
       item,
       index,
       dateValue: descriptor.kind === 'date'
-        ? getNotebookItemDateSortValue(item, descriptor.field, noteBodiesById)
+        ? getVaultItemDateSortValue(item, descriptor.field, noteBodiesById)
         : null,
     }))
     .sort((left, right) => {
       let comparison: number
       if (descriptor.kind === 'title') {
-        comparison = NOTEBOOK_ITEM_TITLE_COLLATOR.compare(left.item.title, right.item.title)
+        comparison = VAULT_ITEM_TITLE_COLLATOR.compare(left.item.title, right.item.title)
         if (descriptor.direction === 'desc') comparison *= -1
       } else {
         const leftDateValue = left.dateValue
@@ -647,25 +647,25 @@ function sortNotebookSiblingItems(
   return sortedItems.every((item, index) => item === items[index]) ? items : sortedItems
 }
 
-export function sortNotebookItemsInScope(
-  notebook: NotebookState,
+export function sortVaultItemsInScope(
+  vault: VaultState,
   parentFolderId: string | null,
   sortMode: TabSortMode,
   noteBodies: NoteBody[],
-): NotebookState {
+): VaultState {
   const noteBodiesById = new Map(noteBodies.map((body) => [body.id, body]))
   if (parentFolderId === null) {
-    const sortedItems = sortNotebookSiblingItems(notebook.items, sortMode, noteBodiesById)
-    return sortedItems === notebook.items ? notebook : { ...notebook, items: sortedItems }
+    const sortedItems = sortVaultSiblingItems(vault.items, sortMode, noteBodiesById)
+    return sortedItems === vault.items ? vault : { ...vault, items: sortedItems }
   }
 
   let changed = false
-  const sortFolderChildren = (items: NotebookTreeItem[]): NotebookTreeItem[] => {
+  const sortFolderChildren = (items: VaultTreeItem[]): VaultTreeItem[] => {
     let childChanged = false
-    const nextItems = items.map((item): NotebookTreeItem => {
+    const nextItems = items.map((item): VaultTreeItem => {
       if (item.type !== 'folder') return item
       if (item.id === parentFolderId) {
-        const sortedChildren = sortNotebookSiblingItems(item.children, sortMode, noteBodiesById)
+        const sortedChildren = sortVaultSiblingItems(item.children, sortMode, noteBodiesById)
         if (sortedChildren === item.children) return item
         changed = true
         childChanged = true
@@ -679,16 +679,16 @@ export function sortNotebookItemsInScope(
     return childChanged ? nextItems : items
   }
 
-  const items = sortFolderChildren(notebook.items)
-  return changed ? { ...notebook, items } : notebook
+  const items = sortFolderChildren(vault.items)
+  return changed ? { ...vault, items } : vault
 }
 
-function removeNotebookItem(
-  items: NotebookTreeItem[],
+function removeVaultItem(
+  items: VaultTreeItem[],
   itemId: string,
 ): {
-  items: NotebookTreeItem[]
-  removed: NotebookTreeItem | null
+  items: VaultTreeItem[]
+  removed: VaultTreeItem | null
   parentFolderId: string | null
   index: number
 } {
@@ -703,7 +703,7 @@ function removeNotebookItem(
       }
     }
     if (item.type === 'folder') {
-      const childResult = removeNotebookItem(item.children, itemId)
+      const childResult = removeVaultItem(item.children, itemId)
       if (childResult.removed) {
         return {
           items: items.map((candidate) =>
@@ -729,16 +729,16 @@ function removeNotebookItem(
   }
 }
 
-function removeNotebookItems(
-  items: NotebookTreeItem[],
+function removeVaultItems(
+  items: VaultTreeItem[],
   itemIds: Set<string>,
   parentFolderId: string | null = null,
 ): {
-  items: NotebookTreeItem[]
-  removed: Array<{ item: NotebookTreeItem; parentFolderId: string | null; index: number }>
+  items: VaultTreeItem[]
+  removed: Array<{ item: VaultTreeItem; parentFolderId: string | null; index: number }>
 } {
-  const removed: Array<{ item: NotebookTreeItem; parentFolderId: string | null; index: number }> = []
-  const nextItems: NotebookTreeItem[] = []
+  const removed: Array<{ item: VaultTreeItem; parentFolderId: string | null; index: number }> = []
+  const nextItems: VaultTreeItem[] = []
 
   items.forEach((item, index) => {
     if (itemIds.has(item.id)) {
@@ -747,7 +747,7 @@ function removeNotebookItems(
     }
 
     if (item.type === 'folder') {
-      const childResult = removeNotebookItems(item.children, itemIds, item.id)
+      const childResult = removeVaultItems(item.children, itemIds, item.id)
       removed.push(...childResult.removed)
       nextItems.push(
         childResult.items === item.children
@@ -769,43 +769,43 @@ function removeNotebookItems(
   }
 }
 
-export function insertNotebookItem(
-  notebook: NotebookState,
-  item: NotebookTreeItem,
+export function insertVaultItem(
+  vault: VaultState,
+  item: VaultTreeItem,
   parentFolderId: string | null = null,
   index?: number,
-): NotebookState {
-  const result = updateFolderChildren(notebook.items, parentFolderId, (children) => {
+): VaultState {
+  const result = updateFolderChildren(vault.items, parentFolderId, (children) => {
     const boundedIndex = typeof index === 'number' ? Math.max(0, Math.min(index, children.length)) : children.length
     return [...children.slice(0, boundedIndex), item, ...children.slice(boundedIndex)]
   })
-  if (!result.changed) return notebook
+  if (!result.changed) return vault
   return ensureValidActiveNote({
-    ...notebook,
+    ...vault,
     items: result.items,
   })
 }
 
-export function moveNotebookItem(
-  notebook: NotebookState,
+export function moveVaultItem(
+  vault: VaultState,
   itemId: string,
   targetParentFolderId: string | null,
   targetIndex: number,
-): NotebookState {
-  const source = findNotebookItem(notebook.items, itemId)
-  if (!source) return notebook
+): VaultState {
+  const source = findVaultItem(vault.items, itemId)
+  if (!source) return vault
   if (source.item.type === 'folder' && targetParentFolderId) {
-    if (targetParentFolderId === source.item.id || findNotebookItem(source.item.children, targetParentFolderId)) {
-      return notebook
+    if (targetParentFolderId === source.item.id || findVaultItem(source.item.children, targetParentFolderId)) {
+      return vault
     }
   }
 
-  const removal = removeNotebookItem(notebook.items, itemId)
-  if (!removal.removed) return notebook
+  const removal = removeVaultItem(vault.items, itemId)
+  if (!removal.removed) return vault
 
   const targetParentExists =
-    targetParentFolderId === null || Boolean(findNotebookFolder(removal.items, targetParentFolderId))
-  if (!targetParentExists) return notebook
+    targetParentFolderId === null || Boolean(findVaultFolder(removal.items, targetParentFolderId))
+  if (!targetParentExists) return vault
 
   const adjustedTargetIndex =
     removal.parentFolderId === targetParentFolderId && removal.index < targetIndex
@@ -813,35 +813,35 @@ export function moveNotebookItem(
       : targetIndex
   const result = updateFolderChildren(removal.items, targetParentFolderId, (children) => {
     const boundedIndex = Math.max(0, Math.min(adjustedTargetIndex, children.length))
-    return [...children.slice(0, boundedIndex), removal.removed as NotebookTreeItem, ...children.slice(boundedIndex)]
+    return [...children.slice(0, boundedIndex), removal.removed as VaultTreeItem, ...children.slice(boundedIndex)]
   })
-  if (!result.changed) return notebook
+  if (!result.changed) return vault
 
   return ensureValidActiveNote({
-    ...notebook,
+    ...vault,
     items: result.items,
   })
 }
 
-export function moveNotebookItems(
-  notebook: NotebookState,
+export function moveVaultItems(
+  vault: VaultState,
   itemIds: string[],
   targetParentFolderId: string | null,
   targetIndex: number,
-): NotebookState {
+): VaultState {
   const uniqueItemIds = Array.from(new Set(itemIds))
-  if (uniqueItemIds.length === 0) return notebook
+  if (uniqueItemIds.length === 0) return vault
 
-  const sources = uniqueItemIds.map((itemId) => findNotebookItem(notebook.items, itemId))
-  if (sources.some((source) => !source || source.item.type !== 'note')) return notebook
+  const sources = uniqueItemIds.map((itemId) => findVaultItem(vault.items, itemId))
+  if (sources.some((source) => !source || source.item.type !== 'note')) return vault
 
   const itemIdSet = new Set(uniqueItemIds)
-  const removal = removeNotebookItems(notebook.items, itemIdSet)
-  if (removal.removed.length !== uniqueItemIds.length) return notebook
+  const removal = removeVaultItems(vault.items, itemIdSet)
+  if (removal.removed.length !== uniqueItemIds.length) return vault
 
   const targetParentExists =
-    targetParentFolderId === null || Boolean(findNotebookFolder(removal.items, targetParentFolderId))
-  if (!targetParentExists) return notebook
+    targetParentFolderId === null || Boolean(findVaultFolder(removal.items, targetParentFolderId))
+  if (!targetParentExists) return vault
 
   const removedBeforeTarget = removal.removed.filter(
     (entry) => entry.parentFolderId === targetParentFolderId && entry.index < targetIndex,
@@ -852,18 +852,18 @@ export function moveNotebookItems(
     const boundedIndex = Math.max(0, Math.min(adjustedTargetIndex, children.length))
     return [...children.slice(0, boundedIndex), ...movingItems, ...children.slice(boundedIndex)]
   })
-  if (!result.changed) return notebook
+  if (!result.changed) return vault
 
   return ensureValidActiveNote({
-    ...notebook,
+    ...vault,
     items: result.items,
   })
 }
 
-export function renameNotebookItem(notebook: NotebookState, itemId: string, title: string): NotebookState {
+export function renameVaultItem(vault: VaultState, itemId: string, title: string): VaultState {
   const nextTitle = ensureTitle(title, 'Untitled')
   let changed = false
-  const renameItems = (items: NotebookTreeItem[]): NotebookTreeItem[] =>
+  const renameItems = (items: VaultTreeItem[]): VaultTreeItem[] =>
     items.map((item) => {
       if (item.id === itemId) {
         changed = true
@@ -876,14 +876,14 @@ export function renameNotebookItem(notebook: NotebookState, itemId: string, titl
       const children = renameItems(item.children)
       return children === item.children ? item : { ...item, children }
     })
-  const items = renameItems(notebook.items)
-  return changed ? { ...notebook, items } : notebook
+  const items = renameItems(vault.items)
+  return changed ? { ...vault, items } : vault
 }
 
-export function deleteNotebookItem(notebook: NotebookState, itemId: string, idGenerator: IdGenerator = createRandomId): NotebookState {
-  const removal = removeNotebookItem(notebook.items, itemId)
-  if (!removal.removed) return notebook
-  const deletedEntry: DeletedNotebookItem = {
+export function deleteVaultItem(vault: VaultState, itemId: string, idGenerator: IdGenerator = createRandomId): VaultState {
+  const removal = removeVaultItem(vault.items, itemId)
+  if (!removal.removed) return vault
+  const deletedEntry: DeletedVaultItem = {
     id: idGenerator(),
     deletedAt: Date.now(),
     item: removal.removed,
@@ -891,44 +891,44 @@ export function deleteNotebookItem(notebook: NotebookState, itemId: string, idGe
     originalIndex: removal.index,
   }
   return ensureValidActiveNote({
-    ...notebook,
+    ...vault,
     items: removal.items,
-    deletedItems: [deletedEntry, ...notebook.deletedItems],
+    deletedItems: [deletedEntry, ...vault.deletedItems],
   })
 }
 
-export function restoreDeletedNotebookItem(notebook: NotebookState, deletedItemId: string): NotebookState {
-  const entry = notebook.deletedItems.find((candidate) => candidate.id === deletedItemId)
-  if (!entry) return notebook
-  const deletedItems = notebook.deletedItems.filter((candidate) => candidate.id !== deletedItemId)
-  const targetFolderExists = entry.originalParentFolderId === null || Boolean(findNotebookFolder(notebook.items, entry.originalParentFolderId))
+export function restoreDeletedVaultItem(vault: VaultState, deletedItemId: string): VaultState {
+  const entry = vault.deletedItems.find((candidate) => candidate.id === deletedItemId)
+  if (!entry) return vault
+  const deletedItems = vault.deletedItems.filter((candidate) => candidate.id !== deletedItemId)
+  const targetFolderExists = entry.originalParentFolderId === null || Boolean(findVaultFolder(vault.items, entry.originalParentFolderId))
   const parentFolderId = targetFolderExists ? entry.originalParentFolderId : null
-  const restored = insertNotebookItem(
+  const restored = insertVaultItem(
     {
-      ...notebook,
+      ...vault,
       deletedItems,
     },
     entry.item,
     parentFolderId,
     entry.originalIndex,
   )
-  return normalizeNotebookOpenTabs({
+  return normalizeVaultOpenTabs({
     ...restored,
     activeNoteId: entry.item.type === 'note' ? entry.item.id : restored.activeNoteId,
   })
 }
 
-export function purgeOldDeletedNotebookItems(notebook: NotebookState, now = Date.now()): NotebookState {
-  const days = notebook.settings.autoRemoveDeletedDays
-  if (!Number.isFinite(days) || days <= 0) return notebook
+export function purgeOldDeletedVaultItems(vault: VaultState, now = Date.now()): VaultState {
+  const days = vault.settings.autoRemoveDeletedDays
+  if (!Number.isFinite(days) || days <= 0) return vault
   const cutoff = now - days * 24 * 60 * 60 * 1000
-  const deletedItems = notebook.deletedItems.filter((entry) => entry.deletedAt >= cutoff)
-  return deletedItems.length === notebook.deletedItems.length ? notebook : { ...notebook, deletedItems }
+  const deletedItems = vault.deletedItems.filter((entry) => entry.deletedAt >= cutoff)
+  return deletedItems.length === vault.deletedItems.length ? vault : { ...vault, deletedItems }
 }
 
-export function replaceNotebookNoteBodyId(notebook: NotebookState, noteId: string, noteBodyId: string): NotebookState {
+export function replaceVaultNoteBodyId(vault: VaultState, noteId: string, noteBodyId: string): VaultState {
   let changed = false
-  const replaceItems = (items: NotebookTreeItem[]): NotebookTreeItem[] =>
+  const replaceItems = (items: VaultTreeItem[]): VaultTreeItem[] =>
     items.map((item) => {
       if (item.type === 'note') {
         if (item.id !== noteId || item.noteBodyId === noteBodyId) return item
@@ -941,8 +941,8 @@ export function replaceNotebookNoteBodyId(notebook: NotebookState, noteId: strin
       const children = replaceItems(item.children)
       return children === item.children ? item : { ...item, children }
     })
-  const items = replaceItems(notebook.items)
-  return changed ? { ...notebook, items } : notebook
+  const items = replaceItems(vault.items)
+  return changed ? { ...vault, items } : vault
 }
 
 type NoteBodyLocation = {
@@ -950,7 +950,7 @@ type NoteBodyLocation = {
   noteBodyId: string
 }
 
-function collectNoteBodyLocations(items: NotebookTreeItem[], locations: NoteBodyLocation[] = []): NoteBodyLocation[] {
+function collectNoteBodyLocations(items: VaultTreeItem[], locations: NoteBodyLocation[] = []): NoteBodyLocation[] {
   items.forEach((item) => {
     if (item.type === 'note') {
       locations.push({ noteId: item.id, noteBodyId: item.noteBodyId })
@@ -961,12 +961,12 @@ function collectNoteBodyLocations(items: NotebookTreeItem[], locations: NoteBody
   return locations
 }
 
-function replaceNotebookItemNoteBodyIds(
-  items: NotebookTreeItem[],
+function replaceVaultItemNoteBodyIds(
+  items: VaultTreeItem[],
   replacements: Map<string, string>,
-): { items: NotebookTreeItem[]; changed: boolean } {
+): { items: VaultTreeItem[]; changed: boolean } {
   let changed = false
-  const nextItems = items.map((item): NotebookTreeItem => {
+  const nextItems = items.map((item): VaultTreeItem => {
     if (item.type === 'note') {
       const noteBodyId = replacements.get(item.id)
       if (!noteBodyId || noteBodyId === item.noteBodyId) return item
@@ -974,7 +974,7 @@ function replaceNotebookItemNoteBodyIds(
       return { ...item, noteBodyId }
     }
 
-    const childResult = replaceNotebookItemNoteBodyIds(item.children, replacements)
+    const childResult = replaceVaultItemNoteBodyIds(item.children, replacements)
     if (!childResult.changed) return item
     changed = true
     return { ...item, children: childResult.items }
@@ -982,10 +982,10 @@ function replaceNotebookItemNoteBodyIds(
   return { items: nextItems, changed }
 }
 
-function replaceDeletedNotebookItemNoteBodyIds(
-  item: NotebookTreeItem,
+function replaceDeletedVaultItemNoteBodyIds(
+  item: VaultTreeItem,
   replacements: Map<string, string>,
-): { item: NotebookTreeItem; changed: boolean } {
+): { item: VaultTreeItem; changed: boolean } {
   if (item.type === 'note') {
     const noteBodyId = replacements.get(item.id)
     return noteBodyId && noteBodyId !== item.noteBodyId
@@ -993,7 +993,7 @@ function replaceDeletedNotebookItemNoteBodyIds(
       : { item, changed: false }
   }
 
-  const childResult = replaceNotebookItemNoteBodyIds(item.children, replacements)
+  const childResult = replaceVaultItemNoteBodyIds(item.children, replacements)
   return childResult.changed
     ? { item: { ...item, children: childResult.items }, changed: true }
     : { item, changed: false }
@@ -1001,10 +1001,10 @@ function replaceDeletedNotebookItemNoteBodyIds(
 
 export function materializeSyncedNoteBodiesInState(
   state: AppState,
-  idGenerator: IdGenerator = createReservedIdAllocator(collectNotebookIds(state)),
+  idGenerator: IdGenerator = createReservedIdAllocator(collectVaultIds(state)),
 ): AppState {
-  const locations = collectNoteBodyLocations(state.notebook.items)
-  state.notebook.deletedItems.forEach((entry) => collectNoteBodyLocations([entry.item], locations))
+  const locations = collectNoteBodyLocations(state.vault.items)
+  state.vault.deletedItems.forEach((entry) => collectNoteBodyLocations([entry.item], locations))
 
   const locationsByBodyId = new Map<string, NoteBodyLocation[]>()
   locations.forEach((location) => {
@@ -1039,10 +1039,10 @@ export function materializeSyncedNoteBodiesInState(
 
   if (replacements.size === 0) return state
 
-  const notebookItemsResult = replaceNotebookItemNoteBodyIds(state.notebook.items, replacements)
+  const vaultItemsResult = replaceVaultItemNoteBodyIds(state.vault.items, replacements)
   let deletedItemsChanged = false
-  const deletedItems = state.notebook.deletedItems.map((entry) => {
-    const itemResult = replaceDeletedNotebookItemNoteBodyIds(entry.item, replacements)
+  const deletedItems = state.vault.deletedItems.map((entry) => {
+    const itemResult = replaceDeletedVaultItemNoteBodyIds(entry.item, replacements)
     if (!itemResult.changed) return entry
     deletedItemsChanged = true
     return { ...entry, item: itemResult.item }
@@ -1050,19 +1050,19 @@ export function materializeSyncedNoteBodiesInState(
 
   return {
     ...state,
-    notebook: {
-      ...state.notebook,
-      items: notebookItemsResult.items,
-      deletedItems: deletedItemsChanged ? deletedItems : state.notebook.deletedItems,
+    vault: {
+      ...state.vault,
+      items: vaultItemsResult.items,
+      deletedItems: deletedItemsChanged ? deletedItems : state.vault.deletedItems,
     },
     noteBodies: [...state.noteBodies, ...noteBodies],
   }
 }
 
-export function replaceNotebookNoteBody(state: AppState, noteId: string, noteBody: NoteBody, aisleBodies: NoteAisleBody[]): AppState {
+export function replaceVaultNoteBody(state: AppState, noteId: string, noteBody: NoteBody, aisleBodies: NoteAisleBody[]): AppState {
   return {
     ...state,
-    notebook: replaceNotebookNoteBodyId(state.notebook, noteId, noteBody.id),
+    vault: replaceVaultNoteBodyId(state.vault, noteId, noteBody.id),
     noteBodies: [...state.noteBodies.filter((body) => body.id !== noteBody.id), noteBody],
     noteAisleBodies: [
       ...(state.noteAisleBodies ?? []).filter((body) => !aisleBodies.some((aisleBody) => aisleBody.id === body.id)),
@@ -1092,30 +1092,30 @@ function countAisleBodyReferences(noteBodies: NoteBody[], aisleBodyId: string): 
   )
 }
 
-export function decoupleNotebookNoteBodyInState(
+export function decoupleVaultNoteBodyInState(
   state: AppState,
   noteId: string,
-  idGenerator: IdGenerator = createReservedIdAllocator(collectNotebookIds(state)),
+  idGenerator: IdGenerator = createReservedIdAllocator(collectVaultIds(state)),
 ): AppState {
-  const notePath = findNotebookNote(state.notebook.items, noteId)
+  const notePath = findVaultNote(state.vault.items, noteId)
   const body = notePath ? state.noteBodies.find((candidate) => candidate.id === notePath.note.noteBodyId) : null
-  if (!notePath || !body || !isNoteBodyLinked(state.notebook.items, body.id)) return state
+  if (!notePath || !body || !isNoteBodyLinked(state.vault.items, body.id)) return state
   const cloned = cloneNoteBodyAsIndependentCopy(body, state.noteAisleBodies, idGenerator)
   return {
     ...state,
-    notebook: replaceNotebookNoteBodyId(state.notebook, notePath.note.id, cloned.noteBody.id),
+    vault: replaceVaultNoteBodyId(state.vault, notePath.note.id, cloned.noteBody.id),
     noteBodies: [...state.noteBodies, cloned.noteBody],
     noteAisleBodies: [...(state.noteAisleBodies ?? []), ...cloned.aisleBodies],
   }
 }
 
-export function decoupleNotebookAisleBodyInState(
+export function decoupleVaultAisleBodyInState(
   state: AppState,
   noteId: string,
   aisleId: string,
-  idGenerator: IdGenerator = createReservedIdAllocator(collectNotebookIds(state)),
+  idGenerator: IdGenerator = createReservedIdAllocator(collectVaultIds(state)),
 ): AppState {
-  const notePath = findNotebookNote(state.notebook.items, noteId)
+  const notePath = findVaultNote(state.vault.items, noteId)
   const noteBody = notePath ? state.noteBodies.find((candidate) => candidate.id === notePath.note.noteBodyId) : null
   const aisle = noteBody?.aisles.find((candidate) => candidate.id === aisleId)
   if (!noteBody || !aisle || countAisleBodyReferences(state.noteBodies, aisle.aisleBodyId) <= 1) return state
@@ -1144,19 +1144,19 @@ export function decoupleNotebookAisleBodyInState(
   }
 }
 
-export function createNotebookNoteInState(
+export function createVaultNoteInState(
   state: AppState,
   title: string,
-  parentFolderId: string | null = getContainingFolderId(state.notebook.items, state.notebook.activeNoteId),
+  parentFolderId: string | null = getContainingFolderId(state.vault.items, state.vault.activeNoteId),
   markdown = '',
-  idGenerator: IdGenerator = createReservedIdAllocator(collectNotebookIds(state)),
+  idGenerator: IdGenerator = createReservedIdAllocator(collectVaultIds(state)),
   index?: number,
-): CreatedNotebookNote {
+): CreatedVaultNote {
   const { noteBody, aisleBody, aisleId, aisleBodyId } = createNoteBodyWithAisle(markdown, idGenerator)
-  const note = createNotebookNote(title, noteBody.id, idGenerator)
-  const notebook = openNotebookRetainedTab(
+  const note = createVaultNote(title, noteBody.id, idGenerator)
+  const vault = openVaultRetainedTab(
     {
-      ...insertNotebookItem(state.notebook, note, parentFolderId, index),
+      ...insertVaultItem(state.vault, note, parentFolderId, index),
       activeNoteId: note.id,
     },
     note.id,
@@ -1164,7 +1164,7 @@ export function createNotebookNoteInState(
   return {
     state: {
       ...state,
-      notebook,
+      vault,
       noteBodies: [...state.noteBodies, noteBody],
       noteAisleBodies: [...(state.noteAisleBodies ?? []), aisleBody],
     },
@@ -1175,50 +1175,50 @@ export function createNotebookNoteInState(
   }
 }
 
-export function createNotebookFolderInState(
+export function createVaultFolderInState(
   state: AppState,
   title: string,
-  parentFolderId: string | null = getContainingFolderId(state.notebook.items, state.notebook.activeNoteId),
-  idGenerator: IdGenerator = createReservedIdAllocator(collectNotebookIds(state)),
+  parentFolderId: string | null = getContainingFolderId(state.vault.items, state.vault.activeNoteId),
+  idGenerator: IdGenerator = createReservedIdAllocator(collectVaultIds(state)),
   index?: number,
-): CreatedNotebookFolder {
-  const folder = createNotebookFolder(title, [], idGenerator)
+): CreatedVaultFolder {
+  const folder = createVaultFolder(title, [], idGenerator)
   return {
     state: {
       ...state,
-      notebook: insertNotebookItem(state.notebook, folder, parentFolderId, index),
+      vault: insertVaultItem(state.vault, folder, parentFolderId, index),
     },
     folderId: folder.id,
   }
 }
 
-export function deleteNotebookItemInState(
+export function deleteVaultItemInState(
   state: AppState,
   itemId: string,
-  idGenerator: IdGenerator = createReservedIdAllocator(collectNotebookIds(state)),
+  idGenerator: IdGenerator = createReservedIdAllocator(collectVaultIds(state)),
 ): AppState {
   return {
     ...state,
-    notebook: deleteNotebookItem(state.notebook, itemId, idGenerator),
+    vault: deleteVaultItem(state.vault, itemId, idGenerator),
   }
 }
 
-export function restoreDeletedNotebookItemInState(state: AppState, deletedItemId: string): AppState {
+export function restoreDeletedVaultItemInState(state: AppState, deletedItemId: string): AppState {
   return {
     ...state,
-    notebook: restoreDeletedNotebookItem(state.notebook, deletedItemId),
+    vault: restoreDeletedVaultItem(state.vault, deletedItemId),
   }
 }
 
-export function collectNotebookIds(state: AppState): Set<string> {
+export function collectVaultIds(state: AppState): Set<string> {
   const ids = new Set<string>()
-  walkNotebookItems(state.notebook.items, ({ item }) => {
+  walkVaultItems(state.vault.items, ({ item }) => {
     ids.add(item.id)
     if (item.type === 'note') ids.add(item.noteBodyId)
   })
-  state.notebook.deletedItems.forEach((entry) => {
+  state.vault.deletedItems.forEach((entry) => {
     ids.add(entry.id)
-    walkNotebookItems([entry.item], ({ item }) => {
+    walkVaultItems([entry.item], ({ item }) => {
       ids.add(item.id)
       if (item.type === 'note') ids.add(item.noteBodyId)
     })
@@ -1234,15 +1234,15 @@ export function collectNotebookIds(state: AppState): Set<string> {
   return ids
 }
 
-export function getFolderNotesRecursive(items: NotebookTreeItem[], folderId: string | null): NotebookNotePath[] {
-  if (folderId === null) return listNotebookNotes(items)
-  const folder = findNotebookFolder(items, folderId)
-  return folder ? listNotebookNotes(folder.folder.children) : []
+export function getFolderNotesRecursive(items: VaultTreeItem[], folderId: string | null): VaultNotePath[] {
+  if (folderId === null) return listVaultNotes(items)
+  const folder = findVaultFolder(items, folderId)
+  return folder ? listVaultNotes(folder.folder.children) : []
 }
 
-export function isNoteBodyLinked(items: NotebookTreeItem[], noteBodyId: string): boolean {
+export function isNoteBodyLinked(items: VaultTreeItem[], noteBodyId: string): boolean {
   let count = 0
-  walkNotebookItems(items, ({ item }) => {
+  walkVaultItems(items, ({ item }) => {
     if (item.type === 'note' && item.noteBodyId === noteBodyId) {
       count += 1
       if (count > 1) return false

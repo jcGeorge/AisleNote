@@ -3,14 +3,14 @@ import { parseSavedState } from './app-state'
 import { DEFAULT_SCRATCHPAD_MARKDOWN, createDefaultAppState } from './default-app-state.js'
 
 describe('default app state', () => {
-  it('creates a schema-2 notebook state', () => {
+  it('creates a schema-2 vault state', () => {
     const state = createDefaultAppState()
     const scratchpadBody = state.noteBodies.find((body) => body.id === state.scratchpad?.noteBodyId)
     const scratchpadAisleBody = state.noteAisleBodies.find(
       (body) => body.id === scratchpadBody?.aisles[0]?.aisleBodyId,
     )
 
-    expect(state.notebook.items[0]).toMatchObject({ type: 'note', title: 'Welcome' })
+    expect(state.vault.items[0]).toMatchObject({ type: 'note', title: 'Welcome' })
     expect(state.theme).toBe('dark')
     expect(state.noteAisleBodies[0]).toMatchObject({ markdown: '' })
     expect(scratchpadAisleBody?.markdown).toBe(DEFAULT_SCRATCHPAD_MARKDOWN)

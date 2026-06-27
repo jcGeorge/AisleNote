@@ -36,7 +36,7 @@ const saveOptions: FrontmatterSaveOptions = {
 function createState(templates: FrontmatterTemplate[] = [template]): AppState {
   return {
     theme: 'dark',
-    notebook: {
+    vault: {
       activeNoteId: 'note-target',
       items: [
         { type: 'note', id: 'note-source', title: 'Source', noteBodyId: 'body-source' },

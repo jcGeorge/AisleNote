@@ -1,6 +1,6 @@
 import type { AppState, NoteLocation } from '../types/app'
 import { buildNoteLocationKey, getLocationInfo } from './note-locations'
-import { listNotebookNotes } from '../state/notebook'
+import { listVaultNotes } from '../state/vault'
 
 export const DEFAULT_SAFE_NOTE_LOCATION: NoteLocation = {
   noteId: '',
@@ -44,7 +44,7 @@ export function getSafeNoteSelection(
   if (preferredSelection && !isExcluded(preferredSelection.location, options.excludedLocation)) {
     return preferredSelection
   }
-  for (const { note } of listNotebookNotes(sourceState.notebook.items)) {
+  for (const { note } of listVaultNotes(sourceState.vault.items)) {
     const location = { noteId: note.id }
     if (!isExcluded(location, options.excludedLocation)) {
       return {
@@ -59,11 +59,11 @@ export function getSafeNoteSelection(
 }
 
 export function selectSafeNoteLocation(sourceState: AppState, location: NoteLocation): AppState {
-  if (!location.noteId || sourceState.notebook.activeNoteId === location.noteId) return sourceState
+  if (!location.noteId || sourceState.vault.activeNoteId === location.noteId) return sourceState
   return {
     ...sourceState,
-    notebook: {
-      ...sourceState.notebook,
+    vault: {
+      ...sourceState.vault,
       activeNoteId: location.noteId,
     },
   }

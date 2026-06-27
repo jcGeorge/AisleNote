@@ -3,10 +3,10 @@ import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type { FrontmatterTemplate } from '../types/app'
-import type { NotebookFrontmatterModalState } from './NotebookApp'
+import type { VaultFrontmatterModalState } from './VaultApp'
 
-let NotebookFrontmatterModal: typeof import('./NotebookApp').NotebookFrontmatterModal
-const notebookAppSource = readFileSync(new URL('./NotebookApp.tsx', import.meta.url), 'utf8')
+let VaultFrontmatterModal: typeof import('./VaultApp').VaultFrontmatterModal
+const vaultAppSource = readFileSync(new URL('./VaultApp.tsx', import.meta.url), 'utf8')
 const overlaysCss = readFileSync(new URL('../styles/overlays.css', import.meta.url), 'utf8')
 
 beforeAll(async () => {
@@ -16,7 +16,7 @@ beforeAll(async () => {
       configurable: true,
     })
   }
-  ;({ NotebookFrontmatterModal } = await import('./NotebookApp'))
+  ;({ VaultFrontmatterModal } = await import('./VaultApp'))
 })
 
 const template: FrontmatterTemplate = {
@@ -27,7 +27,7 @@ const template: FrontmatterTemplate = {
   ],
 }
 
-function modal(overrides: Partial<NotebookFrontmatterModalState> = {}): NotebookFrontmatterModalState {
+function modal(overrides: Partial<VaultFrontmatterModalState> = {}): VaultFrontmatterModalState {
   return {
     noteBodyId: 'body-1',
     aisleId: 'aisle-1',
@@ -59,7 +59,7 @@ function modal(overrides: Partial<NotebookFrontmatterModalState> = {}): Notebook
 
 function renderModal(state = modal(), templateList: FrontmatterTemplate[] = [template]) {
   return renderToStaticMarkup(
-    <NotebookFrontmatterModal
+    <VaultFrontmatterModal
       modal={state}
       templates={templateList}
       onCancel={vi.fn()}
@@ -79,7 +79,7 @@ function getControlTag(html: string, className: string): string {
   return html.match(new RegExp(`<[^>]+${className}[^>]*>`))?.[0] ?? ''
 }
 
-describe('NotebookFrontmatterModal', () => {
+describe('VaultFrontmatterModal', () => {
   it('renders structured frontmatter rows instead of a raw YAML textarea', () => {
     const html = renderModal()
 
@@ -175,10 +175,10 @@ describe('NotebookFrontmatterModal', () => {
   })
 
   it('uses container-level row drop indexes for frontmatter row reordering', () => {
-    expect(notebookAppSource).toContain('frontmatterRowDropIndex')
-    expect(notebookAppSource).toContain('data-frontmatter-row-id')
-    expect(notebookAppSource).toContain('reorderFrontmatterItemsByTargetIndex(rows, sourceRowId, targetIndex)')
-    expect(notebookAppSource).not.toContain('dropFrontmatterRow(event, row.id)')
+    expect(vaultAppSource).toContain('frontmatterRowDropIndex')
+    expect(vaultAppSource).toContain('data-frontmatter-row-id')
+    expect(vaultAppSource).toContain('reorderFrontmatterItemsByTargetIndex(rows, sourceRowId, targetIndex)')
+    expect(vaultAppSource).not.toContain('dropFrontmatterRow(event, row.id)')
   })
 
   it('defines stable row drag handle and drop indicator styles', () => {

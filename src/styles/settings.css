@@ -424,7 +424,7 @@
   margin-top: 0.1rem;
 }
 
-.frontmatter-template-footer-actions .notebook-settings-action:last-child {
+.frontmatter-template-footer-actions .vault-settings-action:last-child {
   margin-left: auto;
 }
 
@@ -469,7 +469,7 @@
   height: 1rem;
 }
 
-.frontmatter-template-remove-btn.notebook-settings-action {
+.frontmatter-template-remove-btn.vault-settings-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -895,7 +895,7 @@
   margin-bottom: 0.8rem;
 }
 
-.settings-theme-copy-button.notebook-settings-action {
+.settings-theme-copy-button.vault-settings-action {
   align-self: end;
   min-width: 5.7rem;
   margin-top: 0;
@@ -1198,13 +1198,13 @@
   --visuals-preview-sidebar-row-bg: color-mix(in srgb, var(--app-text) 7%, transparent);
   --visuals-preview-selected-bg: color-mix(in srgb, var(--visuals-preview-primary) 16%, transparent);
   --visuals-preview-selected-border: color-mix(in srgb, var(--visuals-preview-primary) 68%, transparent);
-  --notebook-action-accent: var(--app-primary);
-  --notebook-sidebar-active-bg: color-mix(in srgb, var(--visuals-preview-primary) 78%, var(--notebook-sidebar-bg));
-  --notebook-sidebar-active-text: var(--action-chip-selected-text);
-  --notebook-control-bg: var(--app-button);
-  --notebook-control-border: var(--action-chip-border);
-  --notebook-control-text: var(--action-chip-text);
-  --notebook-control-hover-bg: color-mix(in srgb, var(--visuals-preview-primary) 16%, var(--app-button));
+  --vault-action-accent: var(--app-primary);
+  --vault-sidebar-active-bg: color-mix(in srgb, var(--visuals-preview-primary) 78%, var(--vault-sidebar-bg));
+  --vault-sidebar-active-text: var(--action-chip-selected-text);
+  --vault-control-bg: var(--app-button);
+  --vault-control-border: var(--action-chip-border);
+  --vault-control-text: var(--action-chip-text);
+  --vault-control-hover-bg: color-mix(in srgb, var(--visuals-preview-primary) 16%, var(--app-button));
 
   display: grid;
   grid-template-columns: minmax(11.5rem, 0.34fr) minmax(0, 1fr);
@@ -1221,7 +1221,7 @@
   display: block;
   min-width: 0;
   border-right: 1px solid var(--app-border);
-  background: var(--notebook-sidebar-bg);
+  background: var(--vault-sidebar-bg);
   color: var(--app-text);
 }
 
@@ -1302,14 +1302,14 @@
   color: var(--app-text);
 }
 
-.visuals-preview-button-tabs.notebook-utility-tabs {
+.visuals-preview-button-tabs.vault-utility-tabs {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 0.4rem;
 }
 
-.visuals-preview-button-tabs.notebook-utility-tabs button {
+.visuals-preview-button-tabs.vault-utility-tabs button {
   width: 100%;
   min-width: 0;
   overflow: hidden;
@@ -1547,8 +1547,8 @@
   margin-left: auto;
 }
 
-.custom-theme-transfer-actions .notebook-settings-action,
-.custom-theme-json-modal-actions .notebook-settings-action {
+.custom-theme-transfer-actions .vault-settings-action,
+.custom-theme-json-modal-actions .vault-settings-action {
   margin-top: 0;
 }
 
@@ -1855,7 +1855,7 @@
   white-space: nowrap;
 }
 
-.notebook-utility-content .settings-shortcut-select,
+.vault-utility-content .settings-shortcut-select,
 .settings-shortcut-select {
   width: min(220px, 48vw);
   padding-right: 2.05rem;

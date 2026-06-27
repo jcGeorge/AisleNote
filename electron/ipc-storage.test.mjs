@@ -3,9 +3,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getUserSettingsFilePath, loadAppStateResult, resolveNoteLocationRevealPath, saveAppState } from './app-state-storage.mjs'
-import { reconcileNotebookLibraryForStartup, registerStorageIpc, resolvePreferredNotebookRevealPath } from './ipc-storage.mjs'
-import { NOTEBOOK_LIBRARY_CONFIG_FILE, createNotebookRecord } from './notebook-library.mjs'
-import { STORAGE_PROFILE_CONFIG_FILE, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME } from './storage-profile.mjs'
+import { reconcileVaultLibraryForStartup, registerStorageIpc, resolvePreferredVaultRevealPath } from './ipc-storage.mjs'
+import { VAULT_LIBRARY_CONFIG_FILE, createVaultRecord } from './vault-library.mjs'
+import { STORAGE_PROFILE_CONFIG_FILE, STORAGE_PROFILE_DEFAULT_VAULT_NAME } from './storage-profile.mjs'
 
 const tempRoots = []
 const storageSessions = []
@@ -28,7 +28,7 @@ afterEach(() => {
 function appState(markdown = 'markdown') {
   return {
     theme: 'cheese',
-    notebook: {
+    vault: {
       activeNoteId: 'note-root',
       items: [{ type: 'note', id: 'note-root', title: 'Inbox', noteBodyId: 'body-root' }],
       deletedItems: [],
@@ -62,8 +62,8 @@ function pathFromRoot(root, relativePath) {
   return relativePath ? path.join(root, ...relativePath.split('/')) : root
 }
 
-function readNotebookIndex(root) {
-  return JSON.parse(readFileSync(pathFromRoot(root, '.aislenote/notebook-index.json'), 'utf8'))
+function readVaultIndex(root) {
+  return JSON.parse(readFileSync(pathFromRoot(root, '.aislenote/vault-index.json'), 'utf8'))
 }
 
 function writeLegacyPortableSettingsToEditorState(root, state) {
@@ -85,7 +85,7 @@ function writeLegacyPortableSettingsToEditorState(root, state) {
 }
 
 function getRootNotePath(root) {
-  const note = readNotebookIndex(root).items.find((item) => item.id === 'note-root')
+  const note = readVaultIndex(root).items.find((item) => item.id === 'note-root')
   expect(note?.type).toBe('note')
   return pathFromRoot(root, note.file)
 }
@@ -133,62 +133,62 @@ function callSyncListener(ipcMain, channel, payload) {
   return event.returnValue
 }
 
-describe('preferred notebook reveal paths', () => {
-  it('uses the active notebook folder as the reveal source', () => {
+describe('preferred vault reveal paths', () => {
+  it('uses the active vault folder as the reveal source', () => {
     const root = tempRoot()
-    const notebookPath = path.join(root, 'notebook')
-    const otherNotebookPath = path.join(root, 'other-notebook')
+    const vaultPath = path.join(root, 'vault')
+    const otherVaultPath = path.join(root, 'other-vault')
     const serializedState = JSON.stringify(appState())
-    mkdirSync(notebookPath, { recursive: true })
-    mkdirSync(otherNotebookPath, { recursive: true })
-    saveAppState(notebookPath, serializedState)
-    saveAppState(otherNotebookPath, serializedState)
+    mkdirSync(vaultPath, { recursive: true })
+    mkdirSync(otherVaultPath, { recursive: true })
+    saveAppState(vaultPath, serializedState)
+    saveAppState(otherVaultPath, serializedState)
 
-    const resolved = resolvePreferredNotebookRevealPath({
-      profileRootPath: notebookPath,
+    const resolved = resolvePreferredVaultRevealPath({
+      profileRootPath: vaultPath,
       payload: { type: 'live-note', location: { noteId: 'note-root' } },
       resolvePath: resolveNoteLocationRevealPath,
     })
 
     expect(resolved.ok).toBe(true)
-    expect(resolved.absolutePath.startsWith(notebookPath)).toBe(true)
-    expect(resolved.absolutePath.startsWith(otherNotebookPath)).toBe(false)
+    expect(resolved.absolutePath.startsWith(vaultPath)).toBe(true)
+    expect(resolved.absolutePath.startsWith(otherVaultPath)).toBe(false)
   })
 })
 
-describe('startup notebook folder loading', () => {
-  it('leaves folder-only notebook records unchanged and loads closed-app edits from the notebook folder', () => {
+describe('startup vault folder loading', () => {
+  it('leaves folder-only vault records unchanged and loads closed-app edits from the vault folder', () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
-    const notebookPath = path.join(root, 'Christianity')
+    const vaultPath = path.join(root, 'Christianity')
     mkdirSync(userDataPath, { recursive: true })
 
-    const record = createNotebookRecord(userDataPath, {
-      notebookPath,
+    const record = createVaultRecord(userDataPath, {
+      vaultPath,
       serializedState: JSON.stringify(appState()),
     })
     const library = {
       version: 1,
-      activeNotebookId: record.id,
-      notebooks: [record],
+      activeVaultId: record.id,
+      vaults: [record],
     }
-    writeFileSync(getRootNotePath(notebookPath), 'closed app folder edit', 'utf8')
+    writeFileSync(getRootNotePath(vaultPath), 'closed app folder edit', 'utf8')
 
-    const startup = reconcileNotebookLibraryForStartup(userDataPath, library)
+    const startup = reconcileVaultLibraryForStartup(userDataPath, library)
 
     expect(startup.reconciliation).toBe(null)
     expect(startup.library).toEqual(library)
 
-    const loadResult = loadAppStateResult(record.notebookPath)
+    const loadResult = loadAppStateResult(record.vaultPath)
     expect(loadResult.ok).toBe(true)
     const loaded = JSON.parse(loadResult.serializedState)
     expect(loaded.noteAisleBodies.find((body) => body.id === 'aisle-body-root')?.markdown).toBe('closed app folder edit')
   })
 
-  it('seeds a missing local app-settings file from the active notebook at startup', () => {
+  it('seeds a missing local app-settings file from the active vault at startup', () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
-    const notebookPath = path.join(root, 'legacy-themed-notebook')
+    const vaultPath = path.join(root, 'legacy-themed-vault')
     const state = appState('legacy markdown')
     state.theme = 'light'
     state.hotkeys.shortcuts.openSettings = 'Ctrl+,'
@@ -198,16 +198,16 @@ describe('startup notebook folder loading', () => {
       toolbarLayouts: [{ id: 'main', name: 'Main', items: [] }],
     }
     mkdirSync(userDataPath, { recursive: true })
-    saveAppState(notebookPath, JSON.stringify(state))
-    writeLegacyPortableSettingsToEditorState(notebookPath, state)
+    saveAppState(vaultPath, JSON.stringify(state))
+    writeLegacyPortableSettingsToEditorState(vaultPath, state)
     writeFileSync(
-      path.join(userDataPath, NOTEBOOK_LIBRARY_CONFIG_FILE),
+      path.join(userDataPath, VAULT_LIBRARY_CONFIG_FILE),
       `${JSON.stringify({
         version: 1,
-        activeNotebookId: 'notebook-1',
-        notebooks: [{
-          id: 'notebook-1',
-          notebookPath,
+        activeVaultId: 'vault-1',
+        vaults: [{
+          id: 'vault-1',
+          vaultPath,
           createdAt: '2026-01-01T00:00:00.000Z',
           updatedAt: '2026-01-01T00:00:00.000Z',
         }],
@@ -229,12 +229,12 @@ describe('startup notebook folder loading', () => {
   })
 })
 
-describe('notebook folder IPC operations', () => {
-  it('does not keep the native save-dialog notebook creation fallback', () => {
+describe('vault folder IPC operations', () => {
+  it('does not keep the native save-dialog vault creation fallback', () => {
     const source = readFileSync(new URL('./ipc-storage.mjs', import.meta.url), 'utf8')
     expect(source).not.toContain('showSaveDialog')
-    expect(source).not.toContain('chooseNotebookTargetPath')
-    expect(source).not.toContain('buildNotebookTargetPathFromProfileRoot')
+    expect(source).not.toContain('chooseVaultTargetPath')
+    expect(source).not.toContain('buildVaultTargetPathFromProfileRoot')
   })
 
   it('starts fresh desktop profiles in setup-required state and blocks app-state saves', async () => {
@@ -246,7 +246,7 @@ describe('notebook folder IPC operations', () => {
       `${JSON.stringify({ profileRootPath: path.join(root, 'legacy-external') }, null, 2)}\n`,
       'utf8',
     )
-    saveAppState(path.join(userDataPath, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME), JSON.stringify(appState('legacy default')), {
+    saveAppState(path.join(userDataPath, STORAGE_PROFILE_DEFAULT_VAULT_NAME), JSON.stringify(appState('legacy default')), {
       userDataPath,
     })
 
@@ -256,9 +256,9 @@ describe('notebook folder IPC operations', () => {
     expect(status).toMatchObject({
       status: 'setup-required',
       profileRootPath: '',
-      notebookPath: '',
-      notebookName: '',
-      activeNotebookId: null,
+      vaultPath: '',
+      vaultName: '',
+      activeVaultId: null,
       hasProfile: false,
       canWrite: false,
     })
@@ -274,214 +274,214 @@ describe('notebook folder IPC operations', () => {
     })
     expect(saveResult.ok).toBe(false)
     expect(session.canWriteAppState()).toBe(false)
-    expect(existsSync(path.join(userDataPath, NOTEBOOK_LIBRARY_CONFIG_FILE))).toBe(true)
+    expect(existsSync(path.join(userDataPath, VAULT_LIBRARY_CONFIG_FILE))).toBe(true)
     expect(existsSync(path.join(userDataPath, STORAGE_PROFILE_CONFIG_FILE))).toBe(false)
-    expect(existsSync(path.join(userDataPath, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME))).toBe(false)
+    expect(existsSync(path.join(userDataPath, STORAGE_PROFILE_DEFAULT_VAULT_NAME))).toBe(false)
   })
 
-  it('creates notebooks directly in selected folders and removes inactive notebooks from the list without deleting files', async () => {
+  it('creates vaults directly in selected folders and removes inactive vaults from the list without deleting files', async () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
-    const notebooksRoot = path.join(root, 'notebooks')
+    const vaultsRoot = path.join(root, 'vaults')
     mkdirSync(userDataPath, { recursive: true })
-    mkdirSync(notebooksRoot, { recursive: true })
+    mkdirSync(vaultsRoot, { recursive: true })
     const { ipcMain } = createStorageSession(userDataPath)
 
-    const first = await callHandler(ipcMain, 'create-notebook', {
+    const first = await callHandler(ipcMain, 'create-vault', {
       name: 'Christianity',
-      locationPath: notebooksRoot,
+      locationPath: vaultsRoot,
     })
     expect(first.ok).toBe(true)
-    const firstPath = path.join(notebooksRoot, 'Christianity')
-    expect(first.status.notebookPath).toBe(firstPath)
+    const firstPath = path.join(vaultsRoot, 'Christianity')
+    expect(first.status.vaultPath).toBe(firstPath)
     expect(existsSync(path.join(firstPath, 'manifest.json'))).toBe(true)
 
-    const second = await callHandler(ipcMain, 'create-notebook', {
+    const second = await callHandler(ipcMain, 'create-vault', {
       name: 'Research',
-      locationPath: notebooksRoot,
+      locationPath: vaultsRoot,
     })
     expect(second.ok).toBe(true)
-    expect(second.status.notebookPath).toBe(path.join(notebooksRoot, 'Research'))
+    expect(second.status.vaultPath).toBe(path.join(vaultsRoot, 'Research'))
 
-    const switched = await callHandler(ipcMain, 'switch-notebook', { notebookPath: firstPath })
+    const switched = await callHandler(ipcMain, 'switch-vault', { vaultPath: firstPath })
     expect(switched.ok).toBe(true)
-    expect(switched.status.notebookName).toBe('Christianity')
+    expect(switched.status.vaultName).toBe('Christianity')
 
-    const forgotten = await callHandler(ipcMain, 'forget-notebook', { notebookPath: path.join(notebooksRoot, 'Research') })
+    const forgotten = await callHandler(ipcMain, 'forget-vault', { vaultPath: path.join(vaultsRoot, 'Research') })
     expect(forgotten.ok).toBe(true)
-    expect(existsSync(path.join(notebooksRoot, 'Research', 'manifest.json'))).toBe(true)
-    expect(forgotten.status.knownNotebooks.map((notebook) => notebook.notebookName)).toEqual(['Christianity'])
+    expect(existsSync(path.join(vaultsRoot, 'Research', 'manifest.json'))).toBe(true)
+    expect(forgotten.status.knownVaults.map((vault) => vault.vaultName)).toEqual(['Christianity'])
   })
 
-  it('creates a notebook inside the supplied parent folder using the supplied name', async () => {
+  it('creates a vault inside the supplied parent folder using the supplied name', async () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
-    const notebooksRoot = path.join(root, 'notebooks')
-    const notebookPath = path.join(notebooksRoot, 'Project Notes')
+    const vaultsRoot = path.join(root, 'vaults')
+    const vaultPath = path.join(vaultsRoot, 'Project Notes')
     mkdirSync(userDataPath, { recursive: true })
-    mkdirSync(notebooksRoot, { recursive: true })
+    mkdirSync(vaultsRoot, { recursive: true })
     const { ipcMain } = createStorageSession(userDataPath)
 
-    const created = await callHandler(ipcMain, 'create-notebook', {
+    const created = await callHandler(ipcMain, 'create-vault', {
       name: 'Project Notes',
-      locationPath: notebooksRoot,
+      locationPath: vaultsRoot,
     })
 
     expect(created.ok).toBe(true)
-    expect(created.status.notebookName).toBe('Project Notes')
-    expect(created.status.notebookPath).toBe(notebookPath)
-    expect(existsSync(path.join(notebookPath, 'manifest.json'))).toBe(true)
-    expect(existsSync(path.join(notebooksRoot, 'AisleNote Notebook'))).toBe(false)
+    expect(created.status.vaultName).toBe('Project Notes')
+    expect(created.status.vaultPath).toBe(vaultPath)
+    expect(existsSync(path.join(vaultPath, 'manifest.json'))).toBe(true)
+    expect(existsSync(path.join(vaultsRoot, 'AisleNote Vault'))).toBe(false)
   })
 
-  it('rejects notebook creation without an explicit name and parent folder', async () => {
+  it('rejects vault creation without an explicit name and parent folder', async () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
     mkdirSync(userDataPath, { recursive: true })
     const { ipcMain } = createStorageSession(userDataPath)
 
-    const created = await callHandler(ipcMain, 'create-notebook')
+    const created = await callHandler(ipcMain, 'create-vault')
 
     expect(created).toMatchObject({
       ok: false,
-      error: 'Notebook name is required.',
+      error: 'Vault name is required.',
       status: {
         status: 'setup-required',
-        notebookPath: '',
+        vaultPath: '',
         canWrite: false,
       },
     })
   })
 
-  it('renames the underlying notebook folder and updates the remembered path', async () => {
+  it('renames the underlying vault folder and updates the remembered path', async () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
-    const notebooksRoot = path.join(root, 'notebooks')
+    const vaultsRoot = path.join(root, 'vaults')
     mkdirSync(userDataPath, { recursive: true })
-    mkdirSync(notebooksRoot, { recursive: true })
+    mkdirSync(vaultsRoot, { recursive: true })
     const { ipcMain } = createStorageSession(userDataPath)
 
-    const created = await callHandler(ipcMain, 'create-notebook', {
+    const created = await callHandler(ipcMain, 'create-vault', {
       name: 'Old Name',
-      locationPath: notebooksRoot,
+      locationPath: vaultsRoot,
     })
     expect(created.ok).toBe(true)
 
-    const rejected = await callHandler(ipcMain, 'rename-notebook', { name: 'Should Not Rename Active' })
+    const rejected = await callHandler(ipcMain, 'rename-vault', { name: 'Should Not Rename Active' })
     expect(rejected.ok).toBe(false)
-    expect(rejected.error).toBe('Notebook is required.')
-    expect(existsSync(path.join(notebooksRoot, 'Old Name'))).toBe(true)
-    expect(existsSync(path.join(notebooksRoot, 'Should Not Rename Active'))).toBe(false)
+    expect(rejected.error).toBe('Vault is required.')
+    expect(existsSync(path.join(vaultsRoot, 'Old Name'))).toBe(true)
+    expect(existsSync(path.join(vaultsRoot, 'Should Not Rename Active'))).toBe(false)
 
-    const renamed = await callHandler(ipcMain, 'rename-notebook', {
-      notebookId: created.status.activeNotebookId,
-      notebookPath: path.join(notebooksRoot, 'Old Name'),
+    const renamed = await callHandler(ipcMain, 'rename-vault', {
+      vaultId: created.status.activeVaultId,
+      vaultPath: path.join(vaultsRoot, 'Old Name'),
       name: 'New Name',
     })
 
     expect(renamed.ok).toBe(true)
-    expect(renamed.status.notebookName).toBe('New Name')
-    expect(renamed.status.notebookPath).toBe(path.join(notebooksRoot, 'New Name'))
-    expect(renamed.status.knownNotebooks).toEqual([
+    expect(renamed.status.vaultName).toBe('New Name')
+    expect(renamed.status.vaultPath).toBe(path.join(vaultsRoot, 'New Name'))
+    expect(renamed.status.knownVaults).toEqual([
       expect.objectContaining({
-        notebookId: created.status.activeNotebookId,
-        notebookName: 'New Name',
-        notebookPath: path.join(notebooksRoot, 'New Name'),
+        vaultId: created.status.activeVaultId,
+        vaultName: 'New Name',
+        vaultPath: path.join(vaultsRoot, 'New Name'),
         isActive: true,
       }),
     ])
-    expect(existsSync(path.join(notebooksRoot, 'Old Name'))).toBe(false)
-    expect(existsSync(path.join(notebooksRoot, 'New Name', 'manifest.json'))).toBe(true)
+    expect(existsSync(path.join(vaultsRoot, 'Old Name'))).toBe(false)
+    expect(existsSync(path.join(vaultsRoot, 'New Name', 'manifest.json'))).toBe(true)
   })
 
-  it('renames an inactive remembered notebook without switching the active notebook', async () => {
+  it('renames an inactive remembered vault without switching the active vault', async () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
-    const notebooksRoot = path.join(root, 'notebooks')
+    const vaultsRoot = path.join(root, 'vaults')
     mkdirSync(userDataPath, { recursive: true })
-    mkdirSync(notebooksRoot, { recursive: true })
+    mkdirSync(vaultsRoot, { recursive: true })
     const { ipcMain } = createStorageSession(userDataPath)
 
-    const first = await callHandler(ipcMain, 'create-notebook', {
+    const first = await callHandler(ipcMain, 'create-vault', {
       name: 'Alpha',
-      locationPath: notebooksRoot,
+      locationPath: vaultsRoot,
     })
     expect(first.ok).toBe(true)
-    const firstNotebookId = first.status.activeNotebookId
-    const firstPath = path.join(notebooksRoot, 'Alpha')
+    const firstVaultId = first.status.activeVaultId
+    const firstPath = path.join(vaultsRoot, 'Alpha')
 
-    const second = await callHandler(ipcMain, 'create-notebook', {
+    const second = await callHandler(ipcMain, 'create-vault', {
       name: 'Beta',
-      locationPath: notebooksRoot,
+      locationPath: vaultsRoot,
     })
     expect(second.ok).toBe(true)
-    const secondNotebookId = second.status.activeNotebookId
-    const secondPath = path.join(notebooksRoot, 'Beta')
+    const secondVaultId = second.status.activeVaultId
+    const secondPath = path.join(vaultsRoot, 'Beta')
 
-    const rejected = await callHandler(ipcMain, 'rename-notebook', {
-      notebookId: 'missing-notebook',
+    const rejected = await callHandler(ipcMain, 'rename-vault', {
+      vaultId: 'missing-vault',
       name: 'Should Not Rename Active',
     })
     expect(rejected.ok).toBe(false)
     expect(existsSync(secondPath)).toBe(true)
-    expect(existsSync(path.join(notebooksRoot, 'Should Not Rename Active'))).toBe(false)
+    expect(existsSync(path.join(vaultsRoot, 'Should Not Rename Active'))).toBe(false)
 
-    const renamed = await callHandler(ipcMain, 'rename-notebook', {
-      notebookId: firstNotebookId,
-      notebookPath: firstPath,
+    const renamed = await callHandler(ipcMain, 'rename-vault', {
+      vaultId: firstVaultId,
+      vaultPath: firstPath,
       name: 'Alpha Archive',
     })
 
     expect(renamed.ok).toBe(true)
-    expect(renamed.status.activeNotebookId).toBe(secondNotebookId)
-    expect(renamed.status.notebookName).toBe('Beta')
-    expect(renamed.status.notebookPath).toBe(secondPath)
+    expect(renamed.status.activeVaultId).toBe(secondVaultId)
+    expect(renamed.status.vaultName).toBe('Beta')
+    expect(renamed.status.vaultPath).toBe(secondPath)
     expect(existsSync(firstPath)).toBe(false)
-    expect(existsSync(path.join(notebooksRoot, 'Alpha Archive', 'manifest.json'))).toBe(true)
-    expect(renamed.status.knownNotebooks).toEqual([
+    expect(existsSync(path.join(vaultsRoot, 'Alpha Archive', 'manifest.json'))).toBe(true)
+    expect(renamed.status.knownVaults).toEqual([
       expect.objectContaining({
-        notebookId: firstNotebookId,
-        notebookName: 'Alpha Archive',
-        notebookPath: path.join(notebooksRoot, 'Alpha Archive'),
+        vaultId: firstVaultId,
+        vaultName: 'Alpha Archive',
+        vaultPath: path.join(vaultsRoot, 'Alpha Archive'),
         isActive: false,
       }),
       expect.objectContaining({
-        notebookId: secondNotebookId,
-        notebookName: 'Beta',
-        notebookPath: secondPath,
+        vaultId: secondVaultId,
+        vaultName: 'Beta',
+        vaultPath: secondPath,
         isActive: true,
       }),
     ])
   })
 
-  it('rejects creating or opening nested notebook folders', async () => {
+  it('rejects creating or opening nested vault folders', async () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
-    const notebooksRoot = path.join(root, 'notebooks')
+    const vaultsRoot = path.join(root, 'vaults')
     mkdirSync(userDataPath, { recursive: true })
-    mkdirSync(notebooksRoot, { recursive: true })
+    mkdirSync(vaultsRoot, { recursive: true })
     const dialog = {
-      showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [notebooksRoot] })),
+      showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [vaultsRoot] })),
     }
     const { ipcMain } = createStorageSession(userDataPath, { dialog })
 
-    const created = await callHandler(ipcMain, 'create-notebook', {
+    const created = await callHandler(ipcMain, 'create-vault', {
       name: 'Parent',
-      locationPath: notebooksRoot,
+      locationPath: vaultsRoot,
     })
     expect(created.ok).toBe(true)
-    const parentPath = path.join(notebooksRoot, 'Parent')
+    const parentPath = path.join(vaultsRoot, 'Parent')
 
-    const nestedCreate = await callHandler(ipcMain, 'create-notebook', {
+    const nestedCreate = await callHandler(ipcMain, 'create-vault', {
       name: 'Child',
       locationPath: parentPath,
     })
     expect(nestedCreate.ok).toBe(false)
-    expect(nestedCreate.error).toContain('Notebook folders cannot be nested')
+    expect(nestedCreate.error).toContain('Vault folders cannot be nested')
 
-    const parentOpen = await callHandler(ipcMain, 'open-notebook')
+    const parentOpen = await callHandler(ipcMain, 'open-vault')
     expect(parentOpen.ok).toBe(false)
-    expect(parentOpen.error).toContain('Notebook folders cannot be nested')
+    expect(parentOpen.error).toContain('Vault folders cannot be nested')
   })
 
   it('rejects opening non-AisleNote Markdown folders with import guidance', async () => {
@@ -495,39 +495,39 @@ describe('notebook folder IPC operations', () => {
     }
     const { ipcMain } = createStorageSession(userDataPath, { dialog })
 
-    const opened = await callHandler(ipcMain, 'open-notebook')
+    const opened = await callHandler(ipcMain, 'open-vault')
 
     expect(opened.ok).toBe(false)
-    expect(opened.error).toContain('not an AisleNote notebook')
+    expect(opened.error).toContain('not an AisleNote vault')
     expect(opened.error).toContain('Markdown import')
   })
 
-  it('returns to setup-required after deleting the last notebook without creating a default folder', async () => {
+  it('returns to setup-required after deleting the last vault without creating a default folder', async () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
-    const notebooksRoot = path.join(root, 'notebooks')
-    mkdirSync(notebooksRoot, { recursive: true })
+    const vaultsRoot = path.join(root, 'vaults')
+    mkdirSync(vaultsRoot, { recursive: true })
     const { ipcMain } = createStorageSession(userDataPath)
 
-    const created = await callHandler(ipcMain, 'create-notebook', {
-      name: 'Only Notebook',
-      locationPath: notebooksRoot,
+    const created = await callHandler(ipcMain, 'create-vault', {
+      name: 'Only Vault',
+      locationPath: vaultsRoot,
     })
     expect(created.ok).toBe(true)
-    const notebookPath = path.join(notebooksRoot, 'Only Notebook')
+    const vaultPath = path.join(vaultsRoot, 'Only Vault')
 
-    const deleted = await callHandler(ipcMain, 'delete-notebook', { skipConfirmation: true })
+    const deleted = await callHandler(ipcMain, 'delete-vault', { skipConfirmation: true })
 
     expect(deleted.ok).toBe(true)
     expect(deleted.status).toMatchObject({
       status: 'setup-required',
       profileRootPath: '',
-      notebookPath: '',
-      notebookName: '',
-      activeNotebookId: null,
+      vaultPath: '',
+      vaultName: '',
+      activeVaultId: null,
       canWrite: false,
     })
-    expect(existsSync(notebookPath)).toBe(false)
-    expect(existsSync(path.join(userDataPath, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME))).toBe(false)
+    expect(existsSync(vaultPath)).toBe(false)
+    expect(existsSync(path.join(userDataPath, STORAGE_PROFILE_DEFAULT_VAULT_NAME))).toBe(false)
   })
 })

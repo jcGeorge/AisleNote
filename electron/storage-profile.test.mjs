@@ -4,11 +4,11 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   STORAGE_PROFILE_CONFIG_FILE,
-  STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME,
+  STORAGE_PROFILE_DEFAULT_VAULT_NAME,
   getStorageProfileConfigPath,
   getDefaultStorageProfileRoot,
-  getStorageProfileNotebookName,
-  validateNotebookName,
+  getStorageProfileVaultName,
+  validateVaultName,
 } from './storage-profile.mjs'
 
 function withTempUserDataPath(run) {
@@ -23,22 +23,22 @@ function withTempUserDataPath(run) {
 describe('Electron storage profile config', () => {
   it('only exposes legacy storage-profile paths for cleanup helpers', () =>
     withTempUserDataPath((userDataPath) => {
-      const notebookPath = path.join(userDataPath, STORAGE_PROFILE_DEFAULT_NOTEBOOK_NAME)
-      expect(getDefaultStorageProfileRoot(userDataPath)).toBe(notebookPath)
+      const vaultPath = path.join(userDataPath, STORAGE_PROFILE_DEFAULT_VAULT_NAME)
+      expect(getDefaultStorageProfileRoot(userDataPath)).toBe(vaultPath)
       expect(getStorageProfileConfigPath(userDataPath)).toBe(path.join(userDataPath, STORAGE_PROFILE_CONFIG_FILE))
     }))
 
-  it('derives display names from notebook folder basenames', () => {
-    expect(getStorageProfileNotebookName('/tmp/Christianity')).toBe('Christianity')
-    expect(getStorageProfileNotebookName('/tmp/Research Notes')).toBe('Research Notes')
+  it('derives display names from vault folder basenames', () => {
+    expect(getStorageProfileVaultName('/tmp/Christianity')).toBe('Christianity')
+    expect(getStorageProfileVaultName('/tmp/Research Notes')).toBe('Research Notes')
   })
 
-  it('validates notebook folder names', () => {
-    expect(validateNotebookName('Project Notes')).toEqual({ ok: true, name: 'Project Notes' })
-    expect(validateNotebookName('')).toMatchObject({ ok: false })
-    expect(validateNotebookName('../bad')).toMatchObject({ ok: false })
-    expect(validateNotebookName('CON')).toMatchObject({ ok: false })
-    expect(validateNotebookName('bad:name')).toMatchObject({ ok: false })
-    expect(validateNotebookName('bad ')).toMatchObject({ ok: false })
+  it('validates vault folder names', () => {
+    expect(validateVaultName('Project Notes')).toEqual({ ok: true, name: 'Project Notes' })
+    expect(validateVaultName('')).toMatchObject({ ok: false })
+    expect(validateVaultName('../bad')).toMatchObject({ ok: false })
+    expect(validateVaultName('CON')).toMatchObject({ ok: false })
+    expect(validateVaultName('bad:name')).toMatchObject({ ok: false })
+    expect(validateVaultName('bad ')).toMatchObject({ ok: false })
   })
 })

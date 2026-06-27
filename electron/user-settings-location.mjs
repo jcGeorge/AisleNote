@@ -213,18 +213,18 @@ function detachUnreachableUserSettingsLocation(userDataPath, location, options =
   }
 }
 
-export function validateUserSettingsFolderCandidate(settingsRootPath, activeNotebookRootPath) {
+export function validateUserSettingsFolderCandidate(settingsRootPath, activeVaultRootPath) {
   const finalSettingsRootPath = path.resolve(settingsRootPath)
-  if (isSamePath(finalSettingsRootPath, activeNotebookRootPath)) {
+  if (isSamePath(finalSettingsRootPath, activeVaultRootPath)) {
     return {
       ok: false,
-      error: 'Notebook folders cannot be used as the live settings folder. Choose a different folder.',
+      error: 'Vault folders cannot be used as the live settings folder. Choose a different folder.',
     }
   }
   if (existsSync(path.join(getHybridStorageRoot(finalSettingsRootPath), 'manifest.json'))) {
     return {
       ok: false,
-      error: 'This folder contains a notebook. Choose a folder that only stores user settings.',
+      error: 'This folder contains a vault. Choose a folder that only stores user settings.',
     }
   }
   return { ok: true }

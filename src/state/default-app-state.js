@@ -35,7 +35,7 @@ function createNoteBodyWithAisle(markdown = '', idGenerator = createDefaultId) {
 
 export const DEFAULT_SCRATCHPAD_MARKDOWN = `## About Scratchpad
 
-Scratchpad is a quick place to capture temporary notes, loose thoughts, and anything you want close at hand before deciding where it belongs. Keep it messy, clear it out, or move pieces into your notebook when they become permanent.`
+Scratchpad is a quick place to capture temporary notes, loose thoughts, and anything you want close at hand before deciding where it belongs. Keep it messy, clear it out, or move pieces into your vault when they become permanent.`
 
 export const DEFAULT_SHORTCUTS = {
   openSettings: 'mod+,',
@@ -84,7 +84,7 @@ export function createDefaultAppState(options = {}) {
 
   return {
     theme: 'dark',
-    notebook: {
+    vault: {
       activeNoteId: welcomeNote.id,
       openTabs: [{ noteId: welcomeNote.id, status: 'temporary' }],
       items: [welcomeNote],

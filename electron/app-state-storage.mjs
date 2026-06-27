@@ -24,7 +24,7 @@ export const SCHEMA_VERSION = 2
 export const AISLENOTE_METADATA_DIR = '.aislenote'
 export const USER_SETTINGS_FILE_PATH = path.join('settings', 'app-settings.json')
 
-const NOTEBOOK_INDEX_FILE = '.aislenote/notebook-index.json'
+const VAULT_INDEX_FILE = '.aislenote/vault-index.json'
 const NAVIGATION_STATE_FILE = '.aislenote/navigation-state.json'
 const NOTE_REGISTRY_FILE = '.aislenote/note-registry.json'
 const TRASH_INDEX_FILE = '.aislenote/trash-index.json'
@@ -286,13 +286,13 @@ function listStorageFileContents(rootPath, currentPath = rootPath, entries = [])
   return entries
 }
 
-function buildManifest(notebookId = null, syncMetadata = null) {
+function buildManifest(vaultId = null, syncMetadata = null) {
   return {
     schemaVersion: SCHEMA_VERSION,
-    notebookId,
+    vaultId,
     createdBy: 'aislenote',
     files: {
-      notebookIndex: NOTEBOOK_INDEX_FILE,
+      vaultIndex: VAULT_INDEX_FILE,
       navigationState: NAVIGATION_STATE_FILE,
       noteRegistry: NOTE_REGISTRY_FILE,
       trashIndex: TRASH_INDEX_FILE,
@@ -363,7 +363,7 @@ function splitMarkdownFile(contents) {
   }
 }
 
-function buildNotebookIndexItems(items, appState, parentPath = '', noteFileRecords = []) {
+function buildVaultIndexItems(items, appState, parentPath = '', noteFileRecords = []) {
   const noteBodies = getNoteBodyMap(appState)
   const allocateVisibleName = createVisibleNameAllocator()
   return ensureArray(items).flatMap((item) => {
@@ -374,7 +374,7 @@ function buildNotebookIndexItems(items, appState, parentPath = '', noteFileRecor
     if (item.type === 'folder') {
       const folderName = allocateVisibleName(title, id)
       const folderPath = parentPath ? path.posix.join(parentPath, folderName) : folderName
-      const children = buildNotebookIndexItems(item.children, appState, folderPath, noteFileRecords)
+      const children = buildVaultIndexItems(item.children, appState, folderPath, noteFileRecords)
       return [{
         type: 'folder',
         id,
@@ -431,11 +431,11 @@ function buildNotebookIndexItems(items, appState, parentPath = '', noteFileRecor
   })
 }
 
-function collectNotebookIndexNoteFiles(indexItems, entries = []) {
+function collectVaultIndexNoteFiles(indexItems, entries = []) {
   for (const item of ensureArray(indexItems)) {
     if (!isRecord(item)) continue
     if (item.type === 'folder') {
-      collectNotebookIndexNoteFiles(item.children, entries)
+      collectVaultIndexNoteFiles(item.children, entries)
       continue
     }
     if (item.type !== 'note') continue
@@ -514,7 +514,7 @@ function buildNoteRegistry(appState, noteFileRecords) {
   }
 }
 
-function writeVisibleNotebookFiles(rootPath, appState, noteFileRecords) {
+function writeVisibleVaultFiles(rootPath, appState, noteFileRecords) {
   const aisleBodyMap = getAisleBodyMap(appState)
   const written = new Set()
   for (const noteRecord of noteFileRecords) {
@@ -527,7 +527,7 @@ function writeVisibleNotebookFiles(rootPath, appState, noteFileRecords) {
   return written
 }
 
-function pruneGeneratedNotebookFiles(rootPath, expectedFiles) {
+function pruneGeneratedVaultFiles(rootPath, expectedFiles) {
   const expected = new Set(expectedFiles)
   expected.add(MANIFEST_FILE)
   if (!existsSync(rootPath)) return { filesPruned: 0, directoriesPruned: 0 }
@@ -583,9 +583,9 @@ function buildEditorState(appState) {
   }
 }
 
-function buildAppStateFromParts({ notebookIndex, navigationState, noteRegistry, trashIndex, frontmatterSettings, editorState, messages }) {
-  const items = hydrateNotebookIndexItems(notebookIndex?.items)
-  const noteFileRecords = collectNotebookIndexNoteFiles(notebookIndex?.items)
+function buildAppStateFromParts({ vaultIndex, navigationState, noteRegistry, trashIndex, frontmatterSettings, editorState, messages }) {
+  const items = hydrateVaultIndexItems(vaultIndex?.items)
+  const noteFileRecords = collectVaultIndexNoteFiles(vaultIndex?.items)
   const activeNoteId = normalizeId(navigationState?.activeNoteId) || getFirstNoteId(items)
   const registryBodies = hydrateRegistryNoteBodies(noteRegistry)
   const registryAisleBodies = hydrateRegistryAisleBodies(noteRegistry)
@@ -598,14 +598,14 @@ function buildAppStateFromParts({ notebookIndex, navigationState, noteRegistry, 
   const ui = isRecord(editorState?.ui) ? editorState.ui : {}
   return {
     theme: typeof editorState?.theme === 'string' ? editorState.theme : 'dark',
-    notebook: {
+    vault: {
       activeNoteId,
-      openTabs: normalizeNotebookOpenTabs(notebookIndex?.openTabs, resolvedItems, activeNoteId),
+      openTabs: normalizeVaultOpenTabs(vaultIndex?.openTabs, resolvedItems, activeNoteId),
       items: resolvedItems,
       deletedItems: ensureArray(trashIndex?.deletedItems),
       settings: {
-        autoRemoveDeletedDays: Number.isFinite(notebookIndex?.settings?.autoRemoveDeletedDays)
-          ? notebookIndex.settings.autoRemoveDeletedDays
+        autoRemoveDeletedDays: Number.isFinite(vaultIndex?.settings?.autoRemoveDeletedDays)
+          ? vaultIndex.settings.autoRemoveDeletedDays
           : 30,
       },
     },
@@ -661,7 +661,7 @@ function buildAppStateFromParts({ notebookIndex, navigationState, noteRegistry, 
   }
 }
 
-function hydrateNotebookIndexItems(rawItems) {
+function hydrateVaultIndexItems(rawItems) {
   return ensureArray(rawItems).flatMap((item) => {
     if (!isRecord(item)) return []
     const id = normalizeId(item.id)
@@ -672,7 +672,7 @@ function hydrateNotebookIndexItems(rawItems) {
         type: 'folder',
         id,
         title,
-        children: hydrateNotebookIndexItems(item.children),
+        children: hydrateVaultIndexItems(item.children),
       }]
     }
     if (item.type === 'note') {
@@ -740,19 +740,19 @@ function getFirstNoteId(items) {
   return ''
 }
 
-function collectNotebookNoteIds(items, noteIds = new Set()) {
+function collectVaultNoteIds(items, noteIds = new Set()) {
   for (const item of ensureArray(items)) {
     if (item?.type === 'note' && normalizeId(item.id)) {
       noteIds.add(normalizeId(item.id))
     } else if (item?.type === 'folder') {
-      collectNotebookNoteIds(item.children, noteIds)
+      collectVaultNoteIds(item.children, noteIds)
     }
   }
   return noteIds
 }
 
-function normalizeNotebookOpenTabs(rawTabs, items, activeNoteId = '') {
-  const noteIds = collectNotebookNoteIds(items)
+function normalizeVaultOpenTabs(rawTabs, items, activeNoteId = '') {
+  const noteIds = collectVaultNoteIds(items)
   const tabs = []
   const tabNoteIds = new Set()
   let hasTemporaryTab = false
@@ -911,12 +911,12 @@ export function loadAppStateResult(profileRootPath, options = {}) {
         schemaVersion: manifest?.schemaVersion ?? null,
         revision: getHybridStorageRevision(rootPath),
         health: 'error',
-        error: `Unsupported notebook schema version: ${manifest?.schemaVersion ?? 'unknown'}.`,
-        issues: [storageIssue('unsupported-schema', 'error', 'This notebook uses an unsupported storage schema.')],
+        error: `Unsupported vault schema version: ${manifest?.schemaVersion ?? 'unknown'}.`,
+        issues: [storageIssue('unsupported-schema', 'error', 'This vault uses an unsupported storage schema.')],
       }
     }
     const files = isRecord(manifest.files) ? manifest.files : {}
-    const notebookIndex = readJson(rootPath, normalizePosixPath(files.notebookIndex) || NOTEBOOK_INDEX_FILE)
+    const vaultIndex = readJson(rootPath, normalizePosixPath(files.vaultIndex) || VAULT_INDEX_FILE)
     const navigationState = readJson(rootPath, normalizePosixPath(files.navigationState) || NAVIGATION_STATE_FILE)
     const noteRegistry = readJson(rootPath, normalizePosixPath(files.noteRegistry) || NOTE_REGISTRY_FILE)
     const trashIndex = fileExists(rootPath, normalizePosixPath(files.trashIndex) || TRASH_INDEX_FILE)
@@ -933,7 +933,7 @@ export function loadAppStateResult(profileRootPath, options = {}) {
       : { messages: [] }
     resolveLinkedMirrorContents.rootPath = rootPath
     const appState = buildAppStateFromParts({
-      notebookIndex,
+      vaultIndex,
       navigationState,
       noteRegistry,
       trashIndex,
@@ -962,8 +962,8 @@ export function loadAppStateResult(profileRootPath, options = {}) {
       schemaVersion: null,
       revision: getHybridStorageRevision(rootPath),
       health: 'error',
-      error: error instanceof Error ? error.message : 'Notebook data could not be loaded.',
-      issues: [storageIssue('schema2-load-failed', 'error', 'Notebook data could not be loaded.')],
+      error: error instanceof Error ? error.message : 'Vault data could not be loaded.',
+      issues: [storageIssue('schema2-load-failed', 'error', 'Vault data could not be loaded.')],
     }
   }
 }
@@ -975,23 +975,23 @@ export function saveAppState(profileRootPath, serializedState, options = {}) {
     const appState = JSON.parse(serializedState)
     ensureDir(rootPath)
     const noteFileRecords = []
-    const notebookItems = buildNotebookIndexItems(appState?.notebook?.items, appState, '', noteFileRecords)
-    const notebookIndex = {
+    const vaultItems = buildVaultIndexItems(appState?.vault?.items, appState, '', noteFileRecords)
+    const vaultIndex = {
       schemaVersion: SCHEMA_VERSION,
-      activeNoteId: appState?.notebook?.activeNoteId ?? '',
-      openTabs: normalizeNotebookOpenTabs(
-        appState?.notebook?.openTabs,
-        notebookItems,
-        appState?.notebook?.activeNoteId ?? '',
+      activeNoteId: appState?.vault?.activeNoteId ?? '',
+      openTabs: normalizeVaultOpenTabs(
+        appState?.vault?.openTabs,
+        vaultItems,
+        appState?.vault?.activeNoteId ?? '',
       ),
-      items: notebookItems,
-      settings: appState?.notebook?.settings ?? { autoRemoveDeletedDays: 30 },
+      items: vaultItems,
+      settings: appState?.vault?.settings ?? { autoRemoveDeletedDays: 30 },
     }
     const registry = buildNoteRegistry(appState, noteFileRecords)
-    const writtenMarkdownFiles = writeVisibleNotebookFiles(rootPath, appState, noteFileRecords)
+    const writtenMarkdownFiles = writeVisibleVaultFiles(rootPath, appState, noteFileRecords)
     const expectedFiles = new Set([
       MANIFEST_FILE,
-      NOTEBOOK_INDEX_FILE,
+      VAULT_INDEX_FILE,
       NAVIGATION_STATE_FILE,
       NOTE_REGISTRY_FILE,
       TRASH_INDEX_FILE,
@@ -1001,18 +1001,18 @@ export function saveAppState(profileRootPath, serializedState, options = {}) {
       SYNC_STATE_FILE,
       ...writtenMarkdownFiles,
     ])
-    const pruneResult = pruneGeneratedNotebookFiles(rootPath, expectedFiles)
-    writeJson(rootPath, MANIFEST_FILE, buildManifest(options.notebookId ?? appState?.notebookId ?? null, options.syncMetadata ?? null))
-    writeJson(rootPath, NOTEBOOK_INDEX_FILE, notebookIndex)
+    const pruneResult = pruneGeneratedVaultFiles(rootPath, expectedFiles)
+    writeJson(rootPath, MANIFEST_FILE, buildManifest(options.vaultId ?? appState?.vaultId ?? null, options.syncMetadata ?? null))
+    writeJson(rootPath, VAULT_INDEX_FILE, vaultIndex)
     writeJson(rootPath, NAVIGATION_STATE_FILE, {
       schemaVersion: SCHEMA_VERSION,
-      activeNoteId: appState?.notebook?.activeNoteId ?? '',
+      activeNoteId: appState?.vault?.activeNoteId ?? '',
       viewMode: 'main',
     })
     writeJson(rootPath, NOTE_REGISTRY_FILE, registry)
     writeJson(rootPath, TRASH_INDEX_FILE, {
       schemaVersion: SCHEMA_VERSION,
-      deletedItems: ensureArray(appState?.notebook?.deletedItems),
+      deletedItems: ensureArray(appState?.vault?.deletedItems),
     })
     writeJson(rootPath, FRONTMATTER_SETTINGS_FILE, {
       schemaVersion: SCHEMA_VERSION,
@@ -1083,7 +1083,7 @@ export function saveAppState(profileRootPath, serializedState, options = {}) {
     return {
       ok: false,
       reason: 'save-failed',
-      error: error instanceof Error ? error.message : 'Notebook data could not be saved.',
+      error: error instanceof Error ? error.message : 'Vault data could not be saved.',
       currentRevision: getHybridStorageRevision(rootPath),
       serializedState: null,
     }
@@ -1110,31 +1110,31 @@ function copyAssetDirectory(sourceDirectory, destinationDirectory) {
   }
 }
 
-export function writeNotebookFolderExport(destinationRootPath, serializedState, options = {}) {
+export function writeVaultFolderExport(destinationRootPath, serializedState, options = {}) {
   const rootPath = getHybridStorageRoot(destinationRootPath)
   try {
     ensureDir(rootPath)
     const result = saveAppState(rootPath, serializedState, options)
     if (!result.ok) {
-      return { canceled: false, ok: false, error: result.error ?? 'Notebook export failed.' }
+      return { canceled: false, ok: false, error: result.error ?? 'Vault export failed.' }
     }
     return {
       canceled: false,
       ok: true,
       profileRootPath: rootPath,
-      notebookPath: rootPath,
-      notebookName: path.basename(rootPath),
+      vaultPath: rootPath,
+      vaultName: path.basename(rootPath),
     }
   } catch (error) {
     return {
       canceled: false,
       ok: false,
-      error: error instanceof Error ? error.message : 'Notebook export failed.',
+      error: error instanceof Error ? error.message : 'Vault export failed.',
     }
   }
 }
 
-export async function importNotebookZipArchive(archivePath) {
+export async function importVaultZipArchive(archivePath) {
   const tempRoot = path.join(os.tmpdir(), `aislenote-import-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   try {
     const zip = await JSZip.loadAsync(readFileSync(archivePath))
@@ -1145,8 +1145,8 @@ export async function importNotebookZipArchive(archivePath) {
       if (!relativePath) {
         return {
           ok: false,
-          error: 'Notebook ZIP contains an invalid path.',
-          issues: [storageIssue('unexpected-archive-entry', 'error', 'Notebook ZIP contains an invalid path.')],
+          error: 'Vault ZIP contains an invalid path.',
+          issues: [storageIssue('unexpected-archive-entry', 'error', 'Vault ZIP contains an invalid path.')],
         }
       }
       const bytes = await file.async('nodebuffer')
@@ -1157,8 +1157,8 @@ export async function importNotebookZipArchive(archivePath) {
     if (!existsSync(path.join(tempRoot, MANIFEST_FILE))) {
       return {
         ok: false,
-        error: 'Notebook ZIP does not contain manifest.json.',
-        issues: [storageIssue('missing-root-manifest', 'error', 'Notebook ZIP does not contain manifest.json.')],
+        error: 'Vault ZIP does not contain manifest.json.',
+        issues: [storageIssue('missing-root-manifest', 'error', 'Vault ZIP does not contain manifest.json.')],
       }
     }
     const result = loadAppStateResult(tempRoot, { includeUserSettings: false })
@@ -1169,20 +1169,20 @@ export async function importNotebookZipArchive(archivePath) {
       schemaVersion: result.schemaVersion,
       health: result.health,
       issues: result.issues,
-      assets: listNotebookImportAssetPayloads(tempRoot),
+      assets: listVaultImportAssetPayloads(tempRoot),
     }
   } catch (error) {
     return {
       ok: false,
-      error: error instanceof Error ? error.message : 'Notebook ZIP could not be imported.',
-      issues: [storageIssue('zip-import-failed', 'error', 'Notebook ZIP could not be imported.')],
+      error: error instanceof Error ? error.message : 'Vault ZIP could not be imported.',
+      issues: [storageIssue('zip-import-failed', 'error', 'Vault ZIP could not be imported.')],
     }
   } finally {
     rmSync(tempRoot, { recursive: true, force: true })
   }
 }
 
-function listNotebookImportAssetPayloads(rootPath) {
+function listVaultImportAssetPayloads(rootPath) {
   const assetsRoot = path.join(rootPath, ASSETS_DIR)
   if (!existsSync(assetsRoot)) return []
   const assets = []
@@ -1244,13 +1244,13 @@ export function resolveNoteLocationRevealPath(profileRootPath, payload = {}) {
   const rootPath = getHybridStorageRoot(profileRootPath)
   try {
     const manifest = readJson(rootPath, MANIFEST_FILE)
-    if (manifest.schemaVersion !== SCHEMA_VERSION) return { ok: false, error: 'Unsupported notebook schema.' }
-    const notebookIndex = readJson(rootPath, NOTEBOOK_INDEX_FILE)
+    if (manifest.schemaVersion !== SCHEMA_VERSION) return { ok: false, error: 'Unsupported vault schema.' }
+    const vaultIndex = readJson(rootPath, VAULT_INDEX_FILE)
     if (payload?.type === 'scratchpad') {
       return { ok: true, absolutePath: rootPath, rootRelativePath: '' }
     }
     const noteId = normalizeId(payload?.location?.noteId)
-    const note = findNotebookIndexNote(notebookIndex.items, noteId)
+    const note = findVaultIndexNote(vaultIndex.items, noteId)
     if (!note) return { ok: false, error: 'Note file could not be resolved.' }
     const aisleId = normalizeId(payload?.aisleId)
     const aisleFile = aisleId && Array.isArray(note.aisleFiles)
@@ -1268,39 +1268,39 @@ export function resolveNoteLocationRevealPath(profileRootPath, payload = {}) {
   }
 }
 
-export function resolveNotebookItemLocationRevealPath(profileRootPath, payload = {}) {
+export function resolveVaultItemLocationRevealPath(profileRootPath, payload = {}) {
   const rootPath = getHybridStorageRoot(profileRootPath)
   try {
     const manifest = readJson(rootPath, MANIFEST_FILE)
-    if (manifest.schemaVersion !== SCHEMA_VERSION) return { ok: false, error: 'Unsupported notebook schema.' }
-    const notebookIndex = readJson(rootPath, NOTEBOOK_INDEX_FILE)
+    if (manifest.schemaVersion !== SCHEMA_VERSION) return { ok: false, error: 'Unsupported vault schema.' }
+    const vaultIndex = readJson(rootPath, VAULT_INDEX_FILE)
     const itemId = normalizeId(payload?.itemId)
     const itemType = payload?.itemType === 'folder' ? 'folder' : payload?.itemType === 'note' ? 'note' : ''
-    if (!itemId || !itemType) return { ok: false, error: 'Notebook item could not be resolved.' }
-    const item = findNotebookIndexItem(notebookIndex.items, itemId)
-    if (!item || item.type !== itemType) return { ok: false, error: 'Notebook item could not be resolved.' }
+    if (!itemId || !itemType) return { ok: false, error: 'Vault item could not be resolved.' }
+    const item = findVaultIndexItem(vaultIndex.items, itemId)
+    if (!item || item.type !== itemType) return { ok: false, error: 'Vault item could not be resolved.' }
     const relativePath = normalizePosixPath(item.path || item.file)
-    if (!relativePath) return { ok: false, error: 'Notebook item could not be resolved.' }
+    if (!relativePath) return { ok: false, error: 'Vault item could not be resolved.' }
     const absolutePath = path.join(rootPath, ...relativePath.split('/'))
     return { ok: true, absolutePath, rootRelativePath: relativePath }
   } catch (error) {
     return {
       ok: false,
-      error: error instanceof Error ? error.message : 'Notebook item could not be resolved.',
+      error: error instanceof Error ? error.message : 'Vault item could not be resolved.',
     }
   }
 }
 
-function findNotebookIndexNote(items, noteId) {
-  const item = findNotebookIndexItem(items, noteId)
+function findVaultIndexNote(items, noteId) {
+  const item = findVaultIndexItem(items, noteId)
   return item?.type === 'note' ? item : null
 }
 
-function findNotebookIndexItem(items, itemId) {
+function findVaultIndexItem(items, itemId) {
   for (const item of ensureArray(items)) {
     if ((item?.type === 'note' || item?.type === 'folder') && item.id === itemId) return item
     if (item?.type === 'folder') {
-      const child = findNotebookIndexItem(item.children, itemId)
+      const child = findVaultIndexItem(item.children, itemId)
       if (child) return child
     }
   }

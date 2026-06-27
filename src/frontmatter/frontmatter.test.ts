@@ -24,7 +24,7 @@ const context = {
   tags: ['Planning', 'Client/Acme'],
   noteId: 'note-1',
   folderName: 'Product',
-  folderPath: 'Notebook / Product',
+  folderPath: 'Vault / Product',
 }
 
 const template: FrontmatterTemplate = {

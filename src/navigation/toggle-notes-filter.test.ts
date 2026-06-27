@@ -8,8 +8,8 @@ import {
   isNotesFilterModeActive,
 } from './toggle-notes-filter'
 
-const notebookAppSource = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), '../app/NotebookApp.tsx'),
+const vaultAppSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../app/VaultApp.tsx'),
   'utf8',
 )
 
@@ -69,8 +69,8 @@ describe('notes/filter toggle intent', () => {
   })
 
   it('routes note target toggles through the filter exit guard before normal toggle behavior', () => {
-    expect(notebookAppSource).toContain('const toggleNotesScratchpadFromShortcut = useCallback(() => {')
-    expect(notebookAppSource).toContain('closeSidebarSearchMode()')
-    expect(notebookAppSource).toContain('toggleNotesFilter: focusNotesFilterFromShortcut')
+    expect(vaultAppSource).toContain('const toggleNotesScratchpadFromShortcut = useCallback(() => {')
+    expect(vaultAppSource).toContain('closeSidebarSearchMode()')
+    expect(vaultAppSource).toContain('toggleNotesFilter: focusNotesFilterFromShortcut')
   })
 })

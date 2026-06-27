@@ -11,10 +11,10 @@ import {
   getThemePaletteVariables,
   normalizeCustomThemePalette,
   normalizeThemePaletteOverrides,
-} from './notebook-themes'
+} from './vault-themes'
 
-describe('notebook theme palettes', () => {
-  it('exposes only notebook-era custom palette slots', () => {
+describe('vault theme palettes', () => {
+  it('exposes only vault-era custom palette slots', () => {
     expect(CUSTOM_THEME_PALETTE_SLOTS).toEqual([
       'canvas',
       'page',

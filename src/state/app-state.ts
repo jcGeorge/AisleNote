@@ -4,16 +4,16 @@ import type {
   AppState,
   AppTheme,
   CustomThemeId,
-  DeletedNotebookItem,
+  DeletedVaultItem,
   FrontmatterData,
   FrontmatterMeta,
   NoteAisle,
   NoteAisleBody,
   NoteBody,
-  NotebookFolder,
-  NotebookNote,
-  NotebookState,
-  NotebookTreeItem,
+  VaultFolder,
+  VaultNote,
+  VaultState,
+  VaultTreeItem,
   ToastHistoryEntry,
   ToastTone,
 } from '../types/app'
@@ -24,10 +24,10 @@ import {
   createNoteBodyWithAisle,
   ensureValidActiveNote,
   materializeSyncedNoteBodiesInState,
-  normalizeNotebookTabsForItems,
-  purgeOldDeletedNotebookItems,
-} from './notebook'
-import { CUSTOM_THEME_IDS, normalizeThemePaletteOverrides } from '../theme/notebook-themes'
+  normalizeVaultTabsForItems,
+  purgeOldDeletedVaultItems,
+} from './vault'
+import { CUSTOM_THEME_IDS, normalizeThemePaletteOverrides } from '../theme/vault-themes'
 import {
   MAX_NOTE_FONT_SCALE,
   MAX_TOOLBAR_BUTTON_SCALE,
@@ -142,14 +142,14 @@ function normalizeNoteAisleBody(raw: unknown): NoteAisleBody | null {
   }
 }
 
-function normalizeNotebookItem(raw: unknown): NotebookTreeItem | null {
+function normalizeVaultItem(raw: unknown): VaultTreeItem | null {
   if (!isRecord(raw)) return null
   const id = normalizeString(raw.id)
   const title = normalizeString(raw.title, raw.type === 'folder' ? 'Untitled folder' : 'Untitled')
   if (!id) return null
   if (raw.type === 'folder') {
     const children = Array.isArray(raw.children) ? raw.children.flatMap((child) => {
-      const normalized = normalizeNotebookItem(child)
+      const normalized = normalizeVaultItem(child)
       return normalized ? [normalized] : []
     }) : []
     return {
@@ -157,7 +157,7 @@ function normalizeNotebookItem(raw: unknown): NotebookTreeItem | null {
       id,
       title,
       children,
-    } satisfies NotebookFolder
+    } satisfies VaultFolder
   }
   if (raw.type === 'note') {
     const noteBodyId = normalizeString(raw.noteBodyId)
@@ -167,15 +167,15 @@ function normalizeNotebookItem(raw: unknown): NotebookTreeItem | null {
       id,
       title,
       noteBodyId,
-    } satisfies NotebookNote
+    } satisfies VaultNote
   }
   return null
 }
 
-function normalizeDeletedNotebookItem(raw: unknown): DeletedNotebookItem | null {
+function normalizeDeletedVaultItem(raw: unknown): DeletedVaultItem | null {
   if (!isRecord(raw)) return null
   const id = normalizeString(raw.id)
-  const item = normalizeNotebookItem(raw.item)
+  const item = normalizeVaultItem(raw.item)
   if (!id || !item) return null
   return {
     id,
@@ -186,22 +186,22 @@ function normalizeDeletedNotebookItem(raw: unknown): DeletedNotebookItem | null 
   }
 }
 
-function normalizeNotebookState(raw: unknown, fallback: NotebookState): NotebookState | null {
+function normalizeVaultState(raw: unknown, fallback: VaultState): VaultState | null {
   if (!isRecord(raw) || !Array.isArray(raw.items)) return null
-  const items = raw.items.flatMap((item): NotebookTreeItem[] => {
-    const normalized = normalizeNotebookItem(item)
+  const items = raw.items.flatMap((item): VaultTreeItem[] => {
+    const normalized = normalizeVaultItem(item)
     return normalized ? [normalized] : []
   })
   if (items.length === 0) return null
   const deletedItems = Array.isArray(raw.deletedItems)
-    ? raw.deletedItems.flatMap((entry): DeletedNotebookItem[] => {
-        const normalized = normalizeDeletedNotebookItem(entry)
+    ? raw.deletedItems.flatMap((entry): DeletedVaultItem[] => {
+        const normalized = normalizeDeletedVaultItem(entry)
         return normalized ? [normalized] : []
       })
     : []
   return ensureValidActiveNote({
     activeNoteId: normalizeString(raw.activeNoteId, fallback.activeNoteId),
-    openTabs: normalizeNotebookTabsForItems(
+    openTabs: normalizeVaultTabsForItems(
       raw.openTabs,
       items,
       normalizeString(raw.activeNoteId, fallback.activeNoteId),
@@ -244,7 +244,7 @@ function normalizeAppMessages(raw: unknown): AppMessage[] {
   return raw.flatMap((entry): AppMessage[] => {
     if (!isRecord(entry)) return []
     const type =
-      entry.type === 'duplicate-auto-decoupled' || entry.type === 'storage-notebook-recovered' ? entry.type : null
+      entry.type === 'duplicate-auto-decoupled' || entry.type === 'storage-vault-recovered' ? entry.type : null
     const id = normalizeString(entry.id)
     if (!type || !id) return []
     return [
@@ -254,16 +254,16 @@ function normalizeAppMessages(raw: unknown): AppMessage[] {
         status: entry.status === 'dismissed' ? 'dismissed' : entry.status === 'acknowledged' ? 'acknowledged' : 'unread',
         createdAt: normalizeTimestamp(entry.createdAt, fallbackTimestamp),
         signature: normalizeString(entry.signature, id),
-        title: normalizeString(entry.title, type === 'storage-notebook-recovered' ? 'Recovered notebook' : 'Duplicate note decoupled'),
+        title: normalizeString(entry.title, type === 'storage-vault-recovered' ? 'Recovered vault' : 'Duplicate note decoupled'),
         body: typeof entry.body === 'string' ? entry.body : '',
         anchorPath: typeof entry.anchorPath === 'string' ? entry.anchorPath : undefined,
         decoupledPaths: normalizeStringList(entry.decoupledPaths),
         affectedLocations: normalizeAppMessageAffectedLocations(entry.affectedLocations),
-        failedNotebookPath: typeof entry.failedNotebookPath === 'string' ? entry.failedNotebookPath : undefined,
-        failedNotebookAvailable:
-          typeof entry.failedNotebookAvailable === 'boolean' ? entry.failedNotebookAvailable : undefined,
-        activeNotebookPath: typeof entry.activeNotebookPath === 'string' ? entry.activeNotebookPath : undefined,
-        activeNotebookName: typeof entry.activeNotebookName === 'string' ? entry.activeNotebookName : undefined,
+        failedVaultPath: typeof entry.failedVaultPath === 'string' ? entry.failedVaultPath : undefined,
+        failedVaultAvailable:
+          typeof entry.failedVaultAvailable === 'boolean' ? entry.failedVaultAvailable : undefined,
+        activeVaultPath: typeof entry.activeVaultPath === 'string' ? entry.activeVaultPath : undefined,
+        activeVaultName: typeof entry.activeVaultName === 'string' ? entry.activeVaultName : undefined,
         recoveryMode:
           entry.recoveryMode === 'disconnected-to-local' ||
           entry.recoveryMode === 'created-local' ||
@@ -297,7 +297,7 @@ function normalizeToastHistory(raw: unknown): ToastHistoryEntry[] {
     .slice(-MAX_NORMALIZED_TOAST_HISTORY_ENTRIES)
 }
 
-function collectNoteBodyIdsFromItems(items: NotebookTreeItem[], ids = new Set<string>()): Set<string> {
+function collectNoteBodyIdsFromItems(items: VaultTreeItem[], ids = new Set<string>()): Set<string> {
   for (const item of items) {
     if (item.type === 'note') {
       ids.add(item.noteBodyId)
@@ -314,10 +314,10 @@ function collectAisleBodyIds(noteBodies: NoteBody[]): Set<string> {
   return ids
 }
 
-function ensureNotebookBodies(state: AppState): AppState {
+function ensureVaultBodies(state: AppState): AppState {
   const noteBodyMap = new Map(state.noteBodies.map((body) => [body.id, body]))
   const aisleBodyMap = new Map((state.noteAisleBodies ?? []).map((body) => [body.id, body]))
-  const requiredNoteBodyIds = collectNoteBodyIdsFromItems(state.notebook.items)
+  const requiredNoteBodyIds = collectNoteBodyIdsFromItems(state.vault.items)
   const noteBodies = [...state.noteBodies]
   const noteAisleBodies = [...(state.noteAisleBodies ?? [])]
 
@@ -354,8 +354,8 @@ function ensureNotebookBodies(state: AppState): AppState {
 export function normalizeAppState(raw: unknown): AppState {
   const fallback = createDefaultState()
   if (!isRecord(raw)) return fallback
-  const notebook = normalizeNotebookState(raw.notebook, fallback.notebook)
-  if (!notebook) return fallback
+  const vault = normalizeVaultState(raw.vault, fallback.vault)
+  if (!vault) return fallback
 
   const noteBodies = Array.isArray(raw.noteBodies)
     ? raw.noteBodies.flatMap((body): NoteBody[] => {
@@ -378,9 +378,9 @@ export function normalizeAppState(raw: unknown): AppState {
       : fallback.ui.selectedCustomTheme
   const hotkeys = isRecord(raw.hotkeys) ? raw.hotkeys : {}
   const normalizedHotkeys = normalizeHotkeySettings(hotkeys)
-  return materializeSyncedNoteBodiesInState(ensureNotebookBodies({
+  return materializeSyncedNoteBodiesInState(ensureVaultBodies({
     theme: APP_THEMES.includes(raw.theme as AppTheme) ? (raw.theme as AppTheme) : fallback.theme,
-    notebook,
+    vault,
     scratchpad: isRecord(raw.scratchpad)
       ? {
           noteBodyId: normalizeString(raw.scratchpad.noteBodyId, fallback.scratchpad?.noteBodyId ?? ''),
@@ -435,14 +435,14 @@ export function parseSavedState(serializedState: string | null | undefined): App
 }
 
 export function applyAutoPurgeToAppState(state: AppState, now = Date.now()): AppState {
-  const notebook = purgeOldDeletedNotebookItems(state.notebook, now)
-  return notebook === state.notebook ? state : { ...state, notebook }
+  const vault = purgeOldDeletedVaultItems(state.vault, now)
+  return vault === state.vault ? state : { ...state, vault }
 }
 
 export function getNextAutoPurgeTimeForAppState(state: AppState, now = Date.now()): number | null {
-  const days = state.notebook.settings.autoRemoveDeletedDays
-  if (!Number.isFinite(days) || days <= 0 || state.notebook.deletedItems.length === 0) return null
-  const oldestDeletedAt = state.notebook.deletedItems.reduce(
+  const days = state.vault.settings.autoRemoveDeletedDays
+  if (!Number.isFinite(days) || days <= 0 || state.vault.deletedItems.length === 0) return null
+  const oldestDeletedAt = state.vault.deletedItems.reduce(
     (oldest, entry) => Math.min(oldest, entry.deletedAt),
     Number.POSITIVE_INFINITY,
   )
@@ -450,11 +450,11 @@ export function getNextAutoPurgeTimeForAppState(state: AppState, now = Date.now(
 }
 
 export function getAutoPurgeScheduleSignatureForAppState(state: AppState): string {
-  const deletedSignature = state.notebook.deletedItems
+  const deletedSignature = state.vault.deletedItems
     .map((entry) => `${entry.id}:${entry.deletedAt}`)
     .sort()
     .join('|')
-  return `${state.notebook.settings.autoRemoveDeletedDays}:${deletedSignature}`
+  return `${state.vault.settings.autoRemoveDeletedDays}:${deletedSignature}`
 }
 
 export function applyMarkdownToAppState(
@@ -464,7 +464,7 @@ export function applyMarkdownToAppState(
   markdown: string,
   options: { syncAisleStructure?: boolean } = {},
 ): AppState {
-  const note = findNote(previous.notebook.items, noteId)
+  const note = findNote(previous.vault.items, noteId)
   if (!note) return previous
   const noteBody = previous.noteBodies.find((body) => body.id === note.noteBodyId)
   if (!noteBody) return previous
@@ -478,7 +478,7 @@ export function applyMarkdownToAppState(
   return next
 }
 
-function findNote(items: NotebookTreeItem[], noteId: string): NotebookNote | null {
+function findNote(items: VaultTreeItem[], noteId: string): VaultNote | null {
   for (const item of items) {
     if (item.type === 'note' && item.id === noteId) return item
     if (item.type === 'folder') {

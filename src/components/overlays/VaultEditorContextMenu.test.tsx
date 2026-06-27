@@ -5,21 +5,21 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import {
-  NotebookEditorContextMenu,
-  getNotebookEditorContextMenuAisleIdFromTarget,
-  type NotebookEditorContextMenuState,
-} from './NotebookEditorContextMenu'
+  VaultEditorContextMenu,
+  getVaultEditorContextMenuAisleIdFromTarget,
+  type VaultEditorContextMenuState,
+} from './VaultEditorContextMenu'
 
 const sourceDir = dirname(fileURLToPath(import.meta.url))
-const notebookAppSource = readFileSync(join(sourceDir, '../../app/NotebookApp.tsx'), 'utf8')
-const notebookEditorsSource = readFileSync(join(sourceDir, '../../editor/useNotebookAisleEditors.ts'), 'utf8')
+const vaultAppSource = readFileSync(join(sourceDir, '../../app/VaultApp.tsx'), 'utf8')
+const vaultEditorsSource = readFileSync(join(sourceDir, '../../editor/useVaultAisleEditors.ts'), 'utf8')
 
 function renderMenu(options: {
-  menu?: NotebookEditorContextMenuState | null
+  menu?: VaultEditorContextMenuState | null
   canDecoupleAisle?: boolean
 } = {}) {
   return renderToStaticMarkup(
-    <NotebookEditorContextMenu
+    <VaultEditorContextMenu
       menu={options.menu ?? { x: 10, y: 20, aisleId: 'aisle-1' }}
       canDecoupleAisle={options.canDecoupleAisle ?? false}
       revealLabel="Reveal in Finder"
@@ -54,7 +54,7 @@ function fakeTarget(aisleId: string, options: { ignored?: boolean; tableCell?: b
   } as unknown as Element
 }
 
-describe('NotebookEditorContextMenu', () => {
+describe('VaultEditorContextMenu', () => {
   it('renders restored editor-essential actions without stale rows', () => {
     const html = renderMenu()
 
@@ -141,49 +141,49 @@ describe('NotebookEditorContextMenu', () => {
   })
 
   it('routes ordinary aisle/editor targets and ignores toolbar or menu targets', () => {
-    expect(getNotebookEditorContextMenuAisleIdFromTarget(fakeTarget('aisle-1'))).toBe('aisle-1')
-    expect(getNotebookEditorContextMenuAisleIdFromTarget(fakeTarget('aisle-1', { ignored: true }))).toBeNull()
-    expect(getNotebookEditorContextMenuAisleIdFromTarget(fakeTarget('aisle-1', { tableCell: true }))).toBeNull()
-    expect(getNotebookEditorContextMenuAisleIdFromTarget(null)).toBeNull()
+    expect(getVaultEditorContextMenuAisleIdFromTarget(fakeTarget('aisle-1'))).toBe('aisle-1')
+    expect(getVaultEditorContextMenuAisleIdFromTarget(fakeTarget('aisle-1', { ignored: true }))).toBeNull()
+    expect(getVaultEditorContextMenuAisleIdFromTarget(fakeTarget('aisle-1', { tableCell: true }))).toBeNull()
+    expect(getVaultEditorContextMenuAisleIdFromTarget(null)).toBeNull()
   })
 })
 
-describe('notebook editor context menu wiring', () => {
+describe('vault editor context menu wiring', () => {
   it('routes note right-clicks to the editor menu instead of the synced-item menu', () => {
-    expect(notebookAppSource).toContain('onContextMenu={openNotebookEditorContextMenuFromPointer}')
-    expect(notebookAppSource).toContain('getNotebookEditorContextMenuAisleIdFromTarget(target)')
-    expect(notebookAppSource).toContain('setEditorContextMenu({ aisleId, x, y, linkPrompt: options.linkPrompt ?? null })')
-    expect(notebookAppSource).toContain('if (!menu || !canDecoupleAisle) return null')
-    expect(notebookAppSource).not.toContain('openAisleContextMenuFromPointer')
-    expect(notebookAppSource).not.toContain('No synced item')
+    expect(vaultAppSource).toContain('onContextMenu={openVaultEditorContextMenuFromPointer}')
+    expect(vaultAppSource).toContain('getVaultEditorContextMenuAisleIdFromTarget(target)')
+    expect(vaultAppSource).toContain('setEditorContextMenu({ aisleId, x, y, linkPrompt: options.linkPrompt ?? null })')
+    expect(vaultAppSource).toContain('if (!menu || !canDecoupleAisle) return null')
+    expect(vaultAppSource).not.toContain('openAisleContextMenuFromPointer')
+    expect(vaultAppSource).not.toContain('No synced item')
   })
 
-  it('wires context-menu paste, commands, and attachments to notebook editor helpers', () => {
-    expect(notebookAppSource).toContain(
+  it('wires context-menu paste, commands, and attachments to vault editor helpers', () => {
+    expect(vaultAppSource).toContain(
       "addAisle(destination === 'new-aisle-left' ? 'left' : 'right', aisleId, result.markdown)",
     )
-    expect(notebookAppSource).toContain('pasteFrontmatterClipboard(aisleId)')
-    expect(notebookAppSource).toContain('pasteNotebookStructureClipboard(aisleId)')
-    expect(notebookAppSource).toContain('buildFrontmatterClipboardPasteForAisle(')
-    expect(notebookAppSource).toContain('buildNotebookStructureClipboardPayload(currentState')
-    expect(notebookAppSource).toContain('writeNotebookStructureClipboardPayload(result.payload, result.markdown)')
-    expect(notebookAppSource).toContain('onCommand={notebookEditors.runCommand}')
-    expect(notebookAppSource).toContain('onEditLink={openUrlLinkPrompt}')
-    expect(notebookAppSource).toContain('onInsertAttachment={notebookEditors.insertAttachmentFile}')
-    expect(notebookAppSource).toContain('onCopyAs={copyNotebookStructureAs}')
-    expect(notebookAppSource).toContain('onRevealLocation={revealEditorContextLocation}')
-    expect(notebookAppSource).toContain("trigger: 'notebook-editor-reveal-location'")
-    expect(notebookAppSource).toContain('const latest = getLatestNotebookStateFromMountedEditors()')
-    expect(notebookAppSource).toContain('pendingEditorCount: latest.pendingEditorCount')
-    expect(notebookAppSource).toContain('revealNoteLocation(payload)')
-    expect(notebookEditorsSource).toContain('onNotebookStructurePaste')
-    expect(notebookEditorsSource).toContain('onFrontmatterPaste')
-    expect(notebookEditorsSource).toContain('readFrontmatterClipboardPayloadFromDataTransfer(event.clipboardData, {')
-    expect(notebookEditorsSource).toContain('readFrontmatterClipboardPayloadFromNavigator(undefined, {')
-    expect(notebookEditorsSource).toContain('readNotebookStructureClipboardPayloadFromDataTransfer(event.clipboardData)')
-    expect(notebookEditorsSource).toContain('readClipboardMarkdownForPaste')
-    expect(notebookEditorsSource).toContain('insertVisualClipboardMarkdownIntoView')
-    expect(notebookEditorsSource).toContain('insertAssetLinksIntoWysiwygView')
-    expect(notebookEditorsSource).toContain('buildMediaMarkdownLink')
+    expect(vaultAppSource).toContain('pasteFrontmatterClipboard(aisleId)')
+    expect(vaultAppSource).toContain('pasteVaultStructureClipboard(aisleId)')
+    expect(vaultAppSource).toContain('buildFrontmatterClipboardPasteForAisle(')
+    expect(vaultAppSource).toContain('buildVaultStructureClipboardPayload(currentState')
+    expect(vaultAppSource).toContain('writeVaultStructureClipboardPayload(result.payload, result.markdown)')
+    expect(vaultAppSource).toContain('onCommand={vaultEditors.runCommand}')
+    expect(vaultAppSource).toContain('onEditLink={openUrlLinkPrompt}')
+    expect(vaultAppSource).toContain('onInsertAttachment={vaultEditors.insertAttachmentFile}')
+    expect(vaultAppSource).toContain('onCopyAs={copyVaultStructureAs}')
+    expect(vaultAppSource).toContain('onRevealLocation={revealEditorContextLocation}')
+    expect(vaultAppSource).toContain("trigger: 'vault-editor-reveal-location'")
+    expect(vaultAppSource).toContain('const latest = getLatestVaultStateFromMountedEditors()')
+    expect(vaultAppSource).toContain('pendingEditorCount: latest.pendingEditorCount')
+    expect(vaultAppSource).toContain('revealNoteLocation(payload)')
+    expect(vaultEditorsSource).toContain('onVaultStructurePaste')
+    expect(vaultEditorsSource).toContain('onFrontmatterPaste')
+    expect(vaultEditorsSource).toContain('readFrontmatterClipboardPayloadFromDataTransfer(event.clipboardData, {')
+    expect(vaultEditorsSource).toContain('readFrontmatterClipboardPayloadFromNavigator(undefined, {')
+    expect(vaultEditorsSource).toContain('readVaultStructureClipboardPayloadFromDataTransfer(event.clipboardData)')
+    expect(vaultEditorsSource).toContain('readClipboardMarkdownForPaste')
+    expect(vaultEditorsSource).toContain('insertVisualClipboardMarkdownIntoView')
+    expect(vaultEditorsSource).toContain('insertAssetLinksIntoWysiwygView')
+    expect(vaultEditorsSource).toContain('buildMediaMarkdownLink')
   })
 })

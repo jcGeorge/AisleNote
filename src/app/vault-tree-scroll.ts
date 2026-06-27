@@ -1,10 +1,10 @@
-export type NotebookTreeRevealViewport = {
+export type VaultTreeRevealViewport = {
   scrollTop: number
   clientHeight: number
   scrollHeight: number
 }
 
-export type NotebookTreeRevealRow = {
+export type VaultTreeRevealRow = {
   top: number
   bottom: number
 }
@@ -14,9 +14,9 @@ function clampScrollTop(scrollTop: number, maxScrollTop: number): number {
   return Math.min(Math.max(scrollTop, 0), Math.max(0, maxScrollTop))
 }
 
-export function getNotebookTreeRevealScrollTop(
-  viewport: NotebookTreeRevealViewport,
-  row: NotebookTreeRevealRow,
+export function getVaultTreeRevealScrollTop(
+  viewport: VaultTreeRevealViewport,
+  row: VaultTreeRevealRow,
 ): number {
   const currentScrollTop = clampScrollTop(viewport.scrollTop, viewport.scrollHeight - viewport.clientHeight)
   const viewportHeight = Math.max(0, viewport.clientHeight)

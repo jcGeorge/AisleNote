@@ -33,7 +33,7 @@ function serializedAppState(theme = 'cheese') {
       dataSettingsSection: 'settings',
       toolbarLayouts: [],
     },
-    notebook: {
+    vault: {
       activeNoteId: 'note-1',
       items: [{ type: 'note', id: 'note-1', title: 'Note', noteBodyId: 'body-1' }],
       deletedItems: [],
@@ -293,15 +293,15 @@ describe('user settings location storage', () => {
       expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('custom1')
     }))
 
-  it('rejects notebook folders as live settings folders', () =>
+  it('rejects vault folders as live settings folders', () =>
     withTempDir((root) => {
-      const activeNotebook = path.join(root, 'notebook')
-      const otherNotebook = path.join(root, 'other-notebook')
-      mkdirSync(otherNotebook, { recursive: true })
-      writeFileSync(path.join(otherNotebook, 'manifest.json'), '{"schemaVersion":1}', 'utf8')
+      const activeVault = path.join(root, 'vault')
+      const otherVault = path.join(root, 'other-vault')
+      mkdirSync(otherVault, { recursive: true })
+      writeFileSync(path.join(otherVault, 'manifest.json'), '{"schemaVersion":1}', 'utf8')
 
-      expect(validateUserSettingsFolderCandidate(activeNotebook, activeNotebook)).toMatchObject({ ok: false })
-      expect(validateUserSettingsFolderCandidate(otherNotebook, activeNotebook)).toMatchObject({ ok: false })
-      expect(validateUserSettingsFolderCandidate(path.join(root, 'settings-only'), activeNotebook)).toEqual({ ok: true })
+      expect(validateUserSettingsFolderCandidate(activeVault, activeVault)).toMatchObject({ ok: false })
+      expect(validateUserSettingsFolderCandidate(otherVault, activeVault)).toMatchObject({ ok: false })
+      expect(validateUserSettingsFolderCandidate(path.join(root, 'settings-only'), activeVault)).toEqual({ ok: true })
     }))
 })

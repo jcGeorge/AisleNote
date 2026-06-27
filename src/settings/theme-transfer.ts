@@ -1,5 +1,5 @@
 import type { CustomThemePalette, CustomThemePaletteSlot } from '../types/app'
-import { CUSTOM_THEME_PALETTE_SLOTS } from '../theme/notebook-themes'
+import { CUSTOM_THEME_PALETTE_SLOTS } from '../theme/vault-themes'
 import { normalizeHexColor } from './defaults'
 
 export type ThemeSettingsImportResult =

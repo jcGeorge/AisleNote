@@ -1459,7 +1459,7 @@
   position: absolute;
   top: clamp(
     var(--resize-handle-half-height),
-    calc(var(--resize-handle-center-y) - var(--notebook-topbar-height)),
+    calc(var(--resize-handle-center-y) - var(--vault-topbar-height)),
     calc(100% - var(--resize-handle-half-height))
   );
   right: 0;

@@ -23,7 +23,7 @@ import { buildInternalNoteLinkToken, buildPreviewToken } from '../../notes/note-
 
 const noteWorkspaceSource = readFileSync(fileURLToPath(new URL('./NoteWorkspace.tsx', import.meta.url)), 'utf8')
 const noteTabStripSource = readFileSync(fileURLToPath(new URL('./NoteTabStrip.tsx', import.meta.url)), 'utf8')
-const notebookAppSource = readFileSync(fileURLToPath(new URL('../../app/NotebookApp.tsx', import.meta.url)), 'utf8')
+const vaultAppSource = readFileSync(fileURLToPath(new URL('../../app/VaultApp.tsx', import.meta.url)), 'utf8')
 const editorShellCss = readFileSync(fileURLToPath(new URL('../../styles/editor-shell.css', import.meta.url)), 'utf8')
 const responsiveCss = readFileSync(fileURLToPath(new URL('../../styles/responsive.css', import.meta.url)), 'utf8')
 
@@ -36,7 +36,7 @@ const aisles: ResolvedNoteAisle[] = [
 function createPreviewState(): AppState {
   return {
     theme: 'dark',
-    notebook: {
+    vault: {
       activeNoteId: 'note-parent',
       items: [
         { type: 'note', id: 'note-parent', title: 'Parent', noteBodyId: 'body-1' },
@@ -127,17 +127,17 @@ function renderWorkspace(
 }
 
 describe('NoteWorkspace aisle mounting', () => {
-  it('wires editable image and video selection through the notebook workspace', () => {
+  it('wires editable image and video selection through the vault workspace', () => {
     expect(noteWorkspaceSource).toContain('onSelectEditableAsset')
     expect(noteWorkspaceSource).toContain('onPointerDownCapture')
     expect(noteWorkspaceSource).toContain('onSelectEditableAsset(event.target)')
-    expect(notebookAppSource).toContain('const imageToolsController = useImageTools')
-    expect(notebookAppSource).toContain('const mediaToolsController = useMediaTools')
-    expect(notebookAppSource).toContain('<ImageToolsOverlay')
-    expect(notebookAppSource).toContain('<MediaToolsOverlay')
-    expect(notebookAppSource).toContain('imageToolsOverlay={imageToolsOverlay}')
-    expect(notebookAppSource).toContain('onSelectEditableAsset={selectEditableAssetFromWorkspace}')
-    expect(notebookAppSource).not.toContain('imageToolsOverlay={null}')
+    expect(vaultAppSource).toContain('const imageToolsController = useImageTools')
+    expect(vaultAppSource).toContain('const mediaToolsController = useMediaTools')
+    expect(vaultAppSource).toContain('<ImageToolsOverlay')
+    expect(vaultAppSource).toContain('<MediaToolsOverlay')
+    expect(vaultAppSource).toContain('imageToolsOverlay={imageToolsOverlay}')
+    expect(vaultAppSource).toContain('onSelectEditableAsset={selectEditableAssetFromWorkspace}')
+    expect(vaultAppSource).not.toContain('imageToolsOverlay={null}')
   })
 
   it('keeps inactive preview hydration stable across active aisle changes', () => {
@@ -341,7 +341,7 @@ describe('NoteWorkspace aisle mounting', () => {
     })).toBe('markdown-preview')
   })
 
-  it('marks rendered internal note links so preview clicks can open notebook notes', () => {
+  it('marks rendered internal note links so preview clicks can open vault notes', () => {
     const appState = createPreviewState()
     const noteLink = buildInternalNoteLinkToken(appState, { noteId: 'note-child' })
     const html = renderWorkspace(new Set(['active']), {
@@ -463,10 +463,10 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('value="Parent draft"')
   })
 
-  it('wires notebook tabs through the notebook app while hiding them for scratchpad', () => {
-    expect(notebookAppSource).toContain('noteTabs={activeModelIsScratchpad ? [] : noteTabItems}')
-    expect(notebookAppSource).toContain("renamingNoteTabId={renamingItemSurface === 'tab' ? renamingTreeItemId : ''}")
-    expect(notebookAppSource).toContain("applyNotebookNavigationLocation({ noteId, aisleId: '' }, { tabDisposition: 'retained' })")
+  it('wires vault tabs through the vault app while hiding them for scratchpad', () => {
+    expect(vaultAppSource).toContain('noteTabs={activeModelIsScratchpad ? [] : noteTabItems}')
+    expect(vaultAppSource).toContain("renamingNoteTabId={renamingItemSurface === 'tab' ? renamingTreeItemId : ''}")
+    expect(vaultAppSource).toContain("applyVaultNavigationLocation({ noteId, aisleId: '' }, { tabDisposition: 'retained' })")
     expect(noteWorkspaceSource).toContain('<NoteTabStrip')
   })
 
@@ -515,7 +515,7 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html.match(/data-note-workspace-skip-aisle-activation="true"/g) ?? []).toHaveLength(3)
     expect(html.match(/note-aisle-resize-capsule/g) ?? []).toHaveLength(3)
     expect(resizeRule).toContain('top: clamp(')
-    expect(resizeRule).toContain('calc(var(--resize-handle-center-y) - var(--notebook-topbar-height))')
+    expect(resizeRule).toContain('calc(var(--resize-handle-center-y) - var(--vault-topbar-height))')
     expect(resizeRule).not.toContain('top: 70%;')
   })
 

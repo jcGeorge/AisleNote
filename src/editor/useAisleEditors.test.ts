@@ -13,7 +13,7 @@ import {
 } from './aisle-activation'
 
 const useAisleEditorsSource = readFileSync(
-  fileURLToPath(new URL('./useNotebookAisleEditors.ts', import.meta.url)),
+  fileURLToPath(new URL('./useVaultAisleEditors.ts', import.meta.url)),
   'utf8',
 )
 
@@ -21,15 +21,15 @@ describe('aisle editor activation', () => {
   it('uses Toast snapshots for mounted aisle content', () => {
     expect(useAisleEditorsSource).toContain('const getMountedEditorMarkdownSnapshots = useCallback')
     expect(useAisleEditorsSource).toContain('const snapshotMarkdown = getMarkdownSnapshotForMeta(meta)')
-    expect(useAisleEditorsSource).toContain('const collapsedSnapshots = collapseNotebookEditorMarkdownSnapshots(snapshots)')
-    expect(useAisleEditorsSource).toContain("recordNotebookEditorTiming('notebook-mounted-snapshot-collection'")
+    expect(useAisleEditorsSource).toContain('const collapsedSnapshots = collapseVaultEditorMarkdownSnapshots(snapshots)')
+    expect(useAisleEditorsSource).toContain("recordVaultEditorTiming('vault-mounted-snapshot-collection'")
   })
 
   it('records link-heavy editor hot-path diagnostics without changing renderer behavior', () => {
     expect(useAisleEditorsSource).toContain("recordDiagnosticEvent('editor', event")
-    expect(useAisleEditorsSource).toContain("recordDiagnosticEvent('editor', 'notebook-change-hot-path'")
-    expect(useAisleEditorsSource).toContain("recordNotebookEditorTiming('notebook-pending-commit-flush'")
-    expect(useAisleEditorsSource).toContain("recordNotebookEditorTiming('notebook-editor-mount'")
+    expect(useAisleEditorsSource).toContain("recordDiagnosticEvent('editor', 'vault-change-hot-path'")
+    expect(useAisleEditorsSource).toContain("recordVaultEditorTiming('vault-pending-commit-flush'")
+    expect(useAisleEditorsSource).toContain("recordVaultEditorTiming('vault-editor-mount'")
   })
 
   it('uses the fast path only when the current mounted aisle is already active', () => {

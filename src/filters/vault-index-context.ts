@@ -4,16 +4,16 @@ import { listSearchableNoteLocations, type NoteSearchEntry } from '../notes/note
 import { getScratchpadNoteBody } from '../state/scratchpad'
 import type { AppState, FrontmatterTemplate, NoteAisleBody, NoteBody, NoteLocation } from '../types/app'
 
-export type NotebookOrderedLocation = {
+export type VaultOrderedLocation = {
   location: NoteLocation
   noteBodyId: string
   entry: NoteSearchEntry
 }
 
-export type NotebookIndexContext = {
+export type VaultIndexContext = {
   state: AppState
   locations: NoteSearchEntry[]
-  orderedLocations: NotebookOrderedLocation[]
+  orderedLocations: VaultOrderedLocation[]
   orderedNoteLocations: NoteLocation[]
   noteBodiesById: Map<string, NoteBody>
   aisleBodiesById: Map<string, NoteAisleBody>
@@ -22,7 +22,7 @@ export type NotebookIndexContext = {
   scratchpadLocation: NoteLocation
 }
 
-export function createNotebookIndexContext(state: AppState): NotebookIndexContext {
+export function createVaultIndexContext(state: AppState): VaultIndexContext {
   const locations = listSearchableNoteLocations(state)
   const noteBodiesById = new Map(state.noteBodies.map((body) => [body.id, body]))
   const aisleBodiesById = buildNoteAisleBodyMap(state.noteAisleBodies)
@@ -46,9 +46,9 @@ export function createNotebookIndexContext(state: AppState): NotebookIndexContex
   }
 }
 
-export function getNotebookIndexContext(
+export function getVaultIndexContext(
   state: AppState,
-  context?: NotebookIndexContext,
-): NotebookIndexContext {
-  return context ?? createNotebookIndexContext(state)
+  context?: VaultIndexContext,
+): VaultIndexContext {
+  return context ?? createVaultIndexContext(state)
 }

@@ -77,9 +77,9 @@ import {
   readTableSelectionClipboardPayloadFromClipboard,
 } from './table-selection-clipboard'
 import {
-  readNotebookStructureClipboardPayloadFromDataTransfer,
-  type NotebookStructureClipboardPayload,
-} from '../notes/notebook-structure-clipboard'
+  readVaultStructureClipboardPayloadFromDataTransfer,
+  type VaultStructureClipboardPayload,
+} from '../notes/vault-structure-clipboard'
 import {
   readFrontmatterClipboardPayloadFromDataTransfer,
   readFrontmatterClipboardPayloadFromNavigator,
@@ -112,9 +112,9 @@ import {
 } from '../notes/note-references'
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import {
-  collapseNotebookEditorMarkdownSnapshots,
-  type NotebookEditorMarkdownSnapshot,
-} from '../app/notebook-editor-persistence'
+  collapseVaultEditorMarkdownSnapshots,
+  type VaultEditorMarkdownSnapshot,
+} from '../app/vault-editor-persistence'
 import type { AisleActivationSource } from './aisle-activation'
 import type {
   AppState,
@@ -127,11 +127,11 @@ import type {
   ViewMode,
 } from '../types/app'
 
-export type NotebookEditorClipboardAction = 'cut' | 'copy' | 'paste' | 'pastePlainText'
-export type NotebookEditorClipboardPasteAction = Extract<NotebookEditorClipboardAction, 'paste' | 'pastePlainText'>
-export type NotebookEditorClipboardReadResult = Extract<ClipboardMarkdownReadResult, { ok: true }>
+export type VaultEditorClipboardAction = 'cut' | 'copy' | 'paste' | 'pastePlainText'
+export type VaultEditorClipboardPasteAction = Extract<VaultEditorClipboardAction, 'paste' | 'pastePlainText'>
+export type VaultEditorClipboardReadResult = Extract<ClipboardMarkdownReadResult, { ok: true }>
 
-type NotebookAisleEditorMeta = {
+type VaultAisleEditorMeta = {
   editor: Editor
   root: HTMLElement
   noteBodyId: string
@@ -145,22 +145,22 @@ type NotebookAisleEditorMeta = {
   cleanup: () => void
 }
 
-type NotebookEditorMarkdownCommitSource = 'user' | 'programmatic' | 'lifecycle'
+type VaultEditorMarkdownCommitSource = 'user' | 'programmatic' | 'lifecycle'
 
-type NotebookEditorLocalStateEcho = {
+type VaultEditorLocalStateEcho = {
   markdown: string
   canonicalMarkdown: string
   revision: number
   externalStateLoadVersion: number
 }
 
-type NotebookAisleEditorMountFailure = {
+type VaultAisleEditorMountFailure = {
   aisleId: string
   aisleBodyId: string
   markdown: string
 }
 
-export type NotebookAisleEditorActivationOptions = {
+export type VaultAisleEditorActivationOptions = {
   focus?: boolean
   flushPrevious?: boolean
   focusAtClientPoint?: { clientX: number; clientY: number; mode: 'coordinate' | 'focus-only' }
@@ -168,12 +168,12 @@ export type NotebookAisleEditorActivationOptions = {
   source?: AisleActivationSource
 }
 
-export type NotebookFindReplaceActiveMatchHighlight = FindReplaceActiveMatchInput & {
+export type VaultFindReplaceActiveMatchHighlight = FindReplaceActiveMatchInput & {
   noteBodyId: string
   aisleId: string
 }
 
-type UseNotebookAisleEditorsOptions = {
+type UseVaultAisleEditorsOptions = {
   viewMode: ViewMode
   noteId: string
   noteBodyId: string
@@ -191,7 +191,7 @@ type UseNotebookAisleEditorsOptions = {
   onTagAutocompleteQueryChange?: () => void
   getAppState?: () => AppState
   onOpenNoteReference?: (target: NoteLocation) => void
-  onNotebookStructurePaste?: (payload: NotebookStructureClipboardPayload, aisleId: string) => boolean
+  onVaultStructurePaste?: (payload: VaultStructureClipboardPayload, aisleId: string) => boolean
   onFrontmatterPaste?: (payload: FrontmatterClipboardPayload, aisleId: string) => boolean
   hotkeys: AppState['hotkeys']
   isMacPlatform: boolean
@@ -209,14 +209,14 @@ const AISLE_EDITOR_INTERSECTION_ROOT_MARGIN = '240px'
 const DISPLAY_RESTORE_MAX_FRAME_ATTEMPTS = 8
 const EDITOR_APP_STATE_COMMIT_DEBOUNCE_MS = 300
 const EDITOR_APP_STATE_COMMIT_MAX_WAIT_MS = 1200
-const NOTEBOOK_EDITOR_TIMING_DIAGNOSTIC_THRESHOLD_MS = 50
-const NOTEBOOK_EDITOR_TIMING_WARNING_THRESHOLD_MS = 100
+const VAULT_EDITOR_TIMING_DIAGNOSTIC_THRESHOLD_MS = 50
+const VAULT_EDITOR_TIMING_WARNING_THRESHOLD_MS = 100
 
 function countMarkdownLinks(markdown: string): number {
   return String(markdown ?? '').match(/\[[^\]\n]+\]\((?:https?:\/\/|#aislenote-note\/)[^)]+\)/gi)?.length ?? 0
 }
 
-function getNotebookEditorPerfNow(): number {
+function getVaultEditorPerfNow(): number {
   return typeof performance !== 'undefined' && typeof performance.now === 'function'
     ? performance.now()
     : Date.now()
@@ -226,15 +226,15 @@ function roundDiagnosticMs(durationMs: number): number {
   return Math.round(durationMs * 10) / 10
 }
 
-function recordNotebookEditorTiming(
+function recordVaultEditorTiming(
   event: string,
   durationMs: number,
   details: Record<string, unknown>,
-  thresholdMs = NOTEBOOK_EDITOR_TIMING_DIAGNOSTIC_THRESHOLD_MS,
+  thresholdMs = VAULT_EDITOR_TIMING_DIAGNOSTIC_THRESHOLD_MS,
 ): void {
   if (durationMs < thresholdMs) return
   recordDiagnosticEvent('editor', event, {
-    level: durationMs >= NOTEBOOK_EDITOR_TIMING_WARNING_THRESHOLD_MS ? 'warning' : 'info',
+    level: durationMs >= VAULT_EDITOR_TIMING_WARNING_THRESHOLD_MS ? 'warning' : 'info',
     durationMs: roundDiagnosticMs(durationMs),
     details,
   })
@@ -402,7 +402,7 @@ export function resolveEditorInternalNoteLinkTarget(
   return resolveMarkdownNoteReferenceDestination(appState, href, label, false)?.target ?? null
 }
 
-export function useNotebookAisleEditors({
+export function useVaultAisleEditors({
   viewMode,
   noteId,
   noteBodyId,
@@ -420,7 +420,7 @@ export function useNotebookAisleEditors({
   onTagAutocompleteQueryChange,
   getAppState,
   onOpenNoteReference,
-  onNotebookStructurePaste,
+  onVaultStructurePaste,
   onFrontmatterPaste,
   hotkeys,
   isMacPlatform,
@@ -430,16 +430,16 @@ export function useNotebookAisleEditors({
   onInsertAisleFromNewline,
   pushToast = () => undefined,
   externalStateLoadVersion,
-}: UseNotebookAisleEditorsOptions) {
+}: UseVaultAisleEditorsOptions) {
   const editorRootsRef = useRef<Map<string, HTMLElement>>(new Map())
   const aislePaneRootsRef = useRef<Map<string, HTMLElement>>(new Map())
-  const editorMetaRef = useRef<Map<string, NotebookAisleEditorMeta>>(new Map())
+  const editorMetaRef = useRef<Map<string, VaultAisleEditorMeta>>(new Map())
   const lastMarkdownByAisleBodyRef = useRef<Map<string, string>>(new Map())
   const renderedMarkdownByAisleBodyRef = useRef<Map<string, string>>(new Map())
   const revisionByAisleBodyRef = useRef<Map<string, number>>(new Map())
-  const localStateEchoByAisleBodyRef = useRef<Map<string, NotebookEditorLocalStateEcho>>(new Map())
-  const failedEditorMountsRef = useRef<Map<string, NotebookAisleEditorMountFailure>>(new Map())
-  const findReplaceActiveMatchRef = useRef<NotebookFindReplaceActiveMatchHighlight | null>(null)
+  const localStateEchoByAisleBodyRef = useRef<Map<string, VaultEditorLocalStateEcho>>(new Map())
+  const failedEditorMountsRef = useRef<Map<string, VaultAisleEditorMountFailure>>(new Map())
+  const findReplaceActiveMatchRef = useRef<VaultFindReplaceActiveMatchHighlight | null>(null)
   const findReplaceHighlightKeysRef = useRef<Map<string, string>>(new Map())
   const pendingAppStateCommitRevisionsByAisleBodyRef = useRef<Map<string, number>>(new Map())
   const pendingAppStateCommitTimerRef = useRef<number | null>(null)
@@ -590,7 +590,7 @@ export function useNotebookAisleEditors({
   const restoreEditorDisplayWhenReady = useCallback(
     (
       editorKey: string,
-      meta: NotebookAisleEditorMeta,
+      meta: VaultAisleEditorMeta,
       markdown = meta.markdown,
       remainingFrameAttempts = DISPLAY_RESTORE_MAX_FRAME_ATTEMPTS,
     ): boolean => {
@@ -632,7 +632,7 @@ export function useNotebookAisleEditors({
     [editorRef, getEditorMetaForAisle, scheduleToolbarFormatStateSync, setActiveAisleId],
   )
 
-  const applyFindReplaceActiveMatchToMeta = useCallback((meta: NotebookAisleEditorMeta) => {
+  const applyFindReplaceActiveMatchToMeta = useCallback((meta: VaultAisleEditorMeta) => {
     const view = getWysiwygView(meta.editor)
     if (!view?.state?.doc || typeof view.dispatch !== 'function') return false
 
@@ -662,7 +662,7 @@ export function useNotebookAisleEditors({
     return Boolean(normalizedRange)
   }, [])
 
-  const setActiveFindReplaceMatchHighlight = useCallback((match: NotebookFindReplaceActiveMatchHighlight | null) => {
+  const setActiveFindReplaceMatchHighlight = useCallback((match: VaultFindReplaceActiveMatchHighlight | null) => {
     findReplaceActiveMatchRef.current = match
     editorMetaRef.current.forEach((meta) => {
       applyFindReplaceActiveMatchToMeta(meta)
@@ -672,7 +672,7 @@ export function useNotebookAisleEditors({
   const replaceMountedEditorMarkdown = useCallback(
     (
       editorKey: string,
-      meta: NotebookAisleEditorMeta,
+      meta: VaultAisleEditorMeta,
       markdown: string,
       revision: number,
     ) => {
@@ -691,7 +691,7 @@ export function useNotebookAisleEditors({
   )
 
   const syncMountedEditorsForAisleBody = useCallback(
-    (sourceMeta: NotebookAisleEditorMeta, markdown: string, revision: number) => {
+    (sourceMeta: VaultAisleEditorMeta, markdown: string, revision: number) => {
       editorMetaRef.current.forEach((meta, editorKey) => {
         if (meta === sourceMeta || meta.aisleBodyId !== sourceMeta.aisleBodyId) return
         replaceMountedEditorMarkdown(editorKey, meta, markdown, revision)
@@ -714,7 +714,7 @@ export function useNotebookAisleEditors({
     [commitAisleMarkdown, markLocalStateEchoForAisleBody],
   )
 
-  const getMarkdownSnapshotForMeta = useCallback((meta: NotebookAisleEditorMeta) => {
+  const getMarkdownSnapshotForMeta = useCallback((meta: VaultAisleEditorMeta) => {
     const useCachedProgrammaticMarkdown =
       meta.programmaticMarkdownUpdatePending &&
       !meta.userEditedSinceProgrammaticUpdate &&
@@ -759,7 +759,7 @@ export function useNotebookAisleEditors({
   }, [])
 
   const flushPendingEditorAppStateCommit = useCallback(() => {
-    const startedAt = getNotebookEditorPerfNow()
+    const startedAt = getVaultEditorPerfNow()
     clearScheduledEditorAppStateCommit()
     const pendingRevisions = pendingAppStateCommitRevisionsByAisleBodyRef.current
     if (pendingRevisions.size <= 0) return
@@ -797,7 +797,7 @@ export function useNotebookAisleEditors({
     snapshotsByAisleBodyId.forEach((snapshot) => {
       commitEditorOriginatedAisleMarkdown(snapshot.aisleBodyId, snapshot.markdown, snapshot.revision)
     })
-    recordNotebookEditorTiming('notebook-pending-commit-flush', getNotebookEditorPerfNow() - startedAt, {
+    recordVaultEditorTiming('vault-pending-commit-flush', getVaultEditorPerfNow() - startedAt, {
       noteId,
       pendingAisleBodyCount,
       committedAisleBodyCount: snapshotsByAisleBodyId.size,
@@ -891,9 +891,9 @@ export function useNotebookAisleEditors({
 
   const commitEditorMarkdown = useCallback(
     (
-      meta: NotebookAisleEditorMeta,
+      meta: VaultAisleEditorMeta,
       editor: Editor = meta.editor,
-      source: NotebookEditorMarkdownCommitSource = 'user',
+      source: VaultEditorMarkdownCommitSource = 'user',
     ) => {
       const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
       const useCachedMarkdown =
@@ -930,7 +930,7 @@ export function useNotebookAisleEditors({
       const durationMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt
       const linkCount = countMarkdownLinks(nextMarkdown)
       if (import.meta.env?.DEV && (durationMs >= 16 || linkCount >= 8)) {
-        recordDiagnosticEvent('editor', 'notebook-change-hot-path', {
+        recordDiagnosticEvent('editor', 'vault-change-hot-path', {
           level: durationMs >= 50 ? 'warning' : 'info',
           durationMs,
           details: {
@@ -984,8 +984,8 @@ export function useNotebookAisleEditors({
     [onNoteMentionQueryChange],
   )
 
-  const getMountedEditorMarkdownSnapshots = useCallback((): NotebookEditorMarkdownSnapshot[] => {
-    const startedAt = getNotebookEditorPerfNow()
+  const getMountedEditorMarkdownSnapshots = useCallback((): VaultEditorMarkdownSnapshot[] => {
+    const startedAt = getVaultEditorPerfNow()
     reconcileMountedEditorsFromExternalState()
     let liveReadCount = 0
     let cachedReadCount = 0
@@ -1005,11 +1005,11 @@ export function useNotebookAisleEditors({
         active: meta.aisleId === activeEditorAisleIdRef.current,
       }
     })
-    const collapsedSnapshots = collapseNotebookEditorMarkdownSnapshots(snapshots)
+    const collapsedSnapshots = collapseVaultEditorMarkdownSnapshots(snapshots)
     collapsedSnapshots.forEach((snapshot) => {
       markLocalStateEchoForAisleBody(snapshot.aisleBodyId, snapshot.markdown, snapshot.revision ?? 0)
     })
-    recordNotebookEditorTiming('notebook-mounted-snapshot-collection', getNotebookEditorPerfNow() - startedAt, {
+    recordVaultEditorTiming('vault-mounted-snapshot-collection', getVaultEditorPerfNow() - startedAt, {
       noteId,
       mountedEditorCount: editorMetaRef.current.size,
       snapshotCount: snapshots.length,
@@ -1029,7 +1029,7 @@ export function useNotebookAisleEditors({
   const commitMountedEditorMarkdownNow = useCallback(() => {
     clearScheduledEditorAppStateCommit()
     const committedAisleBodyIds = new Set<string>()
-    collapseNotebookEditorMarkdownSnapshots(getMountedEditorMarkdownSnapshots()).forEach((snapshot) => {
+    collapseVaultEditorMarkdownSnapshots(getMountedEditorMarkdownSnapshots()).forEach((snapshot) => {
       commitEditorOriginatedAisleMarkdown(snapshot.aisleBodyId, snapshot.markdown, snapshot.revision ?? 0)
       committedAisleBodyIds.add(snapshot.aisleBodyId)
     })
@@ -1101,7 +1101,7 @@ export function useNotebookAisleEditors({
   const destroyEditor = useCallback((editorKey: string, captureContent = false) => {
     const meta = editorMetaRef.current.get(editorKey)
     if (!meta) return
-    const startedAt = getNotebookEditorPerfNow()
+    const startedAt = getVaultEditorPerfNow()
     const mountedEditorCountBefore = editorMetaRef.current.size
     const wasActiveEditor = editorRef.current === meta.editor
     if (captureContent) {
@@ -1128,7 +1128,7 @@ export function useNotebookAisleEditors({
     }
     editorMetaRef.current.delete(editorKey)
     findReplaceHighlightKeysRef.current.delete(editorKey)
-    recordNotebookEditorTiming('notebook-editor-destroy', getNotebookEditorPerfNow() - startedAt, {
+    recordVaultEditorTiming('vault-editor-destroy', getVaultEditorPerfNow() - startedAt, {
       noteId,
       noteBodyId: meta.noteBodyId,
       aisleId: meta.aisleId,
@@ -1317,8 +1317,8 @@ export function useNotebookAisleEditors({
           return
         }
 
-        const payload = readNotebookStructureClipboardPayloadFromDataTransfer(event.clipboardData)
-        if (!payload || !onNotebookStructurePaste?.(payload, aisle.id)) return
+        const payload = readVaultStructureClipboardPayloadFromDataTransfer(event.clipboardData)
+        if (!payload || !onVaultStructurePaste?.(payload, aisle.id)) return
         markEditorUserEditIntent(editorKey)
         event.preventDefault()
         event.stopPropagation()
@@ -1434,7 +1434,7 @@ export function useNotebookAisleEditors({
         () => root.removeEventListener('mouseup', handleEditorQueryProbe),
       ]
 
-      const mountStartedAt = getNotebookEditorPerfNow()
+      const mountStartedAt = getVaultEditorPerfNow()
       try {
         editor = new Editor({
           el: root,
@@ -1491,7 +1491,7 @@ export function useNotebookAisleEditors({
         cleanupFns.push(installHeadingPopupActiveState(root, () => mountedEditor))
         cleanupFns.push(installCompletedTaskCheckboxBehavior(root, () => mountedEditor, undefined, commitActiveEditorMarkdownNow))
 
-        const meta: NotebookAisleEditorMeta = {
+        const meta: VaultAisleEditorMeta = {
           editor: mountedEditor,
           root,
           noteBodyId,
@@ -1515,7 +1515,7 @@ export function useNotebookAisleEditors({
           activeEditorAisleIdRef.current = aisle.id
           scheduleToolbarFormatStateSync()
         }
-        recordNotebookEditorTiming('notebook-editor-mount', getNotebookEditorPerfNow() - mountStartedAt, {
+        recordVaultEditorTiming('vault-editor-mount', getVaultEditorPerfNow() - mountStartedAt, {
           noteId,
           noteBodyId,
           aisleId: aisle.id,
@@ -1533,7 +1533,7 @@ export function useNotebookAisleEditors({
           // Toast UI can throw during partial mount cleanup.
         }
         recordEditorMountFailure(editorKey, aisle)
-        recordDiagnosticEvent('aisle-editor', 'notebook-mount-error', {
+        recordDiagnosticEvent('aisle-editor', 'vault-mount-error', {
           level: 'error',
           message: error instanceof Error ? error.message : 'Toast UI editor mount failed.',
           details: {
@@ -1558,7 +1558,7 @@ export function useNotebookAisleEditors({
     mountedAisleIds,
     nextEditorMarkdownRevision,
     noteBodyId,
-    onNotebookStructurePaste,
+    onVaultStructurePaste,
     onExpandHeadingCollapse,
     onToggleHeadingCollapse,
     applyFindReplaceActiveMatchToMeta,
@@ -1597,7 +1597,7 @@ export function useNotebookAisleEditors({
   }, [])
 
   const activateAisleEditor = useCallback(
-    (editorKey: string, options: NotebookAisleEditorActivationOptions = {}) => {
+    (editorKey: string, options: VaultAisleEditorActivationOptions = {}) => {
       const aisleId = getAisleIdFromAisleEditorKey(editorKey)
       if (!setActiveEditor(aisleId)) return false
       const editor = getEditorMetaForAisle(aisleId)?.editor
@@ -1764,7 +1764,7 @@ export function useNotebookAisleEditors({
   )
 
   const readClipboardMarkdownForPaste = useCallback(
-    async (action: NotebookEditorClipboardPasteAction): Promise<NotebookEditorClipboardReadResult | null> => {
+    async (action: VaultEditorClipboardPasteAction): Promise<VaultEditorClipboardReadResult | null> => {
       const result = await readClipboardMarkdown({
         mode: action === 'paste' ? 'rich' : 'plainText',
         importImageBlobAsAssetUrl,
@@ -1879,7 +1879,7 @@ export function useNotebookAisleEditors({
   )
 
   const insertClipboardMarkdownResult = useCallback(
-    (result: NotebookEditorClipboardReadResult) => {
+    (result: VaultEditorClipboardReadResult) => {
       const editor = editorRef.current
       if (!editor) {
         pushToast('Open a note before using the editor menu.', 'warning')
@@ -1908,7 +1908,7 @@ export function useNotebookAisleEditors({
   )
 
   const runClipboardAction = useCallback(
-    (action: NotebookEditorClipboardAction) => {
+    (action: VaultEditorClipboardAction) => {
       const editor = editorRef.current
       if (!editor) {
         pushToast('Open a note before using the editor menu.', 'warning')

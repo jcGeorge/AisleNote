@@ -158,16 +158,16 @@ export function useUserSettingsTransferActions({
     }
   }
 
-  const importUserSettingsFromNotebookFolder = async () => {
-    const openFromNotebookFolder = window.electronAPI?.openUserSettingsFromNotebookFolder
-    if (!openFromNotebookFolder) {
+  const importUserSettingsFromVaultFolder = async () => {
+    const openFromVaultFolder = window.electronAPI?.openUserSettingsFromVaultFolder
+    if (!openFromVaultFolder) {
       setImportStatus(dataTransferMessages.userSettingsFolderImportDesktopOnly)
       return
     }
 
-    setImportStatus(dataTransferMessages.userSettingsImportChooseNotebookFolder)
+    setImportStatus(dataTransferMessages.userSettingsImportChooseVaultFolder)
     try {
-      const openResult = await openFromNotebookFolder()
+      const openResult = await openFromVaultFolder()
       if (openResult.canceled) {
         setImportStatus(dataTransferMessages.userSettingsImportCanceled)
         return
@@ -191,7 +191,7 @@ export function useUserSettingsTransferActions({
 
       const latestState = getLatestState()
       await commitAppStateNow(applyPortableAppSettings(latestState, parsedSettings.settings))
-      setImportStatus(dataTransferMessages.userSettingsImportedFromNotebookFolder)
+      setImportStatus(dataTransferMessages.userSettingsImportedFromVaultFolder)
     } catch (error) {
       setImportStatus(dataTransferMessages.userSettingsImportFailed(getErrorMessage(error)))
     }
@@ -201,6 +201,6 @@ export function useUserSettingsTransferActions({
     exportUserSettings,
     resetUserSettingsToDefaults,
     importUserSettings,
-    importUserSettingsFromNotebookFolder,
+    importUserSettingsFromVaultFolder,
   }
 }

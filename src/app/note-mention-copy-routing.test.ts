@@ -3,10 +3,10 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-const appSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), './NotebookApp.tsx'), 'utf8')
+const appSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), './VaultApp.tsx'), 'utf8')
 
 describe('@ menu copy routing', () => {
-  it('routes mention copy actions through focused-aisle notebook replacement helpers', () => {
+  it('routes mention copy actions through focused-aisle vault replacement helpers', () => {
     expect(appSource).toContain("source: 'mention'")
     expect(appSource).toContain("actions: ['note-link', 'note-preview', 'independent-copy', 'synced-copy']")
     expect(appSource).toContain('anchor: null')

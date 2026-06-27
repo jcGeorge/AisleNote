@@ -4,15 +4,15 @@ import { buildStorageAlerts, shouldShowStorageAlerts, shouldShowTipOverlays } fr
 
 const recoveryMessage: AppMessage = {
   id: 'message-1',
-  type: 'storage-notebook-recovered',
+  type: 'storage-vault-recovered',
   status: 'unread',
   createdAt: '2026-06-01T00:00:00.000Z',
   signature: 'recovery-signature',
-  title: 'Recovered notebook',
-  body: 'AisleNote could not load this notebook folder.',
-  failedNotebookPath: '/tmp/Broken Notebook',
-  activeNotebookPath: '/tmp/Default Notebook',
-  activeNotebookName: 'Default Notebook',
+  title: 'Recovered vault',
+  body: 'AisleNote could not load this vault folder.',
+  failedVaultPath: '/tmp/Broken Vault',
+  activeVaultPath: '/tmp/Default Vault',
+  activeVaultName: 'Default Vault',
   recoveryMode: 'created-local',
 }
 
@@ -21,9 +21,9 @@ describe('storage alerts', () => {
     expect(buildStorageAlerts([recoveryMessage])).toEqual([
       {
         signature: 'recovery-signature',
-        label: 'notebook recovered',
-        message: 'AisleNote reset the notebook because the folder could not be loaded.',
-        actionLabel: 'open previous notebook folder',
+        label: 'vault recovered',
+        message: 'AisleNote reset the vault because the folder could not be loaded.',
+        actionLabel: 'open previous vault folder',
       },
     ])
   })
@@ -33,11 +33,11 @@ describe('storage alerts', () => {
   })
 
   it('omits recovery alert actions when the failed folder is unavailable', () => {
-    expect(buildStorageAlerts([{ ...recoveryMessage, failedNotebookAvailable: false }])).toEqual([
+    expect(buildStorageAlerts([{ ...recoveryMessage, failedVaultAvailable: false }])).toEqual([
       {
         signature: 'recovery-signature',
-        label: 'notebook recovered',
-        message: 'AisleNote reset the notebook because the folder could not be loaded.',
+        label: 'vault recovered',
+        message: 'AisleNote reset the vault because the folder could not be loaded.',
         actionLabel: undefined,
       },
     ])

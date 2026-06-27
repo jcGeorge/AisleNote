@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { AppState, NoteBody } from '../types/app'
 import {
-  buildNotebookNoteReferenceInsertionText,
-  decoupleNotebookNoteLocationsInState,
+  buildVaultNoteReferenceInsertionText,
+  decoupleVaultNoteLocationsInState,
   getNotePreviewRenderMarkdown,
-  getNotebookAisleDecoupleRows,
-  getNotebookNoteDecoupleRows,
+  getVaultAisleDecoupleRows,
+  getVaultNoteDecoupleRows,
   replaceActiveNoteBodyFromTargetNote,
   replaceFocusedAisleFromTargetNote,
-} from './notebook-note-actions'
-import { findNotebookNote } from '../state/notebook'
+} from './vault-note-actions'
+import { findVaultNote } from '../state/vault'
+import { MAX_NOTE_AISLES } from '../editor/aisle-edit-draft'
 
 function idSequence(ids: string[]) {
   let index = 0
@@ -19,7 +20,7 @@ function idSequence(ids: string[]) {
 function createState(): AppState {
   return {
     theme: 'dark',
-    notebook: {
+    vault: {
       activeNoteId: 'note-active',
       items: [
         { type: 'note', id: 'note-active', title: 'Active', noteBodyId: 'body-active' },
@@ -79,25 +80,25 @@ function noteBody(state: AppState, id: string): NoteBody {
   return body
 }
 
-describe('notebook note actions', () => {
+describe('vault note actions', () => {
   it('builds note link and preview insertion text with noteId targets', () => {
     const state = createState()
 
-    expect(buildNotebookNoteReferenceInsertionText(state, { noteId: 'note-target' }, 'note-link')).toMatch(
+    expect(buildVaultNoteReferenceInsertionText(state, { noteId: 'note-target' }, 'note-link')).toMatch(
       /^\[Target\]\(Target--[0-9a-f]{6}\)$/,
     )
-    expect(buildNotebookNoteReferenceInsertionText(state, { noteId: 'note-target' }, 'note-preview')).toMatch(
+    expect(buildVaultNoteReferenceInsertionText(state, { noteId: 'note-target' }, 'note-preview')).toMatch(
       /^!\[Target\]\(<Target--[0-9a-f]{6}#aisle 1--[0-9a-f]{6}>\)$/,
     )
     expect(
-      buildNotebookNoteReferenceInsertionText(state, { noteId: 'note-target' }, 'note-preview', {
+      buildVaultNoteReferenceInsertionText(state, { noteId: 'note-target' }, 'note-preview', {
         aisleId: 'target-aisle-2',
       }),
     ).toMatch(
       /^!\[Target\]\(<Target--[0-9a-f]{6}#aisle 2--[0-9a-f]{6}>\)$/,
     )
     expect(
-      buildNotebookNoteReferenceInsertionText(state, { noteId: 'note-target' }, 'note-link', {
+      buildVaultNoteReferenceInsertionText(state, { noteId: 'note-target' }, 'note-link', {
         aisleId: 'target-aisle-2',
       }),
     ).toMatch(
@@ -166,7 +167,7 @@ describe('notebook note actions', () => {
 
     expect(result.status).toBe('ok')
     if (result.status !== 'ok') return
-    expect(findNotebookNote(result.state.notebook.items, 'note-active')?.note).toMatchObject({
+    expect(findVaultNote(result.state.vault.items, 'note-active')?.note).toMatchObject({
       id: 'note-active',
       title: 'Active',
       noteBodyId: 'synced-note-body',
@@ -175,7 +176,7 @@ describe('notebook note actions', () => {
       { id: 'synced-aisle-1', aisleBodyId: 'target-aisle-body-1' },
       { id: 'synced-aisle-2', aisleBodyId: 'target-aisle-body-2' },
     ])
-    expect(findNotebookNote(result.state.notebook.items, 'note-target')?.note.noteBodyId).toBe('body-target')
+    expect(findVaultNote(result.state.vault.items, 'note-target')?.note.noteBodyId).toBe('body-target')
   })
 
   it('replaces the active note body with an independent cloned body', () => {
@@ -188,7 +189,7 @@ describe('notebook note actions', () => {
 
     expect(result.status).toBe('ok')
     if (result.status !== 'ok') return
-    expect(findNotebookNote(result.state.notebook.items, 'note-active')?.note.noteBodyId).toBe('clone-note-body')
+    expect(findVaultNote(result.state.vault.items, 'note-active')?.note.noteBodyId).toBe('clone-note-body')
     expect(noteBody(result.state, 'clone-note-body').aisles).toEqual([
       { id: 'clone-aisle-1', aisleBodyId: 'clone-body-1' },
       { id: 'clone-aisle-2', aisleBodyId: 'clone-body-2' },
@@ -200,7 +201,7 @@ describe('notebook note actions', () => {
     const state = createState()
     const fullActive = {
       ...noteBody(state, 'body-active'),
-      aisles: Array.from({ length: 8 }, (_, index) => ({
+      aisles: Array.from({ length: MAX_NOTE_AISLES }, (_, index) => ({
         id: `active-aisle-${index + 1}`,
         aisleBodyId: `active-aisle-body-${index + 1}`,
       })),
@@ -221,11 +222,11 @@ describe('notebook note actions', () => {
     expect(result).toMatchObject({ status: 'blocked' })
   })
 
-  it('collects notebook-only decouple rows for note bodies and aisle bodies', () => {
+  it('collects vault-only decouple rows for note bodies and aisle bodies', () => {
     const state = {
       ...createState(),
-      notebook: {
-        ...createState().notebook,
+      vault: {
+        ...createState().vault,
         items: [
           { type: 'note' as const, id: 'note-active', title: 'Active', noteBodyId: 'body-active' },
           {
@@ -251,17 +252,17 @@ describe('notebook note actions', () => {
       ],
     } satisfies AppState
 
-    expect(getNotebookNoteDecoupleRows(state, 'body-active').map((row) => row.label)).toEqual(['Active', 'Work/Linked'])
-    expect(getNotebookNoteDecoupleRows(state, 'body-active').map((row) => [row.primaryLabel, row.secondaryLabel])).toEqual([
-      ['Notebook', 'Active'],
+    expect(getVaultNoteDecoupleRows(state, 'body-active').map((row) => row.label)).toEqual(['Active', 'Work/Linked'])
+    expect(getVaultNoteDecoupleRows(state, 'body-active').map((row) => [row.primaryLabel, row.secondaryLabel])).toEqual([
+      ['Vault', 'Active'],
       ['Work', 'Linked'],
     ])
-    expect(getNotebookAisleDecoupleRows(state, 'shared-aisle-body').map((row) => row.label)).toEqual([
+    expect(getVaultAisleDecoupleRows(state, 'shared-aisle-body').map((row) => row.label)).toEqual([
       'Active / aisle 1',
       'Work > Other',
     ])
-    expect(getNotebookAisleDecoupleRows(state, 'shared-aisle-body').map((row) => [row.primaryLabel, row.secondaryLabel])).toEqual([
-      ['Notebook', 'Active / aisle 1'],
+    expect(getVaultAisleDecoupleRows(state, 'shared-aisle-body').map((row) => [row.primaryLabel, row.secondaryLabel])).toEqual([
+      ['Vault', 'Active / aisle 1'],
       ['Work', 'Other / aisle 1'],
     ])
   })
@@ -269,8 +270,8 @@ describe('notebook note actions', () => {
   it('de-couples selected note locations while preserving text when keep text is enabled', () => {
     const state = {
       ...createState(),
-      notebook: {
-        ...createState().notebook,
+      vault: {
+        ...createState().vault,
         items: [
           { type: 'note' as const, id: 'note-active', title: 'Active', noteBodyId: 'body-active' },
           { type: 'note' as const, id: 'note-linked', title: 'Linked', noteBodyId: 'body-active' },
@@ -278,7 +279,7 @@ describe('notebook note actions', () => {
       },
     } satisfies AppState
 
-    const result = decoupleNotebookNoteLocationsInState(
+    const result = decoupleVaultNoteLocationsInState(
       state,
       'body-active',
       new Set(['note-active']),
@@ -288,8 +289,8 @@ describe('notebook note actions', () => {
 
     expect(result.status).toBe('applied')
     if (result.status !== 'applied') throw new Error('expected note locations to de-couple')
-    expect(findNotebookNote(result.state.notebook.items, 'note-active')?.note.noteBodyId).toBe('body-active')
-    expect(findNotebookNote(result.state.notebook.items, 'note-linked')?.note.noteBodyId).toBe('cloned-body')
+    expect(findVaultNote(result.state.vault.items, 'note-active')?.note.noteBodyId).toBe('body-active')
+    expect(findVaultNote(result.state.vault.items, 'note-linked')?.note.noteBodyId).toBe('cloned-body')
     expect(result.state.noteAisleBodies?.find((body) => body.id === 'cloned-aisle-body-1')?.markdown).toBe('active one')
     expect(result.state.noteAisleBodies?.find((body) => body.id === 'cloned-aisle-body-2')?.markdown).toBe('active two')
   })
@@ -297,8 +298,8 @@ describe('notebook note actions', () => {
   it('de-couples note locations with empty text when keep text is disabled', () => {
     const state = {
       ...createState(),
-      notebook: {
-        ...createState().notebook,
+      vault: {
+        ...createState().vault,
         items: [
           { type: 'note' as const, id: 'note-active', title: 'Active', noteBodyId: 'body-active' },
           { type: 'note' as const, id: 'note-linked', title: 'Linked', noteBodyId: 'body-active' },
@@ -306,7 +307,7 @@ describe('notebook note actions', () => {
       },
     } satisfies AppState
 
-    const result = decoupleNotebookNoteLocationsInState(
+    const result = decoupleVaultNoteLocationsInState(
       state,
       'body-active',
       new Set(['note-active']),
@@ -316,15 +317,15 @@ describe('notebook note actions', () => {
 
     expect(result.status).toBe('applied')
     if (result.status !== 'applied') throw new Error('expected note locations to de-couple')
-    expect(findNotebookNote(result.state.notebook.items, 'note-linked')?.note.noteBodyId).toBe('empty-body')
+    expect(findVaultNote(result.state.vault.items, 'note-linked')?.note.noteBodyId).toBe('empty-body')
     expect(result.state.noteAisleBodies?.find((body) => body.id === 'empty-aisle-body')?.markdown).toBe('')
   })
 
   it('blocks note location de-couple when no synced note is retained', () => {
     const state = {
       ...createState(),
-      notebook: {
-        ...createState().notebook,
+      vault: {
+        ...createState().vault,
         items: [
           { type: 'note' as const, id: 'note-active', title: 'Active', noteBodyId: 'body-active' },
           { type: 'note' as const, id: 'note-linked', title: 'Linked', noteBodyId: 'body-active' },
@@ -332,7 +333,7 @@ describe('notebook note actions', () => {
       },
     } satisfies AppState
 
-    expect(decoupleNotebookNoteLocationsInState(state, 'body-active', new Set(), true)).toMatchObject({
+    expect(decoupleVaultNoteLocationsInState(state, 'body-active', new Set(), true)).toMatchObject({
       status: 'blocked',
       message: 'Select at least one note to retain the information.',
     })

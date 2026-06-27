@@ -9,20 +9,20 @@ import {
   type MenuViewport,
 } from './context-menu-position'
 
-export type NotebookEditorContextMenuState = {
+export type VaultEditorContextMenuState = {
   x: number
   y: number
   aisleId: string
   linkPrompt?: LinkPromptState | null
 }
 
-export type NotebookEditorClipboardAction = 'cut' | 'copy' | 'paste' | 'pastePlainText'
-export type NotebookEditorPasteDestination = 'here' | 'new-aisle-left' | 'new-aisle-right'
-export type NotebookEditorAisleInsertSide = 'left' | 'right'
-export type NotebookEditorCopyAsKind = 'note' | 'aisle'
-export type NotebookEditorCopyAsMode = 'independent' | 'synced'
+export type VaultEditorClipboardAction = 'cut' | 'copy' | 'paste' | 'pastePlainText'
+export type VaultEditorPasteDestination = 'here' | 'new-aisle-left' | 'new-aisle-right'
+export type VaultEditorAisleInsertSide = 'left' | 'right'
+export type VaultEditorCopyAsKind = 'note' | 'aisle'
+export type VaultEditorCopyAsMode = 'independent' | 'synced'
 
-const NOTEBOOK_CONTEXT_MENU_IGNORE_SELECTOR = [
+const VAULT_CONTEXT_MENU_IGNORE_SELECTOR = [
   '.note-shared-toolbar',
   '.note-toolbar-copy-popover',
   '.note-toolbar-heading-popover',
@@ -59,8 +59,8 @@ function toMenuRect(rect: DOMRect): MenuRect {
   }
 }
 
-export function getNotebookEditorContextMenuAisleIdFromTarget(target: Element | null): string | null {
-  if (!target || target.closest(NOTEBOOK_CONTEXT_MENU_IGNORE_SELECTOR)) return null
+export function getVaultEditorContextMenuAisleIdFromTarget(target: Element | null): string | null {
+  if (!target || target.closest(VAULT_CONTEXT_MENU_IGNORE_SELECTOR)) return null
   const pane = target.closest<HTMLElement>('.note-aisle-pane')
   return pane?.dataset.aisleId?.trim() || null
 }
@@ -139,7 +139,7 @@ function SubMenu({
   )
 }
 
-export function NotebookEditorContextMenu({
+export function VaultEditorContextMenu({
   menu,
   canDecoupleAisle,
   revealLabel,
@@ -160,14 +160,14 @@ export function NotebookEditorContextMenu({
   onShowSyncedAisle,
   onRevealLocation,
 }: {
-  menu: NotebookEditorContextMenuState | null
+  menu: VaultEditorContextMenuState | null
   canDecoupleAisle: boolean
   revealLabel: string
   canReveal: boolean
   onClose: () => void
   onClipboard: (
-    action: NotebookEditorClipboardAction,
-    destination: NotebookEditorPasteDestination,
+    action: VaultEditorClipboardAction,
+    destination: VaultEditorPasteDestination,
     aisleId: string,
   ) => void
   onCommand: (command: string, payload?: Record<string, unknown>) => void
@@ -175,9 +175,9 @@ export function NotebookEditorContextMenu({
   onEditLink: (prompt: LinkPromptState) => void
   onInsertNoteLink: () => void
   onInsertNotePreview: () => void
-  onInsertAisle: (side: NotebookEditorAisleInsertSide, aisleId: string) => void
+  onInsertAisle: (side: VaultEditorAisleInsertSide, aisleId: string) => void
   onInsertAttachment: () => void
-  onCopyAs: (kind: NotebookEditorCopyAsKind, mode: NotebookEditorCopyAsMode, aisleId: string) => void
+  onCopyAs: (kind: VaultEditorCopyAsKind, mode: VaultEditorCopyAsMode, aisleId: string) => void
   onCreateSyncedCopy: () => void
   onFilterSyncedAisle: (aisleId: string) => void
   onDecoupleAisle: (aisleId: string) => void
@@ -215,13 +215,13 @@ export function NotebookEditorContextMenu({
   const runCommand = (command: string, payload?: Record<string, unknown>) => {
     runAction(() => onCommand(command, payload))
   }
-  const runClipboard = (action: NotebookEditorClipboardAction, destination: NotebookEditorPasteDestination = 'here') => {
+  const runClipboard = (action: VaultEditorClipboardAction, destination: VaultEditorPasteDestination = 'here') => {
     runAction(() => onClipboard(action, destination, menu.aisleId))
   }
-  const runInsertAisle = (side: NotebookEditorAisleInsertSide) => {
+  const runInsertAisle = (side: VaultEditorAisleInsertSide) => {
     runAction(() => onInsertAisle(side, menu.aisleId))
   }
-  const runCopyAs = (kind: NotebookEditorCopyAsKind, mode: NotebookEditorCopyAsMode) => {
+  const runCopyAs = (kind: VaultEditorCopyAsKind, mode: VaultEditorCopyAsMode) => {
     runAction(() => onCopyAs(kind, mode, menu.aisleId))
   }
   const runAisleAction = (action: (aisleId: string) => void) => {
@@ -233,7 +233,7 @@ export function NotebookEditorContextMenu({
   }
 
   const renderPasteSubmenu = (
-    action: Extract<NotebookEditorClipboardAction, 'paste' | 'pastePlainText'>,
+    action: Extract<VaultEditorClipboardAction, 'paste' | 'pastePlainText'>,
     label: string,
   ) => (
     <SubMenu label={label} onClick={() => runClipboard(action, 'here')}>

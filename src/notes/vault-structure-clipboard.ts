@@ -1,24 +1,24 @@
 import type { AppState, NoteAisle, NoteAisleBody, NoteBody } from '../types/app'
 import { MAX_NOTE_AISLES } from '../editor/aisle-edit-draft'
 import { createReservedIdAllocator, type IdGenerator } from '../state/navigation-ids'
-import { collectNotebookIds, findNotebookNote, getNotebookNotePathLabel } from '../state/notebook'
+import { collectVaultIds, findVaultNote, getVaultNotePathLabel } from '../state/vault'
 
-export const AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME = 'application/x-aislenote-notebook-structure'
+export const AISLENOTE_VAULT_STRUCTURE_CLIPBOARD_MIME = 'application/x-aislenote-vault-structure'
 
-export type NotebookStructureClipboardKind = 'note' | 'aisle'
-export type NotebookStructureClipboardMode = 'independent' | 'synced'
+export type VaultStructureClipboardKind = 'note' | 'aisle'
+export type VaultStructureClipboardMode = 'independent' | 'synced'
 
-export type NotebookStructureClipboardAisle = {
+export type VaultStructureClipboardAisle = {
   aisleId: string
   aisleBodyId: string
   markdown: string
   body?: NoteAisleBody
 }
 
-export type NotebookStructureClipboardPayload = {
+export type VaultStructureClipboardPayload = {
   version: 1
-  kind: NotebookStructureClipboardKind
-  mode: NotebookStructureClipboardMode
+  kind: VaultStructureClipboardKind
+  mode: VaultStructureClipboardMode
   source: {
     noteId: string
     noteTitle: string
@@ -26,27 +26,27 @@ export type NotebookStructureClipboardPayload = {
     label: string
     aisleId?: string
   }
-  aisles: NotebookStructureClipboardAisle[]
+  aisles: VaultStructureClipboardAisle[]
 }
 
-export type NotebookStructureClipboardBuildResult =
-  | { status: 'ok'; payload: NotebookStructureClipboardPayload; markdown: string }
+export type VaultStructureClipboardBuildResult =
+  | { status: 'ok'; payload: VaultStructureClipboardPayload; markdown: string }
   | { status: 'blocked'; message: string }
 
-export type NotebookStructureClipboardApplyResult =
+export type VaultStructureClipboardApplyResult =
   | { status: 'ok'; state: AppState; activeAisleId?: string }
   | { status: 'blocked'; message: string }
 
-export const NOTEBOOK_STRUCTURE_CLIPBOARD_ACTIVE_NOTE_MISSING_MESSAGE = 'Open a note before copying note content.'
-export const NOTEBOOK_STRUCTURE_CLIPBOARD_ACTIVE_AISLE_MISSING_MESSAGE = 'Choose an aisle to copy.'
-export const NOTEBOOK_STRUCTURE_CLIPBOARD_STALE_SYNCED_MESSAGE =
-  'That synced copy references note content that no longer exists in this notebook.'
-export const NOTEBOOK_STRUCTURE_CLIPBOARD_MAX_AISLES_MESSAGE =
+export const VAULT_STRUCTURE_CLIPBOARD_ACTIVE_NOTE_MISSING_MESSAGE = 'Open a note before copying note content.'
+export const VAULT_STRUCTURE_CLIPBOARD_ACTIVE_AISLE_MISSING_MESSAGE = 'Choose an aisle to copy.'
+export const VAULT_STRUCTURE_CLIPBOARD_STALE_SYNCED_MESSAGE =
+  'That synced copy references note content that no longer exists in this vault.'
+export const VAULT_STRUCTURE_CLIPBOARD_MAX_AISLES_MESSAGE =
   `That paste would exceed the ${MAX_NOTE_AISLES} aisle limit for a note.`
 
 type DataTransferReadLike = Pick<DataTransfer, 'getData'> | null | undefined
 
-let rememberedClipboard: { payload: NotebookStructureClipboardPayload; markdown: string } | null = null
+let rememberedClipboard: { payload: VaultStructureClipboardPayload; markdown: string } | null = null
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -90,7 +90,7 @@ function cloneAisleBodyForPaste(snapshot: NoteAisleBody | undefined, id: string,
   }
 }
 
-function buildFallbackMarkdown(aisles: NotebookStructureClipboardAisle[]): string {
+function buildFallbackMarkdown(aisles: VaultStructureClipboardAisle[]): string {
   return aisles.map((aisle) => aisle.markdown).join('\n\n')
 }
 
@@ -101,14 +101,14 @@ function buildPayloadFromAisles(
     noteBody: NoteBody
     noteTitle: string
     label: string
-    kind: NotebookStructureClipboardKind
-    mode: NotebookStructureClipboardMode
+    kind: VaultStructureClipboardKind
+    mode: VaultStructureClipboardMode
     aisles: NoteAisle[]
     sourceAisleId?: string
   },
-): NotebookStructureClipboardBuildResult {
+): VaultStructureClipboardBuildResult {
   if (options.aisles.length === 0) {
-    return { status: 'blocked', message: NOTEBOOK_STRUCTURE_CLIPBOARD_ACTIVE_AISLE_MISSING_MESSAGE }
+    return { status: 'blocked', message: VAULT_STRUCTURE_CLIPBOARD_ACTIVE_AISLE_MISSING_MESSAGE }
   }
 
   const bodyMap = getAisleBodyMap(state)
@@ -124,7 +124,7 @@ function buildPayloadFromAisles(
         : {}),
     }
   })
-  const payload: NotebookStructureClipboardPayload = {
+  const payload: VaultStructureClipboardPayload = {
     version: 1,
     kind: options.kind,
     mode: options.mode,
@@ -140,22 +140,22 @@ function buildPayloadFromAisles(
   return { status: 'ok', payload, markdown: buildFallbackMarkdown(aisles) }
 }
 
-export function buildNotebookStructureClipboardPayload(
+export function buildVaultStructureClipboardPayload(
   state: AppState,
   options: {
     activeNoteId: string
-    kind: NotebookStructureClipboardKind
-    mode: NotebookStructureClipboardMode
+    kind: VaultStructureClipboardKind
+    mode: VaultStructureClipboardMode
     aisleId?: string
   },
-): NotebookStructureClipboardBuildResult {
-  const notePath = findNotebookNote(state.notebook.items, options.activeNoteId)
-  if (!notePath) return { status: 'blocked', message: NOTEBOOK_STRUCTURE_CLIPBOARD_ACTIVE_NOTE_MISSING_MESSAGE }
+): VaultStructureClipboardBuildResult {
+  const notePath = findVaultNote(state.vault.items, options.activeNoteId)
+  if (!notePath) return { status: 'blocked', message: VAULT_STRUCTURE_CLIPBOARD_ACTIVE_NOTE_MISSING_MESSAGE }
 
   const noteBody = getNoteBody(state, notePath.note.noteBodyId)
-  if (!noteBody) return { status: 'blocked', message: NOTEBOOK_STRUCTURE_CLIPBOARD_ACTIVE_NOTE_MISSING_MESSAGE }
+  if (!noteBody) return { status: 'blocked', message: VAULT_STRUCTURE_CLIPBOARD_ACTIVE_NOTE_MISSING_MESSAGE }
 
-  const label = getNotebookNotePathLabel(state.notebook.items, notePath.note.id) || notePath.note.title
+  const label = getVaultNotePathLabel(state.vault.items, notePath.note.id) || notePath.note.title
   if (options.kind === 'note') {
     return buildPayloadFromAisles(state, {
       noteId: notePath.note.id,
@@ -169,7 +169,7 @@ export function buildNotebookStructureClipboardPayload(
   }
 
   const aisle = noteBody.aisles.find((candidate) => candidate.id === options.aisleId)
-  if (!aisle) return { status: 'blocked', message: NOTEBOOK_STRUCTURE_CLIPBOARD_ACTIVE_AISLE_MISSING_MESSAGE }
+  if (!aisle) return { status: 'blocked', message: VAULT_STRUCTURE_CLIPBOARD_ACTIVE_AISLE_MISSING_MESSAGE }
   return buildPayloadFromAisles(state, {
     noteId: notePath.note.id,
     noteBody,
@@ -182,8 +182,8 @@ export function buildNotebookStructureClipboardPayload(
   })
 }
 
-function isNotebookStructureClipboardAisle(value: unknown): value is NotebookStructureClipboardAisle {
-  const candidate = value as NotebookStructureClipboardAisle
+function isVaultStructureClipboardAisle(value: unknown): value is VaultStructureClipboardAisle {
+  const candidate = value as VaultStructureClipboardAisle
   return (
     Boolean(candidate) &&
     typeof candidate === 'object' &&
@@ -193,9 +193,9 @@ function isNotebookStructureClipboardAisle(value: unknown): value is NotebookStr
   )
 }
 
-export function parseNotebookStructureClipboardPayload(value: string): NotebookStructureClipboardPayload | null {
+export function parseVaultStructureClipboardPayload(value: string): VaultStructureClipboardPayload | null {
   try {
-    const parsed = JSON.parse(value) as NotebookStructureClipboardPayload
+    const parsed = JSON.parse(value) as VaultStructureClipboardPayload
     if (
       parsed?.version !== 1 ||
       (parsed.kind !== 'note' && parsed.kind !== 'aisle') ||
@@ -207,7 +207,7 @@ export function parseNotebookStructureClipboardPayload(value: string): NotebookS
       typeof parsed.source.label !== 'string' ||
       !Array.isArray(parsed.aisles) ||
       parsed.aisles.length === 0 ||
-      !parsed.aisles.every(isNotebookStructureClipboardAisle)
+      !parsed.aisles.every(isVaultStructureClipboardAisle)
     ) {
       return null
     }
@@ -217,28 +217,28 @@ export function parseNotebookStructureClipboardPayload(value: string): NotebookS
   }
 }
 
-export function serializeNotebookStructureClipboardPayload(payload: NotebookStructureClipboardPayload): string {
+export function serializeVaultStructureClipboardPayload(payload: VaultStructureClipboardPayload): string {
   return JSON.stringify(payload)
 }
 
-export function rememberNotebookStructureClipboardPayload(
-  payload: NotebookStructureClipboardPayload,
+export function rememberVaultStructureClipboardPayload(
+  payload: VaultStructureClipboardPayload,
   markdown = buildFallbackMarkdown(payload.aisles),
 ) {
   rememberedClipboard = { payload, markdown }
 }
 
-export function readRememberedNotebookStructureClipboardPayload(markdown: string): NotebookStructureClipboardPayload | null {
+export function readRememberedVaultStructureClipboardPayload(markdown: string): VaultStructureClipboardPayload | null {
   return rememberedClipboard && rememberedClipboard.markdown === markdown ? rememberedClipboard.payload : null
 }
 
-export function readNotebookStructureClipboardPayloadFromDataTransfer(
+export function readVaultStructureClipboardPayloadFromDataTransfer(
   dataTransfer: DataTransferReadLike,
-): NotebookStructureClipboardPayload | null {
+): VaultStructureClipboardPayload | null {
   if (!dataTransfer) return null
   try {
-    const structured = dataTransfer.getData(AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME)
-    const payload = structured ? parseNotebookStructureClipboardPayload(structured) : null
+    const structured = dataTransfer.getData(AISLENOTE_VAULT_STRUCTURE_CLIPBOARD_MIME)
+    const payload = structured ? parseVaultStructureClipboardPayload(structured) : null
     if (payload) return payload
   } catch {
     // Fall through to remembered clean-text fallback.
@@ -246,24 +246,24 @@ export function readNotebookStructureClipboardPayloadFromDataTransfer(
 
   try {
     const text = dataTransfer.getData('text/plain')
-    return text ? readRememberedNotebookStructureClipboardPayload(text) : null
+    return text ? readRememberedVaultStructureClipboardPayload(text) : null
   } catch {
     return null
   }
 }
 
-export async function readNotebookStructureClipboardPayloadFromNavigator(
+export async function readVaultStructureClipboardPayloadFromNavigator(
   clipboard: Clipboard | null | undefined = typeof navigator !== 'undefined' ? navigator.clipboard : null,
-): Promise<NotebookStructureClipboardPayload | null> {
+): Promise<VaultStructureClipboardPayload | null> {
   if (!clipboard) return null
 
   if (typeof clipboard.read === 'function') {
     try {
       const items = await clipboard.read()
       for (const item of items) {
-        if (!item.types.includes(AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME)) continue
-        const blob = await item.getType(AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME)
-        const payload = parseNotebookStructureClipboardPayload(await blob.text())
+        if (!item.types.includes(AISLENOTE_VAULT_STRUCTURE_CLIPBOARD_MIME)) continue
+        const blob = await item.getType(AISLENOTE_VAULT_STRUCTURE_CLIPBOARD_MIME)
+        const payload = parseVaultStructureClipboardPayload(await blob.text())
         if (payload) return payload
       }
     } catch {
@@ -274,7 +274,7 @@ export async function readNotebookStructureClipboardPayloadFromNavigator(
   if (typeof clipboard.readText === 'function') {
     try {
       const text = await clipboard.readText()
-      return readRememberedNotebookStructureClipboardPayload(text)
+      return readRememberedVaultStructureClipboardPayload(text)
     } catch {
       return null
     }
@@ -283,20 +283,20 @@ export async function readNotebookStructureClipboardPayloadFromNavigator(
   return null
 }
 
-export async function writeNotebookStructureClipboardPayload(
-  payload: NotebookStructureClipboardPayload,
+export async function writeVaultStructureClipboardPayload(
+  payload: VaultStructureClipboardPayload,
   markdown = buildFallbackMarkdown(payload.aisles),
   clipboard: Clipboard | null | undefined = typeof navigator !== 'undefined' ? navigator.clipboard : null,
 ): Promise<boolean> {
-  rememberNotebookStructureClipboardPayload(payload, markdown)
+  rememberVaultStructureClipboardPayload(payload, markdown)
   if (!clipboard) return false
 
   if (typeof clipboard.write === 'function' && typeof ClipboardItem !== 'undefined') {
     try {
       await clipboard.write([
         new ClipboardItem({
-          [AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME]: new Blob([serializeNotebookStructureClipboardPayload(payload)], {
-            type: AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME,
+          [AISLENOTE_VAULT_STRUCTURE_CLIPBOARD_MIME]: new Blob([serializeVaultStructureClipboardPayload(payload)], {
+            type: AISLENOTE_VAULT_STRUCTURE_CLIPBOARD_MIME,
           }),
           'text/plain': new Blob([markdown], { type: 'text/plain' }),
         }),
@@ -319,34 +319,34 @@ export async function writeNotebookStructureClipboardPayload(
   return false
 }
 
-export function applyNotebookStructureClipboardPayload(
+export function applyVaultStructureClipboardPayload(
   state: AppState,
   options: {
     activeNoteId: string
     focusedAisleId: string
-    payload: NotebookStructureClipboardPayload
+    payload: VaultStructureClipboardPayload
     idGenerator?: IdGenerator
   },
-): NotebookStructureClipboardApplyResult {
-  const activePath = findNotebookNote(state.notebook.items, options.activeNoteId)
-  if (!activePath) return { status: 'blocked', message: NOTEBOOK_STRUCTURE_CLIPBOARD_ACTIVE_NOTE_MISSING_MESSAGE }
+): VaultStructureClipboardApplyResult {
+  const activePath = findVaultNote(state.vault.items, options.activeNoteId)
+  if (!activePath) return { status: 'blocked', message: VAULT_STRUCTURE_CLIPBOARD_ACTIVE_NOTE_MISSING_MESSAGE }
 
   const activeBody = getNoteBody(state, activePath.note.noteBodyId)
-  if (!activeBody) return { status: 'blocked', message: NOTEBOOK_STRUCTURE_CLIPBOARD_ACTIVE_NOTE_MISSING_MESSAGE }
+  if (!activeBody) return { status: 'blocked', message: VAULT_STRUCTURE_CLIPBOARD_ACTIVE_NOTE_MISSING_MESSAGE }
 
   const focusedIndex = activeBody.aisles.findIndex((aisle) => aisle.id === options.focusedAisleId)
-  if (focusedIndex < 0) return { status: 'blocked', message: NOTEBOOK_STRUCTURE_CLIPBOARD_ACTIVE_AISLE_MISSING_MESSAGE }
+  if (focusedIndex < 0) return { status: 'blocked', message: VAULT_STRUCTURE_CLIPBOARD_ACTIVE_AISLE_MISSING_MESSAGE }
   if (activeBody.aisles.length - 1 + options.payload.aisles.length > MAX_NOTE_AISLES) {
-    return { status: 'blocked', message: NOTEBOOK_STRUCTURE_CLIPBOARD_MAX_AISLES_MESSAGE }
+    return { status: 'blocked', message: VAULT_STRUCTURE_CLIPBOARD_MAX_AISLES_MESSAGE }
   }
 
   const sourceBodies = getAisleBodyMap(state)
   if (options.payload.mode === 'synced') {
     const missingSyncedBody = options.payload.aisles.some((aisle) => !sourceBodies.has(aisle.aisleBodyId))
-    if (missingSyncedBody) return { status: 'blocked', message: NOTEBOOK_STRUCTURE_CLIPBOARD_STALE_SYNCED_MESSAGE }
+    if (missingSyncedBody) return { status: 'blocked', message: VAULT_STRUCTURE_CLIPBOARD_STALE_SYNCED_MESSAGE }
   }
 
-  const idGenerator = options.idGenerator ?? createReservedIdAllocator(collectNotebookIds(state))
+  const idGenerator = options.idGenerator ?? createReservedIdAllocator(collectVaultIds(state))
   const addedAisleBodies: NoteAisleBody[] = []
   const replacementAisles = options.payload.aisles.map((aisle) => {
     if (options.payload.mode === 'synced') {

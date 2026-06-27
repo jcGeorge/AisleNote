@@ -2,7 +2,7 @@ import type { AppState } from '../types/app'
 import { syncNoteAisleBodyMarkdownInState } from '../notes/aisle-body-state'
 import { markEditorContentStateMutation } from '../storage/persistence-scheduling'
 
-export type NotebookEditorMarkdownSnapshot = {
+export type VaultEditorMarkdownSnapshot = {
   noteId: string
   noteBodyId: string
   aisleId: string
@@ -12,19 +12,19 @@ export type NotebookEditorMarkdownSnapshot = {
   active?: boolean
 }
 
-function getSnapshotRevision(snapshot: NotebookEditorMarkdownSnapshot): number {
+function getSnapshotRevision(snapshot: VaultEditorMarkdownSnapshot): number {
   return typeof snapshot.revision === 'number' && Number.isFinite(snapshot.revision)
     ? snapshot.revision
     : 0
 }
 
-function getSnapshotTieBreakerKey(snapshot: NotebookEditorMarkdownSnapshot): string {
+function getSnapshotTieBreakerKey(snapshot: VaultEditorMarkdownSnapshot): string {
   return `${snapshot.noteBodyId}\0${snapshot.aisleId}\0${snapshot.noteId}`
 }
 
-function isPreferredNotebookEditorSnapshot(
-  candidate: NotebookEditorMarkdownSnapshot,
-  current: NotebookEditorMarkdownSnapshot,
+function isPreferredVaultEditorSnapshot(
+  candidate: VaultEditorMarkdownSnapshot,
+  current: VaultEditorMarkdownSnapshot,
 ): boolean {
   const candidateRevision = getSnapshotRevision(candidate)
   const currentRevision = getSnapshotRevision(current)
@@ -33,21 +33,21 @@ function isPreferredNotebookEditorSnapshot(
   return getSnapshotTieBreakerKey(candidate) > getSnapshotTieBreakerKey(current)
 }
 
-export function collapseNotebookEditorMarkdownSnapshots(
-  snapshots: NotebookEditorMarkdownSnapshot[],
-): NotebookEditorMarkdownSnapshot[] {
-  const snapshotByAisleBodyId = new Map<string, NotebookEditorMarkdownSnapshot>()
+export function collapseVaultEditorMarkdownSnapshots(
+  snapshots: VaultEditorMarkdownSnapshot[],
+): VaultEditorMarkdownSnapshot[] {
+  const snapshotByAisleBodyId = new Map<string, VaultEditorMarkdownSnapshot>()
   snapshots.forEach((snapshot) => {
     if (!snapshot.aisleBodyId) return
     const current = snapshotByAisleBodyId.get(snapshot.aisleBodyId)
-    if (!current || isPreferredNotebookEditorSnapshot(snapshot, current)) {
+    if (!current || isPreferredVaultEditorSnapshot(snapshot, current)) {
       snapshotByAisleBodyId.set(snapshot.aisleBodyId, snapshot)
     }
   })
   return Array.from(snapshotByAisleBodyId.values())
 }
 
-export function commitNotebookAisleMarkdownInState(
+export function commitVaultAisleMarkdownInState(
   previous: AppState,
   aisleBodyId: string,
   markdown: string,
@@ -57,12 +57,12 @@ export function commitNotebookAisleMarkdownInState(
   return nextState
 }
 
-export function applyNotebookEditorMarkdownSnapshotsToState(
+export function applyVaultEditorMarkdownSnapshotsToState(
   previous: AppState,
-  snapshots: NotebookEditorMarkdownSnapshot[],
+  snapshots: VaultEditorMarkdownSnapshot[],
 ): AppState {
-  return collapseNotebookEditorMarkdownSnapshots(snapshots).reduce(
-    (nextState, snapshot) => commitNotebookAisleMarkdownInState(nextState, snapshot.aisleBodyId, snapshot.markdown),
+  return collapseVaultEditorMarkdownSnapshots(snapshots).reduce(
+    (nextState, snapshot) => commitVaultAisleMarkdownInState(nextState, snapshot.aisleBodyId, snapshot.markdown),
     previous,
   )
 }

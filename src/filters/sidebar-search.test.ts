@@ -6,7 +6,7 @@ import {
   getFrontmatterTemplateFilterKey,
   getSyncedAisleFilterKey,
 } from './note-filter'
-import { createNotebookIndexContext } from './notebook-index-context'
+import { createVaultIndexContext } from './vault-index-context'
 import {
   buildSidebarSearchIndexes,
   buildSidebarSearchResultGroups,
@@ -18,7 +18,7 @@ import {
 function createSearchState(): AppState {
   return {
     theme: 'dark',
-    notebook: {
+    vault: {
       activeNoteId: 'note-a',
       items: [
         { type: 'note', id: 'note-a', title: 'Calvin sermon', noteBodyId: 'body-shared-note' },
@@ -279,9 +279,9 @@ describe('sidebar search result filtering', () => {
 })
 
 describe('sidebar search index context', () => {
-  it('preserves sidebar index and result shapes when callers provide a notebook index context', () => {
+  it('preserves sidebar index and result shapes when callers provide a vault index context', () => {
     const state = createSearchState()
-    const context = createNotebookIndexContext(state)
+    const context = createVaultIndexContext(state)
     const directIndexes = buildSidebarSearchIndexes(state)
     const contextIndexes = buildSidebarSearchIndexes(state, context)
 
@@ -312,7 +312,7 @@ describe('sidebar search index context', () => {
 
   it('uses precomputed body maps in context-backed note filter builders', () => {
     const state = createSearchState()
-    const context = createNotebookIndexContext(state)
+    const context = createVaultIndexContext(state)
     const originalFind = state.noteBodies.find
     state.noteBodies.find = (() => {
       throw new Error('noteBodies.find should not be used by context-backed filter builders')

@@ -38,9 +38,9 @@ describe('StorageAlertHost', () => {
         alerts={[
           {
             signature: 'recovery-1',
-            label: 'notebook recovered',
-            message: 'AisleNote reset the notebook because the folder could not be loaded.',
-            actionLabel: 'open previous notebook folder',
+            label: 'vault recovered',
+            message: 'AisleNote reset the vault because the folder could not be loaded.',
+            actionLabel: 'open previous vault folder',
           },
         ]}
         onDismissAlert={vi.fn()}
@@ -48,8 +48,8 @@ describe('StorageAlertHost', () => {
       />,
     )
 
-    expect(html).toContain('notebook recovered')
-    expect(html).toContain('open previous notebook folder')
+    expect(html).toContain('vault recovered')
+    expect(html).toContain('open previous vault folder')
     expect(html).not.toContain('app-storage-alert-detail')
     expect(html).not.toContain('The previous folder was left untouched')
   })

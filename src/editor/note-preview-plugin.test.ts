@@ -31,7 +31,7 @@ const pmSchema = new Schema({
 function createState(): AppState {
   return {
     theme: 'dark',
-    notebook: {
+    vault: {
       activeNoteId: 'note-a',
       items: [
         { type: 'note', id: 'note-a', title: 'Alpha', noteBodyId: 'body-a' },

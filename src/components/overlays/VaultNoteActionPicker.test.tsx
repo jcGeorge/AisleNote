@@ -3,10 +3,10 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import {
-  NotebookNoteActionPicker,
-  getNotebookNoteActionPickerActionIntent,
-  getNotebookNoteActionPickerKeyboardIntent,
-} from './NotebookNoteActionPicker'
+  VaultNoteActionPicker,
+  getVaultNoteActionPickerActionIntent,
+  getVaultNoteActionPickerKeyboardIntent,
+} from './VaultNoteActionPicker'
 import type { NoteSearchEntry } from '../../notes/note-locations'
 
 const appCss = readFileSync(new URL('../../App.css', import.meta.url), 'utf8')
@@ -34,10 +34,10 @@ const entries: NoteSearchEntry[] = [
   },
 ]
 
-describe('NotebookNoteActionPicker', () => {
+describe('VaultNoteActionPicker', () => {
   it('renders note suggestions and restored mention actions without the mention header', () => {
     const html = renderToStaticMarkup(
-      <NotebookNoteActionPicker
+      <VaultNoteActionPicker
         title="Select note"
         entries={entries}
         query="spe"
@@ -60,19 +60,19 @@ describe('NotebookNoteActionPicker', () => {
     expect(html).toContain('Current note search')
     expect(html).toContain('@spe')
     expect(html).not.toContain('<h2>')
-    expect(html).toContain('notebook-note-action-choice-row')
+    expect(html).toContain('vault-note-action-choice-row')
   })
 
   it('keeps the restored mention actions on one row with a wider picker', () => {
     expect(appCss).toContain('width: min(520px, calc(100vw - 28px));')
-    expect(appCss).toContain('.notebook-note-action-query')
+    expect(appCss).toContain('.vault-note-action-query')
     expect(appCss).toContain('flex-wrap: nowrap;')
     expect(appCss).toContain('white-space: nowrap;')
   })
 
   it('keeps URL insertion available for the toolbar link flow', () => {
     const html = renderToStaticMarkup(
-      <NotebookNoteActionPicker
+      <VaultNoteActionPicker
         title="Insert link"
         entries={entries}
         query=""
@@ -93,7 +93,7 @@ describe('NotebookNoteActionPicker', () => {
 
   it('uses the selected note action list when rendering choices', () => {
     const html = renderToStaticMarkup(
-      <NotebookNoteActionPicker
+      <VaultNoteActionPicker
         title="Select note"
         entries={entries}
         query="alp"
@@ -115,32 +115,32 @@ describe('NotebookNoteActionPicker', () => {
   })
 
   it('chooses the aisle step only for multi-aisle note previews', () => {
-    expect(getNotebookNoteActionPickerActionIntent('note-preview', 0)).toBe('run-action')
-    expect(getNotebookNoteActionPickerActionIntent('note-preview', 1)).toBe('run-action')
-    expect(getNotebookNoteActionPickerActionIntent('note-preview', 2)).toBe('choose-preview-aisle')
-    expect(getNotebookNoteActionPickerActionIntent('note-link', 2)).toBe('run-action')
-    expect(getNotebookNoteActionPickerActionIntent('independent-copy', 2)).toBe('run-action')
-    expect(getNotebookNoteActionPickerActionIntent('synced-copy', 2)).toBe('run-action')
+    expect(getVaultNoteActionPickerActionIntent('note-preview', 0)).toBe('run-action')
+    expect(getVaultNoteActionPickerActionIntent('note-preview', 1)).toBe('run-action')
+    expect(getVaultNoteActionPickerActionIntent('note-preview', 2)).toBe('choose-preview-aisle')
+    expect(getVaultNoteActionPickerActionIntent('note-link', 2)).toBe('run-action')
+    expect(getVaultNoteActionPickerActionIntent('independent-copy', 2)).toBe('run-action')
+    expect(getVaultNoteActionPickerActionIntent('synced-copy', 2)).toBe('run-action')
   })
 
   it('defines picker styles for the preview aisle chooser', () => {
-    expect(appCss).toContain('.notebook-note-action-preview-aisles')
-    expect(appCss).toContain('.notebook-note-action-preview-aisle-row')
-    expect(appCss).toContain('.notebook-note-action-preview-insert')
+    expect(appCss).toContain('.vault-note-action-preview-aisles')
+    expect(appCss).toContain('.vault-note-action-preview-aisle-row')
+    expect(appCss).toContain('.vault-note-action-preview-insert')
   })
 
   it('routes Enter from results into the action row before running an action', () => {
-    expect(getNotebookNoteActionPickerKeyboardIntent({
+    expect(getVaultNoteActionPickerKeyboardIntent({
       key: 'Enter',
       activeRegion: 'results',
       hasSelectedEntry: false,
     })).toBe('select-result')
-    expect(getNotebookNoteActionPickerKeyboardIntent({
+    expect(getVaultNoteActionPickerKeyboardIntent({
       key: 'Enter',
       activeRegion: 'actions',
       hasSelectedEntry: true,
     })).toBe('run-action')
-    expect(getNotebookNoteActionPickerKeyboardIntent({
+    expect(getVaultNoteActionPickerKeyboardIntent({
       key: 'ArrowRight',
       activeRegion: 'actions',
       hasSelectedEntry: true,

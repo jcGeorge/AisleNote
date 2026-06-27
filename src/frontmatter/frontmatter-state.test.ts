@@ -31,7 +31,7 @@ const template: FrontmatterTemplate = {
 function createState(): AppState {
   return {
     theme: 'cheese',
-    notebook: {
+    vault: {
       activeNoteId: 'note-1',
       items: [
         {

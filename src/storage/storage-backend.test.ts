@@ -72,10 +72,10 @@ describe('storage backend file map helpers', () => {
     expect(imageEntry?.kind === 'binary' ? Array.from(imageEntry.bytes) : []).toEqual([1, 2, 3])
   })
 
-  it('preserves notebook open tabs in browser hybrid split files', () => {
+  it('preserves vault open tabs in browser hybrid split files', () => {
     const serializedState = JSON.stringify({
       theme: 'dark',
-      notebook: {
+      vault: {
         activeNoteId: 'note-b',
         openTabs: [
           { noteId: 'note-a', status: 'retained' },
@@ -98,15 +98,15 @@ describe('storage backend file map helpers', () => {
     })
 
     const fileMap = buildHybridFileMapFromSerializedState(serializedState)
-    const notebookIndex = JSON.parse(fileMap.get('notes/.aislenote/notebook-index.json')?.kind === 'text'
-      ? fileMap.get('notes/.aislenote/notebook-index.json')?.text ?? '{}'
+    const vaultIndex = JSON.parse(fileMap.get('notes/.aislenote/vault-index.json')?.kind === 'text'
+      ? fileMap.get('notes/.aislenote/vault-index.json')?.text ?? '{}'
       : '{}')
     const restored = JSON.parse(readSerializedStateFromHybridFileMap(fileMap) ?? '{}')
 
-    expect(notebookIndex.openTabs).toEqual([
+    expect(vaultIndex.openTabs).toEqual([
       { noteId: 'note-a', status: 'retained' },
       { noteId: 'note-b', status: 'temporary' },
     ])
-    expect(restored.notebook.openTabs).toEqual(notebookIndex.openTabs)
+    expect(restored.vault.openTabs).toEqual(vaultIndex.openTabs)
   })
 })

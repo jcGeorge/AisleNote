@@ -1,8 +1,8 @@
 import './App.css'
-import { NotebookApp } from './app/NotebookApp'
+import { VaultApp } from './app/VaultApp'
 
 function App() {
-  return <NotebookApp />
+  return <VaultApp />
 }
 
 export default App

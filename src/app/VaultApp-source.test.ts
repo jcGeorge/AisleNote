@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-const source = readFileSync(new URL('./NotebookApp.tsx', import.meta.url), 'utf8')
+const source = readFileSync(new URL('./VaultApp.tsx', import.meta.url), 'utf8')
 const appCss = readFileSync(new URL('../App.css', import.meta.url), 'utf8')
 
-describe('NotebookApp editable asset tools', () => {
+describe('VaultApp editable asset tools', () => {
   it('closes editable asset tool overlays only when the active note changes', () => {
     expect(source).toContain("const previousAssetToolsNoteLocationKeyRef = useRef('')")
     expect(source).toMatch(
@@ -13,7 +13,7 @@ describe('NotebookApp editable asset tools', () => {
   })
 })
 
-describe('NotebookApp frontmatter modal routing', () => {
+describe('VaultApp frontmatter modal routing', () => {
   it('blocks structured frontmatter editing when stored YAML is invalid', () => {
     expect(source).toContain("body?.frontmatterStatus === 'invalid'")
     expect(source).toContain('Frontmatter YAML is invalid. Fix the markdown block before using the structured frontmatter editor.')
@@ -42,8 +42,8 @@ describe('NotebookApp frontmatter modal routing', () => {
   })
 
   it('records focused frontmatter timing diagnostics without logging field values', () => {
-    expect(source).toContain('const NOTEBOOK_FRONTMATTER_TIMING_DIAGNOSTIC_THRESHOLD_MS = 16')
-    expect(source).toContain('function recordNotebookFrontmatterTiming(')
+    expect(source).toContain('const VAULT_FRONTMATTER_TIMING_DIAGNOSTIC_THRESHOLD_MS = 16')
+    expect(source).toContain('function recordVaultFrontmatterTiming(')
     expect(source).toContain("recordDiagnosticEvent('frontmatter', event")
     expect(source).toContain("'frontmatter-clipboard-read'")
     expect(source).toContain("'frontmatter-clipboard-apply'")
@@ -55,7 +55,7 @@ describe('NotebookApp frontmatter modal routing', () => {
   })
 })
 
-describe('NotebookApp diagnostics and notification wiring', () => {
+describe('VaultApp diagnostics and notification wiring', () => {
   it('wires diagnostic logging, heartbeat, log reading, and MessagesView controls', () => {
     expect(source).toContain('configureDiagnosticLogging,')
     expect(source).toContain('createMainThreadHeartbeat,')
@@ -70,7 +70,7 @@ describe('NotebookApp diagnostics and notification wiring', () => {
     expect(source).toContain('const heartbeat = createMainThreadHeartbeat()')
     expect(source).toContain('configureDiagnosticLogging(')
     expect(source).toContain('mountedEditorCount: diagnosticMountedEditorCount')
-    expect(source).toContain('openTabCount: state.notebook.openTabs?.length ?? 0')
+    expect(source).toContain('openTabCount: state.vault.openTabs?.length ?? 0')
     expect(source).toContain('messagesSection,')
     expect(source).toContain('diagnosticDays={diagnosticDays}')
     expect(source).toContain('diagnosticEntries={diagnosticEntries}')
@@ -98,12 +98,12 @@ describe('NotebookApp diagnostics and notification wiring', () => {
   })
 })
 
-describe('NotebookApp sidebar search wiring', () => {
+describe('VaultApp sidebar search wiring', () => {
   it('routes metadata filter actions into the sidebar search panel', () => {
     expect(source).toContain('SidebarSearchPanel')
     expect(source).toContain('const [sidebarSearchMode, setSidebarSearchMode] = useState(false)')
     expect(source).toContain('const sidebarSearchVisible = sidebarSearchMode || sidebarSearchActive')
-    expect(source).toContain('className={`notebook-icon-button notebook-sidebar-search-mode-toggle ${')
+    expect(source).toContain('className={`vault-icon-button vault-sidebar-search-mode-toggle ${')
     expect(source).toContain('aria-label="Search notes"')
     expect(source).toContain('const toggleSidebarSearchModeFromButton = useCallback')
     expect(source).toContain('if (sidebarSearchVisible) {')
@@ -136,45 +136,45 @@ describe('NotebookApp sidebar search wiring', () => {
     expect(source).toContain("activateSidebarSearchKey('frontmatter', getFrontmatterTemplateFilterKey(templateId))")
     expect(source).toContain('onOpenTagFilter={filterTag}')
     expect(source).toContain('onFilterTemplate={filterFrontmatterTemplateFromModal}')
-    expect(source).not.toContain('notebook-sidebar-search-toggle')
+    expect(source).not.toContain('vault-sidebar-search-toggle')
     expect(source).not.toContain('frontmatterTemplateFilterAisleIds={frontmatterTemplateFilterAisleIds}')
     expect(source).not.toContain('onFilterAisleFrontmatterTemplate={filterAisleFrontmatterTemplate}')
   })
 })
 
-describe('NotebookApp sidebar resize handle', () => {
+describe('VaultApp sidebar resize handle', () => {
   it('uses an explicit capsule handle with double-click reset', () => {
     expect(source).toContain('const resetSidebarWidth = useCallback')
     expect(source).toContain('sidebarWidth: clampSidebarWidth(DEFAULT_UI_SETTINGS.sidebarWidth)')
-    expect(source).toContain('className="notebook-sidebar-resize-handle"')
+    expect(source).toContain('className="vault-sidebar-resize-handle"')
     expect(source).toContain('data-app-tooltip="Drag to resize. Double click to reset."')
     expect(source).toContain('onDoubleClick={resetSidebarWidth}')
-    expect(source).toContain('className="notebook-sidebar-resize-capsule"')
-    expect(appCss).toContain('--notebook-topbar-content-height: calc(')
-    expect(appCss).toContain('--notebook-topbar-height: calc(var(--notebook-topbar-content-height) + 1px);')
+    expect(source).toContain('className="vault-sidebar-resize-capsule"')
+    expect(appCss).toContain('--vault-topbar-content-height: calc(')
+    expect(appCss).toContain('--vault-topbar-height: calc(var(--vault-topbar-content-height) + 1px);')
     expect(appCss).toContain('--resize-handle-width: calc(1.4rem + 2px);')
     expect(appCss).toContain('--resize-handle-height: calc(4.4rem + 4px);')
     expect(appCss).toContain('--resize-handle-half-height: calc(2.2rem + 2px);')
     expect(appCss).toContain('--resize-handle-capsule-width: 0.34rem;')
     expect(appCss).toContain('--resize-handle-capsule-height: calc(3rem + 4px);')
-    expect(appCss).toContain('--resize-handle-center-y: calc(var(--notebook-topbar-height) + (100vh - var(--notebook-topbar-height)) * 0.7);')
+    expect(appCss).toContain('--resize-handle-center-y: calc(var(--vault-topbar-height) + (100vh - var(--vault-topbar-height)) * 0.7);')
     expect(appCss).not.toContain('--sidebar-resize-handle-top')
-    expect(appCss).toContain('.notebook-sidebar {\n  flex: 0 0 auto;\n  position: relative;\n  z-index: 40;')
-    expect(appCss).toContain('.notebook-sidebar-header {\n  box-sizing: border-box;\n  display: flex;\n  align-items: center;\n  gap: var(--notebook-sidebar-control-gap);\n  min-height: var(--notebook-topbar-height);')
-    expect(appCss).toContain('.notebook-shell .note-shared-toolbar.toastui-editor-toolbar {\n  --editor-toolbar-spacer-width: 0.55rem;\n  border-bottom: 1px solid var(--notebook-topbar-border) !important;\n  min-height: var(--notebook-topbar-height) !important;')
-    expect(appCss).toContain('min-height: var(--notebook-topbar-content-height) !important;\n  padding: var(--notebook-topbar-block-padding) var(--notebook-topbar-inline-padding) !important;')
-    expect(appCss).toContain('.notebook-utility-header {\n  flex: 0 0 auto;\n  box-sizing: border-box;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: var(--notebook-sidebar-control-gap);\n  min-height: var(--notebook-topbar-height);')
-    expect(appCss).toContain('.notebook-sidebar-resize-handle {\n  position: absolute;\n  z-index: 6;\n  top: var(--resize-handle-center-y);')
+    expect(appCss).toContain('.vault-sidebar {\n  flex: 0 0 auto;\n  position: relative;\n  z-index: 40;')
+    expect(appCss).toContain('.vault-sidebar-header {\n  box-sizing: border-box;\n  display: flex;\n  align-items: center;\n  gap: var(--vault-sidebar-control-gap);\n  min-height: var(--vault-topbar-height);')
+    expect(appCss).toContain('.vault-shell .note-shared-toolbar.toastui-editor-toolbar {\n  --editor-toolbar-spacer-width: 0.55rem;\n  border-bottom: 1px solid var(--vault-topbar-border) !important;\n  min-height: var(--vault-topbar-height) !important;')
+    expect(appCss).toContain('min-height: var(--vault-topbar-content-height) !important;\n  padding: var(--vault-topbar-block-padding) var(--vault-topbar-inline-padding) !important;')
+    expect(appCss).toContain('.vault-utility-header {\n  flex: 0 0 auto;\n  box-sizing: border-box;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: var(--vault-sidebar-control-gap);\n  min-height: var(--vault-topbar-height);')
+    expect(appCss).toContain('.vault-sidebar-resize-handle {\n  position: absolute;\n  z-index: 6;\n  top: var(--resize-handle-center-y);')
     expect(appCss).toContain('border: 1px solid var(--note-aisle-resize-border);')
     expect(appCss).toContain('background: var(--note-aisle-resize-bg);')
     expect(appCss).toContain('background: var(--note-aisle-resize-hover-bg);')
     expect(appCss).toContain('outline: 2px solid var(--note-aisle-resize-focus-outline);')
-    expect(appCss).toContain('.notebook-sidebar-resize-capsule')
-    expect(appCss).not.toContain('.notebook-sidebar-resize-handle::before')
+    expect(appCss).toContain('.vault-sidebar-resize-capsule')
+    expect(appCss).not.toContain('.vault-sidebar-resize-handle::before')
   })
 })
 
-describe('NotebookApp zoom HUD', () => {
+describe('VaultApp zoom HUD', () => {
   it('shows native app zoom changes without using the toast stack', () => {
     expect(source).toContain('const [zoomHudPercent, setZoomHudPercent] = useState<number | null>(null)')
     expect(source).toContain('const zoomHudTimeoutRef = useRef<number | null>(null)')
@@ -183,12 +183,12 @@ describe('NotebookApp zoom HUD', () => {
     expect(source).toContain('setZoomHudPercent(null)')
     expect(source).toContain('className="app-zoom-hud"')
     expect(appCss).toContain('.app-zoom-hud')
-    expect(appCss).toContain('top: calc(var(--notebook-topbar-height) + 0.65rem);')
+    expect(appCss).toContain('top: calc(var(--vault-topbar-height) + 0.65rem);')
     expect(appCss).toContain('@keyframes zoomHudFadeIn')
   })
 })
 
-describe('NotebookApp tag autocomplete wiring', () => {
+describe('VaultApp tag autocomplete wiring', () => {
   it('connects editor tag autocomplete to the existing tag index and menu', () => {
     expect(source).toContain("import { TagAutocompleteMenu } from '../components/editor/TagAutocompleteMenu'")
     expect(source).toContain("import { useTagAutocompleteController } from '../tags/useTagAutocompleteController'")
@@ -198,15 +198,15 @@ describe('NotebookApp tag autocomplete wiring', () => {
     expect(source).toContain('onTagAutocompleteQueryChange: refreshTagAutocompleteFromEditor')
     expect(source).toContain('const tagAutocompleteController = useTagAutocompleteController({')
     expect(source).toContain('getAvailableTags: () => tagAutocompleteFilterIndex.availableOptions')
-    expect(source).toContain('commitActiveEditorMarkdownNow: notebookEditors.commitActiveEditorMarkdownNow')
+    expect(source).toContain('commitActiveEditorMarkdownNow: vaultEditors.commitActiveEditorMarkdownNow')
     expect(source).toContain('tagAutocompleteRefreshRef.current = tagAutocompleteController.refreshQuery')
     expect(source).toContain('<TagAutocompleteMenu')
     expect(source).toContain('onChoose={tagAutocompleteController.acceptSuggestion}')
   })
 })
 
-describe('NotebookApp heading collapse wiring', () => {
-  it('persists heading collapse state through the notebook editor hook', () => {
+describe('VaultApp heading collapse wiring', () => {
+  it('persists heading collapse state through the vault editor hook', () => {
     expect(source).toContain("import { isHeadingCollapsed, setHeadingCollapsed } from '../editor/heading-collapse-state'")
     expect(source).toContain('const toggleHeadingCollapse = useCallback')
     expect(source).toContain('const nextCollapsed = !isHeadingCollapsed(previous.ui.headingCollapseState, noteBodyId, aisleId, headingKey)')
@@ -220,19 +220,19 @@ describe('NotebookApp heading collapse wiring', () => {
   })
 })
 
-describe('NotebookApp large notebook performance wiring', () => {
-  it('builds sidebar search indexes from narrow notebook index dependencies instead of whole app state', () => {
-    expect(source).toContain("import { createNotebookIndexContext } from '../filters/notebook-index-context'")
-    expect(source).toContain('const notebookIndexContext = useMemo(')
-    expect(source).toContain('() => createNotebookIndexContext(stateRef.current)')
-    expect(source).toContain('state.notebook.items')
+describe('VaultApp large vault performance wiring', () => {
+  it('builds sidebar search indexes from narrow vault index dependencies instead of whole app state', () => {
+    expect(source).toContain("import { createVaultIndexContext } from '../filters/vault-index-context'")
+    expect(source).toContain('const vaultIndexContext = useMemo(')
+    expect(source).toContain('() => createVaultIndexContext(stateRef.current)')
+    expect(source).toContain('state.vault.items')
     expect(source).toContain('state.noteBodies')
     expect(source).toContain('state.noteAisleBodies')
     expect(source).toContain('const sidebarSearchNeedsFullIndexes = sidebarSearchMode || query.trim().length > 0')
-    expect(source).toContain("() => buildNoteFilterIndex(notebookIndexContext.state, 'tags', [], notebookIndexContext)")
-    expect(source).toContain('return buildSidebarSearchIndexes(notebookIndexContext.state, notebookIndexContext)')
+    expect(source).toContain("() => buildNoteFilterIndex(vaultIndexContext.state, 'tags', [], vaultIndexContext)")
+    expect(source).toContain('return buildSidebarSearchIndexes(vaultIndexContext.state, vaultIndexContext)')
     expect(source).toContain('...getEmptySidebarSearchIndexes(),')
-    expect(source).toContain('context: notebookIndexContext,')
+    expect(source).toContain('context: vaultIndexContext,')
     expect(source).not.toContain('const sidebarSearchIndexes = useMemo(() => buildSidebarSearchIndexes(state), [state])')
   })
 
@@ -241,33 +241,33 @@ describe('NotebookApp large notebook performance wiring', () => {
     expect(source).toContain('state.ui.themePalettes,')
     expect(source).toContain('state.ui.toolbarButtonScale,')
     expect(source).not.toContain('[defaultToolbarButtonScale, state]')
-    expect(source).toContain('[state.noteAisleBodies, state.noteBodies, state.notebook.activeNoteId, state.notebook.items, stateRef]')
+    expect(source).toContain('[state.noteAisleBodies, state.noteBodies, state.vault.activeNoteId, state.vault.items, stateRef]')
     expect(source).toContain('[state.noteAisleBodies, state.noteBodies, state.scratchpad, stateRef]')
   })
 
   it('flushes debounced editor changes before state-backed navigation, search, find, and storage reads', () => {
-    expect(source).toContain('notebookEditors.flushPendingEditorAppStateCommit()')
-    expect(source).toMatch(/const getLatestNotebookStateFromMountedEditors = useCallback\(\(\) => {\s*notebookEditors\.flushPendingEditorAppStateCommit\(\)/)
-    const navigationStart = source.indexOf('const applyNotebookNavigationLocation = useCallback')
+    expect(source).toContain('vaultEditors.flushPendingEditorAppStateCommit()')
+    expect(source).toMatch(/const getLatestVaultStateFromMountedEditors = useCallback\(\(\) => {\s*vaultEditors\.flushPendingEditorAppStateCommit\(\)/)
+    const navigationStart = source.indexOf('const applyVaultNavigationLocation = useCallback')
     const navigationEnd = source.indexOf('const selectNoteTab = useCallback', navigationStart)
     const navigationBody = source.slice(navigationStart, navigationEnd)
-    expect(navigationBody).toContain('notebookEditors.flushPendingEditorAppStateCommit()')
-    expect(navigationBody).toContain("recordNotebookNavigationTiming('notebook-navigation'")
-    expect(source).toMatch(/const updateSidebarSearchQuery = useCallback\(\s*\(nextQuery: string\) => {\s*notebookEditors\.flushPendingEditorAppStateCommit\(\)/)
-    expect(source).toMatch(/const updateFindReplaceQuery = useCallback\(\(nextQuery: string\) => {\s*notebookEditors\.flushPendingEditorAppStateCommit\(\)/)
+    expect(navigationBody).toContain('vaultEditors.flushPendingEditorAppStateCommit()')
+    expect(navigationBody).toContain("recordVaultNavigationTiming('vault-navigation'")
+    expect(source).toMatch(/const updateSidebarSearchQuery = useCallback\(\s*\(nextQuery: string\) => {\s*vaultEditors\.flushPendingEditorAppStateCommit\(\)/)
+    expect(source).toMatch(/const updateFindReplaceQuery = useCallback\(\(nextQuery: string\) => {\s*vaultEditors\.flushPendingEditorAppStateCommit\(\)/)
   })
 
-  it('memoizes and virtualizes the sidebar tree over the large-notebook threshold', () => {
-    expect(source).toContain('const NOTEBOOK_TREE_VIRTUALIZATION_THRESHOLD = 300')
-    expect(source).toContain('function flattenVisibleNotebookTreeRows(')
+  it('memoizes and virtualizes the sidebar tree over the large-vault threshold', () => {
+    expect(source).toContain('const VAULT_TREE_VIRTUALIZATION_THRESHOLD = 300')
+    expect(source).toContain('function flattenVisibleVaultTreeRows(')
     expect(source).toContain('const MemoizedTreeItemRow = React.memo(TreeItemRow)')
-    expect(source).toContain('const notebookTreeFlatRows = useMemo(')
-    expect(source).toContain('const useVirtualizedNotebookTree = notebookTreeFlatRows.length > NOTEBOOK_TREE_VIRTUALIZATION_THRESHOLD')
-    expect(source).toContain('className="notebook-tree-virtual-spacer"')
-    expect(source).toContain('className="notebook-tree-virtual-row"')
+    expect(source).toContain('const vaultTreeFlatRows = useMemo(')
+    expect(source).toContain('const useVirtualizedVaultTree = vaultTreeFlatRows.length > VAULT_TREE_VIRTUALIZATION_THRESHOLD')
+    expect(source).toContain('className="vault-tree-virtual-spacer"')
+    expect(source).toContain('className="vault-tree-virtual-row"')
     expect(source).toContain('renderChildren={false}')
-    expect(appCss).toContain('.notebook-tree-virtual-spacer')
-    expect(appCss).toContain('.notebook-tree-virtual-row')
+    expect(appCss).toContain('.vault-tree-virtual-spacer')
+    expect(appCss).toContain('.vault-tree-virtual-row')
   })
 
   it('uses a local draft palette before debounced global theme commits', () => {
@@ -283,16 +283,16 @@ describe('NotebookApp large notebook performance wiring', () => {
 
   it('keeps closed note tab history transient and wires reopen through navigation', () => {
     expect(source).toContain('const CLOSED_NOTE_TAB_HISTORY_LIMIT = 20')
-    expect(source).toContain('const closedNoteTabHistoryRef = useRef<ClosedNotebookTab[]>([])')
-    expect(source).toContain('const closedTab = getClosedNotebookTab(snapshotState.notebook, noteId)')
+    expect(source).toContain('const closedNoteTabHistoryRef = useRef<ClosedVaultTab[]>([])')
+    expect(source).toContain('const closedTab = getClosedVaultTab(snapshotState.vault, noteId)')
     expect(source).toContain('rememberClosedNoteTab(closedTab)')
     expect(source).toContain('{ restoreClosedTab: closedTab }')
-    expect(source).toContain('restoreClosedNotebookTab(previousWithCursor.notebook, options.restoreClosedTab)')
+    expect(source).toContain('restoreClosedVaultTab(previousWithCursor.vault, options.restoreClosedTab)')
     expect(source).toContain('reopenClosedNoteTab,')
   })
 })
 
-describe('NotebookApp find replace wiring', () => {
+describe('VaultApp find replace wiring', () => {
   it('keeps keyboard find available while the toolbar magnifier opens notes search', () => {
     expect(source).toContain("import { FindReplacePanel } from '../components/editor/FindReplacePanel'")
     expect(source).toContain("import { getFindReplaceShortcutMode } from '../components/editor/find-replace-shortcuts'")
@@ -300,7 +300,7 @@ describe('NotebookApp find replace wiring', () => {
     expect(source).toContain('const findReplaceMatches = useMemo')
     expect(source).toContain('findVisibleMatches(')
     expect(source).toContain("      'note',\n      findReplaceQuery,")
-    expect(source).toContain('if (editor) notebookEditors.commitActiveEditorMarkdownNow(editor)')
+    expect(source).toContain('if (editor) vaultEditors.commitActiveEditorMarkdownNow(editor)')
     expect(source).toContain('const openFindReplace = useCallback')
     expect(source).toContain('if (!mode) return')
     expect(source).toContain('onOpenFindReplace={focusNotesFilterFromShortcut}')
@@ -308,116 +308,116 @@ describe('NotebookApp find replace wiring', () => {
     expect(source).toContain('<FindReplacePanel')
     expect(source).not.toContain('replaceMode={findReplaceMode')
     expect(source).not.toContain('scope={findReplaceScope}')
-    expect(source).not.toContain('notebook-sidebar-search-toggle')
+    expect(source).not.toContain('vault-sidebar-search-toggle')
     expect(source).not.toContain('onOpenFindReplace={() => undefined}')
   })
 })
 
-describe('NotebookApp notebook manager wiring', () => {
-  it('renames the Data storage tab to Notebooks while keeping the storage section id', () => {
-    expect(source).toContain("{ id: 'storage', label: 'Notebooks' }")
+describe('VaultApp vault manager wiring', () => {
+  it('renames the Data storage tab to Vaults while keeping the storage section id', () => {
+    expect(source).toContain("{ id: 'storage', label: 'Vaults' }")
     expect(source).toContain("setDataSettingsSection('storage')")
     expect(source).not.toContain("{ id: 'storage', label: 'Storage' }")
   })
 
-  it('renders the inline notebook manager instead of the old storage summary card', () => {
-    expect(source).toContain('const renderNotebookManager = () => {')
+  it('renders the inline vault manager instead of the old storage summary card', () => {
+    expect(source).toContain('const renderVaultManager = () => {')
     expect(source).toContain('useStorageProfileController({')
-    expect(source).toContain('beforeStorageAction: commitNotebookBeforeStorageAction')
+    expect(source).toContain('beforeStorageAction: commitVaultBeforeStorageAction')
     expect(source).toContain('commitAppStateNow(latest.state, {')
-    expect(source).toContain('New Notebook')
-    expect(source).toContain('function NotebookNameDialog({')
-    expect(source).toContain("const actionLabel = dialog.mode === 'create' ? 'Select folder' : 'Rename'")
-    expect(source).toMatch(/<button type="submit" className="notebook-settings-action" disabled=\{!canSubmit\}>\s*\{actionLabel\}\s*<\/button>\s*<button type="button" className="notebook-settings-action" onClick=\{onCancel\}>\s*Cancel\s*<\/button>/)
-    expect(source).toContain("setNotebookNameDialog({ mode: 'create', initialName: 'New Notebook' })")
-    expect(source).toContain("setNotebookNameDialog({ mode: 'rename', initialName: notebook.notebookName, notebook })")
-    expect(source).toContain('<NotebookNameDialog')
-    expect(source).toContain('storageProfileController.chooseNotebookLocation()')
-    expect(source).toContain('storageProfileController.createNotebook({ name, locationPath })')
-    expect(source).toContain('const renameNotebookFromSettings = useCallback((notebook: KnownNotebook) => {')
-    expect(source).toContain('storageProfileController.renameNotebook(name, getNotebookSelector(dialog.notebook))')
-    expect(source).toContain('notebookId: storageProfileStatus.activeNotebookId ?? undefined,')
-    expect(source).toContain('onClick={() => renameNotebookFromSettings(notebook)}')
-    expect(source).toContain('Remembered notebooks')
+    expect(source).toContain('New Vault')
+    expect(source).toContain('function VaultNameDialog({')
+    expect(source).toContain("const actionLabel = dialog.mode === 'create' ? 'Choose location' : 'Rename'")
+    expect(source).toMatch(/<button type="submit" className="vault-settings-action" disabled=\{!canSubmit\}>\s*\{actionLabel\}\s*<\/button>\s*<button type="button" className="vault-settings-action" onClick=\{onCancel\}>\s*Cancel\s*<\/button>/)
+    expect(source).toContain("setVaultNameDialog({ mode: 'create', initialName: 'New Vault' })")
+    expect(source).toContain("setVaultNameDialog({ mode: 'rename', initialName: vault.vaultName, vault })")
+    expect(source).toContain('<VaultNameDialog')
+    expect(source).toContain('storageProfileController.chooseVaultLocation()')
+    expect(source).toContain('storageProfileController.createVault({ name, locationPath })')
+    expect(source).toContain('const renameVaultFromSettings = useCallback((vault: KnownVault) => {')
+    expect(source).toContain('storageProfileController.renameVault(name, getVaultSelector(dialog.vault))')
+    expect(source).toContain('vaultId: storageProfileStatus.activeVaultId ?? undefined,')
+    expect(source).toContain('onClick={() => renameVaultFromSettings(vault)}')
+    expect(source).toContain('Remembered vaults')
     expect(source).toContain('iconId="ellipsisVertical"')
-    expect(source).toContain('runCurrentNotebookAction(() => void storageProfileController.moveStorageProfile())')
-    expect(source).toContain('runCurrentNotebookAction(() => void storageProfileController.revealStorageProfile())')
+    expect(source).toContain('runCurrentVaultAction(() => void storageProfileController.moveStorageProfile())')
+    expect(source).toContain('runCurrentVaultAction(() => void storageProfileController.revealStorageProfile())')
     expect(source).toContain('Remove from List')
-    expect(source).toContain('Delete Notebook')
-    expect(source).toContain('desktopNotebookSetupRequired')
-    expect(source).toContain('const renderNotebookSetupScreen = () => (')
-    expect(source).toContain("const NOTEBOOK_SETUP_APP_NAME = 'AisleNote'")
-    expect(source).toContain("const NOTEBOOK_SETUP_LOGO_SRC = './favicon.svg'")
+    expect(source).toContain('Delete Vault')
+    expect(source).toContain('desktopVaultSetupRequired')
+    expect(source).toContain('const renderVaultSetupScreen = () => (')
+    expect(source).toContain("const VAULT_SETUP_APP_NAME = 'AisleNote'")
+    expect(source).toContain("const VAULT_SETUP_LOGO_SRC = './favicon.svg'")
     expect(source).toContain('runtimeVersionLabel')
-    expect(source).toContain('Create new notebook')
-    expect(source).toContain('Name a notebook, then choose the parent folder.')
-    expect(source).toContain('Open notebook folder')
-    expect(source).toContain('Choose an existing AisleNote notebook folder.')
-    expect(appCss).toContain('.notebook-frontmatter-modal.notebook-name-modal')
+    expect(source).toContain('Create new vault')
+    expect(source).toContain('Name a vault, then choose where to save it.')
+    expect(source).toContain('Open AisleNote vault')
+    expect(source).toContain('Choose an existing AisleNote vault.')
+    expect(appCss).toContain('.vault-frontmatter-modal.vault-name-modal')
     expect(source).not.toContain('window.prompt(')
-    expect(source).not.toContain('Open Notebook Folder')
-    expect(source).not.toContain('renameCurrentNotebookFromSettings')
-    expect(source).not.toContain('notebook-manager-meta-grid')
-    expect(appCss).not.toContain('notebook-manager-meta-grid')
+    expect(source).not.toContain('Open Vault Folder')
+    expect(source).not.toContain('renameCurrentVaultFromSettings')
+    expect(source).not.toContain('vault-manager-meta-grid')
+    expect(appCss).not.toContain('vault-manager-meta-grid')
     expect(source).not.toContain('<span>status</span>')
     expect(source).not.toContain('<span>health</span>')
     expect(source).not.toContain('<span>writable</span>')
     expect(source).not.toContain('<span>schema</span>')
-    expect(source).not.toContain('void storageProfileController.createNotebook()')
-    expect(source).not.toContain('storageProfileController.renameNotebook(name, notebook ? getNotebookSelector(notebook) : undefined)')
-    expect(source).not.toContain('Create a new notebook under a folder.')
-    expect(source).not.toContain('Create or open a notebook')
+    expect(source).not.toContain('void storageProfileController.createVault()')
+    expect(source).not.toContain('storageProfileController.renameVault(name, vault ? getVaultSelector(vault) : undefined)')
+    expect(source).not.toContain('Create a new vault under a folder.')
+    expect(source).not.toContain('Create or open a vault')
     expect(source).not.toContain('Put that folder in iCloud, Dropbox, OneDrive')
     expect(source).not.toContain('listSearchableNoteLocations(state).length.toLocaleString()')
     expect(source).not.toContain('serializedState: getSerializedStateForStorageAction')
   })
 
-  it('renders a bottom sidebar notebook switcher through the storage controller', () => {
-    const sidebarFooterStart = source.indexOf('const renderSidebarNotebookFooter = () => {')
+  it('renders a bottom sidebar vault switcher through the storage controller', () => {
+    const sidebarFooterStart = source.indexOf('const renderSidebarVaultFooter = () => {')
     const sidebarFooter = source.slice(sidebarFooterStart, source.indexOf('const renderDataSettings', sidebarFooterStart))
-    expect(source).toContain('function getNotebookRowsFromStorageStatus(storageProfileStatus: StorageProfileStatus | null): KnownNotebook[]')
-    expect(source).toContain('const [notebookSwitcherOpen, setNotebookSwitcherOpen] = useState(false)')
-    expect(source).toContain('const switchNotebookFromSidebar = useCallback((notebook: KnownNotebook) => {')
-    expect(source).toContain('void storageProfileController.switchNotebook(getNotebookSelector(notebook))')
-    expect(source).toContain('const openNotebookFromSidebar = useCallback(() => {')
-    expect(source).toContain('void storageProfileController.openNotebook()')
+    expect(source).toContain('function getVaultRowsFromStorageStatus(storageProfileStatus: StorageProfileStatus | null): KnownVault[]')
+    expect(source).toContain('const [vaultSwitcherOpen, setVaultSwitcherOpen] = useState(false)')
+    expect(source).toContain('const switchVaultFromSidebar = useCallback((vault: KnownVault) => {')
+    expect(source).toContain('void storageProfileController.switchVault(getVaultSelector(vault))')
+    expect(source).toContain('const openVaultFromSidebar = useCallback(() => {')
+    expect(source).toContain('void storageProfileController.openVault()')
     expect(source).toContain('const toggleSidebarCollapsed = useCallback(() => {')
-    expect(source).toContain('const renderSidebarNotebookFooter = () => {')
-    expect(source).toContain('className="notebook-sidebar-switcher-trigger"')
-    expect(source).toContain('aria-label="Notebook switcher"')
-    expect(source).toContain('onClick={() => switchNotebookFromSidebar(notebook)}')
+    expect(source).toContain('const renderSidebarVaultFooter = () => {')
+    expect(source).toContain('className="vault-sidebar-switcher-trigger"')
+    expect(source).toContain('aria-label="Vault switcher"')
+    expect(source).toContain('onClick={() => switchVaultFromSidebar(vault)}')
     expect(source).toContain('onClick={toggleSidebarCollapsed}')
-    expect(source).toContain('{renderSidebarNotebookFooter()}')
-    expect(sidebarFooter).toContain('<span className="notebook-sidebar-switcher-row-name">{notebook.notebookName}</span>')
-    expect(sidebarFooter).toContain('<AppIcon iconId="folderOpen" className="notebook-sidebar-switcher-row-icon" />')
-    expect(sidebarFooter).not.toContain('notebook-sidebar-switcher-icon')
-    expect(sidebarFooter).not.toContain('notebook-sidebar-open-button')
+    expect(source).toContain('{renderSidebarVaultFooter()}')
+    expect(sidebarFooter).toContain('<span className="vault-sidebar-switcher-row-name">{vault.vaultName}</span>')
+    expect(sidebarFooter).toContain('<AppIcon iconId="folderOpen" className="vault-sidebar-switcher-row-icon" />')
+    expect(sidebarFooter).not.toContain('vault-sidebar-switcher-icon')
+    expect(sidebarFooter).not.toContain('vault-sidebar-open-button')
     expect(sidebarFooter).not.toContain('<strong>')
-    expect(sidebarFooter).not.toContain('iconId={notebook.available ?')
-    expect(appCss).toContain('.notebook-sidebar-switcher-name {\n  color: var(--app-text-heading);\n  font-weight: 400;\n}')
-    expect(appCss).toContain('.notebook-sidebar-footer')
-    expect(appCss).toContain('.notebook-sidebar-switcher-popover')
-    expect(appCss).toContain('.notebook-sidebar-footer.is-collapsed')
+    expect(sidebarFooter).not.toContain('iconId={vault.available ?')
+    expect(appCss).toContain('.vault-sidebar-switcher-name {\n  color: var(--app-text-heading);\n  font-weight: 400;\n}')
+    expect(appCss).toContain('.vault-sidebar-footer')
+    expect(appCss).toContain('.vault-sidebar-switcher-popover')
+    expect(appCss).toContain('.vault-sidebar-footer.is-collapsed')
   })
 
   it('uses setup-specific theme-aware startup styling', () => {
-    expect(appCss).toContain('.notebook-setup-brand')
-    expect(appCss).toContain('.notebook-setup-action-row')
-    expect(appCss).toContain('.notebook-setup-action-button.is-primary')
+    expect(appCss).toContain('.vault-setup-brand')
+    expect(appCss).toContain('.vault-setup-action-row')
+    expect(appCss).toContain('.vault-setup-action-button.is-primary')
     expect(appCss).toContain('background: var(--app-page-bg)')
     expect(appCss).toContain('background: var(--app-raised)')
     expect(appCss).toContain('border: 1px solid var(--app-border-muted)')
   })
 
-  it('subscribes to the Electron Open Notebook menu navigation event', () => {
-    expect(source).toContain('onOpenNotebookManager?.(openNotebookManagerSettings)')
+  it('subscribes to the Electron Open Vault menu navigation event', () => {
+    expect(source).toContain('onOpenVaultManager?.(openVaultManagerSettings)')
     expect(source).toContain("openUtilityView('settings')")
     expect(source).toContain("setSettingsSection('data')")
     expect(source).toContain("setDataSettingsSection('storage')")
   })
 })
 
-describe('NotebookApp aisle insertion focus', () => {
+describe('VaultApp aisle insertion focus', () => {
   it('routes shortcut and context-menu aisle creation through pending editor focus', () => {
     expect(source).toContain('addAisleFromNewlineRef.current = addAisle')
     expect(source).toContain('const insertEditorContextAisle = useCallback(')

@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { AppState, NoteBody } from '../types/app'
 import {
-  applyNotebookStructureClipboardPayload,
-  buildNotebookStructureClipboardPayload,
-  parseNotebookStructureClipboardPayload,
-  readNotebookStructureClipboardPayloadFromNavigator,
-  readNotebookStructureClipboardPayloadFromDataTransfer,
-  rememberNotebookStructureClipboardPayload,
-  serializeNotebookStructureClipboardPayload,
-  AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME,
-} from './notebook-structure-clipboard'
+  applyVaultStructureClipboardPayload,
+  buildVaultStructureClipboardPayload,
+  parseVaultStructureClipboardPayload,
+  readVaultStructureClipboardPayloadFromNavigator,
+  readVaultStructureClipboardPayloadFromDataTransfer,
+  rememberVaultStructureClipboardPayload,
+  serializeVaultStructureClipboardPayload,
+  AISLENOTE_VAULT_STRUCTURE_CLIPBOARD_MIME,
+} from './vault-structure-clipboard'
+import { MAX_NOTE_AISLES } from '../editor/aisle-edit-draft'
 
 function idSequence(ids: string[]) {
   let index = 0
@@ -19,7 +20,7 @@ function idSequence(ids: string[]) {
 function createState(): AppState {
   return {
     theme: 'dark',
-    notebook: {
+    vault: {
       activeNoteId: 'note-active',
       items: [
         { type: 'note', id: 'note-active', title: 'Active', noteBodyId: 'body-active' },
@@ -79,9 +80,9 @@ function noteBody(state: AppState, id: string): NoteBody {
   return body
 }
 
-describe('notebook structure clipboard', () => {
+describe('vault structure clipboard', () => {
   it('serializes and parses a whole-note synced payload with clean markdown fallback', () => {
-    const result = buildNotebookStructureClipboardPayload(createState(), {
+    const result = buildVaultStructureClipboardPayload(createState(), {
       activeNoteId: 'note-source',
       kind: 'note',
       mode: 'synced',
@@ -96,13 +97,13 @@ describe('notebook structure clipboard', () => {
       mode: 'synced',
       source: { noteId: 'note-source', noteTitle: 'Source', noteBodyId: 'body-source' },
     })
-    expect(parseNotebookStructureClipboardPayload(serializeNotebookStructureClipboardPayload(result.payload))).toEqual(
+    expect(parseVaultStructureClipboardPayload(serializeVaultStructureClipboardPayload(result.payload))).toEqual(
       result.payload,
     )
   })
 
   it('recovers a remembered payload from clean text clipboard data', () => {
-    const result = buildNotebookStructureClipboardPayload(createState(), {
+    const result = buildVaultStructureClipboardPayload(createState(), {
       activeNoteId: 'note-source',
       kind: 'aisle',
       mode: 'independent',
@@ -111,15 +112,15 @@ describe('notebook structure clipboard', () => {
 
     expect(result.status).toBe('ok')
     if (result.status !== 'ok') return
-    rememberNotebookStructureClipboardPayload(result.payload, result.markdown)
-    const payload = readNotebookStructureClipboardPayloadFromDataTransfer({
+    rememberVaultStructureClipboardPayload(result.payload, result.markdown)
+    const payload = readVaultStructureClipboardPayloadFromDataTransfer({
       getData: (type: string) => (type === 'text/plain' ? result.markdown : ''),
     })
     expect(payload).toEqual(result.payload)
   })
 
   it('reads async clipboard custom MIME and clean-text fallback payloads', async () => {
-    const result = buildNotebookStructureClipboardPayload(createState(), {
+    const result = buildVaultStructureClipboardPayload(createState(), {
       activeNoteId: 'note-source',
       kind: 'note',
       mode: 'synced',
@@ -127,21 +128,21 @@ describe('notebook structure clipboard', () => {
     expect(result.status).toBe('ok')
     if (result.status !== 'ok') return
 
-    const serialized = serializeNotebookStructureClipboardPayload(result.payload)
+    const serialized = serializeVaultStructureClipboardPayload(result.payload)
     await expect(
-      readNotebookStructureClipboardPayloadFromNavigator({
+      readVaultStructureClipboardPayloadFromNavigator({
         read: async () => [
           {
-            types: [AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME],
-            getType: async () => new Blob([serialized], { type: AISLENOTE_NOTEBOOK_STRUCTURE_CLIPBOARD_MIME }),
+            types: [AISLENOTE_VAULT_STRUCTURE_CLIPBOARD_MIME],
+            getType: async () => new Blob([serialized], { type: AISLENOTE_VAULT_STRUCTURE_CLIPBOARD_MIME }),
           },
         ],
       } as unknown as Clipboard),
     ).resolves.toEqual(result.payload)
 
-    rememberNotebookStructureClipboardPayload(result.payload, result.markdown)
+    rememberVaultStructureClipboardPayload(result.payload, result.markdown)
     await expect(
-      readNotebookStructureClipboardPayloadFromNavigator({
+      readVaultStructureClipboardPayloadFromNavigator({
         readText: async () => result.markdown,
       } as unknown as Clipboard),
     ).resolves.toEqual(result.payload)
@@ -149,7 +150,7 @@ describe('notebook structure clipboard', () => {
 
   it('pastes a whole-note independent copy by replacing the focused aisle with cloned source aisles', () => {
     const state = createState()
-    const copy = buildNotebookStructureClipboardPayload(state, {
+    const copy = buildVaultStructureClipboardPayload(state, {
       activeNoteId: 'note-source',
       kind: 'note',
       mode: 'independent',
@@ -157,7 +158,7 @@ describe('notebook structure clipboard', () => {
     expect(copy.status).toBe('ok')
     if (copy.status !== 'ok') return
 
-    const result = applyNotebookStructureClipboardPayload(state, {
+    const result = applyVaultStructureClipboardPayload(state, {
       activeNoteId: 'note-active',
       focusedAisleId: 'active-aisle-1',
       payload: copy.payload,
@@ -177,7 +178,7 @@ describe('notebook structure clipboard', () => {
 
   it('pastes a whole-note synced copy by sharing source aisle body ids', () => {
     const state = createState()
-    const copy = buildNotebookStructureClipboardPayload(state, {
+    const copy = buildVaultStructureClipboardPayload(state, {
       activeNoteId: 'note-source',
       kind: 'note',
       mode: 'synced',
@@ -185,7 +186,7 @@ describe('notebook structure clipboard', () => {
     expect(copy.status).toBe('ok')
     if (copy.status !== 'ok') return
 
-    const result = applyNotebookStructureClipboardPayload(state, {
+    const result = applyVaultStructureClipboardPayload(state, {
       activeNoteId: 'note-active',
       focusedAisleId: 'active-aisle-2',
       payload: copy.payload,
@@ -203,7 +204,7 @@ describe('notebook structure clipboard', () => {
 
   it('pastes an aisle copy by replacing only the focused aisle', () => {
     const state = createState()
-    const copy = buildNotebookStructureClipboardPayload(state, {
+    const copy = buildVaultStructureClipboardPayload(state, {
       activeNoteId: 'note-source',
       kind: 'aisle',
       mode: 'synced',
@@ -212,7 +213,7 @@ describe('notebook structure clipboard', () => {
     expect(copy.status).toBe('ok')
     if (copy.status !== 'ok') return
 
-    const result = applyNotebookStructureClipboardPayload(state, {
+    const result = applyVaultStructureClipboardPayload(state, {
       activeNoteId: 'note-active',
       focusedAisleId: 'active-aisle-1',
       payload: copy.payload,
@@ -229,7 +230,7 @@ describe('notebook structure clipboard', () => {
 
   it('blocks stale synced payloads instead of creating broken references', () => {
     const state = createState()
-    const copy = buildNotebookStructureClipboardPayload(state, {
+    const copy = buildVaultStructureClipboardPayload(state, {
       activeNoteId: 'note-source',
       kind: 'note',
       mode: 'synced',
@@ -237,7 +238,7 @@ describe('notebook structure clipboard', () => {
     expect(copy.status).toBe('ok')
     if (copy.status !== 'ok') return
 
-    const result = applyNotebookStructureClipboardPayload(
+    const result = applyVaultStructureClipboardPayload(
       {
         ...state,
         noteAisleBodies: state.noteAisleBodies?.filter((body) => body.id !== 'source-body-1'),
@@ -254,7 +255,7 @@ describe('notebook structure clipboard', () => {
 
   it('blocks structural paste when it would exceed the note aisle limit', () => {
     const state = createState()
-    const copy = buildNotebookStructureClipboardPayload(state, {
+    const copy = buildVaultStructureClipboardPayload(state, {
       activeNoteId: 'note-source',
       kind: 'note',
       mode: 'synced',
@@ -264,12 +265,12 @@ describe('notebook structure clipboard', () => {
 
     const fullActive = {
       ...noteBody(state, 'body-active'),
-      aisles: Array.from({ length: 8 }, (_, index) => ({
+      aisles: Array.from({ length: MAX_NOTE_AISLES }, (_, index) => ({
         id: `active-aisle-${index + 1}`,
         aisleBodyId: `active-body-${index + 1}`,
       })),
     }
-    const result = applyNotebookStructureClipboardPayload(
+    const result = applyVaultStructureClipboardPayload(
       {
         ...state,
         noteBodies: state.noteBodies.map((body) => (body.id === 'body-active' ? fullActive : body)),

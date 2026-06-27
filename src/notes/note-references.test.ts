@@ -18,7 +18,7 @@ import {
 function createReferenceState(): AppState {
   return {
     theme: 'dark',
-    notebook: {
+    vault: {
       activeNoteId: 'note-a',
       items: [
         { type: 'note', id: 'note-a', title: 'Alpha', noteBodyId: 'body-a' },
@@ -60,7 +60,7 @@ function createReferenceState(): AppState {
 
 const specsLocation: NoteLocation = { noteId: 'note-b' }
 
-describe('notebook note references', () => {
+describe('vault note references', () => {
   it('keeps direct wiki reference index builds uncached', () => {
     const state = createReferenceState()
 
@@ -112,7 +112,7 @@ describe('notebook note references', () => {
     })
   })
 
-  it('removes links and previews for deleted notebook note locations', () => {
+  it('removes links and previews for deleted vault note locations', () => {
     const state = createReferenceState()
     const link = buildInternalNoteLinkToken(state, specsLocation)
     const preview = buildPreviewToken(state, { id: 'preview:specs', target: specsLocation })

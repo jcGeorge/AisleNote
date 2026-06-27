@@ -16,7 +16,7 @@ export const USER_SETTINGS_DIR = 'settings'
 export const USER_SETTINGS_FILE = 'app-settings.json'
 export const USER_SETTINGS_FILE_PATH = `${USER_SETTINGS_DIR}/${USER_SETTINGS_FILE}`
 export const ROOT_SPLIT_FILES = Object.freeze({
-  notebookIndex: 'notebook-index.json',
+  vaultIndex: 'vault-index.json',
   navigationState: 'navigation-state.json',
   frontmatterSettings: 'frontmatter-settings.json',
   editorState: 'editor-state.json',
@@ -26,7 +26,7 @@ export const ROOT_SPLIT_FILES = Object.freeze({
 })
 
 export const REQUIRED_ROOT_SPLIT_FILE_KEYS = Object.freeze([
-  'notebookIndex',
+  'vaultIndex',
   'navigationState',
   'frontmatterSettings',
   'trashIndex',
@@ -301,18 +301,18 @@ function normalizeAisleWidths(raw) {
   return normalized
 }
 
-function walkNotebookItems(items, visitor) {
+function walkVaultItems(items, visitor) {
   ensureArray(items)
     .filter(isRecord)
     .forEach((item) => {
       visitor(item)
-      if (item.type === 'folder') walkNotebookItems(item.children, visitor)
+      if (item.type === 'folder') walkVaultItems(item.children, visitor)
     })
 }
 
 export function buildLiveNoteCursorLocationKeys(appState) {
   const keys = new Set()
-  walkNotebookItems(isRecord(appState?.notebook) ? appState.notebook.items : [], (item) => {
+  walkVaultItems(isRecord(appState?.vault) ? appState.vault.items : [], (item) => {
     if (item.type === 'note' && typeof item.id === 'string' && item.id) keys.add(item.id)
   })
   if (isRecord(appState?.scratchpad) && typeof appState.scratchpad.noteBodyId === 'string') {
@@ -358,7 +358,7 @@ function addAisleWidthLocation(result, locationKey, body) {
 function buildLiveAisleWidthLocationMap(appState) {
   const result = new Map()
   const bodiesById = getNoteBodyMap(appState)
-  walkNotebookItems(isRecord(appState?.notebook) ? appState.notebook.items : [], (item) => {
+  walkVaultItems(isRecord(appState?.vault) ? appState.vault.items : [], (item) => {
     if (item.type !== 'note' || typeof item.id !== 'string' || !item.id) return
     const noteBodyId = typeof item.noteBodyId === 'string' ? item.noteBodyId : ''
     addAisleWidthLocation(result, item.id, bodiesById.get(noteBodyId))

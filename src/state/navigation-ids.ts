@@ -1,4 +1,4 @@
-import type { AppState, NotebookTreeItem } from '../types/app'
+import type { AppState, VaultTreeItem } from '../types/app'
 
 export type IdGenerator = () => string
 
@@ -42,10 +42,10 @@ function addId(ids: Set<string>, id: unknown) {
   if (typeof id === 'string' && id) ids.add(id)
 }
 
-function collectNotebookItemIds(item: NotebookTreeItem, ids: Set<string>) {
+function collectVaultItemIds(item: VaultTreeItem, ids: Set<string>) {
   addId(ids, item.id)
   if (item.type === 'folder') {
-    item.children.forEach((child) => collectNotebookItemIds(child, ids))
+    item.children.forEach((child) => collectVaultItemIds(child, ids))
     return
   }
   addId(ids, item.noteBodyId)
@@ -53,11 +53,11 @@ function collectNotebookItemIds(item: NotebookTreeItem, ids: Set<string>) {
 
 export function collectAppNavigationEntityIds(state: AppState): Set<string> {
   const ids = new Set<string>()
-  addId(ids, state.notebook.activeNoteId)
-  state.notebook.items.forEach((item) => collectNotebookItemIds(item, ids))
-  state.notebook.deletedItems.forEach((entry) => {
+  addId(ids, state.vault.activeNoteId)
+  state.vault.items.forEach((item) => collectVaultItemIds(item, ids))
+  state.vault.deletedItems.forEach((entry) => {
     addId(ids, entry.id)
-    collectNotebookItemIds(entry.item, ids)
+    collectVaultItemIds(entry.item, ids)
   })
   state.noteBodies.forEach((body) => {
     addId(ids, body.id)

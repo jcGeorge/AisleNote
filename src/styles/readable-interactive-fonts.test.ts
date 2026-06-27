@@ -82,14 +82,14 @@ describe('readable interactive font styles', () => {
 
   it('uses body-sized text for note action picker controls', () => {
     [
-      ['.notebook-note-action-picker,\n.notebook-decouple-dialog', ['font-size: var(--ui-font-body);']],
-      ['.notebook-note-action-url input,\n.notebook-note-action-search', ['font: inherit;']],
-      ['.notebook-note-action-query', ['font: inherit;', 'line-height: 1.35;']],
+      ['.vault-note-action-picker,\n.vault-decouple-dialog', ['font-size: var(--ui-font-body);']],
+      ['.vault-note-action-url input,\n.vault-note-action-search', ['font: inherit;']],
+      ['.vault-note-action-query', ['font: inherit;', 'line-height: 1.35;']],
       [
-        '.notebook-note-action-url button,\n.notebook-note-action-choice,\n.notebook-decouple-actions button',
+        '.vault-note-action-url button,\n.vault-note-action-choice,\n.vault-decouple-actions button',
         ['font: inherit;'],
       ],
-      ['.notebook-note-action-preview-aisle,\n.notebook-note-action-preview-insert', ['font: inherit;']],
+      ['.vault-note-action-preview-aisle,\n.vault-note-action-preview-insert', ['font: inherit;']],
     ].forEach(([selector, snippets]) => expectRule(appCss, selector as string, snippets as string[]))
   })
 })

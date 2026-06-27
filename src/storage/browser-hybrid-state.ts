@@ -27,20 +27,20 @@ type BrowserStorageRecord = {
   data: string | ArrayBuffer
 }
 
-const BROWSER_DB_NAME = 'aislenote-notebook-storage'
+const BROWSER_DB_NAME = 'aislenote-vault-storage'
 const BROWSER_DB_VERSION = 1
 const BROWSER_FILE_STORE = 'files'
 
-const NOTEBOOK_ROOT_DIR = 'notes'
-const NOTEBOOK_INTERNAL_DIR = `${NOTEBOOK_ROOT_DIR}/.aislenote`
+const VAULT_ROOT_DIR = 'notes'
+const VAULT_INTERNAL_DIR = `${VAULT_ROOT_DIR}/.aislenote`
 const SETTINGS_DIR = 'settings'
-const MANIFEST_FILE = `${NOTEBOOK_ROOT_DIR}/manifest.json`
-const NOTEBOOK_APP_STATE_FILE = `${NOTEBOOK_INTERNAL_DIR}/app-state.json`
-const NOTEBOOK_INDEX_FILE = `${NOTEBOOK_INTERNAL_DIR}/notebook-index.json`
-const NOTE_REGISTRY_FILE = `${NOTEBOOK_INTERNAL_DIR}/note-registry.json`
-const TRASH_INDEX_FILE = `${NOTEBOOK_INTERNAL_DIR}/trash-index.json`
-const EDITOR_STATE_FILE = `${NOTEBOOK_INTERNAL_DIR}/editor-state.json`
-const FRONTMATTER_SETTINGS_FILE = `${NOTEBOOK_INTERNAL_DIR}/frontmatter-settings.json`
+const MANIFEST_FILE = `${VAULT_ROOT_DIR}/manifest.json`
+const VAULT_APP_STATE_FILE = `${VAULT_INTERNAL_DIR}/app-state.json`
+const VAULT_INDEX_FILE = `${VAULT_INTERNAL_DIR}/vault-index.json`
+const NOTE_REGISTRY_FILE = `${VAULT_INTERNAL_DIR}/note-registry.json`
+const TRASH_INDEX_FILE = `${VAULT_INTERNAL_DIR}/trash-index.json`
+const EDITOR_STATE_FILE = `${VAULT_INTERNAL_DIR}/editor-state.json`
+const FRONTMATTER_SETTINGS_FILE = `${VAULT_INTERNAL_DIR}/frontmatter-settings.json`
 const APP_SETTINGS_FILE = `${SETTINGS_DIR}/app-settings.json`
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -88,12 +88,12 @@ function buildManifest() {
   return {
     schemaVersion: 1,
     files: {
-      appState: NOTEBOOK_APP_STATE_FILE.slice(`${NOTEBOOK_ROOT_DIR}/`.length),
-      notebookIndex: NOTEBOOK_INDEX_FILE.slice(`${NOTEBOOK_ROOT_DIR}/`.length),
-      noteRegistry: NOTE_REGISTRY_FILE.slice(`${NOTEBOOK_ROOT_DIR}/`.length),
-      trashIndex: TRASH_INDEX_FILE.slice(`${NOTEBOOK_ROOT_DIR}/`.length),
-      editorState: EDITOR_STATE_FILE.slice(`${NOTEBOOK_ROOT_DIR}/`.length),
-      frontmatterSettings: FRONTMATTER_SETTINGS_FILE.slice(`${NOTEBOOK_ROOT_DIR}/`.length),
+      appState: VAULT_APP_STATE_FILE.slice(`${VAULT_ROOT_DIR}/`.length),
+      vaultIndex: VAULT_INDEX_FILE.slice(`${VAULT_ROOT_DIR}/`.length),
+      noteRegistry: NOTE_REGISTRY_FILE.slice(`${VAULT_ROOT_DIR}/`.length),
+      trashIndex: TRASH_INDEX_FILE.slice(`${VAULT_ROOT_DIR}/`.length),
+      editorState: EDITOR_STATE_FILE.slice(`${VAULT_ROOT_DIR}/`.length),
+      frontmatterSettings: FRONTMATTER_SETTINGS_FILE.slice(`${VAULT_ROOT_DIR}/`.length),
       appSettings: APP_SETTINGS_FILE,
     },
   }
@@ -103,26 +103,26 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
   const appState = parseJsonRecord(serializedState)
   if (!appState) return new Map()
 
-  const notebook = isRecord(appState.notebook) ? appState.notebook : {}
+  const vault = isRecord(appState.vault) ? appState.vault : {}
   const ui = isRecord(appState.ui) ? appState.ui : {}
   const fileMap = new Map<string, BrowserStoredFile>()
   const noteBodies = Array.isArray(appState.noteBodies) ? appState.noteBodies : []
   const noteAisleBodies = Array.isArray(appState.noteAisleBodies) ? appState.noteAisleBodies : []
 
   fileMap.set(MANIFEST_FILE, textFile(MANIFEST_FILE, buildManifest()))
-  fileMap.set(NOTEBOOK_APP_STATE_FILE, textFile(NOTEBOOK_APP_STATE_FILE, serializedState))
-  fileMap.set(NOTEBOOK_INDEX_FILE, textFile(NOTEBOOK_INDEX_FILE, {
-    activeNoteId: typeof notebook.activeNoteId === 'string' ? notebook.activeNoteId : '',
-    openTabs: Array.isArray(notebook.openTabs) ? notebook.openTabs : [],
-    items: Array.isArray(notebook.items) ? notebook.items : [],
-    settings: isRecord(notebook.settings) ? notebook.settings : { autoRemoveDeletedDays: 30 },
+  fileMap.set(VAULT_APP_STATE_FILE, textFile(VAULT_APP_STATE_FILE, serializedState))
+  fileMap.set(VAULT_INDEX_FILE, textFile(VAULT_INDEX_FILE, {
+    activeNoteId: typeof vault.activeNoteId === 'string' ? vault.activeNoteId : '',
+    openTabs: Array.isArray(vault.openTabs) ? vault.openTabs : [],
+    items: Array.isArray(vault.items) ? vault.items : [],
+    settings: isRecord(vault.settings) ? vault.settings : { autoRemoveDeletedDays: 30 },
   }))
   fileMap.set(NOTE_REGISTRY_FILE, textFile(NOTE_REGISTRY_FILE, {
     noteBodies,
     noteAisleBodies,
   }))
   fileMap.set(TRASH_INDEX_FILE, textFile(TRASH_INDEX_FILE, {
-    deletedItems: Array.isArray(notebook.deletedItems) ? notebook.deletedItems : [],
+    deletedItems: Array.isArray(vault.deletedItems) ? vault.deletedItems : [],
   }))
   fileMap.set(EDITOR_STATE_FILE, textFile(EDITOR_STATE_FILE, {
     noteCursorLocations: isRecord(ui.noteCursorLocations) ? ui.noteCursorLocations : {},
@@ -142,21 +142,21 @@ export function buildHybridFileMapFromSerializedState(serializedState: string): 
 }
 
 export function readSerializedStateFromHybridFileMap(fileMap: Map<string, BrowserStoredFile>): string | null {
-  const cachedState = getTextFile(fileMap, NOTEBOOK_APP_STATE_FILE)
+  const cachedState = getTextFile(fileMap, VAULT_APP_STATE_FILE)
   if (cachedState && parseJsonRecord(cachedState)) return cachedState
 
   const manifest = parseJsonRecord(getTextFile(fileMap, MANIFEST_FILE))
   if (!manifest) return null
-  const notebookIndex = parseJsonRecord(getTextFile(fileMap, NOTEBOOK_INDEX_FILE))
+  const vaultIndex = parseJsonRecord(getTextFile(fileMap, VAULT_INDEX_FILE))
   const noteRegistry = parseJsonRecord(getTextFile(fileMap, NOTE_REGISTRY_FILE))
-  if (!notebookIndex || !noteRegistry) return null
+  if (!vaultIndex || !noteRegistry) return null
 
   const trashIndex = parseJsonRecord(getTextFile(fileMap, TRASH_INDEX_FILE)) ?? {}
   const appSettings = parseJsonRecord(getTextFile(fileMap, APP_SETTINGS_FILE)) ?? {}
   const editorState = parseJsonRecord(getTextFile(fileMap, EDITOR_STATE_FILE)) ?? {}
   const frontmatterSettings = parseJsonRecord(getTextFile(fileMap, FRONTMATTER_SETTINGS_FILE)) ?? {}
   const defaultState = createDefaultAppState() as Record<string, unknown>
-  const defaultNotebook = isRecord(defaultState.notebook) ? defaultState.notebook : {}
+  const defaultVault = isRecord(defaultState.vault) ? defaultState.vault : {}
   const defaultUi = isRecord(defaultState.ui) ? defaultState.ui : {}
 
   return JSON.stringify({
@@ -166,13 +166,13 @@ export function readSerializedStateFromHybridFileMap(fileMap: Map<string, Browse
     scratchpad: appSettings.scratchpad ?? defaultState.scratchpad,
     messages: Array.isArray(appSettings.messages) ? appSettings.messages : defaultState.messages,
     frontmatter: Object.keys(frontmatterSettings).length > 0 ? frontmatterSettings : defaultState.frontmatter,
-    notebook: {
-      ...defaultNotebook,
-      activeNoteId: typeof notebookIndex.activeNoteId === 'string' ? notebookIndex.activeNoteId : '',
-      openTabs: Array.isArray(notebookIndex.openTabs) ? notebookIndex.openTabs : [],
-      items: Array.isArray(notebookIndex.items) ? notebookIndex.items : [],
+    vault: {
+      ...defaultVault,
+      activeNoteId: typeof vaultIndex.activeNoteId === 'string' ? vaultIndex.activeNoteId : '',
+      openTabs: Array.isArray(vaultIndex.openTabs) ? vaultIndex.openTabs : [],
+      items: Array.isArray(vaultIndex.items) ? vaultIndex.items : [],
       deletedItems: Array.isArray(trashIndex.deletedItems) ? trashIndex.deletedItems : [],
-      settings: isRecord(notebookIndex.settings) ? notebookIndex.settings : { autoRemoveDeletedDays: 30 },
+      settings: isRecord(vaultIndex.settings) ? vaultIndex.settings : { autoRemoveDeletedDays: 30 },
     },
     noteBodies: Array.isArray(noteRegistry.noteBodies) ? noteRegistry.noteBodies : [],
     noteAisleBodies: Array.isArray(noteRegistry.noteAisleBodies) ? noteRegistry.noteAisleBodies : [],

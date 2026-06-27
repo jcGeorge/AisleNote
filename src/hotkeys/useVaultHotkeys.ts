@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { AppState, ShortcutId, ViewMode } from '../types/app'
 import { eventMatchesShortcut, normalizeHotkeySettings } from './shortcuts'
 
-export type NotebookHotkeyIntent = Extract<
+export type VaultHotkeyIntent = Extract<
   ShortcutId,
   | 'openSettings'
   | 'newNote'
@@ -19,12 +19,12 @@ export type NotebookHotkeyIntent = Extract<
   | 'formatStrikethrough'
 >
 
-type NotebookHotkeyActions = Record<NotebookHotkeyIntent, () => void> & {
+type VaultHotkeyActions = Record<VaultHotkeyIntent, () => void> & {
   navigateHistoryBack: () => void
   navigateHistoryForward: () => void
 }
 
-const NOTEBOOK_HOTKEY_INTENTS: NotebookHotkeyIntent[] = [
+const VAULT_HOTKEY_INTENTS: VaultHotkeyIntent[] = [
   'openSettings',
   'newNote',
   'newFolder',
@@ -40,7 +40,7 @@ const NOTEBOOK_HOTKEY_INTENTS: NotebookHotkeyIntent[] = [
   'formatStrikethrough',
 ]
 
-const MAIN_ONLY_INTENTS = new Set<NotebookHotkeyIntent>([
+const MAIN_ONLY_INTENTS = new Set<VaultHotkeyIntent>([
   'cyclePinnedNoteTabNext',
   'cyclePinnedNoteTabPrev',
   'reopenClosedNoteTab',
@@ -50,21 +50,21 @@ const MAIN_ONLY_INTENTS = new Set<NotebookHotkeyIntent>([
   'formatStrikethrough',
 ])
 
-const REPEATABLE_INTENTS = new Set<NotebookHotkeyIntent>([
+const REPEATABLE_INTENTS = new Set<VaultHotkeyIntent>([
   'cyclePinnedNoteTabNext',
   'cyclePinnedNoteTabPrev',
   'cycleAislePrev',
   'cycleAisleNext',
 ])
 
-export type NotebookMouseHistoryNavigationPhase = 'press' | 'release' | 'auxclick'
+export type VaultMouseHistoryNavigationPhase = 'press' | 'release' | 'auxclick'
 
-export type NotebookMouseHistoryNavigationRecord = {
+export type VaultMouseHistoryNavigationRecord = {
   button: number
   released: boolean
 }
 
-type NotebookMouseHistoryNavigationEvent = Pick<MouseEvent, 'button'> &
+type VaultMouseHistoryNavigationEvent = Pick<MouseEvent, 'button'> &
   Partial<Pick<MouseEvent, 'defaultPrevented'>>
 
 function hasShortcutModifier(event: KeyboardEvent): boolean {
@@ -81,11 +81,11 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
 }
 
-export function shouldIgnoreNotebookHotkeyEvent(event: KeyboardEvent): boolean {
+export function shouldIgnoreVaultHotkeyEvent(event: KeyboardEvent): boolean {
   return !hasShortcutModifier(event) && String(event.key ?? '').length === 1 && isEditableTarget(event.target)
 }
 
-export function getNotebookHistoryNavigationDirection(event: KeyboardEvent, isMacPlatform: boolean): -1 | 1 | null {
+export function getVaultHistoryNavigationDirection(event: KeyboardEvent, isMacPlatform: boolean): -1 | 1 | null {
   if (event.defaultPrevented) return null
   if (event.key === 'BrowserBack') return -1
   if (event.key === 'BrowserForward') return 1
@@ -105,42 +105,42 @@ export function getNotebookHistoryNavigationDirection(event: KeyboardEvent, isMa
   return null
 }
 
-export function getNotebookMouseHistoryNavigationDirection(event: NotebookMouseHistoryNavigationEvent): -1 | 1 | null {
+export function getVaultMouseHistoryNavigationDirection(event: VaultMouseHistoryNavigationEvent): -1 | 1 | null {
   if (event.defaultPrevented) return null
   if (event.button === 3) return -1
   if (event.button === 4) return 1
   return null
 }
 
-export function createNotebookMouseHistoryNavigationRecord(
-  event: NotebookMouseHistoryNavigationEvent,
-): NotebookMouseHistoryNavigationRecord | null {
-  return getNotebookMouseHistoryNavigationDirection(event)
+export function createVaultMouseHistoryNavigationRecord(
+  event: VaultMouseHistoryNavigationEvent,
+): VaultMouseHistoryNavigationRecord | null {
+  return getVaultMouseHistoryNavigationDirection(event)
     ? { button: event.button, released: false }
     : null
 }
 
-export function shouldSuppressNotebookMouseHistoryFollowup(
-  event: NotebookMouseHistoryNavigationEvent,
-  record: NotebookMouseHistoryNavigationRecord | null,
-  phase: NotebookMouseHistoryNavigationPhase,
+export function shouldSuppressVaultMouseHistoryFollowup(
+  event: VaultMouseHistoryNavigationEvent,
+  record: VaultMouseHistoryNavigationRecord | null,
+  phase: VaultMouseHistoryNavigationPhase,
 ): boolean {
-  if (!record || getNotebookMouseHistoryNavigationDirection(event) === null) return false
+  if (!record || getVaultMouseHistoryNavigationDirection(event) === null) return false
   if (event.button !== record.button) return false
   return phase === 'press' ? !record.released : true
 }
 
-export function updateNotebookMouseHistoryNavigationRecordForFollowup(
-  record: NotebookMouseHistoryNavigationRecord | null,
-  phase: NotebookMouseHistoryNavigationPhase,
-): NotebookMouseHistoryNavigationRecord | null {
+export function updateVaultMouseHistoryNavigationRecordForFollowup(
+  record: VaultMouseHistoryNavigationRecord | null,
+  phase: VaultMouseHistoryNavigationPhase,
+): VaultMouseHistoryNavigationRecord | null {
   if (!record) return null
   if (phase === 'auxclick') return null
   if (phase === 'release') return { ...record, released: true }
   return record
 }
 
-export function getNotebookHotkeyIntent({
+export function getVaultHotkeyIntent({
   event,
   hotkeys,
   isMacPlatform,
@@ -150,11 +150,11 @@ export function getNotebookHotkeyIntent({
   hotkeys: AppState['hotkeys']
   isMacPlatform: boolean
   viewMode: ViewMode
-}): NotebookHotkeyIntent | null {
-  if (event.defaultPrevented || shouldIgnoreNotebookHotkeyEvent(event)) return null
+}): VaultHotkeyIntent | null {
+  if (event.defaultPrevented || shouldIgnoreVaultHotkeyEvent(event)) return null
 
   const normalizedHotkeys = normalizeHotkeySettings(hotkeys)
-  for (const intent of NOTEBOOK_HOTKEY_INTENTS) {
+  for (const intent of VAULT_HOTKEY_INTENTS) {
     if (MAIN_ONLY_INTENTS.has(intent) && viewMode !== 'main') continue
     const shortcut = normalizedHotkeys.shortcuts[intent]
     if (shortcut && eventMatchesShortcut(event, shortcut, isMacPlatform)) return intent
@@ -162,7 +162,7 @@ export function getNotebookHotkeyIntent({
   return null
 }
 
-export function useNotebookHotkeys({
+export function useVaultHotkeys({
   hotkeys,
   isMacPlatform,
   viewMode,
@@ -171,10 +171,10 @@ export function useNotebookHotkeys({
   hotkeys: AppState['hotkeys']
   isMacPlatform: boolean
   viewMode: ViewMode
-  actions: NotebookHotkeyActions
+  actions: VaultHotkeyActions
 }) {
   const actionsRef = useRef(actions)
-  const mouseHistoryNavigationRef = useRef<NotebookMouseHistoryNavigationRecord | null>(null)
+  const mouseHistoryNavigationRef = useRef<VaultMouseHistoryNavigationRecord | null>(null)
   actionsRef.current = actions
 
   useEffect(() => {
@@ -190,21 +190,21 @@ export function useNotebookHotkeys({
     }
 
     const startMouseHistoryNavigation = (event: MouseEvent | PointerEvent) => {
-      const historyDirection = getNotebookMouseHistoryNavigationDirection(event)
+      const historyDirection = getVaultMouseHistoryNavigationDirection(event)
       if (!historyDirection) return false
       consumeMouseHistoryEvent(event)
-      mouseHistoryNavigationRef.current = createNotebookMouseHistoryNavigationRecord(event)
+      mouseHistoryNavigationRef.current = createVaultMouseHistoryNavigationRecord(event)
       runHistoryNavigation(historyDirection)
       return true
     }
 
     const suppressMouseHistoryFollowup = (
       event: MouseEvent | PointerEvent,
-      phase: NotebookMouseHistoryNavigationPhase,
+      phase: VaultMouseHistoryNavigationPhase,
     ) => {
-      if (!shouldSuppressNotebookMouseHistoryFollowup(event, mouseHistoryNavigationRef.current, phase)) return false
+      if (!shouldSuppressVaultMouseHistoryFollowup(event, mouseHistoryNavigationRef.current, phase)) return false
       consumeMouseHistoryEvent(event)
-      mouseHistoryNavigationRef.current = updateNotebookMouseHistoryNavigationRecordForFollowup(
+      mouseHistoryNavigationRef.current = updateVaultMouseHistoryNavigationRecordForFollowup(
         mouseHistoryNavigationRef.current,
         phase,
       )
@@ -212,7 +212,7 @@ export function useNotebookHotkeys({
     }
 
     const handleKeydown = (event: KeyboardEvent) => {
-      const historyDirection = getNotebookHistoryNavigationDirection(event, isMacPlatform)
+      const historyDirection = getVaultHistoryNavigationDirection(event, isMacPlatform)
       if (historyDirection) {
         event.preventDefault()
         event.stopPropagation()
@@ -220,7 +220,7 @@ export function useNotebookHotkeys({
         return
       }
 
-      const intent = getNotebookHotkeyIntent({ event, hotkeys, isMacPlatform, viewMode })
+      const intent = getVaultHotkeyIntent({ event, hotkeys, isMacPlatform, viewMode })
       if (!intent) return
 
       event.preventDefault()
@@ -242,7 +242,7 @@ export function useNotebookHotkeys({
     const handleMouseup = (event: MouseEvent) => {
       if (suppressMouseHistoryFollowup(event, 'release')) return
       if (startMouseHistoryNavigation(event)) {
-        mouseHistoryNavigationRef.current = updateNotebookMouseHistoryNavigationRecordForFollowup(
+        mouseHistoryNavigationRef.current = updateVaultMouseHistoryNavigationRecordForFollowup(
           mouseHistoryNavigationRef.current,
           'release',
         )

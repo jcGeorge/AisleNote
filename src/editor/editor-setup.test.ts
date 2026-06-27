@@ -56,7 +56,7 @@ import { BLOCK_INDENT_TOKEN, INDENT_TOKEN } from '../markdown/markdown-utils'
 import { TAG_TOKEN_CLASS_NAME } from '../tags/tags.js'
 
 const editorSetupSource = readFileSync(fileURLToPath(new URL('./editor-setup.ts', import.meta.url)), 'utf8')
-const notebookAisleEditorsSource = readFileSync(fileURLToPath(new URL('./useNotebookAisleEditors.ts', import.meta.url)), 'utf8')
+const vaultAisleEditorsSource = readFileSync(fileURLToPath(new URL('./useVaultAisleEditors.ts', import.meta.url)), 'utf8')
 
 function node(typeName: string, textContent = '', contentSize = 0) {
   return {
@@ -82,7 +82,7 @@ describe('imperative editor toolbar tooltips', () => {
       "createToolbarTextButton('aisles-toolbar-btn', 'aisles', 'A', options.onAisles, 'Aisles')",
     )
     expect(editorSetupSource).toContain("button.removeAttribute('title')")
-    expect(notebookAisleEditorsSource).toContain('installToolbarAppTooltips(root)')
+    expect(vaultAisleEditorsSource).toContain('installToolbarAppTooltips(root)')
   })
 
   it('does not bind app-created toolbar buttons to the Toast UI internal tooltip', () => {
@@ -107,11 +107,11 @@ describe('imperative editor toolbar tooltips', () => {
     cleanup()
   })
 
-  it('installs editor spellcheck for notebook aisle editors', () => {
+  it('installs editor spellcheck for vault aisle editors', () => {
     expect(editorSetupSource).toContain(
       "export const EDITOR_SPELLCHECK_ROOT_SELECTOR = '.toastui-editor .ProseMirror[contenteditable=\"true\"]'",
     )
-    expect(notebookAisleEditorsSource).toContain('installEditorSpellcheck(root)')
+    expect(vaultAisleEditorsSource).toContain('installEditorSpellcheck(root)')
   })
 })
 

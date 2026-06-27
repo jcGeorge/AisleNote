@@ -1,33 +1,33 @@
 import { describe, expect, it } from 'vitest'
-import type { AppState, NotebookState } from '../types/app'
+import type { AppState, VaultState } from '../types/app'
 import {
-  createDefaultNotebookState,
-  createNotebookFolderInState,
-  createNotebookNoteInState,
-  decoupleNotebookAisleBodyInState,
-  decoupleNotebookNoteBodyInState,
-  deleteNotebookItemInState,
-  findNotebookFolder,
-  findNotebookNote,
-  getClosedNotebookTab,
+  createDefaultVaultState,
+  createVaultFolderInState,
+  createVaultNoteInState,
+  decoupleVaultAisleBodyInState,
+  decoupleVaultNoteBodyInState,
+  deleteVaultItemInState,
+  findVaultFolder,
+  findVaultNote,
+  getClosedVaultTab,
   getFolderNotesRecursive,
-  getNotebookNotePathLabel,
-  getNotebookRetainedTabCycleTarget,
-  listNotebookNotes,
+  getVaultNotePathLabel,
+  getVaultRetainedTabCycleTarget,
+  listVaultNotes,
   materializeSyncedNoteBodiesInState,
-  moveNotebookItem,
-  moveNotebookItems,
-  openNotebookRetainedTab,
-  openNotebookTemporaryTab,
-  closeNotebookTab,
-  promoteNotebookTemporaryTab,
-  renameNotebookItem,
-  reorderNotebookTabs,
-  replaceNotebookNoteBodyId,
-  restoreClosedNotebookTab,
-  restoreDeletedNotebookItemInState,
-  sortNotebookItemsInScope,
-} from './notebook'
+  moveVaultItem,
+  moveVaultItems,
+  openVaultRetainedTab,
+  openVaultTemporaryTab,
+  closeVaultTab,
+  promoteVaultTemporaryTab,
+  renameVaultItem,
+  reorderVaultTabs,
+  replaceVaultNoteBodyId,
+  restoreClosedVaultTab,
+  restoreDeletedVaultItemInState,
+  sortVaultItemsInScope,
+} from './vault'
 
 function idSequence(ids: string[]) {
   let index = 0
@@ -35,10 +35,10 @@ function idSequence(ids: string[]) {
 }
 
 function createState(): AppState {
-  const defaults = createDefaultNotebookState(idSequence(['body-1', 'aisle-body-1', 'aisle-1', 'note-1']))
+  const defaults = createDefaultVaultState(idSequence(['body-1', 'aisle-body-1', 'aisle-1', 'note-1']))
   return {
     theme: 'cheese',
-    notebook: defaults.notebook,
+    vault: defaults.vault,
     messages: [],
     toastHistory: [],
     noteBodies: defaults.noteBodies,
@@ -88,7 +88,7 @@ function createState(): AppState {
   }
 }
 
-function createTabNotebook(): NotebookState {
+function createTabVault(): VaultState {
   return {
     activeNoteId: 'note-a',
     openTabs: [],
@@ -102,26 +102,26 @@ function createTabNotebook(): NotebookState {
   }
 }
 
-describe('notebook tree helpers', () => {
+describe('vault tree helpers', () => {
   it('creates notes and folders inside the active folder', () => {
-    const folderResult = createNotebookFolderInState(createState(), 'Projects', null, idSequence(['folder-1']))
-    const noteResult = createNotebookNoteInState(
-      { ...folderResult.state, notebook: { ...folderResult.state.notebook, activeNoteId: '' } },
+    const folderResult = createVaultFolderInState(createState(), 'Projects', null, idSequence(['folder-1']))
+    const noteResult = createVaultNoteInState(
+      { ...folderResult.state, vault: { ...folderResult.state.vault, activeNoteId: '' } },
       'Plan',
       'folder-1',
       'markdown',
       idSequence(['body-2', 'aisle-body-2', 'aisle-2', 'note-2']),
     )
 
-    expect(getNotebookNotePathLabel(noteResult.state.notebook.items, noteResult.noteId)).toBe('Projects/Plan')
+    expect(getVaultNotePathLabel(noteResult.state.vault.items, noteResult.noteId)).toBe('Projects/Plan')
     expect(noteResult.state.noteAisleBodies?.find((body) => body.id === noteResult.aisleBodyId)?.markdown).toBe('markdown')
   })
 
   it('creates notes and folders at requested sibling indexes', () => {
-    const folderResult = createNotebookFolderInState(createState(), 'Projects', null, idSequence(['folder-1']), 0)
-    expect(folderResult.state.notebook.items.map((item) => item.id)).toEqual(['folder-1', 'note-1'])
+    const folderResult = createVaultFolderInState(createState(), 'Projects', null, idSequence(['folder-1']), 0)
+    expect(folderResult.state.vault.items.map((item) => item.id)).toEqual(['folder-1', 'note-1'])
 
-    const noteResult = createNotebookNoteInState(
+    const noteResult = createVaultNoteInState(
       folderResult.state,
       'Plan',
       null,
@@ -129,13 +129,13 @@ describe('notebook tree helpers', () => {
       idSequence(['body-2', 'aisle-body-2', 'aisle-2', 'note-2']),
       1,
     )
-    expect(noteResult.state.notebook.items.map((item) => item.id)).toEqual(['folder-1', 'note-2', 'note-1'])
+    expect(noteResult.state.vault.items.map((item) => item.id)).toEqual(['folder-1', 'note-2', 'note-1'])
   })
 
   it('renames items without changing ids or note body links', () => {
     const state = createState()
-    const renamed = renameNotebookItem(state.notebook, 'note-1', 'Daily')
-    const note = findNotebookNote(renamed.items, 'note-1')
+    const renamed = renameVaultItem(state.vault, 'note-1', 'Daily')
+    const note = findVaultNote(renamed.items, 'note-1')
 
     expect(note?.note.title).toBe('Daily')
     expect(note?.note.noteBodyId).toBe('body-1')
@@ -143,9 +143,9 @@ describe('notebook tree helpers', () => {
 
   it('moves notes between root and folder positions without changing note links', () => {
     let state = createState()
-    const folderResult = createNotebookFolderInState(state, 'Projects', null, idSequence(['folder-1']))
+    const folderResult = createVaultFolderInState(state, 'Projects', null, idSequence(['folder-1']))
     state = folderResult.state
-    const second = createNotebookNoteInState(
+    const second = createVaultNoteInState(
       state,
       'Second',
       null,
@@ -153,7 +153,7 @@ describe('notebook tree helpers', () => {
       idSequence(['body-2', 'aisle-body-2', 'aisle-2', 'note-2']),
     )
     state = second.state
-    const third = createNotebookNoteInState(
+    const third = createVaultNoteInState(
       state,
       'Third',
       null,
@@ -162,36 +162,36 @@ describe('notebook tree helpers', () => {
     )
     state = third.state
 
-    const reordered = moveNotebookItem(state.notebook, 'note-3', null, 1)
+    const reordered = moveVaultItem(state.vault, 'note-3', null, 1)
     expect(reordered.items.map((item) => item.id)).toEqual(['note-1', 'note-3', 'folder-1', 'note-2'])
 
-    const nested = moveNotebookItem(reordered, 'note-3', 'folder-1', 0)
-    expect(getNotebookNotePathLabel(nested.items, 'note-3')).toBe('Projects/Third')
-    expect(findNotebookNote(nested.items, 'note-3')?.note.noteBodyId).toBe('body-3')
+    const nested = moveVaultItem(reordered, 'note-3', 'folder-1', 0)
+    expect(getVaultNotePathLabel(nested.items, 'note-3')).toBe('Projects/Third')
+    expect(findVaultNote(nested.items, 'note-3')?.note.noteBodyId).toBe('body-3')
 
-    const rooted = moveNotebookItem(nested, 'note-3', null, nested.items.length)
-    expect(getNotebookNotePathLabel(rooted.items, 'note-3')).toBe('Third')
+    const rooted = moveVaultItem(nested, 'note-3', null, nested.items.length)
+    expect(getVaultNotePathLabel(rooted.items, 'note-3')).toBe('Third')
     expect(rooted.items.map((item) => item.id)).toEqual(['note-1', 'folder-1', 'note-2', 'note-3'])
   })
 
   it('moves multiple notes as a note-only batch while preserving tree order', () => {
     let state = createState()
-    state = createNotebookFolderInState(state, 'Projects', null, idSequence(['folder-1'])).state
-    state = createNotebookNoteInState(
+    state = createVaultFolderInState(state, 'Projects', null, idSequence(['folder-1'])).state
+    state = createVaultNoteInState(
       state,
       'Second',
       null,
       '',
       idSequence(['body-2', 'aisle-body-2', 'aisle-2', 'note-2']),
     ).state
-    state = createNotebookNoteInState(
+    state = createVaultNoteInState(
       state,
       'Third',
       null,
       '',
       idSequence(['body-3', 'aisle-body-3', 'aisle-3', 'note-3']),
     ).state
-    state = createNotebookNoteInState(
+    state = createVaultNoteInState(
       state,
       'Nested',
       'folder-1',
@@ -199,17 +199,17 @@ describe('notebook tree helpers', () => {
       idSequence(['body-4', 'aisle-body-4', 'aisle-4', 'note-4']),
     ).state
 
-    const nested = moveNotebookItems(state.notebook, ['note-3', 'note-2'], 'folder-1', 0)
-    expect(findNotebookFolder(nested.items, 'folder-1')?.folder.children.map((item) => item.id)).toEqual([
+    const nested = moveVaultItems(state.vault, ['note-3', 'note-2'], 'folder-1', 0)
+    expect(findVaultFolder(nested.items, 'folder-1')?.folder.children.map((item) => item.id)).toEqual([
       'note-2',
       'note-3',
       'note-4',
     ])
-    expect(getNotebookNotePathLabel(nested.items, 'note-2')).toBe('Projects/Second')
-    expect(getNotebookNotePathLabel(nested.items, 'note-3')).toBe('Projects/Third')
+    expect(getVaultNotePathLabel(nested.items, 'note-2')).toBe('Projects/Second')
+    expect(getVaultNotePathLabel(nested.items, 'note-3')).toBe('Projects/Third')
 
-    const reordered = moveNotebookItems(nested, ['note-2', 'note-3'], 'folder-1', 3)
-    expect(findNotebookFolder(reordered.items, 'folder-1')?.folder.children.map((item) => item.id)).toEqual([
+    const reordered = moveVaultItems(nested, ['note-2', 'note-3'], 'folder-1', 3)
+    expect(findVaultFolder(reordered.items, 'folder-1')?.folder.children.map((item) => item.id)).toEqual([
       'note-4',
       'note-2',
       'note-3',
@@ -217,33 +217,33 @@ describe('notebook tree helpers', () => {
   })
 
   it('does not batch-move folders with note selections', () => {
-    const folderResult = createNotebookFolderInState(createState(), 'Projects', null, idSequence(['folder-1']))
+    const folderResult = createVaultFolderInState(createState(), 'Projects', null, idSequence(['folder-1']))
 
-    const moved = moveNotebookItems(folderResult.state.notebook, ['note-1', 'folder-1'], null, 0)
+    const moved = moveVaultItems(folderResult.state.vault, ['note-1', 'folder-1'], null, 0)
 
-    expect(moved).toBe(folderResult.state.notebook)
+    expect(moved).toBe(folderResult.state.vault)
   })
 
   it('does not move a folder into itself or its descendant', () => {
-    const folderResult = createNotebookFolderInState(createState(), 'Projects', null, idSequence(['folder-1']))
-    const nestedFolderResult = createNotebookFolderInState(
+    const folderResult = createVaultFolderInState(createState(), 'Projects', null, idSequence(['folder-1']))
+    const nestedFolderResult = createVaultFolderInState(
       folderResult.state,
       'Nested',
       'folder-1',
       idSequence(['folder-2']),
     )
 
-    const blockedSelf = moveNotebookItem(nestedFolderResult.state.notebook, 'folder-1', 'folder-1', 0)
-    expect(blockedSelf.items).toEqual(nestedFolderResult.state.notebook.items)
+    const blockedSelf = moveVaultItem(nestedFolderResult.state.vault, 'folder-1', 'folder-1', 0)
+    expect(blockedSelf.items).toEqual(nestedFolderResult.state.vault.items)
 
-    const blockedDescendant = moveNotebookItem(nestedFolderResult.state.notebook, 'folder-1', 'folder-2', 0)
-    expect(blockedDescendant.items).toEqual(nestedFolderResult.state.notebook.items)
+    const blockedDescendant = moveVaultItem(nestedFolderResult.state.vault, 'folder-1', 'folder-2', 0)
+    expect(blockedDescendant.items).toEqual(nestedFolderResult.state.vault.items)
   })
 
   it('sorts root items by name without sorting folder descendants', () => {
     const state = createState()
-    const notebook = {
-      ...state.notebook,
+    const vault = {
+      ...state.vault,
       items: [
         {
           type: 'folder' as const,
@@ -258,7 +258,7 @@ describe('notebook tree helpers', () => {
       ],
     }
 
-    const sorted = sortNotebookItemsInScope(notebook, null, 'alpha-asc', state.noteBodies)
+    const sorted = sortVaultItemsInScope(vault, null, 'alpha-asc', state.noteBodies)
     const folder = sorted.items.find((item) => item.id === 'folder-work')
 
     expect(sorted.items.map((item) => item.id)).toEqual(['note-alpha', 'folder-work'])
@@ -270,8 +270,8 @@ describe('notebook tree helpers', () => {
 
   it('sorts only the selected folder direct children', () => {
     const state = createState()
-    const notebook = {
-      ...state.notebook,
+    const vault = {
+      ...state.vault,
       items: [
         { type: 'note' as const, id: 'note-root', title: 'Root', noteBodyId: 'body-root' },
         {
@@ -292,7 +292,7 @@ describe('notebook tree helpers', () => {
       ],
     }
 
-    const sorted = sortNotebookItemsInScope(notebook, 'folder-project', 'alpha-asc', state.noteBodies)
+    const sorted = sortVaultItemsInScope(vault, 'folder-project', 'alpha-asc', state.noteBodies)
     const project = sorted.items.find((item) => item.id === 'folder-project')
     const nested = project?.type === 'folder'
       ? project.children.find((item) => item.id === 'folder-nested')
@@ -309,8 +309,8 @@ describe('notebook tree helpers', () => {
 
   it('sorts notes by note body modified timestamps', () => {
     const state = createState()
-    const notebook = {
-      ...state.notebook,
+    const vault = {
+      ...state.vault,
       items: [
         { type: 'note' as const, id: 'note-old', title: 'Old', noteBodyId: 'body-old' },
         { type: 'note' as const, id: 'note-missing', title: 'Missing', noteBodyId: 'body-missing' },
@@ -322,15 +322,15 @@ describe('notebook tree helpers', () => {
       { id: 'body-new', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z', aisles: [] },
     ]
 
-    const sorted = sortNotebookItemsInScope(notebook, null, 'updated-desc', noteBodies)
+    const sorted = sortVaultItemsInScope(vault, null, 'updated-desc', noteBodies)
 
     expect(sorted.items.map((item) => item.id)).toEqual(['note-new', 'note-old', 'note-missing'])
   })
 
   it('uses descendant note dates for folder date sorts', () => {
     const state = createState()
-    const notebook = {
-      ...state.notebook,
+    const vault = {
+      ...state.vault,
       items: [
         {
           type: 'folder' as const,
@@ -364,8 +364,8 @@ describe('notebook tree helpers', () => {
       { id: 'body-newest', createdAt: '2023-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', aisles: [] },
     ]
 
-    const createdSorted = sortNotebookItemsInScope(notebook, null, 'created-asc', noteBodies)
-    const updatedSorted = sortNotebookItemsInScope(notebook, null, 'updated-desc', noteBodies)
+    const createdSorted = sortVaultItemsInScope(vault, null, 'created-asc', noteBodies)
+    const updatedSorted = sortVaultItemsInScope(vault, null, 'updated-desc', noteBodies)
 
     expect(createdSorted.items.map((item) => item.id)).toEqual(['folder-old', 'note-middle', 'folder-new'])
     expect(updatedSorted.items.map((item) => item.id)).toEqual(['folder-new', 'note-middle', 'folder-old'])
@@ -373,8 +373,8 @@ describe('notebook tree helpers', () => {
 
   it('keeps empty and missing-date items stable after dated items', () => {
     const state = createState()
-    const notebook = {
-      ...state.notebook,
+    const vault = {
+      ...state.vault,
       items: [
         { type: 'folder' as const, id: 'folder-empty', title: 'Empty', children: [] },
         { type: 'note' as const, id: 'note-missing', title: 'Missing', noteBodyId: 'body-missing' },
@@ -389,7 +389,7 @@ describe('notebook tree helpers', () => {
       { id: 'body-dated-a', createdAt: '2023-01-01T00:00:00.000Z', updatedAt: '2023-01-01T00:00:00.000Z', aisles: [] },
     ]
 
-    const sorted = sortNotebookItemsInScope(notebook, null, 'created-asc', noteBodies)
+    const sorted = sortVaultItemsInScope(vault, null, 'created-asc', noteBodies)
 
     expect(sorted.items.map((item) => item.id)).toEqual([
       'note-dated-a',
@@ -402,57 +402,57 @@ describe('notebook tree helpers', () => {
 
   it('moves deleted items to trash, falls back active note, and restores to original index', () => {
     let state = createState()
-    const created = createNotebookNoteInState(state, 'Second', null, '', idSequence(['body-2', 'aisle-body-2', 'aisle-2', 'note-2']))
+    const created = createVaultNoteInState(state, 'Second', null, '', idSequence(['body-2', 'aisle-body-2', 'aisle-2', 'note-2']))
     state = created.state
 
-    const deleted = deleteNotebookItemInState(state, 'note-1', idSequence(['deleted-1']))
-    expect(deleted.notebook.activeNoteId).toBe('note-2')
-    expect(deleted.notebook.deletedItems).toHaveLength(1)
+    const deleted = deleteVaultItemInState(state, 'note-1', idSequence(['deleted-1']))
+    expect(deleted.vault.activeNoteId).toBe('note-2')
+    expect(deleted.vault.deletedItems).toHaveLength(1)
 
-    const restored = restoreDeletedNotebookItemInState(deleted, 'deleted-1')
-    expect(listNotebookNotes(restored.notebook.items).map((entry) => entry.note.id)).toEqual(['note-1', 'note-2'])
-    expect(restored.notebook.activeNoteId).toBe('note-1')
+    const restored = restoreDeletedVaultItemInState(deleted, 'deleted-1')
+    expect(listVaultNotes(restored.vault.items).map((entry) => entry.note.id)).toEqual(['note-1', 'note-2'])
+    expect(restored.vault.activeNoteId).toBe('note-1')
   })
 
   it('opens one replaceable temporary tab and keeps retained tabs', () => {
-    let notebook = createTabNotebook()
+    let vault = createTabVault()
 
-    notebook = openNotebookTemporaryTab(notebook, 'note-a')
-    expect(notebook.activeNoteId).toBe('note-a')
-    expect(notebook.openTabs).toEqual([{ noteId: 'note-a', status: 'temporary' }])
+    vault = openVaultTemporaryTab(vault, 'note-a')
+    expect(vault.activeNoteId).toBe('note-a')
+    expect(vault.openTabs).toEqual([{ noteId: 'note-a', status: 'temporary' }])
 
-    notebook = openNotebookRetainedTab(notebook, 'note-b')
-    expect(notebook.activeNoteId).toBe('note-b')
-    expect(notebook.openTabs).toEqual([
+    vault = openVaultRetainedTab(vault, 'note-b')
+    expect(vault.activeNoteId).toBe('note-b')
+    expect(vault.openTabs).toEqual([
       { noteId: 'note-a', status: 'temporary' },
       { noteId: 'note-b', status: 'retained' },
     ])
 
-    notebook = openNotebookTemporaryTab(notebook, 'note-c')
-    expect(notebook.activeNoteId).toBe('note-c')
-    expect(notebook.openTabs).toEqual([
+    vault = openVaultTemporaryTab(vault, 'note-c')
+    expect(vault.activeNoteId).toBe('note-c')
+    expect(vault.openTabs).toEqual([
       { noteId: 'note-c', status: 'temporary' },
       { noteId: 'note-b', status: 'retained' },
     ])
   })
 
   it('promotes temporary tabs and retained opens promote existing temporary tabs', () => {
-    let notebook = openNotebookTemporaryTab(createTabNotebook(), 'note-a')
+    let vault = openVaultTemporaryTab(createTabVault(), 'note-a')
 
-    notebook = promoteNotebookTemporaryTab(notebook, 'note-a')
-    expect(notebook.openTabs).toEqual([{ noteId: 'note-a', status: 'retained' }])
+    vault = promoteVaultTemporaryTab(vault, 'note-a')
+    expect(vault.openTabs).toEqual([{ noteId: 'note-a', status: 'retained' }])
 
-    notebook = openNotebookTemporaryTab(notebook, 'note-b')
-    notebook = openNotebookRetainedTab(notebook, 'note-b')
-    expect(notebook.openTabs).toEqual([
+    vault = openVaultTemporaryTab(vault, 'note-b')
+    vault = openVaultRetainedTab(vault, 'note-b')
+    expect(vault.openTabs).toEqual([
       { noteId: 'note-a', status: 'retained' },
       { noteId: 'note-b', status: 'retained' },
     ])
   })
 
   it('closes active tabs to next, previous, then first-note temporary fallback', () => {
-    let notebook = {
-      ...createTabNotebook(),
+    let vault = {
+      ...createTabVault(),
       activeNoteId: 'note-b',
       openTabs: [
         { noteId: 'note-a', status: 'retained' as const },
@@ -461,22 +461,22 @@ describe('notebook tree helpers', () => {
       ],
     }
 
-    notebook = closeNotebookTab(notebook, 'note-b')
-    expect(notebook.activeNoteId).toBe('note-c')
-    expect(notebook.openTabs?.map((tab) => tab.noteId)).toEqual(['note-a', 'note-c'])
+    vault = closeVaultTab(vault, 'note-b')
+    expect(vault.activeNoteId).toBe('note-c')
+    expect(vault.openTabs?.map((tab) => tab.noteId)).toEqual(['note-a', 'note-c'])
 
-    notebook = closeNotebookTab(notebook, 'note-c')
-    expect(notebook.activeNoteId).toBe('note-a')
-    expect(notebook.openTabs).toEqual([{ noteId: 'note-a', status: 'retained' }])
+    vault = closeVaultTab(vault, 'note-c')
+    expect(vault.activeNoteId).toBe('note-a')
+    expect(vault.openTabs).toEqual([{ noteId: 'note-a', status: 'retained' }])
 
-    notebook = closeNotebookTab(notebook, 'note-a')
-    expect(notebook.activeNoteId).toBe('note-a')
-    expect(notebook.openTabs).toEqual([{ noteId: 'note-a', status: 'temporary' }])
+    vault = closeVaultTab(vault, 'note-a')
+    expect(vault.activeNoteId).toBe('note-a')
+    expect(vault.openTabs).toEqual([{ noteId: 'note-a', status: 'temporary' }])
   })
 
   it('cycles retained note tabs in tab-strip order and skips temporary tabs', () => {
-    const notebook = {
-      ...createTabNotebook(),
+    const vault = {
+      ...createTabVault(),
       activeNoteId: 'note-b',
       openTabs: [
         { noteId: 'note-a', status: 'retained' as const },
@@ -485,15 +485,15 @@ describe('notebook tree helpers', () => {
       ],
     }
 
-    expect(getNotebookRetainedTabCycleTarget(notebook, 1)).toBe('note-c')
-    expect(getNotebookRetainedTabCycleTarget(notebook, -1)).toBe('note-a')
-    expect(getNotebookRetainedTabCycleTarget({ ...notebook, activeNoteId: 'note-c' }, 1)).toBe('note-a')
-    expect(getNotebookRetainedTabCycleTarget({ ...notebook, activeNoteId: 'note-a' }, -1)).toBe('note-c')
+    expect(getVaultRetainedTabCycleTarget(vault, 1)).toBe('note-c')
+    expect(getVaultRetainedTabCycleTarget(vault, -1)).toBe('note-a')
+    expect(getVaultRetainedTabCycleTarget({ ...vault, activeNoteId: 'note-c' }, 1)).toBe('note-a')
+    expect(getVaultRetainedTabCycleTarget({ ...vault, activeNoteId: 'note-a' }, -1)).toBe('note-c')
   })
 
   it('captures and restores retained tabs at their prior index', () => {
-    let notebook = {
-      ...createTabNotebook(),
+    let vault = {
+      ...createTabVault(),
       activeNoteId: 'note-b',
       openTabs: [
         { noteId: 'note-a', status: 'retained' as const },
@@ -501,15 +501,15 @@ describe('notebook tree helpers', () => {
         { noteId: 'note-c', status: 'retained' as const },
       ],
     }
-    const closedTab = getClosedNotebookTab(notebook, 'note-b')
+    const closedTab = getClosedVaultTab(vault, 'note-b')
     expect(closedTab).toEqual({ noteId: 'note-b', status: 'retained', index: 1 })
 
-    notebook = closeNotebookTab(notebook, 'note-b')
-    expect(notebook.openTabs?.map((tab) => tab.noteId)).toEqual(['note-a', 'note-c'])
+    vault = closeVaultTab(vault, 'note-b')
+    expect(vault.openTabs?.map((tab) => tab.noteId)).toEqual(['note-a', 'note-c'])
 
-    notebook = restoreClosedNotebookTab(notebook, closedTab!)
-    expect(notebook.activeNoteId).toBe('note-b')
-    expect(notebook.openTabs).toEqual([
+    vault = restoreClosedVaultTab(vault, closedTab!)
+    expect(vault.activeNoteId).toBe('note-b')
+    expect(vault.openTabs).toEqual([
       { noteId: 'note-a', status: 'retained' },
       { noteId: 'note-b', status: 'retained' },
       { noteId: 'note-c', status: 'retained' },
@@ -517,15 +517,15 @@ describe('notebook tree helpers', () => {
   })
 
   it('restores temporary tabs without creating a second temporary tab', () => {
-    const notebook = {
-      ...createTabNotebook(),
+    const vault = {
+      ...createTabVault(),
       activeNoteId: 'note-c',
       openTabs: [
         { noteId: 'note-a', status: 'retained' as const },
         { noteId: 'note-c', status: 'temporary' as const },
       ],
     }
-    const restored = restoreClosedNotebookTab(notebook, { noteId: 'note-b', status: 'temporary', index: 1 })
+    const restored = restoreClosedVaultTab(vault, { noteId: 'note-b', status: 'temporary', index: 1 })
 
     expect(restored.activeNoteId).toBe('note-b')
     expect(restored.openTabs).toEqual([
@@ -535,8 +535,8 @@ describe('notebook tree helpers', () => {
   })
 
   it('skips restore records for deleted notes', () => {
-    const notebook = {
-      ...createTabNotebook(),
+    const vault = {
+      ...createTabVault(),
       activeNoteId: 'note-a',
       openTabs: [{ noteId: 'note-a', status: 'retained' as const }],
       items: [
@@ -545,13 +545,13 @@ describe('notebook tree helpers', () => {
       ],
     }
 
-    const restored = restoreClosedNotebookTab(notebook, { noteId: 'note-b', status: 'retained', index: 1 })
-    expect(restored).toBe(notebook)
+    const restored = restoreClosedVaultTab(vault, { noteId: 'note-b', status: 'retained', index: 1 })
+    expect(restored).toBe(vault)
   })
 
   it('reorders tabs and prunes stale tabs when notes are deleted', () => {
-    let notebook = {
-      ...createTabNotebook(),
+    let vault = {
+      ...createTabVault(),
       openTabs: [
         { noteId: 'note-a', status: 'retained' as const },
         { noteId: 'note-b', status: 'temporary' as const },
@@ -559,20 +559,20 @@ describe('notebook tree helpers', () => {
       ],
     }
 
-    notebook = reorderNotebookTabs(notebook, 'note-a', 3)
-    expect(notebook.openTabs?.map((tab) => tab.noteId)).toEqual(['note-b', 'note-c', 'note-a'])
+    vault = reorderVaultTabs(vault, 'note-a', 3)
+    expect(vault.openTabs?.map((tab) => tab.noteId)).toEqual(['note-b', 'note-c', 'note-a'])
 
-    const deleted = deleteNotebookItemInState(
+    const deleted = deleteVaultItemInState(
       {
         ...createState(),
-        notebook,
+        vault,
         noteBodies: [],
         noteAisleBodies: [],
       },
       'note-b',
       idSequence(['deleted-b']),
     )
-    expect(deleted.notebook.openTabs).toEqual([
+    expect(deleted.vault.openTabs).toEqual([
       { noteId: 'note-c', status: 'retained' },
       { noteId: 'note-a', status: 'retained' },
     ])
@@ -581,23 +581,23 @@ describe('notebook tree helpers', () => {
   it('replaces one visible note body while keeping synced siblings linked', () => {
     const state = createState()
     const linked = {
-      ...state.notebook,
+      ...state.vault,
       items: [
-        ...state.notebook.items,
+        ...state.vault.items,
         { type: 'note' as const, id: 'note-2', title: 'Linked', noteBodyId: 'body-1' },
       ],
     }
 
-    const replaced = replaceNotebookNoteBodyId(linked, 'note-2', 'body-2')
-    expect(findNotebookNote(replaced.items, 'note-1')?.note.noteBodyId).toBe('body-1')
-    expect(findNotebookNote(replaced.items, 'note-2')?.note.noteBodyId).toBe('body-2')
+    const replaced = replaceVaultNoteBodyId(linked, 'note-2', 'body-2')
+    expect(findVaultNote(replaced.items, 'note-1')?.note.noteBodyId).toBe('body-1')
+    expect(findVaultNote(replaced.items, 'note-2')?.note.noteBodyId).toBe('body-2')
   })
 
   it('materializes synced note bodies as separate notes with synced aisles', () => {
     const state: AppState = {
       ...createState(),
-      notebook: {
-        ...createState().notebook,
+      vault: {
+        ...createState().vault,
         items: [
           { type: 'note', id: 'note-1', title: 'Original', noteBodyId: 'body-1' },
           { type: 'note', id: 'note-2', title: 'Linked', noteBodyId: 'body-1' },
@@ -619,8 +619,8 @@ describe('notebook tree helpers', () => {
       idSequence(['body-2', 'aisle-3', 'aisle-4']),
     )
 
-    expect(findNotebookNote(materialized.notebook.items, 'note-1')?.note.noteBodyId).toBe('body-1')
-    expect(findNotebookNote(materialized.notebook.items, 'note-2')?.note.noteBodyId).toBe('body-2')
+    expect(findVaultNote(materialized.vault.items, 'note-1')?.note.noteBodyId).toBe('body-1')
+    expect(findVaultNote(materialized.vault.items, 'note-2')?.note.noteBodyId).toBe('body-2')
     expect(materialized.noteBodies.find((body) => body.id === 'body-2')?.aisles).toEqual([
       { id: 'aisle-3', aisleBodyId: 'shared-aisle-body-1' },
       { id: 'aisle-4', aisleBodyId: 'shared-aisle-body-2' },
@@ -629,8 +629,8 @@ describe('notebook tree helpers', () => {
 
   it('traverses folders recursively for folder-scoped operations', () => {
     const state = createState()
-    const folderResult = createNotebookFolderInState(state, 'Folder', null, idSequence(['folder-1']))
-    const noteResult = createNotebookNoteInState(
+    const folderResult = createVaultFolderInState(state, 'Folder', null, idSequence(['folder-1']))
+    const noteResult = createVaultNoteInState(
       folderResult.state,
       'Nested',
       'folder-1',
@@ -638,15 +638,15 @@ describe('notebook tree helpers', () => {
       idSequence(['body-2', 'aisle-body-2', 'aisle-2', 'note-2']),
     )
 
-    expect(getFolderNotesRecursive(noteResult.state.notebook.items, 'folder-1').map((entry) => entry.note.id)).toEqual(['note-2'])
-    expect(getFolderNotesRecursive(noteResult.state.notebook.items, null).map((entry) => entry.note.id)).toEqual(['note-1', 'note-2'])
+    expect(getFolderNotesRecursive(noteResult.state.vault.items, 'folder-1').map((entry) => entry.note.id)).toEqual(['note-2'])
+    expect(getFolderNotesRecursive(noteResult.state.vault.items, null).map((entry) => entry.note.id)).toEqual(['note-1', 'note-2'])
   })
 
   it('decouples only the selected visible note body', () => {
     const state: AppState = {
       ...createState(),
-      notebook: {
-        ...createState().notebook,
+      vault: {
+        ...createState().vault,
         items: [
           { type: 'note', id: 'note-1', title: 'Original', noteBodyId: 'body-1' },
           { type: 'note', id: 'note-2', title: 'Linked', noteBodyId: 'body-1' },
@@ -664,14 +664,14 @@ describe('notebook tree helpers', () => {
       ],
     }
 
-    const decoupled = decoupleNotebookNoteBodyInState(
+    const decoupled = decoupleVaultNoteBodyInState(
       state,
       'note-2',
       idSequence(['aisle-body-2', 'aisle-2', 'body-2']),
     )
 
-    expect(findNotebookNote(decoupled.notebook.items, 'note-1')?.note.noteBodyId).toBe('body-1')
-    expect(findNotebookNote(decoupled.notebook.items, 'note-2')?.note.noteBodyId).toBe('body-2')
+    expect(findVaultNote(decoupled.vault.items, 'note-1')?.note.noteBodyId).toBe('body-1')
+    expect(findVaultNote(decoupled.vault.items, 'note-2')?.note.noteBodyId).toBe('body-2')
     expect(decoupled.noteBodies.map((body) => body.id)).toContain('body-2')
     expect(decoupled.noteAisleBodies?.find((body) => body.id === 'aisle-body-2')?.markdown).toBe('linked markdown')
   })
@@ -679,8 +679,8 @@ describe('notebook tree helpers', () => {
   it('decouples only the selected shared aisle body', () => {
     const state: AppState = {
       ...createState(),
-      notebook: {
-        ...createState().notebook,
+      vault: {
+        ...createState().vault,
         items: [
           { type: 'note', id: 'note-1', title: 'Original', noteBodyId: 'body-1' },
           { type: 'note', id: 'note-2', title: 'Other', noteBodyId: 'body-2' },
@@ -717,7 +717,7 @@ describe('notebook tree helpers', () => {
       ],
     }
 
-    const decoupled = decoupleNotebookAisleBodyInState(state, 'note-1', 'aisle-1', idSequence(['cloned-aisle-body']))
+    const decoupled = decoupleVaultAisleBodyInState(state, 'note-1', 'aisle-1', idSequence(['cloned-aisle-body']))
     const bodyOne = decoupled.noteBodies.find((body) => body.id === 'body-1')
     const bodyTwo = decoupled.noteBodies.find((body) => body.id === 'body-2')
 

@@ -50,12 +50,12 @@ export default defineConfig({
             },
             {
               name: 'app-state',
-              test: /[\\/]src[\\/](state|storage|settings|import|notebook|platform)[\\/]/,
+              test: /[\\/]src[\\/](state|storage|settings|import|vault|platform)[\\/]/,
               priority: 5,
               maxSize: 450 * 1024,
             },
             {
-              name: 'app-notebook',
+              name: 'app-vault',
               test: /[\\/]src[\\/](notes|arrange|navigation|overlays|trash|frontmatter|hotkeys|app|markdown|media)[\\/]/,
               priority: 5,
               maxSize: 450 * 1024,

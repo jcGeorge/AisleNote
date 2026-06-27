@@ -2,42 +2,42 @@ export type CustomThemeId = 'custom1' | 'custom2' | 'custom3'
 export type AppTheme = 'dark' | 'light' | 'cheese' | CustomThemeId
 export type ViewMode = 'main' | 'trash' | 'settings' | 'messages' | 'about'
 
-export type NotebookTreeItem = NotebookFolder | NotebookNote
+export type VaultTreeItem = VaultFolder | VaultNote
 
-export type NotebookFolder = {
+export type VaultFolder = {
   type: 'folder'
   id: string
   title: string
-  children: NotebookTreeItem[]
+  children: VaultTreeItem[]
 }
 
-export type NotebookNote = {
+export type VaultNote = {
   type: 'note'
   id: string
   title: string
   noteBodyId: string
 }
 
-export type NotebookTabStatus = 'temporary' | 'retained'
+export type VaultTabStatus = 'temporary' | 'retained'
 
-export type NotebookTab = {
+export type VaultTab = {
   noteId: string
-  status: NotebookTabStatus
+  status: VaultTabStatus
 }
 
-export type DeletedNotebookItem = {
+export type DeletedVaultItem = {
   id: string
   deletedAt: number
-  item: NotebookTreeItem
+  item: VaultTreeItem
   originalParentFolderId: string | null
   originalIndex: number
 }
 
-export type NotebookState = {
+export type VaultState = {
   activeNoteId: string
-  openTabs?: NotebookTab[]
-  items: NotebookTreeItem[]
-  deletedItems: DeletedNotebookItem[]
+  openTabs?: VaultTab[]
+  items: VaultTreeItem[]
+  deletedItems: DeletedVaultItem[]
   settings: {
     autoRemoveDeletedDays: number
   }
@@ -266,7 +266,7 @@ export type DataSettingsSection = 'transfer' | 'storage' | 'trash'
 export type VisualsSettingsSection = 'theming' | 'otherVisuals'
 export type MessagesSection = 'inbox' | 'toast-history' | 'diagnostics' | 'editor-dev'
 export type AboutSection = 'home' | 'tooltip-sources'
-export type FindReplaceScope = 'note' | 'folder' | 'notebook'
+export type FindReplaceScope = 'note' | 'folder' | 'vault'
 export type TableControlTargetMode = 'active-cell' | 'bottom-right'
 export type TableOfContentsScope = 'all-aisles' | 'focused-aisle'
 export type NewAislePlacement = 'end' | 'left-of-focus' | 'right-of-focus'
@@ -329,7 +329,7 @@ export type AppMessageAffectedLocation = {
 
 export type AppMessage = {
   id: string
-  type: 'duplicate-auto-decoupled' | 'storage-notebook-recovered'
+  type: 'duplicate-auto-decoupled' | 'storage-vault-recovered'
   status: 'unread' | 'acknowledged' | 'dismissed'
   createdAt: string
   signature: string
@@ -338,10 +338,10 @@ export type AppMessage = {
   anchorPath?: string
   decoupledPaths?: string[]
   affectedLocations?: AppMessageAffectedLocation[]
-  failedNotebookPath?: string
-  failedNotebookAvailable?: boolean
-  activeNotebookPath?: string
-  activeNotebookName?: string
+  failedVaultPath?: string
+  failedVaultAvailable?: boolean
+  activeVaultPath?: string
+  activeVaultName?: string
   recoveryMode?: 'disconnected-to-local' | 'created-local' | 'reset-default'
   issueSummary?: string[]
 }
@@ -384,7 +384,7 @@ export type ThemePaletteOverrides = Partial<Record<AppTheme, CustomThemePalette>
 
 export type AppState = {
   theme: AppTheme
-  notebook: NotebookState
+  vault: VaultState
   scratchpad?: ScratchpadState
   messages?: AppMessage[]
   toastHistory?: ToastHistoryEntry[]
@@ -446,7 +446,7 @@ export type PendingCreatedEdit =
 
 export type ArrangeSource = 'context' | 'press'
 export type ArrangeInsertPosition = 'before' | 'after'
-export type ArrangeScope = 'notebook'
+export type ArrangeScope = 'vault'
 export type TabSortMode = 'alpha-asc' | 'alpha-desc' | 'created-asc' | 'created-desc' | 'updated-asc' | 'updated-desc'
 export type TabSortTarget = 'notes' | 'folders'
 export type NoteReferenceInsertKind = 'link' | 'preview'
@@ -524,23 +524,23 @@ export type StorageProfileIssue = {
 }
 
 export type StorageProfileRecovery = {
-  event: 'notebook-auto-recovered'
+  event: 'vault-auto-recovered'
   mode: 'disconnected-to-local' | 'created-local' | 'reset-default'
-  failedNotebookPath: string
-  failedNotebookName: string
-  failedNotebookAvailable?: boolean
-  activeNotebookPath: string
-  activeNotebookName: string
+  failedVaultPath: string
+  failedVaultName: string
+  failedVaultAvailable?: boolean
+  activeVaultPath: string
+  activeVaultName: string
   originalError?: string
   issueSummary?: string[]
   issues?: StorageProfileIssue[]
   createdAt: string
 }
 
-export type KnownNotebook = {
-  notebookId?: string | null
-  notebookPath: string
-  notebookName: string
+export type KnownVault = {
+  vaultId?: string | null
+  vaultPath: string
+  vaultName: string
   isActive: boolean
   exists: boolean
   hasManifest: boolean
@@ -553,9 +553,9 @@ export type StorageProfileStatus = {
   issues?: StorageProfileIssue[]
   event?: string
   profileRootPath: string
-  activeNotebookId?: string | null
-  notebookPath: string
-  notebookName: string
+  activeVaultId?: string | null
+  vaultPath: string
+  vaultName: string
   hasProfile: boolean
   canWrite: boolean
   source?: 'hybrid' | 'empty'
@@ -564,7 +564,7 @@ export type StorageProfileStatus = {
   revision?: number
   error?: string
   recovery?: StorageProfileRecovery
-  knownNotebooks?: KnownNotebook[]
+  knownVaults?: KnownVault[]
 }
 
 export type UserSettingsLocationStatus = {

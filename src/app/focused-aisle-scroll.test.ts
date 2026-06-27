@@ -6,7 +6,7 @@ import {
   type ScheduledAisleFocusScroll,
 } from './focused-aisle-scroll'
 
-const notebookAppSource = readFileSync(new URL('./NotebookApp.tsx', import.meta.url), 'utf8')
+const vaultAppSource = readFileSync(new URL('./VaultApp.tsx', import.meta.url), 'utf8')
 
 function createFrameScheduler() {
   let nextFrameId = 1
@@ -130,12 +130,12 @@ describe('focused aisle scroll scheduling', () => {
     expect(scheduled.followupFrameId).toBeNull()
   })
 
-  it('routes pending notebook navigation aisle scrolls through focused aisle scroll scheduling', () => {
-    expect(notebookAppSource).toContain('pendingScrollToAisleIdRef.current = resolvedLocation.aisleId || null')
-    expect(notebookAppSource).toContain('scheduleAisleFocusScroll(targetNoteBodyId, resolvedLocation.aisleId)')
-    expect(notebookAppSource).toContain('scheduleFocusedAisleScroll({')
-    expect(notebookAppSource).toContain('scrollAislePaneIntoHorizontalView(scrollNode, aisleId)')
-    expect(notebookAppSource).toContain('scheduleAisleFocusScroll(activeModel.noteBody.id, targetAisleId)')
-    expect(notebookAppSource).toContain('cancelScheduledAisleFocusScroll(scheduledAisleFocusScrollRef.current, window)')
+  it('routes pending vault navigation aisle scrolls through focused aisle scroll scheduling', () => {
+    expect(vaultAppSource).toContain('pendingScrollToAisleIdRef.current = resolvedLocation.aisleId || null')
+    expect(vaultAppSource).toContain('scheduleAisleFocusScroll(targetNoteBodyId, resolvedLocation.aisleId)')
+    expect(vaultAppSource).toContain('scheduleFocusedAisleScroll({')
+    expect(vaultAppSource).toContain('scrollAislePaneIntoHorizontalView(scrollNode, aisleId)')
+    expect(vaultAppSource).toContain('scheduleAisleFocusScroll(activeModel.noteBody.id, targetAisleId)')
+    expect(vaultAppSource).toContain('cancelScheduledAisleFocusScroll(scheduledAisleFocusScrollRef.current, window)')
   })
 })

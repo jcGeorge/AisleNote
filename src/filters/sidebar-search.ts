@@ -10,7 +10,7 @@ import {
   type NoteFilterOption,
   type NoteFilterOptionType,
 } from './note-filter'
-import { getNotebookIndexContext, type NotebookIndexContext } from './notebook-index-context'
+import { getVaultIndexContext, type VaultIndexContext } from './vault-index-context'
 
 export type SidebarSearchFilterKind = Exclude<NoteFilterKind, 'media'>
 export type SidebarSearchPrefix = 'tag' | 'fm' | 'prop' | 'synced' | 'duplicate'
@@ -356,7 +356,7 @@ function getFrontmatterValueSuggestionLabels(value: unknown): string[] {
   return label ? [label] : []
 }
 
-function buildFrontmatterValueOptions(context: NotebookIndexContext): NoteFilterOption[] {
+function buildFrontmatterValueOptions(context: VaultIndexContext): NoteFilterOption[] {
   const optionsByKey = new Map<string, NoteFilterOption>()
 
   context.locations.forEach((location) => {
@@ -391,9 +391,9 @@ function buildFrontmatterValueOptions(context: NotebookIndexContext): NoteFilter
 
 export function buildSidebarSearchIndexes(
   state: AppState,
-  context?: NotebookIndexContext,
+  context?: VaultIndexContext,
 ): SidebarSearchIndexes {
-  const indexContext = getNotebookIndexContext(state, context)
+  const indexContext = getVaultIndexContext(state, context)
   return {
     tags: buildNoteFilterIndex(state, 'tags', [], indexContext),
     synced: buildNoteFilterIndex(state, 'synced', [], indexContext),
@@ -552,7 +552,7 @@ function queryTextMatches(haystack: string, query: string): boolean {
   return normalizedQuery.split(/\s+/).filter(Boolean).every((token) => normalizedHaystack.includes(token))
 }
 
-function getFrontmatterSearchDocument(candidate: SidebarSearchCandidate, context: NotebookIndexContext): string {
+function getFrontmatterSearchDocument(candidate: SidebarSearchCandidate, context: VaultIndexContext): string {
   const aisleBody = context.aisleBodiesById.get(candidate.aisleBodyId)
   if (aisleBody?.frontmatterStatus !== 'valid' || !isRecord(aisleBody.frontmatter)) return ''
 
@@ -579,7 +579,7 @@ function frontmatterTermMatches(document: string, term: SidebarSearchFrontmatter
 function candidateMatchesFrontmatterTerms(
   candidate: SidebarSearchCandidate,
   terms: SidebarSearchFrontmatterTerm[],
-  context: NotebookIndexContext,
+  context: VaultIndexContext,
   documentCache: Map<string, string>,
 ): boolean {
   if (terms.length <= 0) return true
@@ -593,7 +593,7 @@ function candidateHasPresence(
   candidate: SidebarSearchCandidate,
   kind: SidebarSearchFilterKind,
   lookup: Map<SidebarSearchFilterKind, Set<string>>,
-  context: NotebookIndexContext,
+  context: VaultIndexContext,
   documentCache: Map<string, string>,
 ): boolean {
   if (kind === 'frontmatter') {
@@ -609,7 +609,7 @@ function candidateMatchesPresenceTerms(
   candidate: SidebarSearchCandidate,
   terms: SidebarSearchPresenceTerm[],
   lookup: Map<SidebarSearchFilterKind, Set<string>>,
-  context: NotebookIndexContext,
+  context: VaultIndexContext,
   documentCache: Map<string, string>,
 ): boolean {
   return terms.every((term) =>
@@ -647,10 +647,10 @@ export function buildSidebarSearchResultGroups({
   query: string
   filter: NoteFilterSettings | null | undefined
   indexes?: SidebarSearchIndexes
-  context?: NotebookIndexContext
+  context?: VaultIndexContext
   limit?: number
 }): SidebarSearchResultGroup[] {
-  const indexContext = getNotebookIndexContext(state, context)
+  const indexContext = getVaultIndexContext(state, context)
   const effectiveIndexes = indexes ?? buildSidebarSearchIndexes(state, indexContext)
   const parsed = parseSidebarSearchInput(query, effectiveIndexes)
   const selectedTokens = mergeSidebarSearchTokens(getSidebarSearchSelectedTokens(filter, effectiveIndexes), parsed.tokens)

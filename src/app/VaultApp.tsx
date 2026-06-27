@@ -21,7 +21,7 @@ import type {
   CustomThemeId,
   CustomThemePaletteSlot,
   DataSettingsSection,
-  DeletedNotebookItem,
+  DeletedVaultItem,
   FrontmatterData,
   FrontmatterSaveOptions,
   FrontmatterTemplate,
@@ -33,9 +33,9 @@ import type {
   NoteBody,
   NoteLocation,
   NoteNavigationTarget,
-  KnownNotebook,
+  KnownVault,
   StorageProfileStatus,
-  NotebookTreeItem,
+  VaultTreeItem,
   NewlineOperationId,
   NewlineShortcutId,
   ResolvedNoteAisle,
@@ -151,15 +151,15 @@ import {
 } from '../diagnostics/diagnostic-log-store'
 import { AisleEditModal } from '../components/notes/AisleEditModal'
 import {
-  NotebookEditorContextMenu,
-  getNotebookEditorContextMenuAisleIdFromTarget,
-  type NotebookEditorAisleInsertSide,
-  type NotebookEditorClipboardAction,
-  type NotebookEditorContextMenuState,
-  type NotebookEditorCopyAsKind,
-  type NotebookEditorCopyAsMode,
-  type NotebookEditorPasteDestination,
-} from '../components/overlays/NotebookEditorContextMenu'
+  VaultEditorContextMenu,
+  getVaultEditorContextMenuAisleIdFromTarget,
+  type VaultEditorAisleInsertSide,
+  type VaultEditorClipboardAction,
+  type VaultEditorContextMenuState,
+  type VaultEditorCopyAsKind,
+  type VaultEditorCopyAsMode,
+  type VaultEditorPasteDestination,
+} from '../components/overlays/VaultEditorContextMenu'
 import { TipHost } from '../components/overlays/TipHost'
 import { ToastHost } from '../components/overlays/ToastHost'
 import { AppIcon } from '../components/icons/AppIcon'
@@ -182,7 +182,7 @@ import {
   type MenuViewport,
 } from '../components/overlays/context-menu-position'
 import { useEditorToolbarState } from '../editor/useEditorToolbarState'
-import { useNotebookAisleEditors } from '../editor/useNotebookAisleEditors'
+import { useVaultAisleEditors } from '../editor/useVaultAisleEditors'
 import { useImageTools } from '../editor/useImageTools'
 import { useMediaTools } from '../editor/useMediaTools'
 import type { NoteMentionQuery } from '../editor/prosemirror-utils'
@@ -198,18 +198,18 @@ import {
   formatShortcutLabel,
   normalizeHotkeySettings,
 } from '../hotkeys/shortcuts'
-import { useNotebookHotkeys } from '../hotkeys/useNotebookHotkeys'
+import { useVaultHotkeys } from '../hotkeys/useVaultHotkeys'
 import {
   cancelScheduledAisleFocusScroll,
   scheduleFocusedAisleScroll,
   type ScheduledAisleFocusScroll,
 } from './focused-aisle-scroll'
-import { getNotebookTreeRevealScrollTop } from './notebook-tree-scroll'
+import { getVaultTreeRevealScrollTop } from './vault-tree-scroll'
 import {
-  resolveNotebookNavigationLocation,
-  useNotebookNavigationHistory,
-  type NotebookNavigationLocation,
-} from '../navigation/notebook-navigation-history'
+  resolveVaultNavigationLocation,
+  useVaultNavigationHistory,
+  type VaultNavigationLocation,
+} from '../navigation/vault-navigation-history'
 import { getTipDefinition } from '../tips/tips'
 import {
   buildTableOfContentsPanels,
@@ -219,7 +219,7 @@ import {
 import { MAX_AISLE_WARNING_MESSAGE, MAX_NOTE_AISLES } from '../editor/aisle-edit-draft'
 import { parseSavedState } from '../state/app-state'
 import { createRandomId, createReservedIdAllocator } from '../state/navigation-ids'
-import { importMarkdownIntoExistingNotebook } from '../import/markdown-import'
+import { importMarkdownIntoExistingVault } from '../import/markdown-import'
 import { usePersistentAppState } from '../storage/usePersistentAppState'
 import { useStorageProfileController } from '../storage/useStorageProfileController'
 import { useAppNotifications } from './useAppNotifications'
@@ -235,7 +235,7 @@ import {
   getThemeClassName,
   isCustomTheme,
   normalizeCustomThemePalette,
-} from '../theme/notebook-themes'
+} from '../theme/vault-themes'
 import {
   MAX_NOTE_FONT_SCALE,
   MAX_TOOLBAR_BUTTON_SCALE,
@@ -250,50 +250,50 @@ import {
 } from '../settings/defaults'
 import { parseThemeSettingsImport, serializeThemeSettings } from '../settings/theme-transfer'
 import {
-  collectNotebookIds,
-  closeNotebookTab,
-  createNotebookFolderInState,
-  createNotebookNoteInState,
-  deleteNotebookItemInState,
-  findNotebookFolder,
-  findNotebookItem,
-  findNotebookNote,
-  focusNotebookOpenTab,
-  getClosedNotebookTab,
+  collectVaultIds,
+  closeVaultTab,
+  createVaultFolderInState,
+  createVaultNoteInState,
+  deleteVaultItemInState,
+  findVaultFolder,
+  findVaultItem,
+  findVaultNote,
+  focusVaultOpenTab,
+  getClosedVaultTab,
   getContainingFolderId,
-  getFirstNotebookNote,
-  getNotebookNoteFolderPath,
-  getNotebookRetainedTabCycleTarget,
+  getFirstVaultNote,
+  getVaultNoteFolderPath,
+  getVaultRetainedTabCycleTarget,
   isNoteBodyLinked,
-  moveNotebookItem,
-  moveNotebookItems,
-  openNotebookRetainedTab,
-  openNotebookTemporaryTab,
-  promoteNotebookTemporaryTab,
-  renameNotebookItem,
-  reorderNotebookTabs,
-  restoreClosedNotebookTab,
-  restoreDeletedNotebookItemInState,
-  sortNotebookItemsInScope,
-  type ClosedNotebookTab,
-  type NotebookTabOpenDisposition,
-} from '../state/notebook'
+  moveVaultItem,
+  moveVaultItems,
+  openVaultRetainedTab,
+  openVaultTemporaryTab,
+  promoteVaultTemporaryTab,
+  renameVaultItem,
+  reorderVaultTabs,
+  restoreClosedVaultTab,
+  restoreDeletedVaultItemInState,
+  sortVaultItemsInScope,
+  type ClosedVaultTab,
+  type VaultTabOpenDisposition,
+} from '../state/vault'
 import {
-  NotebookNoteActionPicker,
+  VaultNoteActionPicker,
   getCopyModeForNoteAction,
   getReferenceKindForNoteAction,
-  type NotebookNoteActionPickerAction,
-  type NotebookNoteActionPickerActionOptions,
-  type NotebookNoteActionPickerAnchor,
-  type NotebookNoteActionPickerAisleOption,
-} from '../components/overlays/NotebookNoteActionPicker'
-import { NotebookDecoupleDialog } from '../components/overlays/NotebookDecoupleDialog'
+  type VaultNoteActionPickerAction,
+  type VaultNoteActionPickerActionOptions,
+  type VaultNoteActionPickerAnchor,
+  type VaultNoteActionPickerAisleOption,
+} from '../components/overlays/VaultNoteActionPicker'
+import { VaultDecoupleDialog } from '../components/overlays/VaultDecoupleDialog'
 import {
-  buildNotebookNoteReferenceInsertionText,
-  getNotebookAisleDecoupleRows,
+  buildVaultNoteReferenceInsertionText,
+  getVaultAisleDecoupleRows,
   replaceActiveNoteBodyFromTargetNote,
   replaceFocusedAisleFromTargetNote,
-} from '../notes/notebook-note-actions'
+} from '../notes/vault-note-actions'
 import {
   applyFindReplacementToState,
   findVisibleMatches,
@@ -310,7 +310,7 @@ import {
   getFrontmatterTemplateFilterKey,
   getSyncedAisleFilterKey,
 } from '../filters/note-filter'
-import { createNotebookIndexContext } from '../filters/notebook-index-context'
+import { createVaultIndexContext } from '../filters/vault-index-context'
 import {
   buildSidebarSearchIndexes,
   buildSidebarSearchResultGroups,
@@ -329,12 +329,12 @@ import { normalizeTagKey } from '../tags/tag-filter'
 import { normalizeTagAutocompleteRecentKeys } from '../tags/tag-autocomplete'
 import { useTagAutocompleteController } from '../tags/useTagAutocompleteController'
 import {
-  applyNotebookStructureClipboardPayload,
-  buildNotebookStructureClipboardPayload,
-  readNotebookStructureClipboardPayloadFromNavigator,
-  writeNotebookStructureClipboardPayload,
-  type NotebookStructureClipboardPayload,
-} from '../notes/notebook-structure-clipboard'
+  applyVaultStructureClipboardPayload,
+  buildVaultStructureClipboardPayload,
+  readVaultStructureClipboardPayloadFromNavigator,
+  writeVaultStructureClipboardPayload,
+  type VaultStructureClipboardPayload,
+} from '../notes/vault-structure-clipboard'
 import {
   SCRATCHPAD_CONTENT_TARGET_ID,
   SCRATCHPAD_CURSOR_LOCATION_KEY,
@@ -344,9 +344,9 @@ import {
   setScratchpadActiveAisleId,
 } from '../state/scratchpad'
 import {
-  applyNotebookEditorMarkdownSnapshotsToState,
-  commitNotebookAisleMarkdownInState,
-} from './notebook-editor-persistence'
+  applyVaultEditorMarkdownSnapshotsToState,
+  commitVaultAisleMarkdownInState,
+} from './vault-editor-persistence'
 import { CLOSED_LINK_PROMPT_STATE, closeLinkPromptState } from './linkPromptState'
 import { MEDIA_PLAYER_SELECTOR } from '../media/media-utils'
 import { openExternalWebUrl } from '../notes/external-links'
@@ -355,10 +355,10 @@ void React
 
 const SIDEBAR_MIN_WIDTH = 212
 const SIDEBAR_MAX_WIDTH = 520
-const NOTEBOOK_FOCUS_BOUNDARY_FLUSH_DELAY_MS = 60
-const NOTEBOOK_TREE_VIRTUALIZATION_THRESHOLD = 300
-const NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT = 32
-const NOTEBOOK_TREE_VIRTUAL_OVERSCAN = 12
+const VAULT_FOCUS_BOUNDARY_FLUSH_DELAY_MS = 60
+const VAULT_TREE_VIRTUALIZATION_THRESHOLD = 300
+const VAULT_TREE_VIRTUAL_ROW_HEIGHT = 32
+const VAULT_TREE_VIRTUAL_OVERSCAN = 12
 
 const SIDEBAR_SEARCH_HISTORY_STORAGE_KEY = 'aislenote:sidebar-search-history:v1'
 const SIDEBAR_SEARCH_HISTORY_LIMIT = 10
@@ -403,7 +403,7 @@ function appendSidebarSearchHistoryEntry(history: string[], query: string): stri
   return [entry, ...history.filter((candidate) => candidate !== entry)].slice(0, SIDEBAR_SEARCH_HISTORY_LIMIT)
 }
 
-function revealNotebookTreeForCreatedItem(
+function revealVaultTreeForCreatedItem(
   ui: AppState['ui'],
   expandedFolderIds: Array<string | null | undefined>,
 ): AppState['ui'] {
@@ -427,15 +427,15 @@ const THEME_LABELS: Record<AppTheme, string> = {
   custom3: 'Custom 3',
 }
 
-function getNotebookRowsFromStorageStatus(storageProfileStatus: StorageProfileStatus | null): KnownNotebook[] {
-  const activeNotebookPath = storageProfileStatus?.notebookPath ?? storageProfileStatus?.profileRootPath ?? ''
-  const knownNotebooks = storageProfileStatus?.knownNotebooks ?? []
-  if (knownNotebooks.length > 0) return knownNotebooks
-  if (!storageProfileStatus || !activeNotebookPath) return []
+function getVaultRowsFromStorageStatus(storageProfileStatus: StorageProfileStatus | null): KnownVault[] {
+  const activeVaultPath = storageProfileStatus?.vaultPath ?? storageProfileStatus?.profileRootPath ?? ''
+  const knownVaults = storageProfileStatus?.knownVaults ?? []
+  if (knownVaults.length > 0) return knownVaults
+  if (!storageProfileStatus || !activeVaultPath) return []
   return [{
-    notebookId: storageProfileStatus.activeNotebookId ?? undefined,
-    notebookPath: activeNotebookPath,
-    notebookName: storageProfileStatus.notebookName || 'Notebook',
+    vaultId: storageProfileStatus.activeVaultId ?? undefined,
+    vaultPath: activeVaultPath,
+    vaultName: storageProfileStatus.vaultName || 'Vault',
     isActive: true,
     exists: storageProfileStatus.hasProfile,
     hasManifest: storageProfileStatus.hasProfile,
@@ -443,16 +443,16 @@ function getNotebookRowsFromStorageStatus(storageProfileStatus: StorageProfileSt
   }]
 }
 
-const ACTIVE_TOOLBAR_LAYOUT_STORAGE_KEY = 'aislenote:notebook-active-toolbar-layout:v1'
+const ACTIVE_TOOLBAR_LAYOUT_STORAGE_KEY = 'aislenote:vault-active-toolbar-layout:v1'
 const TAG_AUTOCOMPLETE_RECENT_STORAGE_KEY = 'aislenote:tag-autocomplete-recent:v1'
-const NOTEBOOK_SETUP_APP_NAME = 'AisleNote'
-const NOTEBOOK_SETUP_LOGO_SRC = './favicon.svg'
+const VAULT_SETUP_APP_NAME = 'AisleNote'
+const VAULT_SETUP_LOGO_SRC = './favicon.svg'
 const CLOSED_NOTE_TAB_HISTORY_LIMIT = 20
-const NOTEBOOK_NAVIGATION_TIMING_DIAGNOSTIC_THRESHOLD_MS = 50
-const NOTEBOOK_NAVIGATION_TIMING_WARNING_THRESHOLD_MS = 100
-const NOTEBOOK_NAVIGATION_FOCUS_TIMING_DIAGNOSTIC_THRESHOLD_MS = 16
-const NOTEBOOK_FRONTMATTER_TIMING_DIAGNOSTIC_THRESHOLD_MS = 16
-const NOTEBOOK_FRONTMATTER_TIMING_WARNING_THRESHOLD_MS = 100
+const VAULT_NAVIGATION_TIMING_DIAGNOSTIC_THRESHOLD_MS = 50
+const VAULT_NAVIGATION_TIMING_WARNING_THRESHOLD_MS = 100
+const VAULT_NAVIGATION_FOCUS_TIMING_DIAGNOSTIC_THRESHOLD_MS = 16
+const VAULT_FRONTMATTER_TIMING_DIAGNOSTIC_THRESHOLD_MS = 16
+const VAULT_FRONTMATTER_TIMING_WARNING_THRESHOLD_MS = 100
 
 const UTILITY_VIEW_MODES = ['settings', 'messages', 'about', 'trash'] as const
 type UtilityViewMode = typeof UTILITY_VIEW_MODES[number]
@@ -470,7 +470,7 @@ const SETTINGS_SECTION_TABS: Array<{ id: SettingsSection; label: string }> = [
 
 const DATA_SECTION_TABS: Array<{ id: DataSettingsSection; label: string }> = [
   { id: 'transfer', label: 'Transfer' },
-  { id: 'storage', label: 'Notebooks' },
+  { id: 'storage', label: 'Vaults' },
   { id: 'trash', label: 'Trash' },
 ]
 
@@ -517,7 +517,7 @@ const TABLE_OF_CONTENTS_SCOPE_OPTIONS: Array<{ id: TableOfContentsScope; label: 
   { id: 'focused-aisle', label: 'Current aisle' },
 ]
 
-const NOTEBOOK_TREE_SORT_OPTIONS: Array<{ id: TabSortMode; label: string }> = [
+const VAULT_TREE_SORT_OPTIONS: Array<{ id: TabSortMode; label: string }> = [
   { id: 'alpha-asc', label: 'Name ascending' },
   { id: 'alpha-desc', label: 'Name descending' },
   { id: 'updated-asc', label: 'Modified ascending' },
@@ -529,40 +529,40 @@ const NOTEBOOK_TREE_SORT_OPTIONS: Array<{ id: TabSortMode; label: string }> = [
 const SETTINGS_SECTION_SET = new Set<SettingsSection>(SETTINGS_SECTION_TABS.map((tab) => tab.id))
 const DATA_SECTION_SET = new Set<DataSettingsSection>(DATA_SECTION_TABS.map((tab) => tab.id))
 
-function getNotebookAppPerfNow(): number {
+function getVaultAppPerfNow(): number {
   return typeof performance !== 'undefined' && typeof performance.now === 'function'
     ? performance.now()
     : Date.now()
 }
 
-function roundNotebookAppDiagnosticMs(durationMs: number): number {
+function roundVaultAppDiagnosticMs(durationMs: number): number {
   return Math.round(durationMs * 10) / 10
 }
 
-function recordNotebookNavigationTiming(
+function recordVaultNavigationTiming(
   event: string,
   durationMs: number,
   details: Record<string, unknown>,
-  thresholdMs = NOTEBOOK_NAVIGATION_TIMING_DIAGNOSTIC_THRESHOLD_MS,
+  thresholdMs = VAULT_NAVIGATION_TIMING_DIAGNOSTIC_THRESHOLD_MS,
 ): void {
   if (durationMs < thresholdMs) return
   recordDiagnosticEvent('navigation', event, {
-    level: durationMs >= NOTEBOOK_NAVIGATION_TIMING_WARNING_THRESHOLD_MS ? 'warning' : 'info',
-    durationMs: roundNotebookAppDiagnosticMs(durationMs),
+    level: durationMs >= VAULT_NAVIGATION_TIMING_WARNING_THRESHOLD_MS ? 'warning' : 'info',
+    durationMs: roundVaultAppDiagnosticMs(durationMs),
     details,
   })
 }
 
-function recordNotebookFrontmatterTiming(
+function recordVaultFrontmatterTiming(
   event: string,
   durationMs: number,
   details: Record<string, unknown>,
-  thresholdMs = NOTEBOOK_FRONTMATTER_TIMING_DIAGNOSTIC_THRESHOLD_MS,
+  thresholdMs = VAULT_FRONTMATTER_TIMING_DIAGNOSTIC_THRESHOLD_MS,
 ): void {
   if (durationMs < thresholdMs) return
   recordDiagnosticEvent('frontmatter', event, {
-    level: durationMs >= NOTEBOOK_FRONTMATTER_TIMING_WARNING_THRESHOLD_MS ? 'warning' : 'info',
-    durationMs: roundNotebookAppDiagnosticMs(durationMs),
+    level: durationMs >= VAULT_FRONTMATTER_TIMING_WARNING_THRESHOLD_MS ? 'warning' : 'info',
+    durationMs: roundVaultAppDiagnosticMs(durationMs),
     details,
   })
 }
@@ -578,7 +578,7 @@ function isUtilityViewMode(viewMode: ViewMode): viewMode is UtilityViewMode {
   return (UTILITY_VIEW_MODES as readonly string[]).includes(viewMode)
 }
 
-function loadNotebookActiveToolbarLayoutId(): string {
+function loadVaultActiveToolbarLayoutId(): string {
   try {
     return window.localStorage?.getItem(ACTIVE_TOOLBAR_LAYOUT_STORAGE_KEY)?.trim() || DEFAULT_TOOLBAR_LAYOUT_ID
   } catch {
@@ -586,7 +586,7 @@ function loadNotebookActiveToolbarLayoutId(): string {
   }
 }
 
-function saveNotebookActiveToolbarLayoutId(layoutId: string): void {
+function saveVaultActiveToolbarLayoutId(layoutId: string): void {
   try {
     window.localStorage?.setItem(ACTIVE_TOOLBAR_LAYOUT_STORAGE_KEY, layoutId.trim() || DEFAULT_TOOLBAR_LAYOUT_ID)
   } catch {
@@ -646,11 +646,11 @@ function getDeletedAtTitle(timestamp: number): string | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString()
 }
 
-function getNotebookItemDisplayTitle(item: NotebookTreeItem): string {
+function getVaultItemDisplayTitle(item: VaultTreeItem): string {
   return item.title.trim() || 'Untitled'
 }
 
-function getDeletedNotebookNoteMarkdown(entry: DeletedNotebookItem, state: AppState): string {
+function getDeletedVaultNoteMarkdown(entry: DeletedVaultItem, state: AppState): string {
   const item = entry.item
   if (item.type !== 'note') return ''
   const noteBody = state.noteBodies.find((body) => body.id === item.noteBodyId)
@@ -680,20 +680,20 @@ type ActiveScratchpadModel = {
 
 type ActiveEditorModel = ActiveNoteModel | ActiveScratchpadModel
 
-type NotebookAisleContextMenuState = {
+type VaultAisleContextMenuState = {
   x: number
   y: number
   aisleId: string
 }
 
-type NotebookShortcutMenuState = {
+type VaultShortcutMenuState = {
   aisleId: string
   top: number
   left: number
   activeIndex: number
 }
 
-export type NotebookFrontmatterModalState = {
+export type VaultFrontmatterModalState = {
   noteBodyId: string
   aisleId: string
   aisleBodyId: string
@@ -748,10 +748,10 @@ type NoteActionPickerState = {
   source: NoteActionPickerSource
   title: string
   query: string
-  actions: NotebookNoteActionPickerAction[]
+  actions: VaultNoteActionPickerAction[]
   mentionRange?: NoteMentionQuery
   insertRange?: LinkPromptState['editRange']
-  anchor?: NotebookNoteActionPickerAnchor | null
+  anchor?: VaultNoteActionPickerAnchor | null
   urlEnabled?: boolean
 }
 
@@ -766,13 +766,13 @@ type DecoupleDialogState = {
 }
 
 function getActiveNoteModel(state: AppState): ActiveNoteModel | null {
-  const notePath = findNotebookNote(state.notebook.items, state.notebook.activeNoteId)
-  const fallbackNote = notePath?.note ?? getFirstNotebookNote(state.notebook.items)
+  const notePath = findVaultNote(state.vault.items, state.vault.activeNoteId)
+  const fallbackNote = notePath?.note ?? getFirstVaultNote(state.vault.items)
   if (!fallbackNote) return null
   const noteBody = state.noteBodies.find((body) => body.id === fallbackNote.noteBodyId)
   const resolved = resolveNoteBody(noteBody, state.noteAisleBodies)
   if (!noteBody || !resolved) return null
-  const folderPath = getNotebookNoteFolderPath(state.notebook.items, fallbackNote.id)
+  const folderPath = getVaultNoteFolderPath(state.vault.items, fallbackNote.id)
     .map((segment) => segment.title)
     .join(' / ')
   return {
@@ -781,7 +781,7 @@ function getActiveNoteModel(state: AppState): ActiveNoteModel | null {
     title: fallbackNote.title,
     noteBody,
     resolved,
-    linked: isNoteBodyLinked(state.notebook.items, fallbackNote.noteBodyId),
+    linked: isNoteBodyLinked(state.vault.items, fallbackNote.noteBodyId),
     folderPath,
   }
 }
@@ -805,7 +805,7 @@ function getActiveEditorModel(state: AppState, scratchpadActive: boolean): Activ
   return scratchpadActive ? getScratchpadEditorModel(state) ?? getActiveNoteModel(state) : getActiveNoteModel(state)
 }
 
-function getPreferredNotebookAisleId(
+function getPreferredVaultAisleId(
   state: AppState,
   noteId: string,
   aisles: readonly Pick<NoteAisle, 'id'>[],
@@ -822,7 +822,7 @@ function getAisleIdFromNavigationTarget(target: NoteLocation): string {
   return navigationTarget.aisleId?.trim() || navigationTarget.heading?.aisleId?.trim() || navigationTarget.aisleIds?.[0]?.trim() || ''
 }
 
-function collectDeletedNoteBodyIds(item: NotebookTreeItem, ids = new Set<string>()): Set<string> {
+function collectDeletedNoteBodyIds(item: VaultTreeItem, ids = new Set<string>()): Set<string> {
   if (item.type === 'note') {
     ids.add(item.noteBodyId)
     return ids
@@ -831,7 +831,7 @@ function collectDeletedNoteBodyIds(item: NotebookTreeItem, ids = new Set<string>
   return ids
 }
 
-function getReferencedNoteBodyIds(items: NotebookTreeItem[], ids = new Set<string>()): Set<string> {
+function getReferencedNoteBodyIds(items: VaultTreeItem[], ids = new Set<string>()): Set<string> {
   items.forEach((item) => {
     if (item.type === 'note') {
       ids.add(item.noteBodyId)
@@ -843,8 +843,8 @@ function getReferencedNoteBodyIds(items: NotebookTreeItem[], ids = new Set<strin
 }
 
 function pruneUnreferencedBodies(state: AppState): AppState {
-  const visibleBodyIds = getReferencedNoteBodyIds(state.notebook.items)
-  state.notebook.deletedItems.forEach((entry) => collectDeletedNoteBodyIds(entry.item, visibleBodyIds))
+  const visibleBodyIds = getReferencedNoteBodyIds(state.vault.items)
+  state.vault.deletedItems.forEach((entry) => collectDeletedNoteBodyIds(entry.item, visibleBodyIds))
   const noteBodies = state.noteBodies.filter((body) => visibleBodyIds.has(body.id) || body.id === state.scratchpad?.noteBodyId)
   const aisleBodyIds = new Set<string>()
   noteBodies.forEach((body) => body.aisles.forEach((aisle) => aisleBodyIds.add(aisle.aisleBodyId)))
@@ -952,22 +952,22 @@ function cloneAisleBodyForDraft(
   }
 }
 
-const NOTEBOOK_TREE_RENAME_LONG_PRESS_MS = 500
-const NOTEBOOK_TREE_LONG_PRESS_MOVE_TOLERANCE_PX = 6
+const VAULT_TREE_RENAME_LONG_PRESS_MS = 500
+const VAULT_TREE_LONG_PRESS_MOVE_TOLERANCE_PX = 6
 const SHORTCUT_MENU_ESTIMATED_WIDTH = 256
 const SHORTCUT_MENU_ESTIMATED_VERTICAL_PADDING = 16
 const SHORTCUT_MENU_ESTIMATED_ITEM_HEIGHT = 36
 
-type NotebookTreeDropPosition = 'before' | 'after' | 'inside' | 'root'
+type VaultTreeDropPosition = 'before' | 'after' | 'inside' | 'root'
 
-type NotebookTreeDropTarget = {
+type VaultTreeDropTarget = {
   parentFolderId: string | null
   index: number
   targetItemId: string | null
-  position: NotebookTreeDropPosition
+  position: VaultTreeDropPosition
 }
 
-type NotebookTreeContextMenuState =
+type VaultTreeContextMenuState =
   | {
       kind: 'root'
       x: number
@@ -978,16 +978,16 @@ type NotebookTreeContextMenuState =
       x: number
       y: number
       itemId: string
-      itemType: NotebookTreeItem['type']
+      itemType: VaultTreeItem['type']
       itemTitle: string
     }
 
-type NotebookTreeNoteSelectionMode = 'replace' | 'toggle' | 'range'
-type NotebookTreeRenameCommitSource = 'enter' | 'blur' | 'tab'
-type NotebookRenameSurface = 'tree' | 'tab'
+type VaultTreeNoteSelectionMode = 'replace' | 'toggle' | 'range'
+type VaultTreeRenameCommitSource = 'enter' | 'blur' | 'tab'
+type VaultRenameSurface = 'tree' | 'tab'
 
-type NotebookTreeFlatRow = {
-  item: NotebookTreeItem
+type VaultTreeFlatRow = {
+  item: VaultTreeItem
   depth: number
   parentFolderId: string | null
   index: number
@@ -1007,7 +1007,7 @@ type PendingCreatedTreeRename =
       returnAisleId: string
     }
 
-type NotebookNameDialogState =
+type VaultNameDialogState =
   | {
       mode: 'create'
       initialName: string
@@ -1015,10 +1015,10 @@ type NotebookNameDialogState =
   | {
       mode: 'rename'
       initialName: string
-      notebook: KnownNotebook
+      vault: KnownVault
     }
 
-function getNotebookMenuViewportSize(): MenuViewport {
+function getVaultMenuViewportSize(): MenuViewport {
   if (typeof window === 'undefined') return { width: 0, height: 0 }
   return {
     width: window.innerWidth,
@@ -1026,7 +1026,7 @@ function getNotebookMenuViewportSize(): MenuViewport {
   }
 }
 
-function getNotebookMenuElementSize(element: HTMLElement): MenuSize {
+function getVaultMenuElementSize(element: HTMLElement): MenuSize {
   const rect = element.getBoundingClientRect()
   return {
     width: rect.width,
@@ -1034,7 +1034,7 @@ function getNotebookMenuElementSize(element: HTMLElement): MenuSize {
   }
 }
 
-function toNotebookMenuRect(rect: DOMRect): MenuRect {
+function toVaultMenuRect(rect: DOMRect): MenuRect {
   return {
     x: rect.left,
     y: rect.top,
@@ -1045,19 +1045,19 @@ function toNotebookMenuRect(rect: DOMRect): MenuRect {
   }
 }
 
-export function getNotebookSidebarRevealLabel(platform: string | undefined): string {
+export function getVaultSidebarRevealLabel(platform: string | undefined): string {
   const normalizedPlatform = String(platform ?? '').toLowerCase()
   if (normalizedPlatform === 'darwin' || normalizedPlatform.includes('mac')) return 'Reveal in Finder'
   if (normalizedPlatform === 'win32' || normalizedPlatform.includes('win')) return 'Show in File Explorer'
   return 'Show in Files'
 }
 
-function getNotebookTreeDropTargetFromEvent(
+function getVaultTreeDropTargetFromEvent(
   event: ReactDragEvent<HTMLElement>,
-  item: NotebookTreeItem,
+  item: VaultTreeItem,
   parentFolderId: string | null,
   index: number,
-): NotebookTreeDropTarget {
+): VaultTreeDropTarget {
   const rect = event.currentTarget.getBoundingClientRect()
   const relativeY = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0.5
   if (item.type === 'folder' && relativeY >= 0.25 && relativeY <= 0.75) {
@@ -1077,7 +1077,7 @@ function getNotebookTreeDropTargetFromEvent(
   }
 }
 
-function areNotebookTreeDropTargetsEqual(left: NotebookTreeDropTarget | null, right: NotebookTreeDropTarget | null): boolean {
+function areVaultTreeDropTargetsEqual(left: VaultTreeDropTarget | null, right: VaultTreeDropTarget | null): boolean {
   return (
     left?.parentFolderId === right?.parentFolderId &&
     left?.index === right?.index &&
@@ -1086,7 +1086,7 @@ function areNotebookTreeDropTargetsEqual(left: NotebookTreeDropTarget | null, ri
   )
 }
 
-function getVisibleNotebookTreeNoteIds(items: NotebookTreeItem[], collapsedFolderIds: Set<string>): string[] {
+function getVisibleVaultTreeNoteIds(items: VaultTreeItem[], collapsedFolderIds: Set<string>): string[] {
   const noteIds: string[] = []
   items.forEach((item) => {
     if (item.type === 'note') {
@@ -1094,20 +1094,20 @@ function getVisibleNotebookTreeNoteIds(items: NotebookTreeItem[], collapsedFolde
       return
     }
     if (!collapsedFolderIds.has(item.id)) {
-      noteIds.push(...getVisibleNotebookTreeNoteIds(item.children, collapsedFolderIds))
+      noteIds.push(...getVisibleVaultTreeNoteIds(item.children, collapsedFolderIds))
     }
   })
   return noteIds
 }
 
-function flattenVisibleNotebookTreeRows(
-  items: NotebookTreeItem[],
+function flattenVisibleVaultTreeRows(
+  items: VaultTreeItem[],
   collapsedFolderIds: Set<string>,
   query: string,
   depth = 0,
   parentFolderId: string | null = null,
-): NotebookTreeFlatRow[] {
-  const rows: NotebookTreeFlatRow[] = []
+): VaultTreeFlatRow[] {
+  const rows: VaultTreeFlatRow[] = []
   const normalizedQuery = query.trim().toLocaleLowerCase()
   items.forEach((item, index) => {
     if (item.type === 'note' && normalizedQuery && !item.title.toLocaleLowerCase().includes(normalizedQuery)) return
@@ -1118,13 +1118,13 @@ function flattenVisibleNotebookTreeRows(
       index,
     })
     if (item.type === 'folder' && !collapsedFolderIds.has(item.id)) {
-      rows.push(...flattenVisibleNotebookTreeRows(item.children, collapsedFolderIds, query, depth + 1, item.id))
+      rows.push(...flattenVisibleVaultTreeRows(item.children, collapsedFolderIds, query, depth + 1, item.id))
     }
   })
   return rows
 }
 
-function getNotebookTreeRangeNoteIds(noteIds: string[], anchorNoteId: string, targetNoteId: string): string[] {
+function getVaultTreeRangeNoteIds(noteIds: string[], anchorNoteId: string, targetNoteId: string): string[] {
   const targetIndex = noteIds.indexOf(targetNoteId)
   if (targetIndex < 0) return [targetNoteId]
   const anchorIndex = noteIds.indexOf(anchorNoteId)
@@ -1134,7 +1134,7 @@ function getNotebookTreeRangeNoteIds(noteIds: string[], anchorNoteId: string, ta
   return noteIds.slice(startIndex, endIndex + 1)
 }
 
-function NotebookTreeContextMenuButton({
+function VaultTreeContextMenuButton({
   children,
   className = '',
   onClick,
@@ -1150,11 +1150,11 @@ function NotebookTreeContextMenuButton({
   )
 }
 
-function NotebookTreeContextMenuSeparator() {
+function VaultTreeContextMenuSeparator() {
   return <div className="tab-context-separator" role="separator" />
 }
 
-function NotebookTreeContextSubMenu({
+function VaultTreeContextSubMenu({
   label,
   children,
 }: {
@@ -1171,9 +1171,9 @@ function NotebookTreeContextSubMenu({
     if (!trigger || !panel) return
     setPanelPosition(
       getSubmenuPosition(
-        toNotebookMenuRect(trigger.getBoundingClientRect()),
-        getNotebookMenuElementSize(panel),
-        getNotebookMenuViewportSize(),
+        toVaultMenuRect(trigger.getBoundingClientRect()),
+        getVaultMenuElementSize(panel),
+        getVaultMenuViewportSize(),
       ),
     )
   }, [])
@@ -1201,7 +1201,7 @@ function NotebookTreeContextSubMenu({
   )
 }
 
-function NotebookTreeContextMenu({
+function VaultTreeContextMenu({
   menu,
   revealLabel,
   canReveal,
@@ -1213,7 +1213,7 @@ function NotebookTreeContextMenu({
   onRename,
   onDelete,
 }: {
-  menu: NotebookTreeContextMenuState | null
+  menu: VaultTreeContextMenuState | null
   revealLabel: string
   canReveal: boolean
   onClose: () => void
@@ -1235,8 +1235,8 @@ function NotebookTreeContextMenu({
       setRootPosition(
         clampContextMenuPosition(
           { x: menu.x, y: menu.y },
-          element ? getNotebookMenuElementSize(element) : { width: 0, height: 0 },
-          getNotebookMenuViewportSize(),
+          element ? getVaultMenuElementSize(element) : { width: 0, height: 0 },
+          getVaultMenuViewportSize(),
         ),
       )
     }
@@ -1264,28 +1264,28 @@ function NotebookTreeContextMenu({
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
     >
-      <NotebookTreeContextMenuButton onClick={() => runAction(onCreateNote)}>
+      <VaultTreeContextMenuButton onClick={() => runAction(onCreateNote)}>
         New note
-      </NotebookTreeContextMenuButton>
-      <NotebookTreeContextMenuButton onClick={() => runAction(onCreateFolder)}>
+      </VaultTreeContextMenuButton>
+      <VaultTreeContextMenuButton onClick={() => runAction(onCreateFolder)}>
         New folder
-      </NotebookTreeContextMenuButton>
-      <NotebookTreeContextSubMenu label="Sort">
-        {NOTEBOOK_TREE_SORT_OPTIONS.map((option) => (
-          <NotebookTreeContextMenuButton key={option.id} onClick={() => runAction(() => onSort(option.id))}>
+      </VaultTreeContextMenuButton>
+      <VaultTreeContextSubMenu label="Sort">
+        {VAULT_TREE_SORT_OPTIONS.map((option) => (
+          <VaultTreeContextMenuButton key={option.id} onClick={() => runAction(() => onSort(option.id))}>
             {option.label}
-          </NotebookTreeContextMenuButton>
+          </VaultTreeContextMenuButton>
         ))}
-      </NotebookTreeContextSubMenu>
+      </VaultTreeContextSubMenu>
       {isItemMenu ? (
         <>
-          <NotebookTreeContextMenuSeparator />
-          <NotebookTreeContextMenuButton onClick={() => runAction(onRename)}>
+          <VaultTreeContextMenuSeparator />
+          <VaultTreeContextMenuButton onClick={() => runAction(onRename)}>
             Rename
-          </NotebookTreeContextMenuButton>
-          <NotebookTreeContextMenuButton onClick={() => runAction(onDelete)}>
+          </VaultTreeContextMenuButton>
+          <VaultTreeContextMenuButton onClick={() => runAction(onDelete)}>
             {deleteLabel}
-          </NotebookTreeContextMenuButton>
+          </VaultTreeContextMenuButton>
           <button
             type="button"
             className={`tab-context-delete ${canReveal ? '' : 'is-disabled'}`.trim()}
@@ -1331,7 +1331,7 @@ function TreeItemRow({
   onDropItem,
   renderChildren = true,
 }: {
-  item: NotebookTreeItem
+  item: VaultTreeItem
   depth: number
   parentFolderId: string | null
   index: number
@@ -1342,22 +1342,22 @@ function TreeItemRow({
   draggingNoteIds: Set<string>
   selectedNoteIds: Set<string>
   createdRenameItemId: string
-  dropTarget: NotebookTreeDropTarget | null
+  dropTarget: VaultTreeDropTarget | null
   collapsedFolderIds: Set<string>
   query: string
-  onSelectNote: (noteId: string, mode: NotebookTreeNoteSelectionMode) => void
+  onSelectNote: (noteId: string, mode: VaultTreeNoteSelectionMode) => void
   onOpenNoteRetained: (noteId: string) => void
   onSelectFolder: (folderId: string) => void
   onToggleFolder: (folderId: string) => void
   onStartRename: (itemId: string, title: string) => void
   onRenameDraftChange: (title: string) => void
-  onCommitRename: (source: NotebookTreeRenameCommitSource) => void
+  onCommitRename: (source: VaultTreeRenameCommitSource) => void
   onCancelRename: () => void
-  onOpenContextMenu: (menu: NotebookTreeContextMenuState) => void
+  onOpenContextMenu: (menu: VaultTreeContextMenuState) => void
   onDragItemStart: (itemId: string) => void
   onDragItemEnd: () => void
-  onUpdateDropTarget: (target: NotebookTreeDropTarget | null) => void
-  onDropItem: (target: NotebookTreeDropTarget) => void
+  onUpdateDropTarget: (target: VaultTreeDropTarget | null) => void
+  onDropItem: (target: VaultTreeDropTarget) => void
   renderChildren?: boolean
 }) {
   const isFolder = item.type === 'folder'
@@ -1396,7 +1396,7 @@ function TreeItemRow({
       longPressRef.current = null
       suppressNextClickRef.current = true
       onStartRename(item.id, item.title)
-    }, NOTEBOOK_TREE_RENAME_LONG_PRESS_MS)
+    }, VAULT_TREE_RENAME_LONG_PRESS_MS)
     longPressRef.current = {
       pointerId,
       startX,
@@ -1409,8 +1409,8 @@ function TreeItemRow({
     const pending = longPressRef.current
     if (!pending || pending.pointerId !== event.pointerId) return
     const moved =
-      Math.abs(event.clientX - pending.startX) > NOTEBOOK_TREE_LONG_PRESS_MOVE_TOLERANCE_PX ||
-      Math.abs(event.clientY - pending.startY) > NOTEBOOK_TREE_LONG_PRESS_MOVE_TOLERANCE_PX
+      Math.abs(event.clientX - pending.startX) > VAULT_TREE_LONG_PRESS_MOVE_TOLERANCE_PX ||
+      Math.abs(event.clientY - pending.startY) > VAULT_TREE_LONG_PRESS_MOVE_TOLERANCE_PX
     if (moved) clearLongPress()
   }
 
@@ -1420,16 +1420,16 @@ function TreeItemRow({
 
   const handleDragStart = (event: ReactDragEvent<HTMLDivElement>) => {
     const target = event.target instanceof Element ? event.target : null
-    if (renaming || target?.closest('.notebook-tree-rename-input')) {
+    if (renaming || target?.closest('.vault-tree-rename-input')) {
       event.preventDefault()
       return
     }
     clearLongPress()
     event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('application/x-aislenote-notebook-item', item.id)
+    event.dataTransfer.setData('application/x-aislenote-vault-item', item.id)
     if (item.type === 'note') {
       const noteIds = selectedNoteIds.has(item.id) ? Array.from(selectedNoteIds) : [item.id]
-      event.dataTransfer.setData('application/x-aislenote-notebook-note-ids', JSON.stringify(noteIds))
+      event.dataTransfer.setData('application/x-aislenote-vault-note-ids', JSON.stringify(noteIds))
     }
     event.dataTransfer.setData('text/plain', item.id)
     onDragItemStart(item.id)
@@ -1439,7 +1439,7 @@ function TreeItemRow({
     if (!draggingItemId || draggingItemId === item.id || draggingNoteIds.has(item.id)) return
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
-    onUpdateDropTarget(getNotebookTreeDropTargetFromEvent(event, item, parentFolderId, index))
+    onUpdateDropTarget(getVaultTreeDropTargetFromEvent(event, item, parentFolderId, index))
   }
 
   const handleDragLeave = (event: ReactDragEvent<HTMLDivElement>) => {
@@ -1451,7 +1451,7 @@ function TreeItemRow({
     if (!draggingItemId || draggingItemId === item.id || draggingNoteIds.has(item.id)) return
     event.preventDefault()
     event.stopPropagation()
-    onDropItem(getNotebookTreeDropTargetFromEvent(event, item, parentFolderId, index))
+    onDropItem(getVaultTreeDropTargetFromEvent(event, item, parentFolderId, index))
   }
 
   if (!titleMatches && !isFolder) return null
@@ -1460,7 +1460,7 @@ function TreeItemRow({
     <>
       <div
         className={[
-          'notebook-tree-row',
+          'vault-tree-row',
           `is-${item.type}`,
           active ? 'is-active' : '',
           selected ? 'is-selected' : '',
@@ -1470,7 +1470,7 @@ function TreeItemRow({
           dropPosition === 'after' ? 'is-drop-after' : '',
           dropPosition === 'inside' ? 'is-drop-inside' : '',
         ].filter(Boolean).join(' ')}
-        data-notebook-tree-item-id={item.id}
+        data-vault-tree-item-id={item.id}
         role="treeitem"
         aria-selected={active || selected}
         aria-expanded={isFolder ? !collapsed : undefined}
@@ -1496,14 +1496,14 @@ function TreeItemRow({
         }}
       >
         {renaming ? (
-          <div className="notebook-tree-main is-renaming">
+          <div className="vault-tree-main is-renaming">
             {isFolder ? (
-              <span className="notebook-tree-folder-icon" aria-hidden="true">
-                <AppIcon iconId={folderIconId} className="notebook-tree-folder-icon-svg" />
+              <span className="vault-tree-folder-icon" aria-hidden="true">
+                <AppIcon iconId={folderIconId} className="vault-tree-folder-icon-svg" />
               </span>
             ) : null}
             <input
-              className="notebook-tree-rename-input"
+              className="vault-tree-rename-input"
               value={renameDraft}
               autoFocus
               onFocus={(event) => event.currentTarget.select()}
@@ -1529,7 +1529,7 @@ function TreeItemRow({
           </div>
         ) : (
           <button
-            className="notebook-tree-main"
+            className="vault-tree-main"
             type="button"
             onPointerDown={beginLongPressRename}
             onPointerMove={updateLongPressRename}
@@ -1576,16 +1576,16 @@ function TreeItemRow({
             title={item.type === 'folder' ? 'Toggle folder' : 'Open note'}
           >
             {isFolder ? (
-              <span className="notebook-tree-folder-icon" aria-hidden="true">
-                <AppIcon iconId={folderIconId} className="notebook-tree-folder-icon-svg" />
+              <span className="vault-tree-folder-icon" aria-hidden="true">
+                <AppIcon iconId={folderIconId} className="vault-tree-folder-icon-svg" />
               </span>
             ) : null}
-            <span className="notebook-tree-title">{item.title}</span>
+            <span className="vault-tree-title">{item.title}</span>
           </button>
         )}
       </div>
       {renderChildren && isFolder && !collapsed ? (
-        <div className="notebook-tree-children" role="group" style={{ '--tree-depth': depth } as CSSProperties}>
+        <div className="vault-tree-children" role="group" style={{ '--tree-depth': depth } as CSSProperties}>
           {children.map((child, childIndex) => (
             <MemoizedTreeItemRow
               key={child.id}
@@ -1626,7 +1626,7 @@ function TreeItemRow({
 
 const MemoizedTreeItemRow = React.memo(TreeItemRow)
 
-function NotebookAisleContextMenu({
+function VaultAisleContextMenu({
   menu,
   canDecoupleAisle,
   onClose,
@@ -1634,7 +1634,7 @@ function NotebookAisleContextMenu({
   onQuickDecoupleAisle,
   onShowSyncedAisle,
 }: {
-  menu: NotebookAisleContextMenuState | null
+  menu: VaultAisleContextMenuState | null
   canDecoupleAisle: boolean
   onClose: () => void
   onFilterSyncedAisle: () => void
@@ -1679,7 +1679,7 @@ function NotebookAisleContextMenu({
   )
 }
 
-export function NotebookFrontmatterModal({
+export function VaultFrontmatterModal({
   modal,
   templates,
   onCancel,
@@ -1692,17 +1692,17 @@ export function NotebookFrontmatterModal({
   onFilterTemplate,
   onCopyFrontmatter,
 }: {
-  modal: NotebookFrontmatterModalState | null
+  modal: VaultFrontmatterModalState | null
   templates: FrontmatterTemplate[]
   onCancel: () => void
-  onChange: (modal: NotebookFrontmatterModalState) => void
-  onSave: (modal: NotebookFrontmatterModalState) => string[] | string | null
-  onSelectAisle: (modal: NotebookFrontmatterModalState, aisleId: string) => NotebookFrontmatterModalState | string | null
-  onSelectTemplate: (modal: NotebookFrontmatterModalState, templateId: string) => NotebookFrontmatterModalState
-  onToggleTemplateDerived: (modal: NotebookFrontmatterModalState, templateDerived: boolean) => NotebookFrontmatterModalState
+  onChange: (modal: VaultFrontmatterModalState) => void
+  onSave: (modal: VaultFrontmatterModalState) => string[] | string | null
+  onSelectAisle: (modal: VaultFrontmatterModalState, aisleId: string) => VaultFrontmatterModalState | string | null
+  onSelectTemplate: (modal: VaultFrontmatterModalState, templateId: string) => VaultFrontmatterModalState
+  onToggleTemplateDerived: (modal: VaultFrontmatterModalState, templateDerived: boolean) => VaultFrontmatterModalState
   onEditTemplate: (templateId: string) => void
-  onFilterTemplate: (modal: NotebookFrontmatterModalState) => void
-  onCopyFrontmatter: (modal: NotebookFrontmatterModalState) => Promise<string | null>
+  onFilterTemplate: (modal: VaultFrontmatterModalState) => void
+  onCopyFrontmatter: (modal: VaultFrontmatterModalState) => Promise<string | null>
 }) {
   const [error, setError] = useState('')
   const [warnings, setWarnings] = useState<string[]>([])
@@ -1730,7 +1730,7 @@ export function NotebookFrontmatterModal({
   if (!modal) return null
 
   const selectedTemplate = templates.find((template) => template.id === modal.selectedTemplateId) ?? null
-  const updateModal = (nextModal: NotebookFrontmatterModalState) => {
+  const updateModal = (nextModal: VaultFrontmatterModalState) => {
     setError('')
     setWarnings([])
     onChange(nextModal)
@@ -1958,9 +1958,9 @@ export function NotebookFrontmatterModal({
   }
 
   return (
-    <div className="modal-backdrop notebook-modal-backdrop" role="presentation" onMouseDown={onCancel}>
+    <div className="modal-backdrop vault-modal-backdrop" role="presentation" onMouseDown={onCancel}>
       <section
-        className="modal-card notebook-frontmatter-modal frontmatter-note-modal"
+        className="modal-card vault-frontmatter-modal frontmatter-note-modal"
         role="dialog"
         aria-modal="true"
         aria-label="Frontmatter"
@@ -1990,7 +1990,7 @@ export function NotebookFrontmatterModal({
             ) : null}
           </div>
         </header>
-        <div className="notebook-frontmatter-body">
+        <div className="vault-frontmatter-body">
           <div className="frontmatter-note-toolbar">
             {modal.aisles.length > 1 ? (
               <select
@@ -2210,9 +2210,9 @@ export function NotebookFrontmatterModal({
             )}
           </div>
         </div>
-        {error ? <p className="notebook-frontmatter-error">{error}</p> : null}
+        {error ? <p className="vault-frontmatter-error">{error}</p> : null}
         {warnings.length > 0 ? (
-          <div className="notebook-frontmatter-warning-list">
+          <div className="vault-frontmatter-warning-list">
             {warnings.map((warning) => (
               <p key={warning}>{warning}</p>
             ))}
@@ -2244,7 +2244,7 @@ export function NotebookFrontmatterModal({
   )
 }
 
-function NotebookSettingsSwitch({
+function VaultSettingsSwitch({
   label,
   description,
   checked,
@@ -2258,7 +2258,7 @@ function NotebookSettingsSwitch({
   id?: string
 }) {
   return (
-    <div className="settings-hotkey-row notebook-settings-switch-row">
+    <div className="settings-hotkey-row vault-settings-switch-row">
       <div className="settings-tip-copy">
         <span className="settings-hotkey-label">{label}</span>
         {description ? <span className="settings-help">{description}</span> : null}
@@ -2393,7 +2393,7 @@ const VISUALS_THEME_TOOLBAR_PREVIEW_GROUPS: ToolbarToolId[][] = [
   ['taskList', 'table'],
 ]
 
-function NotebookThemeSettings({
+function VaultThemeSettings({
   state,
   onMutateState,
 }: {
@@ -2576,7 +2576,7 @@ function NotebookThemeSettings({
   }
 
   return (
-    <section className="notebook-settings-section" aria-label="Visual theme settings">
+    <section className="vault-settings-section" aria-label="Visual theme settings">
       <div className="settings-theme-copy-row">
         <label>
           Active theme
@@ -2590,7 +2590,7 @@ function NotebookThemeSettings({
         </label>
         <button
           type="button"
-          className="notebook-settings-action settings-theme-copy-button"
+          className="vault-settings-action settings-theme-copy-button"
           disabled={!canCopyActiveThemeToSelectedCustomPalette}
           onClick={copyActiveThemeToSelectedCustomPalette}
         >
@@ -2610,7 +2610,7 @@ function NotebookThemeSettings({
           </select>
         </label>
       </div>
-      <div className="notebook-settings-grid">
+      <div className="vault-settings-grid">
         <label>
           Note font scale
           <div className="settings-slider-wrap">
@@ -2654,7 +2654,7 @@ function NotebookThemeSettings({
       </div>
       <div className="visuals-theme-preview" aria-label="Theme preview">
         <div className="visuals-preview-canvas" style={previewScaleStyle}>
-          <aside className="visuals-preview-sidebar" aria-label="Preview notebook tree">
+          <aside className="visuals-preview-sidebar" aria-label="Preview vault tree">
             <div className="visuals-preview-tree" aria-hidden="true">
               <div className="visuals-preview-tree-row is-folder">
                 <AppIcon iconId="folderOpen" className="visuals-preview-tree-icon" />
@@ -2703,7 +2703,7 @@ function NotebookThemeSettings({
             </div>
             <div className="visuals-preview-aisles">
               <aside className="visuals-preview-control-aisle" aria-label="Preview controls">
-                <div className="notebook-utility-tabs visuals-preview-button-tabs" role="tablist" aria-label="Preview button states">
+                <div className="vault-utility-tabs visuals-preview-button-tabs" role="tablist" aria-label="Preview button states">
                   <button type="button" role="tab" aria-selected="false" tabIndex={-1}>
                     Messages
                   </button>
@@ -2768,23 +2768,23 @@ function NotebookThemeSettings({
       </div>
       <div className="custom-theme-transfer-actions">
         <div className="custom-theme-transfer-actions-left">
-          <button type="button" className="notebook-settings-action" onClick={resetSelectedPalette}>
+          <button type="button" className="vault-settings-action" onClick={resetSelectedPalette}>
             Reset selected palette
           </button>
         </div>
         <div className="custom-theme-transfer-actions-right">
-          <button type="button" className="notebook-settings-action" onClick={openImportThemeJson}>
+          <button type="button" className="vault-settings-action" onClick={openImportThemeJson}>
             Import theme
           </button>
-          <button type="button" className="notebook-settings-action" onClick={openExportThemeJson}>
+          <button type="button" className="vault-settings-action" onClick={openExportThemeJson}>
             Export theme
           </button>
         </div>
       </div>
       {themeJsonMode ? (
-        <div className="modal-backdrop notebook-modal-backdrop" role="presentation" onMouseDown={closeThemeJsonModal}>
+        <div className="modal-backdrop vault-modal-backdrop" role="presentation" onMouseDown={closeThemeJsonModal}>
           <div
-            className="modal-card notebook-frontmatter-modal custom-theme-json-modal"
+            className="modal-card vault-frontmatter-modal custom-theme-json-modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby="custom-theme-json-title"
@@ -2796,7 +2796,7 @@ function NotebookThemeSettings({
                 <AppIcon iconId="x" className="app-close-button-icon" />
               </button>
             </header>
-            <div className="notebook-frontmatter-body">
+            <div className="vault-frontmatter-body">
               <textarea
                 className="settings-text-input custom-theme-json-textarea"
                 value={themeJsonDraft}
@@ -2808,11 +2808,11 @@ function NotebookThemeSettings({
               {themeJsonStatus ? <p className="custom-theme-json-status">{themeJsonStatus}</p> : null}
             </div>
             <footer className="modal-card-footer custom-theme-json-modal-actions">
-              <button type="button" className="notebook-settings-action" onClick={closeThemeJsonModal}>
+              <button type="button" className="vault-settings-action" onClick={closeThemeJsonModal}>
                 Close
               </button>
               {themeJsonMode === 'import' ? (
-                <button type="button" className="notebook-settings-action" onClick={importThemeJson}>
+                <button type="button" className="vault-settings-action" onClick={importThemeJson}>
                   Import theme
                 </button>
               ) : null}
@@ -2824,12 +2824,12 @@ function NotebookThemeSettings({
   )
 }
 
-function NotebookNameDialog({
+function VaultNameDialog({
   dialog,
   onCancel,
   onSubmit,
 }: {
-  dialog: NotebookNameDialogState | null
+  dialog: VaultNameDialogState | null
   onCancel: () => void
   onSubmit: (name: string) => void
 }) {
@@ -2848,18 +2848,18 @@ function NotebookNameDialog({
 
   if (!dialog) return null
 
-  const title = dialog.mode === 'create' ? 'Create notebook' : 'Rename notebook'
-  const actionLabel = dialog.mode === 'create' ? 'Select folder' : 'Rename'
+  const title = dialog.mode === 'create' ? 'Create vault' : 'Rename vault'
+  const actionLabel = dialog.mode === 'create' ? 'Choose location' : 'Rename'
   const trimmedName = draft.trim()
   const canSubmit = trimmedName.length > 0 && (dialog.mode === 'create' || trimmedName !== dialog.initialName)
 
   return (
-    <div className="modal-backdrop notebook-modal-backdrop" role="presentation" onMouseDown={onCancel}>
+    <div className="modal-backdrop vault-modal-backdrop" role="presentation" onMouseDown={onCancel}>
       <form
-        className="modal-card notebook-frontmatter-modal notebook-name-modal"
+        className="modal-card vault-frontmatter-modal vault-name-modal"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="notebook-name-dialog-title"
+        aria-labelledby="vault-name-dialog-title"
         onMouseDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
           event.preventDefault()
@@ -2870,17 +2870,17 @@ function NotebookNameDialog({
         }}
       >
         <header className="modal-card-header">
-          <h2 id="notebook-name-dialog-title">{title}</h2>
-          <button type="button" className="app-close-button" aria-label="Close notebook name dialog" onClick={onCancel}>
+          <h2 id="vault-name-dialog-title">{title}</h2>
+          <button type="button" className="app-close-button" aria-label="Close vault name dialog" onClick={onCancel}>
             <AppIcon iconId="x" className="app-close-button-icon" />
           </button>
         </header>
-        <div className="notebook-frontmatter-body">
-          <label className="settings-modal-field" htmlFor="notebook-name-input">
-            <span>Notebook name</span>
+        <div className="vault-frontmatter-body">
+          <label className="settings-modal-field" htmlFor="vault-name-input">
+            <span>Vault name</span>
             <input
               ref={inputRef}
-              id="notebook-name-input"
+              id="vault-name-input"
               type="text"
               className="settings-text-input"
               value={draft}
@@ -2889,10 +2889,10 @@ function NotebookNameDialog({
           </label>
         </div>
         <footer className="modal-card-footer">
-          <button type="submit" className="notebook-settings-action" disabled={!canSubmit}>
+          <button type="submit" className="vault-settings-action" disabled={!canSubmit}>
             {actionLabel}
           </button>
-          <button type="button" className="notebook-settings-action" onClick={onCancel}>
+          <button type="button" className="vault-settings-action" onClick={onCancel}>
             Cancel
           </button>
         </footer>
@@ -2911,9 +2911,9 @@ function FrontmatterTemplateDeleteDialog({
   onConfirm: () => void
 }) {
   return (
-    <div className="modal-backdrop notebook-modal-backdrop" role="presentation" onMouseDown={onCancel}>
+    <div className="modal-backdrop vault-modal-backdrop" role="presentation" onMouseDown={onCancel}>
       <section
-        className="modal-card notebook-frontmatter-modal frontmatter-template-delete-modal"
+        className="modal-card vault-frontmatter-modal frontmatter-template-delete-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="frontmatter-template-delete-title"
@@ -2928,17 +2928,17 @@ function FrontmatterTemplateDeleteDialog({
             <AppIcon iconId="x" className="app-close-button-icon" />
           </button>
         </header>
-        <div className="notebook-frontmatter-body">
+        <div className="vault-frontmatter-body">
           <p className="frontmatter-template-delete-message">
             Are you sure you want to delete this template? This cannot be undone.
           </p>
           <p className="frontmatter-template-delete-name">{templateName}</p>
         </div>
         <footer className="modal-card-footer">
-          <button type="button" className="notebook-settings-action" onClick={onCancel}>
+          <button type="button" className="vault-settings-action" onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className="notebook-settings-action app-danger-btn" onClick={onConfirm}>
+          <button type="button" className="vault-settings-action app-danger-btn" onClick={onConfirm}>
             Delete template
           </button>
         </footer>
@@ -2947,7 +2947,7 @@ function FrontmatterTemplateDeleteDialog({
   )
 }
 
-export function NotebookApp() {
+export function VaultApp() {
   const { state, setState, stateRef, externalStateLoadVersion, commitAppStateNow } = usePersistentAppState()
   const [viewMode, setViewMode] = useState<ViewMode>('main')
   const [settingsSection, setSettingsSectionState] = useState<SettingsSection>(() =>
@@ -2958,7 +2958,7 @@ export function NotebookApp() {
   )
   const [messagesSection, setMessagesSection] = useState<MessagesSection>('inbox')
   const [aboutSection, setAboutSection] = useState<AboutSection>('home')
-  const [activeToolbarLayoutId, setActiveToolbarLayoutIdState] = useState(loadNotebookActiveToolbarLayoutId)
+  const [activeToolbarLayoutId, setActiveToolbarLayoutIdState] = useState(loadVaultActiveToolbarLayoutId)
   const [toolbarEditorLayoutId, setToolbarEditorLayoutId] = useState(activeToolbarLayoutId)
   const [query, setQuery] = useState('')
   const [sidebarSearchHistory, setSidebarSearchHistory] = useState(loadSidebarSearchHistory)
@@ -2967,21 +2967,21 @@ export function NotebookApp() {
   const [activeAisleId, setActiveAisleId] = useState('')
   const [selectedFolderId, setSelectedFolderId] = useState('')
   const [renamingTreeItemId, setRenamingTreeItemId] = useState('')
-  const [renamingItemSurface, setRenamingItemSurface] = useState<NotebookRenameSurface | null>(null)
+  const [renamingItemSurface, setRenamingItemSurface] = useState<VaultRenameSurface | null>(null)
   const [treeRenameDraft, setTreeRenameDraft] = useState('')
   const [draggingTreeItemId, setDraggingTreeItemId] = useState('')
   const [draggingTreeNoteIds, setDraggingTreeNoteIds] = useState<string[]>([])
   const [selectedTreeNoteIds, setSelectedTreeNoteIds] = useState<string[]>([])
   const [treeSelectionAnchorNoteId, setTreeSelectionAnchorNoteId] = useState('')
-  const [treeDropTarget, setTreeDropTarget] = useState<NotebookTreeDropTarget | null>(null)
-  const [aisleContextMenu, setAisleContextMenu] = useState<NotebookAisleContextMenuState | null>(null)
-  const [editorContextMenu, setEditorContextMenu] = useState<NotebookEditorContextMenuState | null>(null)
-  const [treeContextMenu, setTreeContextMenu] = useState<NotebookTreeContextMenuState | null>(null)
-  const [shortcutMenu, setShortcutMenu] = useState<NotebookShortcutMenuState | null>(null)
+  const [treeDropTarget, setTreeDropTarget] = useState<VaultTreeDropTarget | null>(null)
+  const [aisleContextMenu, setAisleContextMenu] = useState<VaultAisleContextMenuState | null>(null)
+  const [editorContextMenu, setEditorContextMenu] = useState<VaultEditorContextMenuState | null>(null)
+  const [treeContextMenu, setTreeContextMenu] = useState<VaultTreeContextMenuState | null>(null)
+  const [shortcutMenu, setShortcutMenu] = useState<VaultShortcutMenuState | null>(null)
   const [noteActionPicker, setNoteActionPicker] = useState<NoteActionPickerState | null>(null)
-  const [openNotebookActionMenuKey, setOpenNotebookActionMenuKey] = useState('')
-  const [notebookSwitcherOpen, setNotebookSwitcherOpen] = useState(false)
-  const [notebookNameDialog, setNotebookNameDialog] = useState<NotebookNameDialogState | null>(null)
+  const [openVaultActionMenuKey, setOpenVaultActionMenuKey] = useState('')
+  const [vaultSwitcherOpen, setVaultSwitcherOpen] = useState(false)
+  const [vaultNameDialog, setVaultNameDialog] = useState<VaultNameDialogState | null>(null)
   const [decoupleDialog, setDecoupleDialog] = useState<DecoupleDialogState | null>(null)
   const [linkPrompt, setLinkPrompt] = useState<LinkPromptState>(CLOSED_LINK_PROMPT_STATE)
   const [findReplaceOpen, setFindReplaceOpen] = useState(false)
@@ -2992,7 +2992,7 @@ export function NotebookApp() {
   const [findReplaceHighlightRequestId, setFindReplaceHighlightRequestId] = useState(0)
   const [tagAutocompleteRecentKeys, setTagAutocompleteRecentKeys] = useState(loadTagAutocompleteRecentKeys)
   const [aisleEditModalOpen, setAisleEditModalOpen] = useState(false)
-  const [frontmatterModal, setFrontmatterModal] = useState<NotebookFrontmatterModalState | null>(null)
+  const [frontmatterModal, setFrontmatterModal] = useState<VaultFrontmatterModalState | null>(null)
   const [frontmatterDraft, setFrontmatterDraft] = useState<AppState['frontmatter']>(() => state.frontmatter)
   const [frontmatterFixedListOptionDrafts, setFrontmatterFixedListOptionDrafts] = useState<Record<string, string>>({})
   const [frontmatterTemplateDeleteTargetId, setFrontmatterTemplateDeleteTargetId] = useState('')
@@ -3015,19 +3015,19 @@ export function NotebookApp() {
   const [expandedTrashItemId, setExpandedTrashItemId] = useState('')
   const [runtimeVersion, setRuntimeVersion] = useState('')
   const [zoomHudPercent, setZoomHudPercent] = useState<number | null>(null)
-  const [notebookTreeViewport, setNotebookTreeViewport] = useState({ scrollTop: 0, height: 0 })
+  const [vaultTreeViewport, setVaultTreeViewport] = useState({ scrollTop: 0, height: 0 })
   const aisleScrollRef = useRef<HTMLDivElement | null>(null)
-  const notebookTreeScrollRef = useRef<HTMLDivElement | null>(null)
+  const vaultTreeScrollRef = useRef<HTMLDivElement | null>(null)
   const workspaceRootRef = useRef<HTMLElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const linkPromptInputRef = useRef<HTMLInputElement | null>(null)
   const editorRef = useRef<Editor | null>(null)
-  const closedNoteTabHistoryRef = useRef<ClosedNotebookTab[]>([])
+  const closedNoteTabHistoryRef = useRef<ClosedVaultTab[]>([])
   const dismissedMentionStartRef = useRef<number | null>(null)
   const activeAisleIdRef = useRef('')
   const activeNoteLocationKeyRef = useRef('')
   const scratchpadActiveRef = useRef(false)
-  const activeNoteTreeRevealNoteIdRef = useRef(state.notebook.activeNoteId)
+  const activeNoteTreeRevealNoteIdRef = useRef(state.vault.activeNoteId)
   const pendingActiveNoteTreeRevealIdRef = useRef('')
   const previousAssetToolsNoteLocationKeyRef = useRef('')
   const isMainViewRef = useRef(true)
@@ -3036,7 +3036,7 @@ export function NotebookApp() {
   const pendingNavigationTopAisleIdRef = useRef<string | null>(null)
   const pendingFindReplaceRevealRef = useRef<FindReplaceMatch | null>(null)
   const scheduledAisleFocusScrollRef = useRef<ScheduledAisleFocusScroll>({ firstFrameId: null, followupFrameId: null })
-  const navigateToNotebookLocationRef = useRef<(location: NotebookNavigationLocation) => boolean>(() => false)
+  const navigateToVaultLocationRef = useRef<(location: VaultNavigationLocation) => boolean>(() => false)
   const pendingCreatedEditRef = useRef<unknown>(null)
   const pendingCreatedTreeRenameRef = useRef<PendingCreatedTreeRename | null>(null)
   const skipTreeRenameBlurItemIdRef = useRef('')
@@ -3065,33 +3065,33 @@ export function NotebookApp() {
     pushAppToastRef.current(message, tone, durationMs)
   }, [])
   const sidebarRevealLabel = useMemo(
-    () => getNotebookSidebarRevealLabel(
+    () => getVaultSidebarRevealLabel(
       typeof window !== 'undefined'
         ? window.electronAPI?.platform ?? (isMacPlatform ? 'darwin' : navigator.platform)
         : undefined,
     ),
     [isMacPlatform],
   )
-  const updateNotebookTreeViewport = useCallback(() => {
-    const element = notebookTreeScrollRef.current
+  const updateVaultTreeViewport = useCallback(() => {
+    const element = vaultTreeScrollRef.current
     if (!element) return
     const nextViewport = {
       scrollTop: element.scrollTop,
       height: element.clientHeight,
     }
-    setNotebookTreeViewport((current) =>
+    setVaultTreeViewport((current) =>
       current.scrollTop === nextViewport.scrollTop && current.height === nextViewport.height
         ? current
         : nextViewport,
     )
   }, [])
-  const handleNotebookTreeScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+  const handleVaultTreeScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
     const element = event.currentTarget
     const nextViewport = {
       scrollTop: element.scrollTop,
       height: element.clientHeight,
     }
-    setNotebookTreeViewport((current) =>
+    setVaultTreeViewport((current) =>
       current.scrollTop === nextViewport.scrollTop && current.height === nextViewport.height
         ? current
         : nextViewport,
@@ -3103,13 +3103,13 @@ export function NotebookApp() {
   }, [])
 
   useLayoutEffect(() => {
-    updateNotebookTreeViewport()
-    const element = notebookTreeScrollRef.current
+    updateVaultTreeViewport()
+    const element = vaultTreeScrollRef.current
     if (!element || typeof ResizeObserver === 'undefined') return undefined
-    const observer = new ResizeObserver(updateNotebookTreeViewport)
+    const observer = new ResizeObserver(updateVaultTreeViewport)
     observer.observe(element)
     return () => observer.disconnect()
-  }, [query, sidebarSearchMode, state.ui.sidebarCollapsed, updateNotebookTreeViewport])
+  }, [query, sidebarSearchMode, state.ui.sidebarCollapsed, updateVaultTreeViewport])
 
   useEffect(() => {
     const clearZoomHudTimeout = () => {
@@ -3194,11 +3194,11 @@ export function NotebookApp() {
     stateRef,
   })
 
-  const activeNotebookModel = useMemo(
+  const activeVaultModel = useMemo(
     () => getActiveNoteModel(stateRef.current),
     // Recompute only when active-note inputs change; stateRef keeps the callback on the latest state object.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.noteAisleBodies, state.noteBodies, state.notebook.activeNoteId, state.notebook.items, stateRef],
+    [state.noteAisleBodies, state.noteBodies, state.vault.activeNoteId, state.vault.items, stateRef],
   )
   const scratchpadModel = useMemo(
     () => getScratchpadEditorModel(stateRef.current),
@@ -3206,82 +3206,82 @@ export function NotebookApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state.noteAisleBodies, state.noteBodies, state.scratchpad, stateRef],
   )
-  const activeModel = scratchpadActive ? scratchpadModel ?? activeNotebookModel : activeNotebookModel
+  const activeModel = scratchpadActive ? scratchpadModel ?? activeVaultModel : activeVaultModel
   const activeModelIsScratchpad = activeModel?.kind === 'scratchpad'
   const noteTabItems = useMemo<NoteTabStripItem[]>(
     () =>
-      (state.notebook.openTabs ?? []).flatMap((tab): NoteTabStripItem[] => {
-        const notePath = findNotebookNote(state.notebook.items, tab.noteId)
+      (state.vault.openTabs ?? []).flatMap((tab): NoteTabStripItem[] => {
+        const notePath = findVaultNote(state.vault.items, tab.noteId)
         if (!notePath) return []
         return [
           {
             noteId: tab.noteId,
             title: notePath.note.title,
             status: tab.status,
-            active: tab.noteId === state.notebook.activeNoteId,
+            active: tab.noteId === state.vault.activeNoteId,
           },
         ]
       }),
-    [state.notebook.activeNoteId, state.notebook.items, state.notebook.openTabs],
+    [state.vault.activeNoteId, state.vault.items, state.vault.openTabs],
   )
   const collapsedFolderIds = useMemo(() => new Set(state.ui.collapsedFolderIds), [state.ui.collapsedFolderIds])
   const visibleTreeNoteIds = useMemo(
-    () => getVisibleNotebookTreeNoteIds(state.notebook.items, collapsedFolderIds),
-    [collapsedFolderIds, state.notebook.items],
+    () => getVisibleVaultTreeNoteIds(state.vault.items, collapsedFolderIds),
+    [collapsedFolderIds, state.vault.items],
   )
-  const notebookTreeFlatRows = useMemo(
-    () => flattenVisibleNotebookTreeRows(state.notebook.items, collapsedFolderIds, query),
-    [collapsedFolderIds, query, state.notebook.items],
+  const vaultTreeFlatRows = useMemo(
+    () => flattenVisibleVaultTreeRows(state.vault.items, collapsedFolderIds, query),
+    [collapsedFolderIds, query, state.vault.items],
   )
-  const useVirtualizedNotebookTree = notebookTreeFlatRows.length > NOTEBOOK_TREE_VIRTUALIZATION_THRESHOLD
-  const notebookTreeVirtualWindow = useMemo(() => {
-    if (!useVirtualizedNotebookTree) {
+  const useVirtualizedVaultTree = vaultTreeFlatRows.length > VAULT_TREE_VIRTUALIZATION_THRESHOLD
+  const vaultTreeVirtualWindow = useMemo(() => {
+    if (!useVirtualizedVaultTree) {
       return {
-        rows: notebookTreeFlatRows,
+        rows: vaultTreeFlatRows,
         startIndex: 0,
-        totalHeight: notebookTreeFlatRows.length * NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT,
+        totalHeight: vaultTreeFlatRows.length * VAULT_TREE_VIRTUAL_ROW_HEIGHT,
       }
     }
-    const viewportHeight = notebookTreeViewport.height || 640
+    const viewportHeight = vaultTreeViewport.height || 640
     const startIndex = Math.max(
       0,
-      Math.floor(notebookTreeViewport.scrollTop / NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT) - NOTEBOOK_TREE_VIRTUAL_OVERSCAN,
+      Math.floor(vaultTreeViewport.scrollTop / VAULT_TREE_VIRTUAL_ROW_HEIGHT) - VAULT_TREE_VIRTUAL_OVERSCAN,
     )
     const visibleRowCount =
-      Math.ceil(viewportHeight / NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT) + NOTEBOOK_TREE_VIRTUAL_OVERSCAN * 2
+      Math.ceil(viewportHeight / VAULT_TREE_VIRTUAL_ROW_HEIGHT) + VAULT_TREE_VIRTUAL_OVERSCAN * 2
     return {
-      rows: notebookTreeFlatRows.slice(startIndex, startIndex + visibleRowCount),
+      rows: vaultTreeFlatRows.slice(startIndex, startIndex + visibleRowCount),
       startIndex,
-      totalHeight: notebookTreeFlatRows.length * NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT,
+      totalHeight: vaultTreeFlatRows.length * VAULT_TREE_VIRTUAL_ROW_HEIGHT,
     }
-  }, [notebookTreeFlatRows, notebookTreeViewport.height, notebookTreeViewport.scrollTop, useVirtualizedNotebookTree])
+  }, [vaultTreeFlatRows, vaultTreeViewport.height, vaultTreeViewport.scrollTop, useVirtualizedVaultTree])
   const selectedTreeNoteIdSet = useMemo(() => new Set(selectedTreeNoteIds), [selectedTreeNoteIds])
   const draggingTreeNoteIdSet = useMemo(() => new Set(draggingTreeNoteIds), [draggingTreeNoteIds])
-  const notebookIndexContext = useMemo(
-    () => createNotebookIndexContext(stateRef.current),
-    // Rebuild only for data that affects searchable notebook indexes, not theme/UI-only state changes.
+  const vaultIndexContext = useMemo(
+    () => createVaultIndexContext(stateRef.current),
+    // Rebuild only for data that affects searchable vault indexes, not theme/UI-only state changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       state.frontmatter.templates,
       state.noteAisleBodies,
       state.noteBodies,
-      state.notebook.items,
+      state.vault.items,
       state.scratchpad,
       stateRef,
     ],
   )
   const sidebarSearchNeedsFullIndexes = sidebarSearchMode || query.trim().length > 0
   const tagAutocompleteFilterIndex = useMemo(
-    () => buildNoteFilterIndex(notebookIndexContext.state, 'tags', [], notebookIndexContext),
-    [notebookIndexContext],
+    () => buildNoteFilterIndex(vaultIndexContext.state, 'tags', [], vaultIndexContext),
+    [vaultIndexContext],
   )
   const sidebarSearchIndexes = useMemo(() => {
-    if (sidebarSearchNeedsFullIndexes) return buildSidebarSearchIndexes(notebookIndexContext.state, notebookIndexContext)
+    if (sidebarSearchNeedsFullIndexes) return buildSidebarSearchIndexes(vaultIndexContext.state, vaultIndexContext)
     return {
       ...getEmptySidebarSearchIndexes(),
       tags: tagAutocompleteFilterIndex,
     }
-  }, [notebookIndexContext, sidebarSearchNeedsFullIndexes, tagAutocompleteFilterIndex])
+  }, [vaultIndexContext, sidebarSearchNeedsFullIndexes, tagAutocompleteFilterIndex])
   const parsedSidebarSearch = useMemo(
     () => parseSidebarSearchInput(query, sidebarSearchIndexes),
     [query, sidebarSearchIndexes],
@@ -3294,13 +3294,13 @@ export function NotebookApp() {
   const sidebarSearchResultGroups = useMemo(
     () =>
       buildSidebarSearchResultGroups({
-        state: notebookIndexContext.state,
+        state: vaultIndexContext.state,
         query,
         filter: null,
         indexes: sidebarSearchIndexes,
-        context: notebookIndexContext,
+        context: vaultIndexContext,
       }),
-    [notebookIndexContext, query, sidebarSearchIndexes],
+    [vaultIndexContext, query, sidebarSearchIndexes],
   )
   const sidebarSearchMetadataActive =
     sidebarSearchSelectedTokens.length > 0 ||
@@ -3310,29 +3310,29 @@ export function NotebookApp() {
   const sidebarSearchVisible = sidebarSearchMode || sidebarSearchActive
   const noteActionEntries = useMemo(() => {
     if (!noteActionPicker) return []
-    const activeNoteId = activeNotebookModel?.noteId ?? state.notebook.activeNoteId
-    return filterNoteActionPickerEntries(notebookIndexContext.locations, noteActionPicker.query, {
+    const activeNoteId = activeVaultModel?.noteId ?? state.vault.activeNoteId
+    return filterNoteActionPickerEntries(vaultIndexContext.locations, noteActionPicker.query, {
       actions: noteActionPicker.actions,
       activeNoteId,
       limit: 12,
     })
-  }, [activeNotebookModel?.noteId, notebookIndexContext, noteActionPicker, state.notebook.activeNoteId])
-  const getNoteActionPickerActionsForNoteId = useCallback((noteId: string): NotebookNoteActionPickerAction[] => {
-    const activeNoteId = activeNotebookModel?.noteId ?? state.notebook.activeNoteId
+  }, [activeVaultModel?.noteId, vaultIndexContext, noteActionPicker, state.vault.activeNoteId])
+  const getNoteActionPickerActionsForNoteId = useCallback((noteId: string): VaultNoteActionPickerAction[] => {
+    const activeNoteId = activeVaultModel?.noteId ?? state.vault.activeNoteId
     return getNoteActionPickerActionsForNote(noteActionPicker?.actions ?? [], noteId, activeNoteId)
-  }, [activeNotebookModel?.noteId, noteActionPicker?.actions, state.notebook.activeNoteId])
-  const getNoteActionPickerAislesForNote = useCallback((noteId: string): NotebookNoteActionPickerAisleOption[] => {
-    const note = findNotebookNote(state.notebook.items, noteId)?.note
+  }, [activeVaultModel?.noteId, noteActionPicker?.actions, state.vault.activeNoteId])
+  const getNoteActionPickerAislesForNote = useCallback((noteId: string): VaultNoteActionPickerAisleOption[] => {
+    const note = findVaultNote(state.vault.items, noteId)?.note
     const noteBody = note ? state.noteBodies.find((body) => body.id === note.noteBodyId) : null
     return noteBody?.aisles.map((aisle, index) => ({ id: aisle.id, label: `aisle ${index + 1}` })) ?? []
-  }, [state.noteBodies, state.notebook.items])
+  }, [state.noteBodies, state.vault.items])
   const activeAisleIdsSignature = activeModel?.resolved.aisles.map((aisle) => aisle.id).join('|') ?? ''
   const activeNoteLocationKey = activeModelIsScratchpad ? SCRATCHPAD_CURSOR_LOCATION_KEY : activeModel?.noteId ?? ''
   const activeNoteAisles = activeModel?.noteBody.aisles ?? []
   const savedActiveAisleId = activeModel
     ? activeModel.kind === 'scratchpad'
       ? getScratchpadActiveAisleId(state)
-      : getPreferredNotebookAisleId(state, activeModel.noteId, activeModel.noteBody.aisles)
+      : getPreferredVaultAisleId(state, activeModel.noteId, activeModel.noteBody.aisles)
     : ''
   const renderedActiveAisleId = useMemo(() => {
     if (!activeModel) return ''
@@ -3356,12 +3356,12 @@ export function NotebookApp() {
     return new Set(
       activeModel.resolved.aisles
         .filter((aisle) => {
-          const body = notebookIndexContext.aisleBodiesById.get(aisle.aisleBodyId)
+          const body = vaultIndexContext.aisleBodiesById.get(aisle.aisleBodyId)
           return Boolean(body?.frontmatter || body?.frontmatterRaw || body?.frontmatterStatus === 'invalid')
         })
         .map((aisle) => aisle.id),
     )
-  }, [activeModel, notebookIndexContext.aisleBodiesById])
+  }, [activeModel, vaultIndexContext.aisleBodiesById])
   const defaultToolbarButtonScale = DEFAULT_UI_SETTINGS.toolbarButtonScale ?? 1.2
   const rootStyle = useMemo(
     () =>
@@ -3418,10 +3418,10 @@ export function NotebookApp() {
 
   useEffect(() => {
     if (!selectedFolderId) return
-    if (!findNotebookFolder(state.notebook.items, selectedFolderId)) {
+    if (!findVaultFolder(state.vault.items, selectedFolderId)) {
       setSelectedFolderId('')
     }
-  }, [selectedFolderId, state.notebook.items])
+  }, [selectedFolderId, state.vault.items])
 
   useEffect(() => {
     const visibleNoteIdSet = new Set(visibleTreeNoteIds)
@@ -3440,13 +3440,13 @@ export function NotebookApp() {
 
   useEffect(() => {
     if (!expandedTrashItemId) return
-    if (!state.notebook.deletedItems.some((entry) => entry.id === expandedTrashItemId)) {
+    if (!state.vault.deletedItems.some((entry) => entry.id === expandedTrashItemId)) {
       setExpandedTrashItemId('')
     }
-  }, [expandedTrashItemId, state.notebook.deletedItems])
+  }, [expandedTrashItemId, state.vault.deletedItems])
 
   useEffect(() => {
-    if (renamingTreeItemId && !findNotebookItem(state.notebook.items, renamingTreeItemId)) {
+    if (renamingTreeItemId && !findVaultItem(state.vault.items, renamingTreeItemId)) {
       if (pendingCreatedTreeRenameRef.current?.itemId === renamingTreeItemId) {
         pendingCreatedTreeRenameRef.current = null
         pendingCreatedEditRef.current = null
@@ -3455,22 +3455,22 @@ export function NotebookApp() {
       setRenamingItemSurface(null)
       setTreeRenameDraft('')
     }
-    if (draggingTreeItemId && !findNotebookItem(state.notebook.items, draggingTreeItemId)) {
+    if (draggingTreeItemId && !findVaultItem(state.vault.items, draggingTreeItemId)) {
       setDraggingTreeItemId('')
       setDraggingTreeNoteIds([])
       setTreeDropTarget(null)
     }
-    if (treeContextMenu?.kind === 'item' && !findNotebookItem(state.notebook.items, treeContextMenu.itemId)) {
+    if (treeContextMenu?.kind === 'item' && !findVaultItem(state.vault.items, treeContextMenu.itemId)) {
       setTreeContextMenu(null)
     }
-  }, [draggingTreeItemId, renamingTreeItemId, state.notebook.items, treeContextMenu])
+  }, [draggingTreeItemId, renamingTreeItemId, state.vault.items, treeContextMenu])
 
   const mutateState = useCallback((updater: (previous: AppState) => AppState) => {
     setState((previous) => updater(previous))
   }, [setState])
 
   useLayoutEffect(() => {
-    const activeNoteId = state.notebook.activeNoteId
+    const activeNoteId = state.vault.activeNoteId
     if (activeNoteId !== activeNoteTreeRevealNoteIdRef.current) {
       activeNoteTreeRevealNoteIdRef.current = activeNoteId
       pendingActiveNoteTreeRevealIdRef.current = activeNoteId
@@ -3488,12 +3488,12 @@ export function NotebookApp() {
     }
     if (state.ui.sidebarCollapsed || sidebarSearchVisible) return
 
-    if (!findNotebookNote(state.notebook.items, pendingNoteId)) {
+    if (!findVaultNote(state.vault.items, pendingNoteId)) {
       pendingActiveNoteTreeRevealIdRef.current = ''
       return
     }
 
-    const collapsedAncestorIds = getNotebookNoteFolderPath(state.notebook.items, pendingNoteId)
+    const collapsedAncestorIds = getVaultNoteFolderPath(state.vault.items, pendingNoteId)
       .map((folder) => folder.id)
       .filter((folderId) => collapsedFolderIds.has(folderId))
     if (collapsedAncestorIds.length > 0) {
@@ -3509,10 +3509,10 @@ export function NotebookApp() {
       return
     }
 
-    const scrollNode = notebookTreeScrollRef.current
+    const scrollNode = vaultTreeScrollRef.current
     if (!scrollNode || scrollNode.clientHeight <= 0) return
 
-    const rowIndex = notebookTreeFlatRows.findIndex(
+    const rowIndex = vaultTreeFlatRows.findIndex(
       (row) => row.item.type === 'note' && row.item.id === pendingNoteId,
     )
     if (rowIndex < 0) {
@@ -3521,8 +3521,8 @@ export function NotebookApp() {
     }
 
     const rowElement = Array.from(
-      scrollNode.querySelectorAll<HTMLElement>('[data-notebook-tree-item-id]'),
-    ).find((candidate) => candidate.dataset.notebookTreeItemId === pendingNoteId)
+      scrollNode.querySelectorAll<HTMLElement>('[data-vault-tree-item-id]'),
+    ).find((candidate) => candidate.dataset.vaultTreeItemId === pendingNoteId)
     const rowBounds = rowElement
       ? (() => {
           const scrollRect = scrollNode.getBoundingClientRect()
@@ -3534,10 +3534,10 @@ export function NotebookApp() {
           }
         })()
       : {
-          top: rowIndex * NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT,
-          bottom: (rowIndex + 1) * NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT,
+          top: rowIndex * VAULT_TREE_VIRTUAL_ROW_HEIGHT,
+          bottom: (rowIndex + 1) * VAULT_TREE_VIRTUAL_ROW_HEIGHT,
         }
-    const nextScrollTop = getNotebookTreeRevealScrollTop(
+    const nextScrollTop = getVaultTreeRevealScrollTop(
       {
         scrollTop: scrollNode.scrollTop,
         clientHeight: scrollNode.clientHeight,
@@ -3547,20 +3547,20 @@ export function NotebookApp() {
     )
     if (Math.abs(nextScrollTop - scrollNode.scrollTop) > 0.5) {
       scrollNode.scrollTop = nextScrollTop
-      updateNotebookTreeViewport()
+      updateVaultTreeViewport()
     }
     pendingActiveNoteTreeRevealIdRef.current = ''
   }, [
     activeModelIsScratchpad,
     collapsedFolderIds,
     mutateState,
-    notebookTreeFlatRows,
+    vaultTreeFlatRows,
     scratchpadActive,
     sidebarSearchVisible,
-    state.notebook.activeNoteId,
-    state.notebook.items,
+    state.vault.activeNoteId,
+    state.vault.items,
     state.ui.sidebarCollapsed,
-    updateNotebookTreeViewport,
+    updateVaultTreeViewport,
   ])
 
   useEffect(() => {
@@ -3571,7 +3571,7 @@ export function NotebookApp() {
   const setActiveToolbarLayoutId = useCallback((layoutId: string) => {
     const nextLayoutId = layoutId.trim() || DEFAULT_TOOLBAR_LAYOUT_ID
     setActiveToolbarLayoutIdState(nextLayoutId)
-    saveNotebookActiveToolbarLayoutId(nextLayoutId)
+    saveVaultActiveToolbarLayoutId(nextLayoutId)
   }, [])
 
   useEffect(() => {
@@ -3644,15 +3644,15 @@ export function NotebookApp() {
     [mutateState],
   )
 
-  const openNotebookManagerSettings = useCallback(() => {
+  const openVaultManagerSettings = useCallback(() => {
     openUtilityView('settings')
     setSettingsSection('data')
     setDataSettingsSection('storage')
   }, [openUtilityView, setDataSettingsSection, setSettingsSection])
 
   useEffect(() => {
-    return window.electronAPI?.onOpenNotebookManager?.(openNotebookManagerSettings) ?? (() => undefined)
-  }, [openNotebookManagerSettings])
+    return window.electronAPI?.onOpenVaultManager?.(openVaultManagerSettings) ?? (() => undefined)
+  }, [openVaultManagerSettings])
 
   const commitToolbarLayouts = useCallback(
     (buildNextLayouts: (layouts: AppState['ui']['toolbarLayouts']) => AppState['ui']['toolbarLayouts']) => {
@@ -3856,7 +3856,7 @@ export function NotebookApp() {
 
   const commitAisleMarkdown = useCallback(
     (aisleBodyId: string, markdown: string) => {
-      mutateState((previous) => commitNotebookAisleMarkdownInState(previous, aisleBodyId, markdown))
+      mutateState((previous) => commitVaultAisleMarkdownInState(previous, aisleBodyId, markdown))
     },
     [mutateState],
   )
@@ -3910,7 +3910,7 @@ export function NotebookApp() {
     [mutateState],
   )
 
-  const handleNoteMentionQueryChange = useCallback((mention: NoteMentionQuery | null, anchor: NotebookNoteActionPickerAnchor | null) => {
+  const handleNoteMentionQueryChange = useCallback((mention: NoteMentionQuery | null, anchor: VaultNoteActionPickerAnchor | null) => {
     void anchor
     setNoteActionPicker((current) => {
       if (!mention) {
@@ -3934,7 +3934,7 @@ export function NotebookApp() {
 
   const openNoteReferenceFromEditor = useCallback(
     (target: NoteLocation) => {
-      navigateToNotebookLocationRef.current({
+      navigateToVaultLocationRef.current({
         noteId: target.noteId,
         aisleId: getAisleIdFromNavigationTarget(target),
       })
@@ -3942,14 +3942,14 @@ export function NotebookApp() {
     [],
   )
 
-  const applyNotebookStructureClipboardPaste = useCallback(
-    (payload: NotebookStructureClipboardPayload, aisleId: string) => {
+  const applyVaultStructureClipboardPaste = useCallback(
+    (payload: VaultStructureClipboardPayload, aisleId: string) => {
       if (scratchpadActiveRef.current) return true
       let nextActiveAisleId = ''
       let blockedMessage = ''
       mutateState((previous) => {
-        const result = applyNotebookStructureClipboardPayload(previous, {
-          activeNoteId: previous.notebook.activeNoteId,
+        const result = applyVaultStructureClipboardPayload(previous, {
+          activeNoteId: previous.vault.activeNoteId,
           focusedAisleId: aisleId,
           payload,
         })
@@ -3972,7 +3972,7 @@ export function NotebookApp() {
 
   const applyFrontmatterClipboardPaste = useCallback(
     (payload: FrontmatterClipboardPayload, aisleId: string) => {
-      const startedAt = getNotebookAppPerfNow()
+      const startedAt = getVaultAppPerfNow()
       let resultStatus = 'applied'
       let noteId = ''
       let noteBodyId = ''
@@ -3980,9 +3980,9 @@ export function NotebookApp() {
       let warningCount = 0
       if (scratchpadActiveRef.current) {
         resultStatus = 'scratchpad-ignored'
-        recordNotebookFrontmatterTiming(
+        recordVaultFrontmatterTiming(
           'frontmatter-clipboard-apply',
-          getNotebookAppPerfNow() - startedAt,
+          getVaultAppPerfNow() - startedAt,
           {
             result: resultStatus,
             aisleId,
@@ -3994,7 +3994,7 @@ export function NotebookApp() {
       let blockedMessage = ''
       let warningMessages: string[] = []
       mutateState((previous) => {
-        const notePath = findNotebookNote(previous.notebook.items, previous.notebook.activeNoteId)
+        const notePath = findVaultNote(previous.vault.items, previous.vault.activeNoteId)
         const noteBody = notePath ? previous.noteBodies.find((body) => body.id === notePath.note.noteBodyId) ?? null : null
         const aisle = noteBody?.aisles.find((candidate) => candidate.id === aisleId) ?? null
         noteId = notePath?.note.id ?? ''
@@ -4024,9 +4024,9 @@ export function NotebookApp() {
         resultStatus = warningCount > 0 ? 'applied-with-warnings' : 'applied'
         return updateAisleBodyFrontmatterInState(previous, aisle.aisleBodyId, result.frontmatter, result.saveOptions)
       })
-      recordNotebookFrontmatterTiming(
+      recordVaultFrontmatterTiming(
         'frontmatter-clipboard-apply',
-        getNotebookAppPerfNow() - startedAt,
+        getVaultAppPerfNow() - startedAt,
         {
           result: resultStatus,
           noteId,
@@ -4065,7 +4065,7 @@ export function NotebookApp() {
       const position = clampContextMenuPosition(
         { x: anchor.left, y: anchor.top },
         { width: SHORTCUT_MENU_ESTIMATED_WIDTH, height: estimatedMenuHeight },
-        getNotebookMenuViewportSize(),
+        getVaultMenuViewportSize(),
       )
       toolbarState.closeToolbarPopovers()
       setAisleContextMenu(null)
@@ -4103,7 +4103,7 @@ export function NotebookApp() {
     tagAutocompleteRefreshRef.current?.()
   }, [])
 
-  const notebookEditors = useNotebookAisleEditors({
+  const vaultEditors = useVaultAisleEditors({
     viewMode,
     noteId: activeModel?.noteId ?? '',
     noteBodyId: activeModel?.noteBody.id ?? '',
@@ -4121,7 +4121,7 @@ export function NotebookApp() {
     onTagAutocompleteQueryChange: refreshTagAutocompleteFromEditor,
     getAppState: () => stateRef.current,
     onOpenNoteReference: openNoteReferenceFromEditor,
-    onNotebookStructurePaste: applyNotebookStructureClipboardPaste,
+    onVaultStructurePaste: applyVaultStructureClipboardPaste,
     onFrontmatterPaste: applyFrontmatterClipboardPaste,
     hotkeys: state.hotkeys,
     isMacPlatform,
@@ -4147,22 +4147,22 @@ export function NotebookApp() {
     editorRef,
     editorEventRootRef: workspaceRootRef,
     activeAisleIdRef,
-    commitActiveEditorMarkdownNow: notebookEditors.commitActiveEditorMarkdownNow,
+    commitActiveEditorMarkdownNow: vaultEditors.commitActiveEditorMarkdownNow,
     syncToolbarFormatState: toolbarState.syncToolbarFormatState,
   })
   tagAutocompleteRefreshRef.current = tagAutocompleteController.refreshQuery
 
-  const diagnosticMountedEditorCount = notebookEditors.mountedAisleIds.size
+  const diagnosticMountedEditorCount = vaultEditors.mountedAisleIds.size
   useEffect(
     () =>
       configureDiagnosticLogging(
         () => ({
           viewMode,
-          activeNoteId: activeModel?.noteId ?? state.notebook.activeNoteId ?? '',
+          activeNoteId: activeModel?.noteId ?? state.vault.activeNoteId ?? '',
           activeNoteBodyId: activeModel?.noteBody.id ?? '',
           activeAisleId: renderedActiveAisleId,
           mountedEditorCount: diagnosticMountedEditorCount,
-          openTabCount: state.notebook.openTabs?.length ?? 0,
+          openTabCount: state.vault.openTabs?.length ?? 0,
           scratchpadActive,
           messagesSection,
         }),
@@ -4176,8 +4176,8 @@ export function NotebookApp() {
       messagesSection,
       renderedActiveAisleId,
       scratchpadActive,
-      state.notebook.activeNoteId,
-      state.notebook.openTabs,
+      state.vault.activeNoteId,
+      state.vault.openTabs,
       viewMode,
     ],
   )
@@ -4201,16 +4201,16 @@ export function NotebookApp() {
       const aisleId = element?.closest<HTMLElement>('.note-aisle-pane')?.dataset.aisleId?.trim()
       const noteBodyId = activeModel?.noteBody.id ?? ''
       if (!aisleId || !noteBodyId) return
-      notebookEditors.activateAisleEditor(buildAisleEditorKey(noteBodyId, aisleId))
+      vaultEditors.activateAisleEditor(buildAisleEditorKey(noteBodyId, aisleId))
     },
-    [activeModel?.noteBody.id, notebookEditors],
+    [activeModel?.noteBody.id, vaultEditors],
   )
 
   const commitCurrentEditorContent = useCallback(() => {
     const editor = editorRef.current
-    if (editor) notebookEditors.commitActiveEditorMarkdownNow(editor)
-    notebookEditors.flushPendingEditorAppStateCommit()
-  }, [notebookEditors])
+    if (editor) vaultEditors.commitActiveEditorMarkdownNow(editor)
+    vaultEditors.flushPendingEditorAppStateCommit()
+  }, [vaultEditors])
 
   const pushEditorToolToast = pushAppToast
 
@@ -4219,7 +4219,7 @@ export function NotebookApp() {
     editorEventRootRef: workspaceRootRef,
     activateEditorFromEventTarget: activateEditorFromAssetTarget,
     commitCurrentEditorContent,
-    commitActiveEditorMarkdownNow: notebookEditors.commitActiveEditorMarkdownNow,
+    commitActiveEditorMarkdownNow: vaultEditors.commitActiveEditorMarkdownNow,
     pushToast: pushEditorToolToast,
   })
 
@@ -4228,7 +4228,7 @@ export function NotebookApp() {
     editorEventRootRef: workspaceRootRef,
     activateEditorFromEventTarget: activateEditorFromAssetTarget,
     commitCurrentEditorContent,
-    commitActiveEditorMarkdownNow: notebookEditors.commitActiveEditorMarkdownNow,
+    commitActiveEditorMarkdownNow: vaultEditors.commitActiveEditorMarkdownNow,
   })
 
   useEffect(() => {
@@ -4274,7 +4274,7 @@ export function NotebookApp() {
   const cursorPersistence = useNoteCursorPersistence({
     setState,
     editorRef,
-    activeEditorAisleIdRef: notebookEditors.activeEditorAisleIdRef,
+    activeEditorAisleIdRef: vaultEditors.activeEditorAisleIdRef,
     viewMode,
     activeNoteBodyId: activeModel?.noteBody.id ?? '',
     activeNoteLocationKey,
@@ -4336,30 +4336,30 @@ export function NotebookApp() {
     scheduleAisleFocusScroll(activeModel.noteBody.id, pendingAisleId)
   }, [activeModel, renderedActiveAisleId, scheduleAisleFocusScroll, viewMode])
 
-  const getLatestNotebookStateFromMountedEditors = useCallback(() => {
-    notebookEditors.flushPendingEditorAppStateCommit()
-    const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
+  const getLatestVaultStateFromMountedEditors = useCallback(() => {
+    vaultEditors.flushPendingEditorAppStateCommit()
+    const snapshots = vaultEditors.getMountedEditorMarkdownSnapshots()
     return {
-      state: applyActiveCursorToState(applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots)),
+      state: applyActiveCursorToState(applyVaultEditorMarkdownSnapshotsToState(stateRef.current, snapshots)),
       pendingEditorCount: snapshots.length,
     }
-  }, [applyActiveCursorToState, notebookEditors, stateRef])
+  }, [applyActiveCursorToState, vaultEditors, stateRef])
 
-  const commitNotebookBeforeStorageAction = useCallback(async () => {
-    const latest = getLatestNotebookStateFromMountedEditors()
+  const commitVaultBeforeStorageAction = useCallback(async () => {
+    const latest = getLatestVaultStateFromMountedEditors()
     await commitAppStateNow(latest.state, {
       preferSync: true,
       flushQueue: true,
-      trigger: 'notebook-storage-action',
+      trigger: 'vault-storage-action',
       pendingEditorCount: latest.pendingEditorCount,
     })
-  }, [commitAppStateNow, getLatestNotebookStateFromMountedEditors])
+  }, [commitAppStateNow, getLatestVaultStateFromMountedEditors])
 
   const pushStorageToast = pushAppToast
 
   const storageProfileController = useStorageProfileController({
     pushToast: pushStorageToast,
-    beforeStorageAction: commitNotebookBeforeStorageAction,
+    beforeStorageAction: commitVaultBeforeStorageAction,
   })
 
   const findReplaceOptions = useMemo(
@@ -4421,10 +4421,10 @@ export function NotebookApp() {
 
   useEffect(() => {
     if (!findReplaceActiveMatch) {
-      notebookEditors.setActiveFindReplaceMatchHighlight(null)
+      vaultEditors.setActiveFindReplaceMatchHighlight(null)
       return
     }
-    notebookEditors.setActiveFindReplaceMatchHighlight({
+    vaultEditors.setActiveFindReplaceMatchHighlight({
       noteBodyId: findReplaceActiveMatch.noteBodyId,
       aisleId: findReplaceActiveMatch.aisleId,
       visibleFrom: findReplaceActiveMatch.visibleFrom,
@@ -4433,9 +4433,9 @@ export function NotebookApp() {
       markdownTo: findReplaceActiveMatch.markdownTo,
       requestId: findReplaceHighlightRequestId,
     })
-  }, [findReplaceActiveMatch, findReplaceHighlightRequestId, notebookEditors])
+  }, [findReplaceActiveMatch, findReplaceHighlightRequestId, vaultEditors])
 
-  const clearNotebookNavigationTransientUi = useCallback(() => {
+  const clearVaultNavigationTransientUi = useCallback(() => {
     setAisleContextMenu(null)
     setEditorContextMenu(null)
     setTreeContextMenu(null)
@@ -4446,71 +4446,71 @@ export function NotebookApp() {
     toolbarState.closeToolbarPopovers()
   }, [toolbarState])
 
-  const applyNotebookNavigationLocation = useCallback(
+  const applyVaultNavigationLocation = useCallback(
     (
-      location: NotebookNavigationLocation,
-      options: { tabDisposition?: NotebookTabOpenDisposition; restoreClosedTab?: ClosedNotebookTab } = {},
+      location: VaultNavigationLocation,
+      options: { tabDisposition?: VaultTabOpenDisposition; restoreClosedTab?: ClosedVaultTab } = {},
     ) => {
-      const navigationStartedAt = getNotebookAppPerfNow()
+      const navigationStartedAt = getVaultAppPerfNow()
       const navigationKind = options.restoreClosedTab
         ? 'restore-closed-tab'
         : options.tabDisposition ?? 'temporary'
-      let phaseStartedAt = getNotebookAppPerfNow()
-      notebookEditors.flushPendingEditorAppStateCommit()
-      const flushDurationMs = getNotebookAppPerfNow() - phaseStartedAt
-      phaseStartedAt = getNotebookAppPerfNow()
-      const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
-      const snapshotDurationMs = getNotebookAppPerfNow() - phaseStartedAt
+      let phaseStartedAt = getVaultAppPerfNow()
+      vaultEditors.flushPendingEditorAppStateCommit()
+      const flushDurationMs = getVaultAppPerfNow() - phaseStartedAt
+      phaseStartedAt = getVaultAppPerfNow()
+      const snapshots = vaultEditors.getMountedEditorMarkdownSnapshots()
+      const snapshotDurationMs = getVaultAppPerfNow() - phaseStartedAt
       const snapshotCount = snapshots.length
       const collapsedSnapshotCount = new Set(snapshots.map((snapshot) => snapshot.aisleBodyId).filter(Boolean)).size
-      phaseStartedAt = getNotebookAppPerfNow()
-      const snapshotState = applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots)
-      const snapshotApplyDurationMs = getNotebookAppPerfNow() - phaseStartedAt
-      phaseStartedAt = getNotebookAppPerfNow()
-      const resolvedLocation = resolveNotebookNavigationLocation(snapshotState, location)
-      const resolveDurationMs = getNotebookAppPerfNow() - phaseStartedAt
+      phaseStartedAt = getVaultAppPerfNow()
+      const snapshotState = applyVaultEditorMarkdownSnapshotsToState(stateRef.current, snapshots)
+      const snapshotApplyDurationMs = getVaultAppPerfNow() - phaseStartedAt
+      phaseStartedAt = getVaultAppPerfNow()
+      const resolvedLocation = resolveVaultNavigationLocation(snapshotState, location)
+      const resolveDurationMs = getVaultAppPerfNow() - phaseStartedAt
       if (!resolvedLocation) {
-        recordNotebookNavigationTiming('notebook-navigation', getNotebookAppPerfNow() - navigationStartedAt, {
+        recordVaultNavigationTiming('vault-navigation', getVaultAppPerfNow() - navigationStartedAt, {
           result: 'unresolved',
           navigationKind,
           requestedNoteId: location.noteId,
           requestedAisleId: location.aisleId ?? '',
-          flushDurationMs: roundNotebookAppDiagnosticMs(flushDurationMs),
-          snapshotDurationMs: roundNotebookAppDiagnosticMs(snapshotDurationMs),
-          snapshotApplyDurationMs: roundNotebookAppDiagnosticMs(snapshotApplyDurationMs),
-          resolveDurationMs: roundNotebookAppDiagnosticMs(resolveDurationMs),
+          flushDurationMs: roundVaultAppDiagnosticMs(flushDurationMs),
+          snapshotDurationMs: roundVaultAppDiagnosticMs(snapshotDurationMs),
+          snapshotApplyDurationMs: roundVaultAppDiagnosticMs(snapshotApplyDurationMs),
+          resolveDurationMs: roundVaultAppDiagnosticMs(resolveDurationMs),
           snapshotCount,
           collapsedSnapshotCount,
         })
         return false
       }
-      const targetNoteBodyId = findNotebookNote(snapshotState.notebook.items, resolvedLocation.noteId)?.note.noteBodyId ?? ''
+      const targetNoteBodyId = findVaultNote(snapshotState.vault.items, resolvedLocation.noteId)?.note.noteBodyId ?? ''
 
       pendingFocusToAisleIdRef.current = resolvedLocation.aisleId || null
       pendingScrollToAisleIdRef.current = resolvedLocation.aisleId || null
       pendingNavigationTopAisleIdRef.current = null
       setActiveAisleId(resolvedLocation.aisleId)
       setSelectedFolderId('')
-      clearNotebookNavigationTransientUi()
-      phaseStartedAt = getNotebookAppPerfNow()
+      clearVaultNavigationTransientUi()
+      phaseStartedAt = getVaultAppPerfNow()
       mutateState((previous) => {
-        const previousWithEditorContent = applyNotebookEditorMarkdownSnapshotsToState(previous, snapshots)
+        const previousWithEditorContent = applyVaultEditorMarkdownSnapshotsToState(previous, snapshots)
         const previousWithCursor = applyActiveCursorToState(previousWithEditorContent)
         const tabDisposition = options.tabDisposition ?? 'temporary'
-        const notebook = options.restoreClosedTab
-          ? restoreClosedNotebookTab(previousWithCursor.notebook, options.restoreClosedTab)
+        const vault = options.restoreClosedTab
+          ? restoreClosedVaultTab(previousWithCursor.vault, options.restoreClosedTab)
           : tabDisposition === 'retained'
-            ? openNotebookRetainedTab(previousWithCursor.notebook, resolvedLocation.noteId)
+            ? openVaultRetainedTab(previousWithCursor.vault, resolvedLocation.noteId)
             : tabDisposition === 'preserve'
-              ? focusNotebookOpenTab(previousWithCursor.notebook, resolvedLocation.noteId)
-              : openNotebookTemporaryTab(previousWithCursor.notebook, resolvedLocation.noteId)
-        if (notebook === previousWithCursor.notebook) return previousWithCursor
+              ? focusVaultOpenTab(previousWithCursor.vault, resolvedLocation.noteId)
+              : openVaultTemporaryTab(previousWithCursor.vault, resolvedLocation.noteId)
+        if (vault === previousWithCursor.vault) return previousWithCursor
         return {
           ...previousWithCursor,
-          notebook,
+          vault,
         }
       })
-      const mutateStateDurationMs = getNotebookAppPerfNow() - phaseStartedAt
+      const mutateStateDurationMs = getVaultAppPerfNow() - phaseStartedAt
       setViewMode('main')
       setScratchpadActive(false)
       scheduleAisleFocusScroll(targetNoteBodyId, resolvedLocation.aisleId)
@@ -4519,26 +4519,26 @@ export function NotebookApp() {
         const active = getActiveNoteModel(stateRef.current)
         if (!active || active.noteId !== resolvedLocation.noteId) return
         if (!active.noteBody.aisles.some((aisle) => aisle.id === resolvedLocation.aisleId)) return
-        const focusStartedAt = getNotebookAppPerfNow()
-        const activated = notebookEditors.activateAisleEditor(buildAisleEditorKey(active.noteBody.id, resolvedLocation.aisleId), {
+        const focusStartedAt = getVaultAppPerfNow()
+        const activated = vaultEditors.activateAisleEditor(buildAisleEditorKey(active.noteBody.id, resolvedLocation.aisleId), {
           focus: true,
           source: 'programmatic',
         })
-        recordNotebookNavigationTiming(
-          'notebook-navigation-focus-activation',
-          getNotebookAppPerfNow() - focusStartedAt,
+        recordVaultNavigationTiming(
+          'vault-navigation-focus-activation',
+          getVaultAppPerfNow() - focusStartedAt,
           {
             navigationKind,
             noteId: resolvedLocation.noteId,
             noteBodyId: active.noteBody.id,
             aisleId: resolvedLocation.aisleId,
             activated,
-            mountedEditorCount: notebookEditors.mountedAisleIds.size,
+            mountedEditorCount: vaultEditors.mountedAisleIds.size,
           },
-          NOTEBOOK_NAVIGATION_FOCUS_TIMING_DIAGNOSTIC_THRESHOLD_MS,
+          VAULT_NAVIGATION_FOCUS_TIMING_DIAGNOSTIC_THRESHOLD_MS,
         )
       })
-      recordNotebookNavigationTiming('notebook-navigation', getNotebookAppPerfNow() - navigationStartedAt, {
+      recordVaultNavigationTiming('vault-navigation', getVaultAppPerfNow() - navigationStartedAt, {
         result: 'applied',
         navigationKind,
         requestedNoteId: location.noteId,
@@ -4546,37 +4546,37 @@ export function NotebookApp() {
         noteId: resolvedLocation.noteId,
         noteBodyId: targetNoteBodyId,
         aisleId: resolvedLocation.aisleId,
-        flushDurationMs: roundNotebookAppDiagnosticMs(flushDurationMs),
-        snapshotDurationMs: roundNotebookAppDiagnosticMs(snapshotDurationMs),
-        snapshotApplyDurationMs: roundNotebookAppDiagnosticMs(snapshotApplyDurationMs),
-        resolveDurationMs: roundNotebookAppDiagnosticMs(resolveDurationMs),
-        mutateStateDurationMs: roundNotebookAppDiagnosticMs(mutateStateDurationMs),
+        flushDurationMs: roundVaultAppDiagnosticMs(flushDurationMs),
+        snapshotDurationMs: roundVaultAppDiagnosticMs(snapshotDurationMs),
+        snapshotApplyDurationMs: roundVaultAppDiagnosticMs(snapshotApplyDurationMs),
+        resolveDurationMs: roundVaultAppDiagnosticMs(resolveDurationMs),
+        mutateStateDurationMs: roundVaultAppDiagnosticMs(mutateStateDurationMs),
         snapshotCount,
         collapsedSnapshotCount,
-        mountedEditorCount: notebookEditors.mountedAisleIds.size,
+        mountedEditorCount: vaultEditors.mountedAisleIds.size,
       })
       return true
     },
-    [applyActiveCursorToState, clearNotebookNavigationTransientUi, mutateState, notebookEditors, scheduleAisleFocusScroll, stateRef],
+    [applyActiveCursorToState, clearVaultNavigationTransientUi, mutateState, vaultEditors, scheduleAisleFocusScroll, stateRef],
   )
 
   const selectNoteTab = useCallback(
     (noteId: string) => {
-      applyNotebookNavigationLocation({ noteId, aisleId: '' }, { tabDisposition: 'preserve' })
+      applyVaultNavigationLocation({ noteId, aisleId: '' }, { tabDisposition: 'preserve' })
     },
-    [applyNotebookNavigationLocation],
+    [applyVaultNavigationLocation],
   )
 
   const cyclePinnedNoteTab = useCallback(
     (direction: -1 | 1) => {
-      const noteId = getNotebookRetainedTabCycleTarget(stateRef.current.notebook, direction)
-      if (!noteId || noteId === stateRef.current.notebook.activeNoteId) return
+      const noteId = getVaultRetainedTabCycleTarget(stateRef.current.vault, direction)
+      if (!noteId || noteId === stateRef.current.vault.activeNoteId) return
       selectNoteTab(noteId)
     },
     [selectNoteTab, stateRef],
   )
 
-  const rememberClosedNoteTab = useCallback((closedTab: ClosedNotebookTab | null) => {
+  const rememberClosedNoteTab = useCallback((closedTab: ClosedVaultTab | null) => {
     if (!closedTab) return
     closedNoteTabHistoryRef.current = [
       closedTab,
@@ -4588,20 +4588,20 @@ export function NotebookApp() {
     while (closedNoteTabHistoryRef.current.length > 0) {
       const [closedTab, ...remainingClosedTabs] = closedNoteTabHistoryRef.current
       closedNoteTabHistoryRef.current = remainingClosedTabs
-      if (!closedTab || !findNotebookNote(stateRef.current.notebook.items, closedTab.noteId)) continue
-      const restored = applyNotebookNavigationLocation(
+      if (!closedTab || !findVaultNote(stateRef.current.vault.items, closedTab.noteId)) continue
+      const restored = applyVaultNavigationLocation(
         { noteId: closedTab.noteId, aisleId: '' },
         { restoreClosedTab: closedTab },
       )
       if (restored) return
     }
-  }, [applyNotebookNavigationLocation, stateRef])
+  }, [applyVaultNavigationLocation, stateRef])
 
   const promoteNoteTab = useCallback(
     (noteId: string) => {
       mutateState((previous) => ({
         ...previous,
-        notebook: promoteNotebookTemporaryTab(previous.notebook, noteId),
+        vault: promoteVaultTemporaryTab(previous.vault, noteId),
       }))
     },
     [mutateState],
@@ -4611,7 +4611,7 @@ export function NotebookApp() {
     (sourceNoteId: string, targetIndex: number) => {
       mutateState((previous) => ({
         ...previous,
-        notebook: reorderNotebookTabs(previous.notebook, sourceNoteId, targetIndex),
+        vault: reorderVaultTabs(previous.vault, sourceNoteId, targetIndex),
       }))
     },
     [mutateState],
@@ -4619,36 +4619,36 @@ export function NotebookApp() {
 
   const closeNoteTab = useCallback(
     (noteId: string) => {
-      const navigationStartedAt = getNotebookAppPerfNow()
-      let phaseStartedAt = getNotebookAppPerfNow()
-      notebookEditors.flushPendingEditorAppStateCommit()
-      const flushDurationMs = getNotebookAppPerfNow() - phaseStartedAt
-      phaseStartedAt = getNotebookAppPerfNow()
-      const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
-      const snapshotDurationMs = getNotebookAppPerfNow() - phaseStartedAt
+      const navigationStartedAt = getVaultAppPerfNow()
+      let phaseStartedAt = getVaultAppPerfNow()
+      vaultEditors.flushPendingEditorAppStateCommit()
+      const flushDurationMs = getVaultAppPerfNow() - phaseStartedAt
+      phaseStartedAt = getVaultAppPerfNow()
+      const snapshots = vaultEditors.getMountedEditorMarkdownSnapshots()
+      const snapshotDurationMs = getVaultAppPerfNow() - phaseStartedAt
       const snapshotCount = snapshots.length
       const collapsedSnapshotCount = new Set(snapshots.map((snapshot) => snapshot.aisleBodyId).filter(Boolean)).size
-      phaseStartedAt = getNotebookAppPerfNow()
-      const snapshotState = applyNotebookEditorMarkdownSnapshotsToState(stateRef.current, snapshots)
-      const snapshotApplyDurationMs = getNotebookAppPerfNow() - phaseStartedAt
-      phaseStartedAt = getNotebookAppPerfNow()
-      const closedTab = getClosedNotebookTab(snapshotState.notebook, noteId)
-      const nextNotebook = closeNotebookTab(snapshotState.notebook, noteId)
-      const activeChanged = nextNotebook.activeNoteId !== snapshotState.notebook.activeNoteId
-      const resolvedLocation = activeChanged && nextNotebook.activeNoteId
-        ? resolveNotebookNavigationLocation({ ...snapshotState, notebook: nextNotebook }, { noteId: nextNotebook.activeNoteId })
+      phaseStartedAt = getVaultAppPerfNow()
+      const snapshotState = applyVaultEditorMarkdownSnapshotsToState(stateRef.current, snapshots)
+      const snapshotApplyDurationMs = getVaultAppPerfNow() - phaseStartedAt
+      phaseStartedAt = getVaultAppPerfNow()
+      const closedTab = getClosedVaultTab(snapshotState.vault, noteId)
+      const nextVault = closeVaultTab(snapshotState.vault, noteId)
+      const activeChanged = nextVault.activeNoteId !== snapshotState.vault.activeNoteId
+      const resolvedLocation = activeChanged && nextVault.activeNoteId
+        ? resolveVaultNavigationLocation({ ...snapshotState, vault: nextVault }, { noteId: nextVault.activeNoteId })
         : null
-      const resolveDurationMs = getNotebookAppPerfNow() - phaseStartedAt
+      const resolveDurationMs = getVaultAppPerfNow() - phaseStartedAt
 
       if (activeChanged && !resolvedLocation) {
-        recordNotebookNavigationTiming('notebook-tab-close-navigation', getNotebookAppPerfNow() - navigationStartedAt, {
+        recordVaultNavigationTiming('vault-tab-close-navigation', getVaultAppPerfNow() - navigationStartedAt, {
           result: 'unresolved',
           closedNoteId: noteId,
           activeChanged,
-          flushDurationMs: roundNotebookAppDiagnosticMs(flushDurationMs),
-          snapshotDurationMs: roundNotebookAppDiagnosticMs(snapshotDurationMs),
-          snapshotApplyDurationMs: roundNotebookAppDiagnosticMs(snapshotApplyDurationMs),
-          resolveDurationMs: roundNotebookAppDiagnosticMs(resolveDurationMs),
+          flushDurationMs: roundVaultAppDiagnosticMs(flushDurationMs),
+          snapshotDurationMs: roundVaultAppDiagnosticMs(snapshotDurationMs),
+          snapshotApplyDurationMs: roundVaultAppDiagnosticMs(snapshotApplyDurationMs),
+          resolveDurationMs: roundVaultAppDiagnosticMs(resolveDurationMs),
           snapshotCount,
           collapsedSnapshotCount,
         })
@@ -4667,84 +4667,84 @@ export function NotebookApp() {
         pendingScrollToAisleIdRef.current = resolvedLocation.aisleId || null
         pendingNavigationTopAisleIdRef.current = null
         setActiveAisleId(resolvedLocation.aisleId)
-        clearNotebookNavigationTransientUi()
+        clearVaultNavigationTransientUi()
       }
 
-      phaseStartedAt = getNotebookAppPerfNow()
+      phaseStartedAt = getVaultAppPerfNow()
       mutateState((previous) => {
-        const previousWithEditorContent = applyNotebookEditorMarkdownSnapshotsToState(previous, snapshots)
+        const previousWithEditorContent = applyVaultEditorMarkdownSnapshotsToState(previous, snapshots)
         const previousWithCursor = applyActiveCursorToState(previousWithEditorContent)
-        const notebook = closeNotebookTab(previousWithCursor.notebook, noteId)
-        return notebook === previousWithCursor.notebook ? previousWithCursor : { ...previousWithCursor, notebook }
+        const vault = closeVaultTab(previousWithCursor.vault, noteId)
+        return vault === previousWithCursor.vault ? previousWithCursor : { ...previousWithCursor, vault }
       })
-      const mutateStateDurationMs = getNotebookAppPerfNow() - phaseStartedAt
+      const mutateStateDurationMs = getVaultAppPerfNow() - phaseStartedAt
 
       if (!resolvedLocation) {
-        recordNotebookNavigationTiming('notebook-tab-close-navigation', getNotebookAppPerfNow() - navigationStartedAt, {
+        recordVaultNavigationTiming('vault-tab-close-navigation', getVaultAppPerfNow() - navigationStartedAt, {
           result: 'closed-inactive',
           closedNoteId: noteId,
           activeChanged,
-          flushDurationMs: roundNotebookAppDiagnosticMs(flushDurationMs),
-          snapshotDurationMs: roundNotebookAppDiagnosticMs(snapshotDurationMs),
-          snapshotApplyDurationMs: roundNotebookAppDiagnosticMs(snapshotApplyDurationMs),
-          resolveDurationMs: roundNotebookAppDiagnosticMs(resolveDurationMs),
-          mutateStateDurationMs: roundNotebookAppDiagnosticMs(mutateStateDurationMs),
+          flushDurationMs: roundVaultAppDiagnosticMs(flushDurationMs),
+          snapshotDurationMs: roundVaultAppDiagnosticMs(snapshotDurationMs),
+          snapshotApplyDurationMs: roundVaultAppDiagnosticMs(snapshotApplyDurationMs),
+          resolveDurationMs: roundVaultAppDiagnosticMs(resolveDurationMs),
+          mutateStateDurationMs: roundVaultAppDiagnosticMs(mutateStateDurationMs),
           snapshotCount,
           collapsedSnapshotCount,
-          mountedEditorCount: notebookEditors.mountedAisleIds.size,
+          mountedEditorCount: vaultEditors.mountedAisleIds.size,
         })
         return
       }
       setViewMode('main')
       setScratchpadActive(false)
-      const targetNoteBodyId = findNotebookNote(nextNotebook.items, resolvedLocation.noteId)?.note.noteBodyId ?? ''
+      const targetNoteBodyId = findVaultNote(nextVault.items, resolvedLocation.noteId)?.note.noteBodyId ?? ''
       scheduleAisleFocusScroll(targetNoteBodyId, resolvedLocation.aisleId)
       window.requestAnimationFrame(() => {
         if (pendingFocusToAisleIdRef.current !== (resolvedLocation.aisleId || null)) return
         const active = getActiveNoteModel(stateRef.current)
         if (!active || active.noteId !== resolvedLocation.noteId) return
         if (!active.noteBody.aisles.some((aisle) => aisle.id === resolvedLocation.aisleId)) return
-        const focusStartedAt = getNotebookAppPerfNow()
-        const activated = notebookEditors.activateAisleEditor(buildAisleEditorKey(active.noteBody.id, resolvedLocation.aisleId), {
+        const focusStartedAt = getVaultAppPerfNow()
+        const activated = vaultEditors.activateAisleEditor(buildAisleEditorKey(active.noteBody.id, resolvedLocation.aisleId), {
           focus: true,
           source: 'programmatic',
         })
-        recordNotebookNavigationTiming(
-          'notebook-navigation-focus-activation',
-          getNotebookAppPerfNow() - focusStartedAt,
+        recordVaultNavigationTiming(
+          'vault-navigation-focus-activation',
+          getVaultAppPerfNow() - focusStartedAt,
           {
             navigationKind: 'close-tab',
             noteId: resolvedLocation.noteId,
             noteBodyId: active.noteBody.id,
             aisleId: resolvedLocation.aisleId,
             activated,
-            mountedEditorCount: notebookEditors.mountedAisleIds.size,
+            mountedEditorCount: vaultEditors.mountedAisleIds.size,
           },
-          NOTEBOOK_NAVIGATION_FOCUS_TIMING_DIAGNOSTIC_THRESHOLD_MS,
+          VAULT_NAVIGATION_FOCUS_TIMING_DIAGNOSTIC_THRESHOLD_MS,
         )
       })
-      recordNotebookNavigationTiming('notebook-tab-close-navigation', getNotebookAppPerfNow() - navigationStartedAt, {
+      recordVaultNavigationTiming('vault-tab-close-navigation', getVaultAppPerfNow() - navigationStartedAt, {
         result: 'switched-active',
         closedNoteId: noteId,
         noteId: resolvedLocation.noteId,
         noteBodyId: targetNoteBodyId,
         aisleId: resolvedLocation.aisleId,
         activeChanged,
-        flushDurationMs: roundNotebookAppDiagnosticMs(flushDurationMs),
-        snapshotDurationMs: roundNotebookAppDiagnosticMs(snapshotDurationMs),
-        snapshotApplyDurationMs: roundNotebookAppDiagnosticMs(snapshotApplyDurationMs),
-        resolveDurationMs: roundNotebookAppDiagnosticMs(resolveDurationMs),
-        mutateStateDurationMs: roundNotebookAppDiagnosticMs(mutateStateDurationMs),
+        flushDurationMs: roundVaultAppDiagnosticMs(flushDurationMs),
+        snapshotDurationMs: roundVaultAppDiagnosticMs(snapshotDurationMs),
+        snapshotApplyDurationMs: roundVaultAppDiagnosticMs(snapshotApplyDurationMs),
+        resolveDurationMs: roundVaultAppDiagnosticMs(resolveDurationMs),
+        mutateStateDurationMs: roundVaultAppDiagnosticMs(mutateStateDurationMs),
         snapshotCount,
         collapsedSnapshotCount,
-        mountedEditorCount: notebookEditors.mountedAisleIds.size,
+        mountedEditorCount: vaultEditors.mountedAisleIds.size,
       })
     },
     [
       applyActiveCursorToState,
-      clearNotebookNavigationTransientUi,
+      clearVaultNavigationTransientUi,
       mutateState,
-      notebookEditors,
+      vaultEditors,
       renamingTreeItemId,
       rememberClosedNoteTab,
       scheduleAisleFocusScroll,
@@ -4752,18 +4752,18 @@ export function NotebookApp() {
     ],
   )
 
-  navigateToNotebookLocationRef.current = applyNotebookNavigationLocation
+  navigateToVaultLocationRef.current = applyVaultNavigationLocation
 
-  const resolveNotebookNavigationHistoryLocation = useCallback(
-    (location: NotebookNavigationLocation) => resolveNotebookNavigationLocation(stateRef.current, location),
+  const resolveVaultNavigationHistoryLocation = useCallback(
+    (location: VaultNavigationLocation) => resolveVaultNavigationLocation(stateRef.current, location),
     [stateRef],
   )
 
-  const { navigateNotebookHistoryBy } = useNotebookNavigationHistory({
+  const { navigateVaultHistoryBy } = useVaultNavigationHistory({
     viewMode,
-    activeNoteId: activeNotebookModel?.noteId ?? '',
-    resolveLocation: resolveNotebookNavigationHistoryLocation,
-    onApplyLocation: applyNotebookNavigationLocation,
+    activeNoteId: activeVaultModel?.noteId ?? '',
+    resolveLocation: resolveVaultNavigationHistoryLocation,
+    onApplyLocation: applyVaultNavigationLocation,
   })
 
   usePendingNoteCursorRestore({
@@ -4778,7 +4778,7 @@ export function NotebookApp() {
     pendingFocusToAisleIdRef,
     pendingCursorRestoreRef,
     pendingNavigationTopAisleIdRef,
-    activateAisleEditor: notebookEditors.activateAisleEditor,
+    activateAisleEditor: vaultEditors.activateAisleEditor,
   })
 
   const updateFindReplaceUi = useCallback(
@@ -4801,8 +4801,8 @@ export function NotebookApp() {
     () => {
       if (!activeModel) return
       const editor = editorRef.current
-      if (editor) notebookEditors.commitActiveEditorMarkdownNow(editor)
-      notebookEditors.flushPendingEditorAppStateCommit()
+      if (editor) vaultEditors.commitActiveEditorMarkdownNow(editor)
+      vaultEditors.flushPendingEditorAppStateCommit()
       setViewMode('main')
       toolbarState.closeToolbarPopovers()
       setAisleContextMenu(null)
@@ -4815,7 +4815,7 @@ export function NotebookApp() {
       setFindReplaceActiveIndex(0)
       setFindReplaceFocusRequestId((current) => current + 1)
     },
-    [activeModel, notebookEditors, toolbarState],
+    [activeModel, vaultEditors, toolbarState],
   )
 
   const closeFindReplace = useCallback(() => {
@@ -4826,19 +4826,19 @@ export function NotebookApp() {
   const scrollPendingFindReplaceMatch = useCallback(() => {
     const match = pendingFindReplaceRevealRef.current
     if (!match || viewMode !== 'main' || !activeModel || activeModel.noteId !== match.location.noteId) return false
-    if (renderedActiveAisleId !== match.aisleId || !notebookEditors.mountedAisleIds.has(match.aisleId)) return false
+    if (renderedActiveAisleId !== match.aisleId || !vaultEditors.mountedAisleIds.has(match.aisleId)) return false
     pendingFindReplaceRevealRef.current = null
-    notebookEditors.activateAisleEditor(buildAisleEditorKey(match.noteBodyId, match.aisleId), {
+    vaultEditors.activateAisleEditor(buildAisleEditorKey(match.noteBodyId, match.aisleId), {
       focus: true,
       source: 'programmatic',
     })
-    return notebookEditors.scrollToAisleFindReplaceMatch(match.aisleId, {
+    return vaultEditors.scrollToAisleFindReplaceMatch(match.aisleId, {
       visibleFrom: match.visibleFrom,
       visibleTo: match.visibleTo,
       markdownFrom: match.markdownFrom,
       markdownTo: match.markdownTo,
     })
-  }, [activeModel, notebookEditors, renderedActiveAisleId, viewMode])
+  }, [activeModel, vaultEditors, renderedActiveAisleId, viewMode])
 
   useEffect(() => {
     scrollPendingFindReplaceMatch()
@@ -4858,7 +4858,7 @@ export function NotebookApp() {
         return
       }
       if (activeModel?.noteId !== match.location.noteId) {
-        applyNotebookNavigationLocation({ noteId: match.location.noteId, aisleId: match.aisleId })
+        applyVaultNavigationLocation({ noteId: match.location.noteId, aisleId: match.aisleId })
         return
       }
       setViewMode('main')
@@ -4868,7 +4868,7 @@ export function NotebookApp() {
         scrollPendingFindReplaceMatch()
       })
     },
-    [activeModel?.noteId, applyNotebookNavigationLocation, scheduleAisleFocusScroll, scrollPendingFindReplaceMatch],
+    [activeModel?.noteId, applyVaultNavigationLocation, scheduleAisleFocusScroll, scrollPendingFindReplaceMatch],
   )
 
   const selectFindReplaceMatch = useCallback(
@@ -4882,18 +4882,18 @@ export function NotebookApp() {
   )
 
   const updateFindReplaceQuery = useCallback((nextQuery: string) => {
-    notebookEditors.flushPendingEditorAppStateCommit()
+    vaultEditors.flushPendingEditorAppStateCommit()
     setFindReplaceQuery(nextQuery)
     setFindReplaceActiveIndex(0)
-  }, [notebookEditors])
+  }, [vaultEditors])
 
   const replaceFindMatches = useCallback(
     (matchesToReplace: FindReplaceMatch[]) => {
       if (matchesToReplace.length === 0 || findReplaceQueryError) return
       pendingFindReplaceRevealRef.current = null
       mutateState((previous) => {
-        const snapshots = notebookEditors.getMountedEditorMarkdownSnapshots()
-        const latest = applyActiveCursorToState(applyNotebookEditorMarkdownSnapshotsToState(previous, snapshots))
+        const snapshots = vaultEditors.getMountedEditorMarkdownSnapshots()
+        const latest = applyActiveCursorToState(applyVaultEditorMarkdownSnapshotsToState(previous, snapshots))
         return applyFindReplacementToState(latest, matchesToReplace, findReplaceReplacement).state
       })
     },
@@ -4902,7 +4902,7 @@ export function NotebookApp() {
       findReplaceQueryError,
       findReplaceReplacement,
       mutateState,
-      notebookEditors,
+      vaultEditors,
     ],
   )
 
@@ -4924,35 +4924,35 @@ export function NotebookApp() {
 
   const focusBoundaryFlushTimerRef = useRef<number | null>(null)
 
-  const clearNotebookFocusBoundaryFlush = useCallback(() => {
+  const clearVaultFocusBoundaryFlush = useCallback(() => {
     if (focusBoundaryFlushTimerRef.current === null) return
     window.clearTimeout(focusBoundaryFlushTimerRef.current)
     focusBoundaryFlushTimerRef.current = null
   }, [])
 
-  const flushNotebookPersistenceNow = useCallback((eventName: 'blur' | 'visibilitychange' | 'beforeunload' | 'pagehide') => {
-    clearNotebookFocusBoundaryFlush()
-    const latest = getLatestNotebookStateFromMountedEditors()
+  const flushVaultPersistenceNow = useCallback((eventName: 'blur' | 'visibilitychange' | 'beforeunload' | 'pagehide') => {
+    clearVaultFocusBoundaryFlush()
+    const latest = getLatestVaultStateFromMountedEditors()
     void commitAppStateNow(latest.state, {
       preferSync: eventName === 'beforeunload' || eventName === 'pagehide',
       flushQueue: true,
-      trigger: `notebook-editor-focus-boundary:${eventName}`,
+      trigger: `vault-editor-focus-boundary:${eventName}`,
       pendingEditorCount: latest.pendingEditorCount,
     })
-  }, [clearNotebookFocusBoundaryFlush, commitAppStateNow, getLatestNotebookStateFromMountedEditors])
+  }, [clearVaultFocusBoundaryFlush, commitAppStateNow, getLatestVaultStateFromMountedEditors])
 
-  const scheduleNotebookFocusBoundaryFlush = useCallback((eventName: 'blur' | 'visibilitychange') => {
+  const scheduleVaultFocusBoundaryFlush = useCallback((eventName: 'blur' | 'visibilitychange') => {
     if (eventName === 'visibilitychange' && document.visibilityState !== 'hidden') return
     if (focusBoundaryFlushTimerRef.current !== null) return
     focusBoundaryFlushTimerRef.current = window.setTimeout(() => {
       focusBoundaryFlushTimerRef.current = null
-      flushNotebookPersistenceNow(eventName)
-    }, NOTEBOOK_FOCUS_BOUNDARY_FLUSH_DELAY_MS)
-  }, [flushNotebookPersistenceNow])
+      flushVaultPersistenceNow(eventName)
+    }, VAULT_FOCUS_BOUNDARY_FLUSH_DELAY_MS)
+  }, [flushVaultPersistenceNow])
 
   useEffect(() => {
     const flushOnExit = (event: PageTransitionEvent | Event) => {
-      flushNotebookPersistenceNow(event.type === 'pagehide' ? 'pagehide' : 'beforeunload')
+      flushVaultPersistenceNow(event.type === 'pagehide' ? 'pagehide' : 'beforeunload')
     }
     window.addEventListener('beforeunload', flushOnExit)
     window.addEventListener('pagehide', flushOnExit)
@@ -4960,25 +4960,25 @@ export function NotebookApp() {
       window.removeEventListener('beforeunload', flushOnExit)
       window.removeEventListener('pagehide', flushOnExit)
     }
-  }, [flushNotebookPersistenceNow])
+  }, [flushVaultPersistenceNow])
 
   useEffect(() => {
-    const flushOnWindowBlur = () => scheduleNotebookFocusBoundaryFlush('blur')
-    const flushOnHidden = () => scheduleNotebookFocusBoundaryFlush('visibilitychange')
+    const flushOnWindowBlur = () => scheduleVaultFocusBoundaryFlush('blur')
+    const flushOnHidden = () => scheduleVaultFocusBoundaryFlush('visibilitychange')
     window.addEventListener('blur', flushOnWindowBlur)
     document.addEventListener('visibilitychange', flushOnHidden)
     return () => {
       window.removeEventListener('blur', flushOnWindowBlur)
       document.removeEventListener('visibilitychange', flushOnHidden)
-      clearNotebookFocusBoundaryFlush()
+      clearVaultFocusBoundaryFlush()
     }
-  }, [clearNotebookFocusBoundaryFlush, scheduleNotebookFocusBoundaryFlush])
+  }, [clearVaultFocusBoundaryFlush, scheduleVaultFocusBoundaryFlush])
 
   const tableControlsController = useTableControls({
     visible: viewMode === 'main' && !aisleEditModalOpen,
     editorRef,
     editorEventRootRef: workspaceRootRef,
-    commitActiveEditorMarkdownNow: notebookEditors.commitActiveEditorMarkdownNow,
+    commitActiveEditorMarkdownNow: vaultEditors.commitActiveEditorMarkdownNow,
     syncToolbarFormatState: toolbarState.syncToolbarFormatState,
   })
 
@@ -4986,7 +4986,7 @@ export function NotebookApp() {
     visible: viewMode === 'main' && !aisleEditModalOpen,
     editorRef,
     editorEventRootRef: workspaceRootRef,
-    commitActiveEditorMarkdownNow: notebookEditors.commitActiveEditorMarkdownNow,
+    commitActiveEditorMarkdownNow: vaultEditors.commitActiveEditorMarkdownNow,
     syncToolbarFormatState: toolbarState.syncToolbarFormatState,
   })
 
@@ -5000,7 +5000,7 @@ export function NotebookApp() {
   }, [])
 
   const finishCreatedTreeRename = useCallback(
-    (itemId: string, source: NotebookTreeRenameCommitSource) => {
+    (itemId: string, source: VaultTreeRenameCommitSource) => {
       const pending = pendingCreatedTreeRenameRef.current
       if (!pending || pending.itemId !== itemId) return null
       pendingCreatedTreeRenameRef.current = null
@@ -5028,14 +5028,14 @@ export function NotebookApp() {
       pendingNavigationTopAisleIdRef.current = null
       setActiveAisleId(pending.returnAisleId)
       window.requestAnimationFrame(() => {
-        notebookEditors.activateAisleEditor(buildAisleEditorKey(pending.returnNoteBodyId, pending.returnAisleId), {
+        vaultEditors.activateAisleEditor(buildAisleEditorKey(pending.returnNoteBodyId, pending.returnAisleId), {
           focus: true,
           source: 'programmatic',
         })
       })
       return pending
     },
-    [notebookEditors, pendingCursorRestoreRef],
+    [vaultEditors, pendingCursorRestoreRef],
   )
 
   const recordSidebarSearchHistory = useCallback((queryToRecord: string) => {
@@ -5069,13 +5069,13 @@ export function NotebookApp() {
     setScratchpadActive(false)
     mutateState((previous) => {
       const parentFolderId = targetParentFolderId === undefined
-        ? selectedFolderId && findNotebookFolder(previous.notebook.items, selectedFolderId)
+        ? selectedFolderId && findVaultFolder(previous.vault.items, selectedFolderId)
           ? selectedFolderId
-          : getContainingFolderId(previous.notebook.items, previous.notebook.activeNoteId)
-        : targetParentFolderId && findNotebookFolder(previous.notebook.items, targetParentFolderId)
+          : getContainingFolderId(previous.vault.items, previous.vault.activeNoteId)
+        : targetParentFolderId && findVaultFolder(previous.vault.items, targetParentFolderId)
           ? targetParentFolderId
           : null
-      const result = createNotebookNoteInState(previous, 'Untitled', parentFolderId, '', undefined, targetIndex)
+      const result = createVaultNoteInState(previous, 'Untitled', parentFolderId, '', undefined, targetIndex)
       createdRenameRef.current = {
         kind: 'note',
         itemId: result.noteId,
@@ -5084,7 +5084,7 @@ export function NotebookApp() {
       }
       return {
         ...result.state,
-        ui: revealNotebookTreeForCreatedItem(result.state.ui, [parentFolderId]),
+        ui: revealVaultTreeForCreatedItem(result.state.ui, [parentFolderId]),
       }
     })
     const createdRename = createdRenameRef.current
@@ -5102,21 +5102,21 @@ export function NotebookApp() {
 
   const createFolderAt = useCallback((targetParentFolderId?: string | null, targetIndex?: number) => {
     const createdRenameRef: { current: PendingCreatedTreeRename | null } = { current: null }
-    const returnNoteBodyId = activeNotebookModel?.noteBody.id ?? ''
-    const returnAisleId = activeNotebookModel
-      ? getPreferredNotebookAisleId(stateRef.current, activeNotebookModel.noteId, activeNotebookModel.noteBody.aisles)
+    const returnNoteBodyId = activeVaultModel?.noteBody.id ?? ''
+    const returnAisleId = activeVaultModel
+      ? getPreferredVaultAisleId(stateRef.current, activeVaultModel.noteId, activeVaultModel.noteBody.aisles)
       : ''
     closeSidebarSearchMode()
     setScratchpadActive(false)
     mutateState((previous) => {
       const parentFolderId = targetParentFolderId === undefined
-        ? selectedFolderId && findNotebookFolder(previous.notebook.items, selectedFolderId)
+        ? selectedFolderId && findVaultFolder(previous.vault.items, selectedFolderId)
           ? selectedFolderId
-          : getContainingFolderId(previous.notebook.items, previous.notebook.activeNoteId)
-        : targetParentFolderId && findNotebookFolder(previous.notebook.items, targetParentFolderId)
+          : getContainingFolderId(previous.vault.items, previous.vault.activeNoteId)
+        : targetParentFolderId && findVaultFolder(previous.vault.items, targetParentFolderId)
           ? targetParentFolderId
           : null
-      const result = createNotebookFolderInState(previous, 'Untitled folder', parentFolderId, undefined, targetIndex)
+      const result = createVaultFolderInState(previous, 'Untitled folder', parentFolderId, undefined, targetIndex)
       createdRenameRef.current = {
         kind: 'folder',
         itemId: result.folderId,
@@ -5125,7 +5125,7 @@ export function NotebookApp() {
       }
       return {
         ...result.state,
-        ui: revealNotebookTreeForCreatedItem(result.state.ui, [parentFolderId, result.folderId]),
+        ui: revealVaultTreeForCreatedItem(result.state.ui, [parentFolderId, result.folderId]),
       }
     })
     const createdRename = createdRenameRef.current
@@ -5136,30 +5136,30 @@ export function NotebookApp() {
     setSelectedTreeNoteIds([])
     setTreeSelectionAnchorNoteId('')
     setViewMode('main')
-  }, [activeNotebookModel, beginCreatedTreeRename, closeSidebarSearchMode, mutateState, selectedFolderId, stateRef])
+  }, [activeVaultModel, beginCreatedTreeRename, closeSidebarSearchMode, mutateState, selectedFolderId, stateRef])
 
   const createFolder = useCallback(() => createFolderAt(), [createFolderAt])
 
-  const importNotebook = useCallback(() => {
-    if (!window.electronAPI?.openNotebookImportSource) {
-      window.alert('Notebook import is only available in the desktop app.')
+  const importVault = useCallback(() => {
+    if (!window.electronAPI?.openVaultImportSource) {
+      window.alert('Vault import is only available in the desktop app.')
       return
     }
-    void window.electronAPI.openNotebookImportSource().then(async (result) => {
+    void window.electronAPI.openVaultImportSource().then(async (result) => {
       if (result.canceled) return
       if (!result.ok) {
-        window.alert(result.error || 'Notebook import failed.')
+        window.alert(result.error || 'Vault import failed.')
         return
       }
-      if (result.kind === 'notebook-folder' || result.kind === 'notebook-zip') {
+      if (result.kind === 'vault-folder' || result.kind === 'vault-zip') {
         setState(parseSavedState(result.serializedState))
         setViewMode('main')
         return
       }
       if (result.kind === 'markdown-folder' || result.kind === 'markdown-zip') {
         try {
-          const latest = getLatestNotebookStateFromMountedEditors()
-          const imported = await importMarkdownIntoExistingNotebook(latest.state, result.files, {
+          const latest = getLatestVaultStateFromMountedEditors()
+          const imported = await importMarkdownIntoExistingVault(latest.state, result.files, {
             rootName: result.rootName,
             assetRoots: result.assetRoots,
             assets: result.kind === 'markdown-zip' ? result.assets : undefined,
@@ -5169,7 +5169,7 @@ export function NotebookApp() {
           })
           mutateState(() => ({
             ...imported.state,
-            ui: revealNotebookTreeForCreatedItem(imported.state.ui, [imported.rootFolderId]),
+            ui: revealVaultTreeForCreatedItem(imported.state.ui, [imported.rootFolderId]),
           }))
           setScratchpadActive(false)
           setSelectedFolderId(imported.rootFolderId)
@@ -5182,18 +5182,18 @@ export function NotebookApp() {
         setViewMode('main')
         return
       }
-      window.alert('Selected file is not an AisleNote notebook or Markdown import source.')
+      window.alert('Selected file is not an AisleNote vault or Markdown import source.')
     })
-  }, [getLatestNotebookStateFromMountedEditors, mutateState, setState])
+  }, [getLatestVaultStateFromMountedEditors, mutateState, setState])
 
-  const exportNotebook = useCallback(() => {
-    if (!window.electronAPI?.exportNotebookFolder) {
-      window.alert('Notebook export is only available in the desktop app.')
+  const exportVault = useCallback(() => {
+    if (!window.electronAPI?.exportVaultFolder) {
+      window.alert('Vault export is only available in the desktop app.')
       return
     }
-    void window.electronAPI.exportNotebookFolder({ serializedState: JSON.stringify(state) }).then((result) => {
+    void window.electronAPI.exportVaultFolder({ serializedState: JSON.stringify(state) }).then((result) => {
       if (result.canceled || result.ok) return
-      window.alert(result.error || 'Notebook export failed.')
+      window.alert(result.error || 'Vault export failed.')
     })
   }, [state])
 
@@ -5201,13 +5201,13 @@ export function NotebookApp() {
     (itemId: string, title: string) => {
       mutateState((previous) => ({
         ...previous,
-        notebook: renameNotebookItem(previous.notebook, itemId, title),
+        vault: renameVaultItem(previous.vault, itemId, title),
       }))
     },
     [mutateState],
   )
 
-  const startTreeRename = useCallback((itemId: string, title: string, surface: NotebookRenameSurface = 'tree') => {
+  const startTreeRename = useCallback((itemId: string, title: string, surface: VaultRenameSurface = 'tree') => {
     skipNextTreeRenameCommitRef.current = false
     skipTreeRenameBlurItemIdRef.current = ''
     setRenamingTreeItemId(itemId)
@@ -5222,7 +5222,7 @@ export function NotebookApp() {
     [startTreeRename],
   )
 
-  const commitTreeRename = useCallback((source: NotebookTreeRenameCommitSource) => {
+  const commitTreeRename = useCallback((source: VaultTreeRenameCommitSource) => {
     if (source === 'blur' && skipTreeRenameBlurItemIdRef.current === renamingTreeItemId) {
       skipTreeRenameBlurItemIdRef.current = ''
       return
@@ -5235,7 +5235,7 @@ export function NotebookApp() {
     renameItem(renamingTreeItemId, treeRenameDraft)
     const pendingCreatedRename = finishCreatedTreeRename(renamingTreeItemId, source)
     if (source === 'tab' && pendingCreatedRename) {
-      const entry = findNotebookItem(stateRef.current.notebook.items, pendingCreatedRename.itemId)
+      const entry = findVaultItem(stateRef.current.vault.items, pendingCreatedRename.itemId)
       skipTreeRenameBlurItemIdRef.current = renamingTreeItemId
       if (entry) {
         if (pendingCreatedRename.kind === 'note') {
@@ -5266,15 +5266,15 @@ export function NotebookApp() {
     setTreeRenameDraft('')
   }, [renamingTreeItemId])
 
-  const updateTreeDropTarget = useCallback((target: NotebookTreeDropTarget | null) => {
-    setTreeDropTarget((current) => (areNotebookTreeDropTargetsEqual(current, target) ? current : target))
+  const updateTreeDropTarget = useCallback((target: VaultTreeDropTarget | null) => {
+    setTreeDropTarget((current) => (areVaultTreeDropTargetsEqual(current, target) ? current : target))
   }, [])
 
   const startTreeDrag = useCallback((itemId: string) => {
     setRenamingTreeItemId('')
     setRenamingItemSurface(null)
     setTreeRenameDraft('')
-    const entry = findNotebookItem(stateRef.current.notebook.items, itemId)
+    const entry = findVaultItem(stateRef.current.vault.items, itemId)
     const selectedNoteIds = selectedTreeNoteIds.includes(itemId)
       ? visibleTreeNoteIds.filter((noteId) => selectedTreeNoteIds.includes(noteId))
       : []
@@ -5303,19 +5303,19 @@ export function NotebookApp() {
   }, [])
 
   const dropTreeItem = useCallback(
-    (target: NotebookTreeDropTarget) => {
+    (target: VaultTreeDropTarget) => {
       const draggedItemId = draggingTreeItemId
       if (!draggedItemId) return
       const draggedNoteIds = draggingTreeNoteIds
       mutateState((previous) => {
-        const notebook =
+        const vault =
           draggedNoteIds.length > 0
-            ? moveNotebookItems(previous.notebook, draggedNoteIds, target.parentFolderId, target.index)
-            : moveNotebookItem(previous.notebook, draggedItemId, target.parentFolderId, target.index)
-        if (notebook === previous.notebook) return previous
+            ? moveVaultItems(previous.vault, draggedNoteIds, target.parentFolderId, target.index)
+            : moveVaultItem(previous.vault, draggedItemId, target.parentFolderId, target.index)
+        if (vault === previous.vault) return previous
         return {
           ...previous,
-          notebook,
+          vault,
           ui: target.parentFolderId
             ? {
                 ...previous.ui,
@@ -5331,9 +5331,9 @@ export function NotebookApp() {
   )
 
   const getRootTreeDropTarget = useCallback(
-    (): NotebookTreeDropTarget => ({
+    (): VaultTreeDropTarget => ({
       parentFolderId: null,
-      index: stateRef.current.notebook.items.length,
+      index: stateRef.current.vault.items.length,
       targetItemId: null,
       position: 'root',
     }),
@@ -5361,7 +5361,7 @@ export function NotebookApp() {
   )
 
   const openTreeContextMenu = useCallback(
-    (menu: NotebookTreeContextMenuState) => {
+    (menu: VaultTreeContextMenuState) => {
       toolbarState.closeToolbarPopovers()
       setAisleContextMenu(null)
       setEditorContextMenu(null)
@@ -5374,7 +5374,7 @@ export function NotebookApp() {
   const openRootTreeContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       const target = event.target instanceof Element ? event.target : null
-      if (target?.closest('.notebook-tree-row, .tab-context-menu')) return
+      if (target?.closest('.vault-tree-row, .tab-context-menu')) return
       event.preventDefault()
       event.stopPropagation()
       openTreeContextMenu({
@@ -5388,14 +5388,14 @@ export function NotebookApp() {
 
   const deleteItem = useCallback(
     (itemId: string) => {
-      mutateState((previous) => deleteNotebookItemInState(previous, itemId))
+      mutateState((previous) => deleteVaultItemInState(previous, itemId))
     },
     [mutateState],
   )
 
   const renameTreeContextItem = useCallback(() => {
     if (!treeContextMenu || treeContextMenu.kind !== 'item') return
-    const entry = findNotebookItem(stateRef.current.notebook.items, treeContextMenu.itemId)
+    const entry = findVaultItem(stateRef.current.vault.items, treeContextMenu.itemId)
     startTreeRename(treeContextMenu.itemId, entry?.item.title ?? treeContextMenu.itemTitle)
   }, [startTreeRename, stateRef, treeContextMenu])
 
@@ -5404,10 +5404,10 @@ export function NotebookApp() {
     if (treeContextMenu.kind === 'root') {
       return {
         parentFolderId: null,
-        index: stateRef.current.notebook.items.length,
+        index: stateRef.current.vault.items.length,
       }
     }
-    const entry = findNotebookItem(stateRef.current.notebook.items, treeContextMenu.itemId)
+    const entry = findVaultItem(stateRef.current.vault.items, treeContextMenu.itemId)
     if (!entry) return null
     if (entry.item.type === 'folder') {
       return {
@@ -5422,10 +5422,10 @@ export function NotebookApp() {
   }, [stateRef, treeContextMenu])
 
   const getTreeContextSortParentFolderId = useCallback(
-    (items: NotebookTreeItem[]): string | null | undefined => {
+    (items: VaultTreeItem[]): string | null | undefined => {
       if (!treeContextMenu) return undefined
       if (treeContextMenu.kind === 'root') return null
-      const entry = findNotebookItem(items, treeContextMenu.itemId)
+      const entry = findVaultItem(items, treeContextMenu.itemId)
       if (!entry) return undefined
       return entry.item.type === 'folder' ? entry.item.id : entry.parentFolderId
     },
@@ -5451,20 +5451,20 @@ export function NotebookApp() {
       sortMode === 'created-desc' ||
       sortMode === 'updated-asc' ||
       sortMode === 'updated-desc'
-    const snapshots = dateSort ? notebookEditors.getMountedEditorMarkdownSnapshots() : []
+    const snapshots = dateSort ? vaultEditors.getMountedEditorMarkdownSnapshots() : []
     mutateState((previous) => {
-      const snapshotState = dateSort ? applyNotebookEditorMarkdownSnapshotsToState(previous, snapshots) : previous
-      const parentFolderId = getTreeContextSortParentFolderId(snapshotState.notebook.items)
+      const snapshotState = dateSort ? applyVaultEditorMarkdownSnapshotsToState(previous, snapshots) : previous
+      const parentFolderId = getTreeContextSortParentFolderId(snapshotState.vault.items)
       if (parentFolderId === undefined) return snapshotState
-      const notebook = sortNotebookItemsInScope(
-        snapshotState.notebook,
+      const vault = sortVaultItemsInScope(
+        snapshotState.vault,
         parentFolderId,
         sortMode,
         snapshotState.noteBodies,
       )
-      return notebook === snapshotState.notebook ? snapshotState : { ...snapshotState, notebook }
+      return vault === snapshotState.vault ? snapshotState : { ...snapshotState, vault }
     })
-  }, [getTreeContextSortParentFolderId, mutateState, notebookEditors, treeContextMenu])
+  }, [getTreeContextSortParentFolderId, mutateState, vaultEditors, treeContextMenu])
 
   const deleteTreeContextItem = useCallback(() => {
     if (!treeContextMenu || treeContextMenu.kind !== 'item') return
@@ -5473,34 +5473,34 @@ export function NotebookApp() {
 
   const revealTreeContextItem = useCallback(() => {
     if (!treeContextMenu || treeContextMenu.kind !== 'item') return
-    const revealNotebookItemLocation = window.electronAPI?.revealNotebookItemLocation
-    if (typeof revealNotebookItemLocation !== 'function') {
-      window.alert('Could not reveal notebook item.')
+    const revealVaultItemLocation = window.electronAPI?.revealVaultItemLocation
+    if (typeof revealVaultItemLocation !== 'function') {
+      window.alert('Could not reveal vault item.')
       return
     }
     const payload = {
       itemId: treeContextMenu.itemId,
       itemType: treeContextMenu.itemType,
     }
-    const latest = getLatestNotebookStateFromMountedEditors()
+    const latest = getLatestVaultStateFromMountedEditors()
     void Promise.resolve(commitAppStateNow(latest.state, {
       preferSync: true,
       flushQueue: true,
-      trigger: 'notebook-sidebar-reveal-item',
+      trigger: 'vault-sidebar-reveal-item',
       pendingEditorCount: latest.pendingEditorCount,
     }))
-      .then(() => revealNotebookItemLocation(payload))
+      .then(() => revealVaultItemLocation(payload))
       .then((result) => {
         if (result.ok) return
-        window.alert(result.error || 'Could not reveal notebook item.')
+        window.alert(result.error || 'Could not reveal vault item.')
       })
-      .catch(() => window.alert('Could not reveal notebook item.'))
-  }, [commitAppStateNow, getLatestNotebookStateFromMountedEditors, treeContextMenu])
+      .catch(() => window.alert('Could not reveal vault item.'))
+  }, [commitAppStateNow, getLatestVaultStateFromMountedEditors, treeContextMenu])
 
   const restoreDeletedItem = useCallback(
     (deletedItemId: string) => {
       setExpandedTrashItemId((previous) => (previous === deletedItemId ? '' : previous))
-      mutateState((previous) => restoreDeletedNotebookItemInState(previous, deletedItemId))
+      mutateState((previous) => restoreDeletedVaultItemInState(previous, deletedItemId))
       setViewMode('main')
     },
     [mutateState],
@@ -5515,9 +5515,9 @@ export function NotebookApp() {
       mutateState((previous) =>
         pruneUnreferencedBodies({
           ...previous,
-          notebook: {
-            ...previous.notebook,
-            deletedItems: previous.notebook.deletedItems.filter((entry) => entry.id !== deletedItemId),
+          vault: {
+            ...previous.vault,
+            deletedItems: previous.vault.deletedItems.filter((entry) => entry.id !== deletedItemId),
           },
         }),
       )
@@ -5527,19 +5527,19 @@ export function NotebookApp() {
 
   const setActiveNote = useCallback(
     (noteId: string) => {
-      applyNotebookNavigationLocation({ noteId, aisleId: '' })
+      applyVaultNavigationLocation({ noteId, aisleId: '' })
     },
-    [applyNotebookNavigationLocation],
+    [applyVaultNavigationLocation],
   )
 
   const selectSidebarTreeNote = useCallback(
-    (noteId: string, mode: NotebookTreeNoteSelectionMode) => {
+    (noteId: string, mode: VaultTreeNoteSelectionMode) => {
       setSelectedFolderId('')
       if (mode === 'range') {
         const requestedAnchorNoteId =
-          treeSelectionAnchorNoteId || selectedTreeNoteIds[0] || state.notebook.activeNoteId || noteId
+          treeSelectionAnchorNoteId || selectedTreeNoteIds[0] || state.vault.activeNoteId || noteId
         const anchorNoteId = visibleTreeNoteIds.includes(requestedAnchorNoteId) ? requestedAnchorNoteId : noteId
-        setSelectedTreeNoteIds(getNotebookTreeRangeNoteIds(visibleTreeNoteIds, anchorNoteId, noteId))
+        setSelectedTreeNoteIds(getVaultTreeRangeNoteIds(visibleTreeNoteIds, anchorNoteId, noteId))
         setTreeSelectionAnchorNoteId(anchorNoteId)
         return
       }
@@ -5558,7 +5558,7 @@ export function NotebookApp() {
       setTreeSelectionAnchorNoteId(noteId)
       setActiveNote(noteId)
     },
-    [selectedTreeNoteIds, setActiveNote, state.notebook.activeNoteId, treeSelectionAnchorNoteId, visibleTreeNoteIds],
+    [selectedTreeNoteIds, setActiveNote, state.vault.activeNoteId, treeSelectionAnchorNoteId, visibleTreeNoteIds],
   )
 
   const openSidebarTreeNoteRetained = useCallback(
@@ -5566,9 +5566,9 @@ export function NotebookApp() {
       setSelectedFolderId('')
       setSelectedTreeNoteIds([noteId])
       setTreeSelectionAnchorNoteId(noteId)
-      applyNotebookNavigationLocation({ noteId, aisleId: '' }, { tabDisposition: 'retained' })
+      applyVaultNavigationLocation({ noteId, aisleId: '' }, { tabDisposition: 'retained' })
     },
-    [applyNotebookNavigationLocation],
+    [applyVaultNavigationLocation],
   )
 
   const selectSidebarTreeFolder = useCallback((folderId: string) => {
@@ -5613,23 +5613,23 @@ export function NotebookApp() {
       if (!key) return
       const currentToken = getSidebarSearchTokenForKey(sidebarSearchIndexes, kind, key)
       const resolvedToken = currentToken ?? getSidebarSearchTokenForKey(
-        buildSidebarSearchIndexes(notebookIndexContext.state, notebookIndexContext),
+        buildSidebarSearchIndexes(vaultIndexContext.state, vaultIndexContext),
         kind,
         key,
       )
       if (!resolvedToken) return
       activateSidebarSearchToken(resolvedToken)
     },
-    [activateSidebarSearchToken, notebookIndexContext, sidebarSearchIndexes],
+    [activateSidebarSearchToken, vaultIndexContext, sidebarSearchIndexes],
   )
 
   const updateSidebarSearchQuery = useCallback(
     (nextQuery: string) => {
-      notebookEditors.flushPendingEditorAppStateCommit()
+      vaultEditors.flushPendingEditorAppStateCommit()
       revealSidebarSearch()
       setQuery(nextQuery)
     },
-    [notebookEditors, revealSidebarSearch],
+    [vaultEditors, revealSidebarSearch],
   )
 
   const selectSidebarSearchSuggestion = useCallback(
@@ -5660,12 +5660,12 @@ export function NotebookApp() {
   const openSidebarSearchResult = useCallback(
     (result: SidebarSearchResult, mode?: SidebarSearchResultOpenMode) => {
       recordSidebarSearchHistory(query)
-      applyNotebookNavigationLocation(
+      applyVaultNavigationLocation(
         { noteId: result.noteId, aisleId: result.aisleId },
         mode === 'retained' ? { tabDisposition: 'retained' } : undefined,
       )
     },
-    [applyNotebookNavigationLocation, query, recordSidebarSearchHistory],
+    [applyVaultNavigationLocation, query, recordSidebarSearchHistory],
   )
 
   const toggleNotesTrashFromShortcut = useCallback(() => {
@@ -5675,7 +5675,7 @@ export function NotebookApp() {
   const toggleNotesScratchpadFromShortcut = useCallback(() => {
     pendingFindReplaceRevealRef.current = null
     setFindReplaceOpen(false)
-    clearNotebookNavigationTransientUi()
+    clearVaultNavigationTransientUi()
     closeSidebarSearchMode()
     setViewMode('main')
 
@@ -5696,10 +5696,10 @@ export function NotebookApp() {
     pendingScrollToAisleIdRef.current = targetAisleId
     pendingNavigationTopAisleIdRef.current = null
     scheduleAisleFocusScroll(activeScratchpad.noteBody.id, targetAisleId)
-  }, [clearNotebookNavigationTransientUi, closeSidebarSearchMode, scheduleAisleFocusScroll, stateRef])
+  }, [clearVaultNavigationTransientUi, closeSidebarSearchMode, scheduleAisleFocusScroll, stateRef])
 
   const focusNotesFilterFromShortcut = useCallback(() => {
-    notebookEditors.flushPendingEditorAppStateCommit()
+    vaultEditors.flushPendingEditorAppStateCommit()
     pendingFindReplaceRevealRef.current = null
     setFindReplaceOpen(false)
     toolbarState.closeToolbarPopovers()
@@ -5722,7 +5722,7 @@ export function NotebookApp() {
       searchInputRef.current?.focus()
       searchInputRef.current?.select()
     }, 0)
-  }, [mutateState, notebookEditors, toolbarState])
+  }, [mutateState, vaultEditors, toolbarState])
 
   const toggleSidebarSearchModeFromButton = useCallback(() => {
     if (sidebarSearchVisible) {
@@ -5757,7 +5757,7 @@ export function NotebookApp() {
       mutateState((previous) => {
         const body = previous.noteBodies.find((candidate) => candidate.id === activeModel.noteBody.id)
         if (!body) return previous
-        const idGenerator = createReservedIdAllocator(collectNotebookIds(previous))
+        const idGenerator = createReservedIdAllocator(collectVaultIds(previous))
         const { aisle, body: aisleBody } = createNewAisleBody(idGenerator, markdown)
         createdAisleId = aisle.id
         const activeIndex = body.aisles.findIndex((candidate) => candidate.id === nearAisleId)
@@ -5815,10 +5815,10 @@ export function NotebookApp() {
       if (!nextAisle) return
       setActiveAisleId(nextAisle.id)
       window.setTimeout(() => {
-        notebookEditors.activateAisleEditor(buildAisleEditorKey(activeModel.noteBody.id, nextAisle.id), { focus: true })
+        vaultEditors.activateAisleEditor(buildAisleEditorKey(activeModel.noteBody.id, nextAisle.id), { focus: true })
       }, 0)
     },
-    [activeModel, notebookEditors, renderedActiveAisleId],
+    [activeModel, vaultEditors, renderedActiveAisleId],
   )
 
   const runShortcutMenuOperation = useCallback(
@@ -5830,12 +5830,12 @@ export function NotebookApp() {
         openTableOfContentsForAisleRef.current?.(aisleId)
         return
       }
-      notebookEditors.runNewlineOperation(operation, aisleId)
+      vaultEditors.runNewlineOperation(operation, aisleId)
     },
-    [notebookEditors, renderedActiveAisleId, shortcutMenu?.aisleId],
+    [vaultEditors, renderedActiveAisleId, shortcutMenu?.aisleId],
   )
 
-  useNotebookHotkeys({
+  useVaultHotkeys({
     hotkeys: state.hotkeys,
     isMacPlatform,
     viewMode,
@@ -5845,7 +5845,7 @@ export function NotebookApp() {
       newFolder: createFolder,
       closeCurrentNote: () => {
         if (scratchpadActiveRef.current) return
-        const noteId = stateRef.current.notebook.activeNoteId
+        const noteId = stateRef.current.vault.activeNoteId
         if (noteId) closeNoteTab(noteId)
       },
       cyclePinnedNoteTabNext: () => cyclePinnedNoteTab(1),
@@ -5857,13 +5857,13 @@ export function NotebookApp() {
       cycleAislePrev: () => cycleActiveAisle(-1),
       cycleAisleNext: () => cycleActiveAisle(1),
       formatStrikethrough: () => {
-        notebookEditors.runCommand('strike')
+        vaultEditors.runCommand('strike')
       },
       navigateHistoryBack: () => {
-        navigateNotebookHistoryBy(-1)
+        navigateVaultHistoryBy(-1)
       },
       navigateHistoryForward: () => {
-        navigateNotebookHistoryBy(1)
+        navigateVaultHistoryBy(1)
       },
     },
   })
@@ -5958,8 +5958,8 @@ export function NotebookApp() {
   }, [])
 
   const insertNamedLink = useCallback(() => {
-    if (notebookEditors.insertNamedUrlLink(linkPrompt.url, linkPrompt.text, linkPrompt.editRange)) closeLinkPrompt()
-  }, [closeLinkPrompt, linkPrompt.editRange, linkPrompt.text, linkPrompt.url, notebookEditors])
+    if (vaultEditors.insertNamedUrlLink(linkPrompt.url, linkPrompt.text, linkPrompt.editRange)) closeLinkPrompt()
+  }, [closeLinkPrompt, linkPrompt.editRange, linkPrompt.text, linkPrompt.url, vaultEditors])
 
   const openPromptLinkUrl = useCallback(() => {
     const url = linkPrompt.url.trim()
@@ -5968,8 +5968,8 @@ export function NotebookApp() {
   }, [linkPrompt.url])
 
   const openToolbarLinkPicker = useCallback(() => {
-    notebookEditors.openUrlLinkPrompt()
-  }, [notebookEditors])
+    vaultEditors.openUrlLinkPrompt()
+  }, [vaultEditors])
 
   const openContextNoteReferencePicker = useCallback(
     (kind: 'note-link' | 'note-preview') => {
@@ -6017,12 +6017,12 @@ export function NotebookApp() {
     })
   }, [toolbarState])
 
-  const copyNotebookStructureAs = useCallback(
-    (kind: NotebookEditorCopyAsKind, mode: NotebookEditorCopyAsMode, aisleId: string) => {
+  const copyVaultStructureAs = useCallback(
+    (kind: VaultEditorCopyAsKind, mode: VaultEditorCopyAsMode, aisleId: string) => {
       if (scratchpadActiveRef.current) return
       const currentState = stateRef.current
-      const result = buildNotebookStructureClipboardPayload(currentState, {
-        activeNoteId: currentState.notebook.activeNoteId,
+      const result = buildVaultStructureClipboardPayload(currentState, {
+        activeNoteId: currentState.vault.activeNoteId,
         kind,
         mode,
         aisleId,
@@ -6031,7 +6031,7 @@ export function NotebookApp() {
         window.alert(result.message)
         return
       }
-      void writeNotebookStructureClipboardPayload(result.payload, result.markdown)
+      void writeVaultStructureClipboardPayload(result.payload, result.markdown)
         .then((ok) => {
           if (!ok) window.alert('Clipboard copy is unavailable here.')
         })
@@ -6040,17 +6040,17 @@ export function NotebookApp() {
     [stateRef],
   )
 
-  const pasteNotebookStructureClipboard = useCallback(
+  const pasteVaultStructureClipboard = useCallback(
     async (aisleId: string) => {
-      const payload = await readNotebookStructureClipboardPayloadFromNavigator()
-      return payload ? applyNotebookStructureClipboardPaste(payload, aisleId) : false
+      const payload = await readVaultStructureClipboardPayloadFromNavigator()
+      return payload ? applyVaultStructureClipboardPaste(payload, aisleId) : false
     },
-    [applyNotebookStructureClipboardPaste],
+    [applyVaultStructureClipboardPaste],
   )
 
   const pasteFrontmatterClipboard = useCallback(
     async (aisleId: string) => {
-      const startedAt = getNotebookAppPerfNow()
+      const startedAt = getVaultAppPerfNow()
       let resultStatus = 'empty'
       try {
         const payload = await readFrontmatterClipboardPayloadFromNavigator(undefined, { allowYamlFallback: false })
@@ -6061,9 +6061,9 @@ export function NotebookApp() {
         pushAppToast('Clipboard paste is unavailable here.', 'warning')
         return false
       } finally {
-        recordNotebookFrontmatterTiming(
+        recordVaultFrontmatterTiming(
           'frontmatter-clipboard-read',
-          getNotebookAppPerfNow() - startedAt,
+          getVaultAppPerfNow() - startedAt,
           {
             result: resultStatus,
             aisleId,
@@ -6075,24 +6075,24 @@ export function NotebookApp() {
     [applyFrontmatterClipboardPaste, pushAppToast],
   )
 
-  const insertNotebookNoteReference = useCallback(
-    (target: NoteLocation, kind: 'note-link' | 'note-preview', options: NotebookNoteActionPickerActionOptions = {}) => {
-      const token = buildNotebookNoteReferenceInsertionText(stateRef.current, target, kind, options)
+  const insertVaultNoteReference = useCallback(
+    (target: NoteLocation, kind: 'note-link' | 'note-preview', options: VaultNoteActionPickerActionOptions = {}) => {
+      const token = buildVaultNoteReferenceInsertionText(stateRef.current, target, kind, options)
       const currentPicker = noteActionPicker
       const insertRange = currentPicker?.source === 'mention'
         ? currentPicker.mentionRange ?? null
         : currentPicker?.insertRange ?? null
       if (insertRange) {
-        notebookEditors.insertNoteReferenceAtSelection(token, insertRange)
+        vaultEditors.insertNoteReferenceAtSelection(token, insertRange)
       } else {
-        notebookEditors.insertNoteReferenceAtSelection(token)
+        vaultEditors.insertNoteReferenceAtSelection(token)
       }
       closeNoteActionPicker()
     },
-    [closeNoteActionPicker, noteActionPicker, notebookEditors, stateRef],
+    [closeNoteActionPicker, noteActionPicker, vaultEditors, stateRef],
   )
 
-  const applyNotebookNoteCopyAction = useCallback(
+  const applyVaultNoteCopyAction = useCallback(
     (targetNoteId: string, mode: 'independent' | 'synced') => {
       const source = noteActionPicker?.source
       let nextActiveAisleId = ''
@@ -6100,12 +6100,12 @@ export function NotebookApp() {
       mutateState((previous) => {
         const result = source === 'whole-note-copy'
           ? replaceActiveNoteBodyFromTargetNote(previous, {
-              activeNoteId: previous.notebook.activeNoteId,
+              activeNoteId: previous.vault.activeNoteId,
               targetNoteId,
               mode,
             })
           : replaceFocusedAisleFromTargetNote(previous, {
-              activeNoteId: previous.notebook.activeNoteId,
+              activeNoteId: previous.vault.activeNoteId,
               focusedAisleId: renderedActiveAisleId,
               targetNoteId,
               mode,
@@ -6128,23 +6128,23 @@ export function NotebookApp() {
   )
 
   const handleNoteActionPickerAction = useCallback(
-    (action: NotebookNoteActionPickerAction, noteId: string, options: NotebookNoteActionPickerActionOptions = {}) => {
+    (action: VaultNoteActionPickerAction, noteId: string, options: VaultNoteActionPickerActionOptions = {}) => {
       const referenceKind = getReferenceKindForNoteAction(action)
       if (referenceKind) {
-        insertNotebookNoteReference({ noteId }, referenceKind, options)
+        insertVaultNoteReference({ noteId }, referenceKind, options)
         return
       }
       const copyMode = getCopyModeForNoteAction(action)
-      if (copyMode) applyNotebookNoteCopyAction(noteId, copyMode)
+      if (copyMode) applyVaultNoteCopyAction(noteId, copyMode)
     },
-    [applyNotebookNoteCopyAction, insertNotebookNoteReference],
+    [applyVaultNoteCopyAction, insertVaultNoteReference],
   )
 
   const submitUrlLink = useCallback(
     (url: string) => {
-      if (notebookEditors.insertUrlLink(url)) closeNoteActionPicker()
+      if (vaultEditors.insertUrlLink(url)) closeNoteActionPicker()
     },
-    [closeNoteActionPicker, notebookEditors],
+    [closeNoteActionPicker, vaultEditors],
   )
 
   const openDecoupleAisleDialog = useCallback(
@@ -6170,7 +6170,7 @@ export function NotebookApp() {
 
   const decoupleDialogRows = useMemo(() => {
     if (!decoupleDialog) return []
-    return getNotebookAisleDecoupleRows(state, decoupleDialog.aisleBodyId)
+    return getVaultAisleDecoupleRows(state, decoupleDialog.aisleBodyId)
   }, [decoupleDialog, state])
 
   const toggleDecoupleDialogKeepKey = useCallback((key: string) => {
@@ -6218,13 +6218,13 @@ export function NotebookApp() {
       options: { decoupleAisleIds?: string[]; removeFrontmatterAisleIds?: string[]; activeAisleId?: string } = {},
     ) => {
       if (!activeModel || draftAisles.length === 0) return
-      if (editorRef.current) notebookEditors.commitActiveEditorMarkdownNow(editorRef.current)
+      if (editorRef.current) vaultEditors.commitActiveEditorMarkdownNow(editorRef.current)
 
       mutateState((previous) => {
         const body = previous.noteBodies.find((candidate) => candidate.id === activeModel.noteBody.id)
         if (!body) return previous
         const timestamp = new Date().toISOString()
-        const idGenerator = createReservedIdAllocator(collectNotebookIds(previous))
+        const idGenerator = createReservedIdAllocator(collectVaultIds(previous))
         const decoupleAisleIds = new Set(options.decoupleAisleIds ?? [])
         const removeFrontmatterAisleIds = new Set(options.removeFrontmatterAisleIds ?? [])
         const sourceAislesById = new Map(body.aisles.map((aisle) => [aisle.id, aisle]))
@@ -6267,11 +6267,11 @@ export function NotebookApp() {
       setAisleEditModalOpen(false)
       setActiveAisleId(options.activeAisleId ?? draftAisles[0]?.id ?? '')
     },
-    [activeModel, mutateState, notebookEditors],
+    [activeModel, mutateState, vaultEditors],
   )
 
   const buildFrontmatterModalForAisle = useCallback(
-    (sourceState: AppState, model: ActiveNoteModel, aisleId: string): NotebookFrontmatterModalState | string | null => {
+    (sourceState: AppState, model: ActiveNoteModel, aisleId: string): VaultFrontmatterModalState | string | null => {
       const aisle = model.noteBody.aisles.find((candidate) => candidate.id === aisleId)
       if (!aisle) return null
       const body = getAisleBodyById(sourceState, aisle.aisleBodyId)
@@ -6310,7 +6310,7 @@ export function NotebookApp() {
   )
 
   const selectFrontmatterAisle = useCallback(
-    (modal: NotebookFrontmatterModalState, aisleId: string): NotebookFrontmatterModalState | string | null => {
+    (modal: VaultFrontmatterModalState, aisleId: string): VaultFrontmatterModalState | string | null => {
       if (!activeModel || activeModel.kind === 'scratchpad') return null
       return buildFrontmatterModalForAisle(state, activeModel, aisleId) ?? modal
     },
@@ -6318,7 +6318,7 @@ export function NotebookApp() {
   )
 
   const selectFrontmatterTemplate = useCallback(
-    (modal: NotebookFrontmatterModalState, templateId: string): NotebookFrontmatterModalState => {
+    (modal: VaultFrontmatterModalState, templateId: string): VaultFrontmatterModalState => {
       const template = state.frontmatter.templates.find((candidate) => candidate.id === templateId) ?? null
       if (!template) {
         return {
@@ -6344,7 +6344,7 @@ export function NotebookApp() {
   )
 
   const toggleFrontmatterTemplateDerived = useCallback(
-    (modal: NotebookFrontmatterModalState, templateDerived: boolean): NotebookFrontmatterModalState => {
+    (modal: VaultFrontmatterModalState, templateDerived: boolean): VaultFrontmatterModalState => {
       const template = state.frontmatter.templates.find((candidate) => candidate.id === modal.selectedTemplateId) ?? null
       if (!template) return modal
       if (!templateDerived) {
@@ -6381,7 +6381,7 @@ export function NotebookApp() {
   )
 
   const filterFrontmatterTemplateFromModal = useCallback(
-    (modal: NotebookFrontmatterModalState) => {
+    (modal: VaultFrontmatterModalState) => {
       setFrontmatterModal(null)
       filterAisleFrontmatterTemplate(modal.aisleId)
     },
@@ -6389,8 +6389,8 @@ export function NotebookApp() {
   )
 
   const copyFrontmatterFromModal = useCallback(
-    async (modal: NotebookFrontmatterModalState): Promise<string | null> => {
-      const startedAt = getNotebookAppPerfNow()
+    async (modal: VaultFrontmatterModalState): Promise<string | null> => {
+      const startedAt = getVaultAppPerfNow()
       let resultStatus = 'copied'
       let warningCount = 0
       try {
@@ -6434,9 +6434,9 @@ export function NotebookApp() {
         resultStatus = 'error'
         throw error
       } finally {
-        recordNotebookFrontmatterTiming(
+        recordVaultFrontmatterTiming(
           'frontmatter-clipboard-copy',
-          getNotebookAppPerfNow() - startedAt,
+          getVaultAppPerfNow() - startedAt,
           {
             result: resultStatus,
             noteBodyId: modal.noteBodyId,
@@ -6455,8 +6455,8 @@ export function NotebookApp() {
   )
 
   const saveFrontmatter = useCallback(
-    (modal: NotebookFrontmatterModalState) => {
-      const startedAt = getNotebookAppPerfNow()
+    (modal: VaultFrontmatterModalState) => {
+      const startedAt = getVaultAppPerfNow()
       let resultStatus = 'saved'
       let warningCount = 0
       try {
@@ -6496,9 +6496,9 @@ export function NotebookApp() {
         setFrontmatterModal(null)
         return null
       } finally {
-        recordNotebookFrontmatterTiming(
+        recordVaultFrontmatterTiming(
           'frontmatter-save',
-          getNotebookAppPerfNow() - startedAt,
+          getVaultAppPerfNow() - startedAt,
           {
             result: resultStatus,
             noteBodyId: modal.noteBodyId,
@@ -6522,11 +6522,11 @@ export function NotebookApp() {
     const panels = buildTableOfContentsPanels(
       activeModel.noteBody.id,
       activeModel.resolved.aisles,
-      notebookEditors.getHeadingOutlineForAisle,
+      vaultEditors.getHeadingOutlineForAisle,
       {
         scope: options.scope ?? state.ui.tableOfContentsScope ?? 'all-aisles',
         focusedAisleId,
-        getLinksForAisle: notebookEditors.getTableOfContentsLinksForAisle,
+        getLinksForAisle: vaultEditors.getTableOfContentsLinksForAisle,
       },
     )
     if (!panels) {
@@ -6534,7 +6534,7 @@ export function NotebookApp() {
       return
     }
     setTableOfContentsPanels(panels)
-  }, [activeModel, notebookEditors, renderedActiveAisleId, state.ui.tableOfContentsScope])
+  }, [activeModel, vaultEditors, renderedActiveAisleId, state.ui.tableOfContentsScope])
 
   const openFocusedTableOfContents = useCallback(
     (aisleId: string) => {
@@ -6559,20 +6559,20 @@ export function NotebookApp() {
     (aisleId: string, headingKey: string) => {
       setActiveAisleId(aisleId)
       window.setTimeout(() => {
-        notebookEditors.scrollToAisleHeading(aisleId, headingKey)
+        vaultEditors.scrollToAisleHeading(aisleId, headingKey)
       }, 80)
     },
-    [notebookEditors],
+    [vaultEditors],
   )
 
   const selectTableOfContentsLink = useCallback(
     (aisleId: string, linkKey: string) => {
       setActiveAisleId(aisleId)
       window.setTimeout(() => {
-        notebookEditors.scrollToAisleTableOfContentsLink(aisleId, linkKey)
+        vaultEditors.scrollToAisleTableOfContentsLink(aisleId, linkKey)
       }, 80)
     },
-    [notebookEditors],
+    [vaultEditors],
   )
 
   const editorToolOverlaysVisible = viewMode === 'main' && !aisleEditModalOpen
@@ -6670,14 +6670,14 @@ export function NotebookApp() {
     (aisleId: string, x: number, y: number, options: { linkPrompt?: LinkPromptState | null } = {}) => {
       if (!activeModel) return
       setActiveAisleId(aisleId)
-      notebookEditors.activateAisleEditor(buildAisleEditorKey(activeModel.noteBody.id, aisleId))
+      vaultEditors.activateAisleEditor(buildAisleEditorKey(activeModel.noteBody.id, aisleId))
       toolbarState.closeToolbarPopovers()
       setAisleContextMenu(null)
       setTreeContextMenu(null)
       setShortcutMenu(null)
       setEditorContextMenu({ aisleId, x, y, linkPrompt: options.linkPrompt ?? null })
     },
-    [activeModel, notebookEditors, toolbarState],
+    [activeModel, vaultEditors, toolbarState],
   )
 
   const openAisleActionMenu = useCallback(
@@ -6690,23 +6690,23 @@ export function NotebookApp() {
     [openAisleContextMenuAt],
   )
 
-  const openNotebookEditorContextMenuFromPointer = useCallback(
+  const openVaultEditorContextMenuFromPointer = useCallback(
     (event: ReactMouseEvent<HTMLElement>) => {
       const target = event.target instanceof Element
         ? event.target
         : typeof Text !== 'undefined' && event.target instanceof Text
           ? event.target.parentElement
           : null
-      const aisleId = getNotebookEditorContextMenuAisleIdFromTarget(target)
+      const aisleId = getVaultEditorContextMenuAisleIdFromTarget(target)
       if (!aisleId) return
       event.preventDefault()
       const anchor = target?.closest<HTMLAnchorElement>('a[href]')
       const linkPrompt = anchor?.closest('.ProseMirror[contenteditable="true"]')
-        ? notebookEditors.getLinkPromptAtClientPoint(aisleId, { clientX: event.clientX, clientY: event.clientY })
+        ? vaultEditors.getLinkPromptAtClientPoint(aisleId, { clientX: event.clientX, clientY: event.clientY })
         : null
       openEditorContextMenuAt(aisleId, event.clientX, event.clientY, { linkPrompt })
     },
-    [notebookEditors, openEditorContextMenuAt],
+    [vaultEditors, openEditorContextMenuAt],
   )
 
   useEffect(() => {
@@ -6736,11 +6736,11 @@ export function NotebookApp() {
         target?.closest('.note-toolbar-copy-popover') ||
         target?.closest('.note-toolbar-heading-popover') ||
         target?.closest('.note-shared-toolbar') ||
-        target?.closest('.notebook-sidebar-switcher')
+        target?.closest('.vault-sidebar-switcher')
       ) {
         return
       }
-      setNotebookSwitcherOpen(false)
+      setVaultSwitcherOpen(false)
       setAisleContextMenu(null)
       setEditorContextMenu(null)
       setTreeContextMenu(null)
@@ -6753,7 +6753,7 @@ export function NotebookApp() {
       setEditorContextMenu(null)
       setTreeContextMenu(null)
       setShortcutMenu(null)
-      setNotebookSwitcherOpen(false)
+      setVaultSwitcherOpen(false)
       toolbarState.closeToolbarPopovers()
     }
     document.addEventListener('pointerdown', closeFloatingUi)
@@ -6769,45 +6769,45 @@ export function NotebookApp() {
     setEditorContextMenu(null)
     setTreeContextMenu(null)
     setShortcutMenu(null)
-    setNotebookSwitcherOpen(false)
+    setVaultSwitcherOpen(false)
   }, [activeModel?.noteId, viewMode])
 
   const runEditorContextClipboardAction = useCallback(
     (
-      action: NotebookEditorClipboardAction,
-      destination: NotebookEditorPasteDestination,
+      action: VaultEditorClipboardAction,
+      destination: VaultEditorPasteDestination,
       aisleId: string,
     ) => {
       if (action === 'paste' && destination === 'here') {
         void pasteFrontmatterClipboard(aisleId)
           .then((handled) => {
             if (handled) return true
-            return pasteNotebookStructureClipboard(aisleId)
+            return pasteVaultStructureClipboard(aisleId)
           })
           .then((handled) => {
-            if (!handled) notebookEditors.runClipboardAction(action)
+            if (!handled) vaultEditors.runClipboardAction(action)
           })
-          .catch(() => notebookEditors.runClipboardAction(action))
+          .catch(() => vaultEditors.runClipboardAction(action))
         return
       }
 
       if (destination === 'here' || action === 'cut' || action === 'copy') {
-        notebookEditors.runClipboardAction(action)
+        vaultEditors.runClipboardAction(action)
         return
       }
 
-      void notebookEditors.readClipboardMarkdownForPaste(action)
+      void vaultEditors.readClipboardMarkdownForPaste(action)
         .then((result) => {
           if (!result) return
           addAisle(destination === 'new-aisle-left' ? 'left' : 'right', aisleId, result.markdown)
         })
         .catch(() => undefined)
     },
-    [addAisle, notebookEditors, pasteFrontmatterClipboard, pasteNotebookStructureClipboard],
+    [addAisle, vaultEditors, pasteFrontmatterClipboard, pasteVaultStructureClipboard],
   )
 
   const insertEditorContextAisle = useCallback(
-    (side: NotebookEditorAisleInsertSide, aisleId: string) => {
+    (side: VaultEditorAisleInsertSide, aisleId: string) => {
       addAisle(side, aisleId)
     },
     [addAisle],
@@ -6815,7 +6815,7 @@ export function NotebookApp() {
 
   const revealEditorContextLocation = useCallback(
     (aisleId: string) => {
-      const noteId = stateRef.current.notebook.activeNoteId
+      const noteId = stateRef.current.vault.activeNoteId
       if (!noteId) {
         window.alert('Could not reveal note location.')
         return
@@ -6830,11 +6830,11 @@ export function NotebookApp() {
         location: { noteId },
         aisleId,
       }
-      const latest = getLatestNotebookStateFromMountedEditors()
+      const latest = getLatestVaultStateFromMountedEditors()
       void Promise.resolve(commitAppStateNow(latest.state, {
         preferSync: true,
         flushQueue: true,
-        trigger: 'notebook-editor-reveal-location',
+        trigger: 'vault-editor-reveal-location',
         pendingEditorCount: latest.pendingEditorCount,
       }))
         .then(() => revealNoteLocation(payload))
@@ -6844,7 +6844,7 @@ export function NotebookApp() {
         })
         .catch(() => window.alert('Could not reveal note location.'))
     },
-    [commitAppStateNow, getLatestNotebookStateFromMountedEditors, stateRef],
+    [commitAppStateNow, getLatestVaultStateFromMountedEditors, stateRef],
   )
 
   const startSidebarResize = useCallback(
@@ -6921,11 +6921,11 @@ export function NotebookApp() {
       onOpenAisleEditModal={() => setAisleEditModalOpen(true)}
       onOpenFindReplace={focusNotesFilterFromShortcut}
       onToggleHeading={openHeadingMenu}
-      onCommand={notebookEditors.runCommand}
-      onHistory={(direction) => notebookEditors.runCommand(direction)}
-      onInsertImage={notebookEditors.insertImageFile}
+      onCommand={vaultEditors.runCommand}
+      onHistory={(direction) => vaultEditors.runCommand(direction)}
+      onInsertImage={vaultEditors.insertImageFile}
       onInsertWebLink={openToolbarLinkPicker}
-      onClear={() => notebookEditors.runCommand('clear')}
+      onClear={() => vaultEditors.runCommand('clear')}
     />
   ) : null
 
@@ -6936,7 +6936,7 @@ export function NotebookApp() {
       activeHeadingLevel={toolbarState.activeHeadingLevel}
       toolbarPopoverPosition={toolbarState.toolbarPopoverPosition}
       onExecuteToolbarCommand={(command, payload) => {
-        notebookEditors.runCommand(command, payload)
+        vaultEditors.runCommand(command, payload)
         toolbarState.setHeadingMenuOpen(false)
       }}
       onOpenCopyModal={() => {
@@ -6963,74 +6963,74 @@ export function NotebookApp() {
     />
   ) : null
 
-  const getNotebookSelector = useCallback((notebook: KnownNotebook) => ({
-    notebookId: notebook.notebookId ?? undefined,
-    notebookPath: notebook.notebookPath,
+  const getVaultSelector = useCallback((vault: KnownVault) => ({
+    vaultId: vault.vaultId ?? undefined,
+    vaultPath: vault.vaultPath,
   }), [])
 
-  const createNotebookFromSettings = useCallback(() => {
-    setOpenNotebookActionMenuKey('')
-    setNotebookNameDialog({ mode: 'create', initialName: 'New Notebook' })
+  const createVaultFromSettings = useCallback(() => {
+    setOpenVaultActionMenuKey('')
+    setVaultNameDialog({ mode: 'create', initialName: 'New Vault' })
   }, [])
 
-  const renameNotebookFromSettings = useCallback((notebook: KnownNotebook) => {
-    setOpenNotebookActionMenuKey('')
-    setNotebookNameDialog({ mode: 'rename', initialName: notebook.notebookName, notebook })
+  const renameVaultFromSettings = useCallback((vault: KnownVault) => {
+    setOpenVaultActionMenuKey('')
+    setVaultNameDialog({ mode: 'rename', initialName: vault.vaultName, vault })
   }, [])
 
-  const submitNotebookNameDialog = useCallback((name: string) => {
-    const dialog = notebookNameDialog
+  const submitVaultNameDialog = useCallback((name: string) => {
+    const dialog = vaultNameDialog
     if (!dialog) return
-    setNotebookNameDialog(null)
+    setVaultNameDialog(null)
     if (dialog.mode === 'rename') {
       if (name === dialog.initialName) return
-      void storageProfileController.renameNotebook(name, getNotebookSelector(dialog.notebook))
+      void storageProfileController.renameVault(name, getVaultSelector(dialog.vault))
       return
     }
     void (async () => {
-      const locationPath = await storageProfileController.chooseNotebookLocation()
+      const locationPath = await storageProfileController.chooseVaultLocation()
       if (!locationPath) return
-      await storageProfileController.createNotebook({ name, locationPath })
+      await storageProfileController.createVault({ name, locationPath })
     })()
-  }, [getNotebookSelector, notebookNameDialog, storageProfileController])
+  }, [getVaultSelector, vaultNameDialog, storageProfileController])
 
-  const switchNotebookFromSettings = useCallback((notebook: KnownNotebook) => {
-    setOpenNotebookActionMenuKey('')
-    if (!notebook.available || notebook.isActive) return
-    void storageProfileController.switchNotebook(getNotebookSelector(notebook))
-  }, [getNotebookSelector, storageProfileController])
+  const switchVaultFromSettings = useCallback((vault: KnownVault) => {
+    setOpenVaultActionMenuKey('')
+    if (!vault.available || vault.isActive) return
+    void storageProfileController.switchVault(getVaultSelector(vault))
+  }, [getVaultSelector, storageProfileController])
 
-  const switchNotebookFromSidebar = useCallback((notebook: KnownNotebook) => {
-    setNotebookSwitcherOpen(false)
-    if (!notebook.available || notebook.isActive) return
-    void storageProfileController.switchNotebook(getNotebookSelector(notebook))
-  }, [getNotebookSelector, storageProfileController])
+  const switchVaultFromSidebar = useCallback((vault: KnownVault) => {
+    setVaultSwitcherOpen(false)
+    if (!vault.available || vault.isActive) return
+    void storageProfileController.switchVault(getVaultSelector(vault))
+  }, [getVaultSelector, storageProfileController])
 
-  const openNotebookFromSidebar = useCallback(() => {
-    setNotebookSwitcherOpen(false)
-    void storageProfileController.openNotebook()
+  const openVaultFromSidebar = useCallback(() => {
+    setVaultSwitcherOpen(false)
+    void storageProfileController.openVault()
   }, [storageProfileController])
 
-  const forgetNotebookFromSettings = useCallback((notebook: KnownNotebook) => {
-    setOpenNotebookActionMenuKey('')
-    if (notebook.isActive) return
-    const confirmed = window.confirm(`Remove "${notebook.notebookName}" from the notebook list? Files stay on disk.`)
+  const forgetVaultFromSettings = useCallback((vault: KnownVault) => {
+    setOpenVaultActionMenuKey('')
+    if (vault.isActive) return
+    const confirmed = window.confirm(`Remove "${vault.vaultName}" from the vault list? Files stay on disk.`)
     if (!confirmed) return
-    void storageProfileController.forgetNotebook(getNotebookSelector(notebook))
-  }, [getNotebookSelector, storageProfileController])
+    void storageProfileController.forgetVault(getVaultSelector(vault))
+  }, [getVaultSelector, storageProfileController])
 
-  const deleteNotebookFromSettings = useCallback((notebook?: KnownNotebook) => {
-    setOpenNotebookActionMenuKey('')
-    void storageProfileController.deleteNotebook(notebook ? getNotebookSelector(notebook) : undefined)
-  }, [getNotebookSelector, storageProfileController])
+  const deleteVaultFromSettings = useCallback((vault?: KnownVault) => {
+    setOpenVaultActionMenuKey('')
+    void storageProfileController.deleteVault(vault ? getVaultSelector(vault) : undefined)
+  }, [getVaultSelector, storageProfileController])
 
-  const runCurrentNotebookAction = useCallback((action: () => void) => {
-    setOpenNotebookActionMenuKey('')
+  const runCurrentVaultAction = useCallback((action: () => void) => {
+    setOpenVaultActionMenuKey('')
     action()
   }, [])
 
   const toggleSidebarCollapsed = useCallback(() => {
-    setNotebookSwitcherOpen(false)
+    setVaultSwitcherOpen(false)
     mutateState((previous) => ({
       ...previous,
       ui: {
@@ -7046,7 +7046,7 @@ export function NotebookApp() {
     activeId: T,
     onSelect: (id: T) => void,
   ) => (
-    <div className="notebook-utility-tabs" role="tablist" aria-label={label}>
+    <div className="vault-utility-tabs" role="tablist" aria-label={label}>
       {tabItems.map((tab) => (
         <button
           key={tab.id}
@@ -7062,24 +7062,24 @@ export function NotebookApp() {
     </div>
   )
 
-  const renderNotebookManager = () => {
+  const renderVaultManager = () => {
     const storageProfileStatus = storageProfileController.storageProfileStatus
-    const notebookFoldersAvailable = Boolean(window.electronAPI?.getStorageProfileStatus)
+    const vaultFoldersAvailable = Boolean(window.electronAPI?.getStorageProfileStatus)
     const storageHealth =
       storageProfileStatus?.health ?? (storageProfileStatus?.status === 'ready' ? 'healthy' : 'error')
     const showRetry = Boolean(storageProfileStatus && (storageProfileStatus.status === 'error' || storageHealth !== 'healthy'))
-    const activeNotebookPath = storageProfileStatus?.notebookPath ?? storageProfileStatus?.profileRootPath ?? ''
-    const notebookRows = getNotebookRowsFromStorageStatus(storageProfileStatus)
+    const activeVaultPath = storageProfileStatus?.vaultPath ?? storageProfileStatus?.profileRootPath ?? ''
+    const vaultRows = getVaultRowsFromStorageStatus(storageProfileStatus)
 
-    if (!notebookFoldersAvailable) {
+    if (!vaultFoldersAvailable) {
       return (
-        <div className="notebook-settings-stack">
-          <div className="notebook-manager-card">
-            <div className="notebook-manager-header">
+        <div className="vault-settings-stack">
+          <div className="vault-manager-card">
+            <div className="vault-manager-header">
               <div>
-                <span className="notebook-manager-eyebrow">current notebook</span>
-                <h3>Browser notebook</h3>
-                <p className="notebook-settings-help">Browser stores notebook content in local browser storage.</p>
+                <span className="vault-manager-eyebrow">current vault</span>
+                <h3>Browser vault</h3>
+                <p className="vault-settings-help">Browser stores vault content in local browser storage.</p>
               </div>
             </div>
           </div>
@@ -7088,112 +7088,112 @@ export function NotebookApp() {
     }
 
     return (
-      <div className="notebook-settings-stack">
-        <p className="notebook-settings-help">
-          The notebook is this folder on disk. New Notebook creates a named folder inside the parent folder you choose. To use iCloud, Dropbox, OneDrive, or another sync service, put the notebook folder in that synced location.
+      <div className="vault-settings-stack">
+        <p className="vault-settings-help">
+          The vault is this folder on disk. New Vault creates a named folder inside the parent folder you choose. To use iCloud, Dropbox, OneDrive, or another sync service, put the vault folder in that synced location.
         </p>
-        <div className={`notebook-manager-card ${storageHealth === 'error' ? 'is-error' : ''} ${storageHealth === 'warning' ? 'is-warning' : ''}`.trim()}>
-          <div className="notebook-manager-header">
+        <div className={`vault-manager-card ${storageHealth === 'error' ? 'is-error' : ''} ${storageHealth === 'warning' ? 'is-warning' : ''}`.trim()}>
+          <div className="vault-manager-header">
             <div>
-              <span className="notebook-manager-eyebrow">current notebook</span>
-              <h3>{storageProfileStatus?.status === 'setup-required' ? 'No notebook open' : storageProfileStatus?.notebookName || 'Notebook'}</h3>
-              <code className="notebook-manager-path">{activeNotebookPath || 'Choose a notebook folder to start.'}</code>
+              <span className="vault-manager-eyebrow">current vault</span>
+              <h3>{storageProfileStatus?.status === 'setup-required' ? 'No vault open' : storageProfileStatus?.vaultName || 'Vault'}</h3>
+              <code className="vault-manager-path">{activeVaultPath || 'Choose a vault folder to start.'}</code>
             </div>
-            <div className="notebook-settings-actions notebook-manager-primary-actions">
-              <button type="button" className="notebook-settings-action" onClick={createNotebookFromSettings}>
-                New Notebook
+            <div className="vault-settings-actions vault-manager-primary-actions">
+              <button type="button" className="vault-settings-action" onClick={createVaultFromSettings}>
+                New Vault
               </button>
             </div>
           </div>
           {storageProfileStatus?.error ? (
-            <p className="notebook-manager-error">{storageProfileStatus.error}</p>
+            <p className="vault-manager-error">{storageProfileStatus.error}</p>
           ) : null}
           {(storageProfileStatus?.issues ?? []).length > 0 ? (
-            <div className="notebook-manager-issues" aria-label="notebook folder health issues">
+            <div className="vault-manager-issues" aria-label="vault folder health issues">
               {(storageProfileStatus?.issues ?? []).map((issue, index) => (
-                <p key={`${issue.code}-${issue.path ?? index}`} className={`notebook-manager-issue ${issue.severity === 'error' ? 'is-error' : 'is-warning'}`}>
+                <p key={`${issue.code}-${issue.path ?? index}`} className={`vault-manager-issue ${issue.severity === 'error' ? 'is-error' : 'is-warning'}`}>
                   {issue.message}{issue.path ? ` (${issue.path})` : ''}
                 </p>
               ))}
             </div>
           ) : null}
         </div>
-        <div className="notebook-manager-list" aria-label="Remembered notebooks">
-          <div className="notebook-manager-list-header">
-            <span>Remembered notebooks</span>
+        <div className="vault-manager-list" aria-label="Remembered vaults">
+          <div className="vault-manager-list-header">
+            <span>Remembered vaults</span>
           </div>
-          {notebookRows.length === 0 ? (
-            <p className="notebook-settings-help">No notebook folders are remembered yet.</p>
+          {vaultRows.length === 0 ? (
+            <p className="vault-settings-help">No vault folders are remembered yet.</p>
           ) : (
-            notebookRows.map((notebook) => {
-              const notebookKey = notebook.notebookId ?? notebook.notebookPath
-              const menuOpen = openNotebookActionMenuKey === notebookKey
+            vaultRows.map((vault) => {
+              const vaultKey = vault.vaultId ?? vault.vaultPath
+              const menuOpen = openVaultActionMenuKey === vaultKey
               return (
-                <div key={notebookKey} className={`notebook-manager-row ${notebook.isActive ? 'is-active' : ''} ${notebook.available ? '' : 'is-missing'}`.trim()}>
+                <div key={vaultKey} className={`vault-manager-row ${vault.isActive ? 'is-active' : ''} ${vault.available ? '' : 'is-missing'}`.trim()}>
                   <button
                     type="button"
-                    className="notebook-manager-row-main"
-                    disabled={!notebook.available || notebook.isActive}
-                    onClick={() => switchNotebookFromSettings(notebook)}
+                    className="vault-manager-row-main"
+                    disabled={!vault.available || vault.isActive}
+                    onClick={() => switchVaultFromSettings(vault)}
                   >
-                    <AppIcon iconId={notebook.available ? 'folderOpen' : 'folder'} className="notebook-manager-row-icon" />
-                    <span className="notebook-manager-row-copy">
-                      <strong>{notebook.notebookName}</strong>
-                      <code>{notebook.notebookPath}</code>
+                    <AppIcon iconId={vault.available ? 'folderOpen' : 'folder'} className="vault-manager-row-icon" />
+                    <span className="vault-manager-row-copy">
+                      <strong>{vault.vaultName}</strong>
+                      <code>{vault.vaultPath}</code>
                     </span>
-                    <span className="notebook-manager-row-status">
-                      {notebook.isActive ? 'current' : notebook.available ? 'available' : 'folder missing'}
+                    <span className="vault-manager-row-status">
+                      {vault.isActive ? 'current' : vault.available ? 'available' : 'folder missing'}
                     </span>
                   </button>
-                  <div className="notebook-manager-row-menu">
+                  <div className="vault-manager-row-menu">
                     <button
                       type="button"
-                      className="notebook-manager-kebab"
-                      aria-label={`Actions for ${notebook.notebookName}`}
+                      className="vault-manager-kebab"
+                      aria-label={`Actions for ${vault.vaultName}`}
                       aria-expanded={menuOpen}
-                      onClick={() => setOpenNotebookActionMenuKey((previous) => (previous === notebookKey ? '' : notebookKey))}
+                      onClick={() => setOpenVaultActionMenuKey((previous) => (previous === vaultKey ? '' : vaultKey))}
                     >
-                      <AppIcon iconId="ellipsisVertical" className="notebook-manager-kebab-icon" />
+                      <AppIcon iconId="ellipsisVertical" className="vault-manager-kebab-icon" />
                     </button>
                     {menuOpen ? (
-                      <div className="notebook-manager-menu" role="menu">
-                        {notebook.isActive ? (
+                      <div className="vault-manager-menu" role="menu">
+                        {vault.isActive ? (
                           <>
-                            <button type="button" role="menuitem" onClick={() => renameNotebookFromSettings(notebook)}>
+                            <button type="button" role="menuitem" onClick={() => renameVaultFromSettings(vault)}>
                               Rename
                             </button>
-                            <button type="button" role="menuitem" onClick={() => runCurrentNotebookAction(() => void storageProfileController.moveStorageProfile())}>
+                            <button type="button" role="menuitem" onClick={() => runCurrentVaultAction(() => void storageProfileController.moveStorageProfile())}>
                               Move Folder
                             </button>
-                            <button type="button" role="menuitem" onClick={() => runCurrentNotebookAction(() => void storageProfileController.revealStorageProfile())}>
+                            <button type="button" role="menuitem" onClick={() => runCurrentVaultAction(() => void storageProfileController.revealStorageProfile())}>
                               Reveal Folder
                             </button>
                             {showRetry ? (
-                              <button type="button" role="menuitem" onClick={() => runCurrentNotebookAction(() => void storageProfileController.retryStorageProfile())}>
+                              <button type="button" role="menuitem" onClick={() => runCurrentVaultAction(() => void storageProfileController.retryStorageProfile())}>
                                 Retry
                               </button>
                             ) : null}
                           </>
                         ) : (
                           <>
-                            {notebook.available ? (
+                            {vault.available ? (
                               <>
-                                <button type="button" role="menuitem" onClick={() => switchNotebookFromSettings(notebook)}>
-                                  Switch to Notebook
+                                <button type="button" role="menuitem" onClick={() => switchVaultFromSettings(vault)}>
+                                  Switch to Vault
                                 </button>
-                                <button type="button" role="menuitem" onClick={() => renameNotebookFromSettings(notebook)}>
+                                <button type="button" role="menuitem" onClick={() => renameVaultFromSettings(vault)}>
                                   Rename
                                 </button>
                               </>
                             ) : null}
-                            <button type="button" role="menuitem" onClick={() => forgetNotebookFromSettings(notebook)}>
+                            <button type="button" role="menuitem" onClick={() => forgetVaultFromSettings(vault)}>
                               Remove from List
                             </button>
                           </>
                         )}
-                        {notebook.available || notebook.isActive ? (
-                          <button type="button" role="menuitem" className="is-danger" onClick={() => deleteNotebookFromSettings(notebook)}>
-                            Delete Notebook
+                        {vault.available || vault.isActive ? (
+                          <button type="button" role="menuitem" className="is-danger" onClick={() => deleteVaultFromSettings(vault)}>
+                            Delete Vault
                           </button>
                         ) : null}
                       </div>
@@ -7208,91 +7208,91 @@ export function NotebookApp() {
     )
   }
 
-  const renderSidebarNotebookFooter = () => {
+  const renderSidebarVaultFooter = () => {
     const storageProfileStatus = storageProfileController.storageProfileStatus
-    const notebookFoldersAvailable = Boolean(window.electronAPI?.getStorageProfileStatus)
-    const notebookRows = getNotebookRowsFromStorageStatus(storageProfileStatus)
-    const activeNotebook = notebookRows.find((notebook) => notebook.isActive)
-    const activeNotebookName = notebookFoldersAvailable
+    const vaultFoldersAvailable = Boolean(window.electronAPI?.getStorageProfileStatus)
+    const vaultRows = getVaultRowsFromStorageStatus(storageProfileStatus)
+    const activeVault = vaultRows.find((vault) => vault.isActive)
+    const activeVaultName = vaultFoldersAvailable
       ? storageProfileStatus?.status === 'setup-required'
-        ? 'No notebook open'
-        : activeNotebook?.notebookName ?? storageProfileStatus?.notebookName ?? 'Notebook'
-      : 'Browser notebook'
-    const activeNotebookPath = activeNotebook?.notebookPath ?? storageProfileStatus?.notebookPath ?? ''
-    const switcherTitle = activeNotebookPath ? `${activeNotebookName}\n${activeNotebookPath}` : activeNotebookName
+        ? 'No vault open'
+        : activeVault?.vaultName ?? storageProfileStatus?.vaultName ?? 'Vault'
+      : 'Browser vault'
+    const activeVaultPath = activeVault?.vaultPath ?? storageProfileStatus?.vaultPath ?? ''
+    const switcherTitle = activeVaultPath ? `${activeVaultName}\n${activeVaultPath}` : activeVaultName
 
     return (
-      <div className={`notebook-sidebar-footer ${state.ui.sidebarCollapsed ? 'is-collapsed' : ''}`}>
+      <div className={`vault-sidebar-footer ${state.ui.sidebarCollapsed ? 'is-collapsed' : ''}`}>
         {!state.ui.sidebarCollapsed ? (
-          <div className="notebook-sidebar-switcher">
+          <div className="vault-sidebar-switcher">
             <button
               type="button"
-              className="notebook-sidebar-switcher-trigger"
+              className="vault-sidebar-switcher-trigger"
               onClick={() => {
-                if (!notebookFoldersAvailable) return
-                setOpenNotebookActionMenuKey('')
-                setNotebookSwitcherOpen((open) => !open)
+                if (!vaultFoldersAvailable) return
+                setOpenVaultActionMenuKey('')
+                setVaultSwitcherOpen((open) => !open)
               }}
-              disabled={!notebookFoldersAvailable}
+              disabled={!vaultFoldersAvailable}
               aria-label={
-                notebookFoldersAvailable
-                  ? `Switch notebook. Current notebook: ${activeNotebookName}`
-                  : 'Browser notebook'
+                vaultFoldersAvailable
+                  ? `Switch vault. Current vault: ${activeVaultName}`
+                  : 'Browser vault'
               }
               aria-haspopup="menu"
-              aria-expanded={notebookFoldersAvailable ? notebookSwitcherOpen : undefined}
+              aria-expanded={vaultFoldersAvailable ? vaultSwitcherOpen : undefined}
               title={switcherTitle}
             >
-              <span className="notebook-sidebar-switcher-name">{activeNotebookName}</span>
-              {notebookFoldersAvailable ? (
+              <span className="vault-sidebar-switcher-name">{activeVaultName}</span>
+              {vaultFoldersAvailable ? (
                 <AppIcon
-                  iconId={notebookSwitcherOpen ? 'minimize' : 'maximize'}
-                  className="notebook-sidebar-switcher-chevron"
+                  iconId={vaultSwitcherOpen ? 'minimize' : 'maximize'}
+                  className="vault-sidebar-switcher-chevron"
                 />
               ) : null}
             </button>
-            {notebookSwitcherOpen && notebookFoldersAvailable ? (
-              <div className="notebook-sidebar-switcher-popover" role="menu" aria-label="Notebook switcher">
-                <div className="notebook-sidebar-switcher-list">
-                  {notebookRows.length > 0 ? (
-                    notebookRows.map((notebook) => (
+            {vaultSwitcherOpen && vaultFoldersAvailable ? (
+              <div className="vault-sidebar-switcher-popover" role="menu" aria-label="Vault switcher">
+                <div className="vault-sidebar-switcher-list">
+                  {vaultRows.length > 0 ? (
+                    vaultRows.map((vault) => (
                       <button
-                        key={notebook.notebookId ?? notebook.notebookPath}
+                        key={vault.vaultId ?? vault.vaultPath}
                         type="button"
                         role="menuitem"
-                        className={`notebook-sidebar-switcher-row ${notebook.isActive ? 'is-active' : ''} ${notebook.available ? '' : 'is-missing'}`.trim()}
-                        disabled={!notebook.available || notebook.isActive}
-                        onClick={() => switchNotebookFromSidebar(notebook)}
-                        title={notebook.notebookPath}
+                        className={`vault-sidebar-switcher-row ${vault.isActive ? 'is-active' : ''} ${vault.available ? '' : 'is-missing'}`.trim()}
+                        disabled={!vault.available || vault.isActive}
+                        onClick={() => switchVaultFromSidebar(vault)}
+                        title={vault.vaultPath}
                       >
-                        <span className="notebook-sidebar-switcher-row-copy">
-                          <span className="notebook-sidebar-switcher-row-name">{notebook.notebookName}</span>
-                          <small>{notebook.isActive ? 'current notebook' : notebook.available ? notebook.notebookPath : 'folder missing'}</small>
+                        <span className="vault-sidebar-switcher-row-copy">
+                          <span className="vault-sidebar-switcher-row-name">{vault.vaultName}</span>
+                          <small>{vault.isActive ? 'current vault' : vault.available ? vault.vaultPath : 'folder missing'}</small>
                         </span>
-                        <span className="notebook-sidebar-switcher-row-status">
-                          {notebook.isActive ? 'current' : notebook.available ? 'switch' : 'missing'}
+                        <span className="vault-sidebar-switcher-row-status">
+                          {vault.isActive ? 'current' : vault.available ? 'switch' : 'missing'}
                         </span>
                       </button>
                     ))
                   ) : (
-                    <p className="notebook-sidebar-switcher-empty">No remembered notebooks.</p>
+                    <p className="vault-sidebar-switcher-empty">No remembered vaults.</p>
                   )}
                 </div>
                 <button
                   type="button"
                   role="menuitem"
-                  className="notebook-sidebar-switcher-open"
-                  onClick={openNotebookFromSidebar}
+                  className="vault-sidebar-switcher-open"
+                  onClick={openVaultFromSidebar}
                 >
-                  <AppIcon iconId="folderOpen" className="notebook-sidebar-switcher-row-icon" />
-                  <span>Open Notebook...</span>
+                  <AppIcon iconId="folderOpen" className="vault-sidebar-switcher-row-icon" />
+                  <span>Open Vault...</span>
                 </button>
               </div>
             ) : null}
           </div>
         ) : null}
         <button
-          className="notebook-icon-button notebook-sidebar-footer-action notebook-sidebar-toggle"
+          className="vault-icon-button vault-sidebar-footer-action vault-sidebar-toggle"
           type="button"
           onClick={toggleSidebarCollapsed}
           aria-label={state.ui.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -7300,7 +7300,7 @@ export function NotebookApp() {
         >
           <AppIcon
             iconId={state.ui.sidebarCollapsed ? 'arrowRightFromLine' : 'arrowLeftFromLine'}
-            className="notebook-sidebar-toggle-icon"
+            className="vault-sidebar-toggle-icon"
           />
         </button>
       </div>
@@ -7308,41 +7308,41 @@ export function NotebookApp() {
   }
 
   const renderDataSettings = () => (
-    <section className="notebook-settings-section" aria-label="Data settings">
+    <section className="vault-settings-section" aria-label="Data settings">
       {renderSegmentedTabs('Data settings sections', DATA_SECTION_TABS, dataSettingsSection, setDataSettingsSection)}
       {dataSettingsSection === 'transfer' ? (
-        <div className="notebook-settings-stack">
-          <div className="notebook-settings-actions">
-            <button type="button" className="notebook-settings-action" onClick={importNotebook}>
-              Import notebook or Markdown
+        <div className="vault-settings-stack">
+          <div className="vault-settings-actions">
+            <button type="button" className="vault-settings-action" onClick={importVault}>
+              Import vault or Markdown
             </button>
-            <button type="button" className="notebook-settings-action" onClick={exportNotebook}>
-              Export notebook
+            <button type="button" className="vault-settings-action" onClick={exportVault}>
+              Export vault
             </button>
           </div>
-          <p className="notebook-settings-help">
-            AisleNote notebook imports replace the current notebook. Markdown folder and ZIP imports add a new top-level folder.
+          <p className="vault-settings-help">
+            AisleNote vault imports replace the current vault. Markdown folder and ZIP imports add a new top-level folder.
           </p>
         </div>
       ) : null}
-      {dataSettingsSection === 'storage' ? renderNotebookManager() : null}
+      {dataSettingsSection === 'storage' ? renderVaultManager() : null}
       {dataSettingsSection === 'trash' ? (
-        <div className="notebook-settings-grid">
+        <div className="vault-settings-grid">
           <label>
             Auto-remove deleted items after
             <input
               type="number"
               min={1}
               max={3650}
-              value={state.notebook.settings.autoRemoveDeletedDays}
+              value={state.vault.settings.autoRemoveDeletedDays}
               onChange={(event) => {
                 const days = Math.max(1, Math.min(3650, Number(event.target.value) || 1))
                 mutateState((previous) => ({
                   ...previous,
-                  notebook: {
-                    ...previous.notebook,
+                  vault: {
+                    ...previous.vault,
                     settings: {
-                      ...previous.notebook.settings,
+                      ...previous.vault.settings,
                       autoRemoveDeletedDays: days,
                     },
                   },
@@ -7356,8 +7356,8 @@ export function NotebookApp() {
   )
 
   const renderToolbarSettings = () => (
-    <section className="notebook-settings-section" aria-label="Toolbar settings">
-      <p className="notebook-settings-help">
+    <section className="vault-settings-section" aria-label="Toolbar settings">
+      <p className="vault-settings-help">
         Drag tools and spacers in this editor to customize a layout. The note toolbar itself stays fixed.
       </p>
       <ToolbarSettingsPanel
@@ -7403,7 +7403,7 @@ export function NotebookApp() {
   }
 
   const renderHotkeySettings = () => (
-    <section className="notebook-settings-section" aria-label="Hotkey settings">
+    <section className="vault-settings-section" aria-label="Hotkey settings">
       <div className="settings-hotkeys-list">
         {HOTKEY_ROWS.map((row) => {
           const shortcut = normalizedHotkeys.shortcuts[row.id] ?? DEFAULT_SHORTCUTS[row.id] ?? ''
@@ -7423,18 +7423,18 @@ export function NotebookApp() {
           )
         })}
       </div>
-      <p className="notebook-settings-help">Select a hotkey to enter a new combination, escape to cancel.</p>
+      <p className="vault-settings-help">Select a hotkey to enter a new combination, escape to cancel.</p>
     </section>
   )
 
   const renderShortcutSettings = () => (
-    <section className="notebook-settings-section" aria-label="Shortcut settings">
+    <section className="vault-settings-section" aria-label="Shortcut settings">
       <div className="settings-hotkeys-list">
         {NEWLINE_SHORTCUT_ROWS.map((row) => (
-          <label className="settings-hotkey-row" key={row.id} htmlFor={`notebook-settings-newline-${row.id}`}>
+          <label className="settings-hotkey-row" key={row.id} htmlFor={`vault-settings-newline-${row.id}`}>
             <span className="settings-hotkey-label">{formatFixedNewlineShortcutLabel(row.id, isMacPlatform)}</span>
             <select
-              id={`notebook-settings-newline-${row.id}`}
+              id={`vault-settings-newline-${row.id}`}
               className="settings-select-input settings-shortcut-select"
               value={normalizedHotkeys.newlineShortcuts.shortcuts[row.id]}
               onChange={(event) => updateNewlineShortcutSetting(row.id, event.target.value as NewlineOperationId)}
@@ -7465,7 +7465,7 @@ export function NotebookApp() {
           onChange={updateShortcutMenuOperationsSetting}
         />
       ) : null}
-      <p className="notebook-settings-help">Numbered menu entries use 1-9, then 0.</p>
+      <p className="vault-settings-help">Numbered menu entries use 1-9, then 0.</p>
     </section>
   )
 
@@ -7832,8 +7832,8 @@ export function NotebookApp() {
 
     return (
       <>
-      <section className="notebook-settings-section" aria-label="Frontmatter settings">
-        <p className="notebook-settings-help">Template changes apply only after saving.</p>
+      <section className="vault-settings-section" aria-label="Frontmatter settings">
+        <p className="vault-settings-help">Template changes apply only after saving.</p>
         <div className="frontmatter-template-settings-layout">
           <div className="frontmatter-template-editor">
             <div className="frontmatter-template-toolbar">
@@ -7868,14 +7868,14 @@ export function NotebookApp() {
               <div className="frontmatter-template-actions">
                 <button
                   type="button"
-                  className="notebook-settings-action"
+                  className="vault-settings-action"
                   onClick={createFrontmatterTemplate}
                 >
                   New template
                 </button>
                 <button
                   type="button"
-                  className="notebook-settings-action"
+                  className="vault-settings-action"
                   disabled={!activeTemplate || templates.length <= 1}
                   onClick={() => {
                     if (activeTemplate) setFrontmatterTemplateDeleteTargetId(activeTemplate.id)
@@ -8008,7 +8008,7 @@ export function NotebookApp() {
                       </span>
                       <button
                         type="button"
-                        className="notebook-settings-action frontmatter-template-remove-btn"
+                        className="vault-settings-action frontmatter-template-remove-btn"
                         aria-label={`Remove ${field.key || 'frontmatter field'}`}
                         data-app-tooltip="Remove field"
                         onClick={() =>
@@ -8043,12 +8043,12 @@ export function NotebookApp() {
                 </div>
               </>
             ) : (
-              <p className="notebook-settings-help">Create a template to add default frontmatter fields.</p>
+              <p className="vault-settings-help">Create a template to add default frontmatter fields.</p>
             )}
             <div className="frontmatter-template-footer-actions">
               <button
                 type="button"
-                className="notebook-settings-action"
+                className="vault-settings-action"
                 disabled={!frontmatterDraftDirty}
                 onClick={() => {
                   setFrontmatterFixedListOptionDrafts({})
@@ -8061,7 +8061,7 @@ export function NotebookApp() {
               </button>
               <button
                 type="button"
-                className="notebook-settings-action"
+                className="vault-settings-action"
                 disabled={!frontmatterDraftDirty}
                 onClick={saveFrontmatterTemplates}
               >
@@ -8089,7 +8089,7 @@ export function NotebookApp() {
       options: Array<{ id: T; label: string }>,
       onChange: (value: T) => void,
     ) => {
-      const labelId = `notebook-settings-${label.replace(/\s+/g, '-')}-label`
+      const labelId = `vault-settings-${label.replace(/\s+/g, '-')}-label`
       return (
         <div className="settings-hotkey-row">
           <span className="settings-hotkey-label" id={labelId}>
@@ -8114,7 +8114,7 @@ export function NotebookApp() {
     }
 
     return (
-      <section className="notebook-settings-section" aria-label="Misc settings">
+      <section className="vault-settings-section" aria-label="Misc settings">
         <div className="settings-hotkeys-list">
           {renderSegmentedSetting(
             'Table add target',
@@ -8161,16 +8161,16 @@ export function NotebookApp() {
   }
 
   const renderTipsSettings = () => (
-    <section className="notebook-settings-section" aria-label="Tips settings">
+    <section className="vault-settings-section" aria-label="Tips settings">
       {state.ui.seenTipIds.length === 0 ? (
-        <p className="notebook-settings-help">Tips you have seen will appear here.</p>
+        <p className="vault-settings-help">Tips you have seen will appear here.</p>
       ) : (
-        <div className="notebook-settings-list">
+        <div className="vault-settings-list">
           {state.ui.seenTipIds.map((tipId: TipId) => {
             const tip = getTipDefinition(tipId, { isMacPlatform })
             const enabled = !state.ui.disabledTipIds.includes(tipId)
             return (
-              <NotebookSettingsSwitch
+              <VaultSettingsSwitch
                 key={tipId}
                 label={tip.label}
                 description={tip.message}
@@ -8197,11 +8197,11 @@ export function NotebookApp() {
   )
 
   const renderSettingsContent = () => (
-    <section className="notebook-utility-content notebook-settings-panel" aria-label="Settings">
+    <section className="vault-utility-content vault-settings-panel" aria-label="Settings">
       {renderSegmentedTabs('Settings sections', SETTINGS_SECTION_TABS, settingsSection, setSettingsSection)}
       {settingsSection === 'data' ? renderDataSettings() : null}
       {settingsSection === 'visuals' ? (
-        <NotebookThemeSettings state={state} onMutateState={mutateState} />
+        <VaultThemeSettings state={state} onMutateState={mutateState} />
       ) : null}
       {settingsSection === 'toolbar' ? renderToolbarSettings() : null}
       {settingsSection === 'hotkeys' ? renderHotkeySettings() : null}
@@ -8213,7 +8213,7 @@ export function NotebookApp() {
   )
 
   const renderMessagesContent = () => (
-    <section className="notebook-utility-content" aria-label="Messages">
+    <section className="vault-utility-content" aria-label="Messages">
       {renderSegmentedTabs('Messages sections', MESSAGE_SECTION_TABS, messagesSection, setMessagesSection)}
       <MessagesView
         section={messagesSection}
@@ -8250,42 +8250,42 @@ export function NotebookApp() {
   )
 
   const renderAboutContent = () => (
-    <section className="notebook-utility-content" aria-label="About">
+    <section className="vault-utility-content" aria-label="About">
       {renderSegmentedTabs('About sections', ABOUT_SECTION_TABS, aboutSection, setAboutSection)}
       <AboutView section={aboutSection} />
     </section>
   )
 
   const renderTrashContent = () => (
-    <section className="notebook-utility-content notebook-trash-panel" aria-label="Trash">
-      <header className="notebook-utility-panel-header">
+    <section className="vault-utility-content vault-trash-panel" aria-label="Trash">
+      <header className="vault-utility-panel-header">
         <div>
           <h2>Trash</h2>
-          <p>{state.notebook.deletedItems.length.toLocaleString()} deleted item{state.notebook.deletedItems.length === 1 ? '' : 's'}</p>
+          <p>{state.vault.deletedItems.length.toLocaleString()} deleted item{state.vault.deletedItems.length === 1 ? '' : 's'}</p>
         </div>
       </header>
-      {state.notebook.deletedItems.length === 0 ? <p className="notebook-settings-help">No deleted items.</p> : null}
-      {state.notebook.deletedItems.length > 0 ? (
-        <div className="notebook-trash-table" aria-label="Deleted notes">
-          <div className="notebook-trash-header">
+      {state.vault.deletedItems.length === 0 ? <p className="vault-settings-help">No deleted items.</p> : null}
+      {state.vault.deletedItems.length > 0 ? (
+        <div className="vault-trash-table" aria-label="Deleted notes">
+          <div className="vault-trash-header">
             <span>Note name</span>
             <span>Deleted at</span>
             <span>Actions</span>
           </div>
-          <div className="notebook-trash-list">
-            {state.notebook.deletedItems.map((entry) => {
-              const title = getNotebookItemDisplayTitle(entry.item)
-              const previewMarkdown = getDeletedNotebookNoteMarkdown(entry, state)
+          <div className="vault-trash-list">
+            {state.vault.deletedItems.map((entry) => {
+              const title = getVaultItemDisplayTitle(entry.item)
+              const previewMarkdown = getDeletedVaultNoteMarkdown(entry, state)
               const canPreview = entry.item.type === 'note'
               const expanded = canPreview && expandedTrashItemId === entry.id
               const previewId = `trash-preview-${entry.id}`
               return (
-                <div className={`notebook-trash-item ${expanded ? 'is-expanded' : ''}`} key={entry.id}>
-                  <div className="notebook-trash-row">
+                <div className={`vault-trash-item ${expanded ? 'is-expanded' : ''}`} key={entry.id}>
+                  <div className="vault-trash-row">
                     {canPreview ? (
                       <button
                         type="button"
-                        className="notebook-trash-name-button"
+                        className="vault-trash-name-button"
                         onClick={() => setExpandedTrashItemId((previous) => (previous === entry.id ? '' : entry.id))}
                         aria-expanded={expanded}
                         aria-controls={previewId}
@@ -8293,22 +8293,22 @@ export function NotebookApp() {
                         <span>{title}</span>
                       </button>
                     ) : (
-                      <span className="notebook-trash-name-text">{title}</span>
+                      <span className="vault-trash-name-text">{title}</span>
                     )}
-                    <time className="notebook-trash-date" dateTime={getDeletedAtTitle(entry.deletedAt)}>
+                    <time className="vault-trash-date" dateTime={getDeletedAtTitle(entry.deletedAt)}>
                       {formatDeletedAt(entry.deletedAt)}
                     </time>
-                    <div className="notebook-trash-actions" aria-label={`${title} actions`}>
+                    <div className="vault-trash-actions" aria-label={`${title} actions`}>
                       <button type="button" onClick={() => restoreDeletedItem(entry.id)}>Restore</button>
                       <button type="button" onClick={() => permanentlyDeleteDeletedItem(entry.id)}>Delete</button>
                     </div>
                   </div>
                   {expanded ? (
-                    <div className="notebook-trash-preview" id={previewId}>
+                    <div className="vault-trash-preview" id={previewId}>
                       {previewMarkdown.trim() ? (
                         <TrashMarkdownPreview markdown={previewMarkdown} />
                       ) : (
-                        <p className="notebook-trash-empty-preview">No note content.</p>
+                        <p className="vault-trash-empty-preview">No note content.</p>
                       )}
                     </div>
                   ) : null}
@@ -8330,10 +8330,10 @@ export function NotebookApp() {
       { id: 'trash', label: 'Trash' },
     ]
     return (
-      <section className="notebook-utility-shell" aria-label="Utilities">
-        <header className="notebook-utility-header">
+      <section className="vault-utility-shell" aria-label="Utilities">
+        <header className="vault-utility-header">
           {renderSegmentedTabs('Utility sections', utilityTabs, viewMode, setViewMode)}
-          <button type="button" className="notebook-settings-action" onClick={() => setViewMode('main')}>
+          <button type="button" className="vault-settings-action" onClick={() => setViewMode('main')}>
             Return to notes
           </button>
         </header>
@@ -8345,36 +8345,36 @@ export function NotebookApp() {
     )
   }
 
-  const desktopNotebookSetupRequired = Boolean(
+  const desktopVaultSetupRequired = Boolean(
     window.electronAPI?.getStorageProfileStatus &&
       storageProfileController.storageProfileStatus?.status === 'setup-required',
   )
   const runtimeVersionLabel = runtimeVersion ? `Version ${runtimeVersion}` : ''
 
-  const renderNotebookSetupScreen = () => (
-    <main className="notebook-main notebook-setup-main" aria-label="Notebook setup">
-      <section className="notebook-setup-screen">
-        <div className="notebook-setup-brand" aria-label={NOTEBOOK_SETUP_APP_NAME}>
-          <img className="notebook-setup-logo" src={NOTEBOOK_SETUP_LOGO_SRC} alt="" aria-hidden="true" />
-          <h1>{NOTEBOOK_SETUP_APP_NAME}</h1>
+  const renderVaultSetupScreen = () => (
+    <main className="vault-main vault-setup-main" aria-label="Vault setup">
+      <section className="vault-setup-screen">
+        <div className="vault-setup-brand" aria-label={VAULT_SETUP_APP_NAME}>
+          <img className="vault-setup-logo" src={VAULT_SETUP_LOGO_SRC} alt="" aria-hidden="true" />
+          <h1>{VAULT_SETUP_APP_NAME}</h1>
           {runtimeVersionLabel ? <p>{runtimeVersionLabel}</p> : null}
         </div>
-        <div className="notebook-setup-panel">
-          <div className="notebook-setup-action-row">
-            <div className="notebook-setup-action-copy">
-              <h2>Create new notebook</h2>
-              <p>Name a notebook, then choose the parent folder.</p>
+        <div className="vault-setup-panel">
+          <div className="vault-setup-action-row">
+            <div className="vault-setup-action-copy">
+              <h2>Create new vault</h2>
+              <p>Name a vault, then choose where to save it.</p>
             </div>
-            <button type="button" className="notebook-setup-action-button is-primary" onClick={createNotebookFromSettings}>
+            <button type="button" className="vault-setup-action-button is-primary" onClick={createVaultFromSettings}>
               Create
             </button>
           </div>
-          <div className="notebook-setup-action-row">
-            <div className="notebook-setup-action-copy">
-              <h2>Open notebook folder</h2>
-              <p>Choose an existing AisleNote notebook folder.</p>
+          <div className="vault-setup-action-row">
+            <div className="vault-setup-action-copy">
+              <h2>Open AisleNote vault</h2>
+              <p>Choose an existing AisleNote vault.</p>
             </div>
-            <button type="button" className="notebook-setup-action-button" onClick={() => void storageProfileController.openNotebook()}>
+            <button type="button" className="vault-setup-action-button" onClick={() => void storageProfileController.openVault()}>
               Open
             </button>
           </div>
@@ -8385,42 +8385,42 @@ export function NotebookApp() {
 
   return (
     <div
-      className={`app-shell notebook-shell ${getThemeClassName(state.theme)}`}
+      className={`app-shell vault-shell ${getThemeClassName(state.theme)}`}
       data-theme={state.theme}
       style={rootStyle}
     >
-      {desktopNotebookSetupRequired ? renderNotebookSetupScreen() : (
+      {desktopVaultSetupRequired ? renderVaultSetupScreen() : (
         <>
       <aside
-        className={`notebook-sidebar ${state.ui.sidebarCollapsed ? 'is-collapsed' : ''}`}
+        className={`vault-sidebar ${state.ui.sidebarCollapsed ? 'is-collapsed' : ''}`}
         style={{ width: state.ui.sidebarCollapsed ? 48 : clampSidebarWidth(state.ui.sidebarWidth) }}
       >
         {!state.ui.sidebarCollapsed ? (
-          <div className="notebook-sidebar-header" aria-label="Notebook actions">
+          <div className="vault-sidebar-header" aria-label="Vault actions">
             <button
               type="button"
-              className="notebook-icon-button notebook-sidebar-header-action"
+              className="vault-icon-button vault-sidebar-header-action"
               onClick={createNote}
               aria-label="New note"
               title="New note"
             >
-              <AppIcon iconId="filePlus" className="notebook-sidebar-header-icon" />
+              <AppIcon iconId="filePlus" className="vault-sidebar-header-icon" />
             </button>
             <button
               type="button"
-              className="notebook-icon-button notebook-sidebar-header-action"
+              className="vault-icon-button vault-sidebar-header-action"
               onClick={createFolder}
               aria-label="New folder"
               title="New folder"
             >
-              <AppIcon iconId="folderPlus" className="notebook-sidebar-header-icon" />
+              <AppIcon iconId="folderPlus" className="vault-sidebar-header-icon" />
             </button>
           </div>
         ) : null}
         {!state.ui.sidebarCollapsed ? (
           <button
             type="button"
-            className={`notebook-icon-button notebook-sidebar-search-mode-toggle ${
+            className={`vault-icon-button vault-sidebar-search-mode-toggle ${
               sidebarSearchVisible ? 'is-active' : ''
             }`}
             onClick={toggleSidebarSearchModeFromButton}
@@ -8428,13 +8428,13 @@ export function NotebookApp() {
             title="Search notes"
             aria-pressed={sidebarSearchVisible}
           >
-            <AppIcon iconId="search" className="notebook-sidebar-search-mode-toggle-icon" />
+            <AppIcon iconId="search" className="vault-sidebar-search-mode-toggle-icon" />
           </button>
         ) : null}
         {!state.ui.sidebarCollapsed ? (
           <button
             type="button"
-            className={`notebook-icon-button notebook-sidebar-scratchpad-toggle ${
+            className={`vault-icon-button vault-sidebar-scratchpad-toggle ${
               scratchpadActive ? 'is-active' : ''
             }`}
             onClick={toggleNotesScratchpadFromShortcut}
@@ -8442,17 +8442,17 @@ export function NotebookApp() {
             title={scratchpadActive ? 'Return to notes' : 'Show scratchpad'}
             aria-pressed={scratchpadActive}
           >
-            <span className="notebook-sidebar-scratchpad-icon" aria-hidden="true" />
+            <span className="vault-sidebar-scratchpad-icon" aria-hidden="true" />
           </button>
         ) : null}
         <button
-          className={`notebook-icon-button notebook-sidebar-settings ${isUtilityViewMode(viewMode) ? 'is-active' : ''}`}
+          className={`vault-icon-button vault-sidebar-settings ${isUtilityViewMode(viewMode) ? 'is-active' : ''}`}
           type="button"
           onClick={handleSidebarSettingsClick}
           aria-label="Open settings"
           title="Open settings"
         >
-          <AppIcon iconId="settings" className="notebook-sidebar-settings-icon" />
+          <AppIcon iconId="settings" className="vault-sidebar-settings-icon" />
         </button>
         {!state.ui.sidebarCollapsed && sidebarSearchVisible ? (
           <SidebarSearchPanel
@@ -8478,25 +8478,25 @@ export function NotebookApp() {
         {!state.ui.sidebarCollapsed && !sidebarSearchVisible ? (
           <>
             <div
-              className="notebook-tree"
-              ref={notebookTreeScrollRef}
+              className="vault-tree"
+              ref={vaultTreeScrollRef}
               role="tree"
               aria-multiselectable="true"
-              onScroll={handleNotebookTreeScroll}
+              onScroll={handleVaultTreeScroll}
               onContextMenu={openRootTreeContextMenu}
             >
-                {useVirtualizedNotebookTree ? (
+                {useVirtualizedVaultTree ? (
                   <div
-                    className="notebook-tree-virtual-spacer"
-                    style={{ height: notebookTreeVirtualWindow.totalHeight }}
+                    className="vault-tree-virtual-spacer"
+                    style={{ height: vaultTreeVirtualWindow.totalHeight }}
                   >
-                    {notebookTreeVirtualWindow.rows.map((row, rowOffset) => (
+                    {vaultTreeVirtualWindow.rows.map((row, rowOffset) => (
                       <div
                         key={row.item.id}
-                        className="notebook-tree-virtual-row"
+                        className="vault-tree-virtual-row"
                         style={{
                           transform: `translateY(${
-                            (notebookTreeVirtualWindow.startIndex + rowOffset) * NOTEBOOK_TREE_VIRTUAL_ROW_HEIGHT
+                            (vaultTreeVirtualWindow.startIndex + rowOffset) * VAULT_TREE_VIRTUAL_ROW_HEIGHT
                           }px)`,
                         }}
                       >
@@ -8505,7 +8505,7 @@ export function NotebookApp() {
                           depth={row.depth}
                           parentFolderId={row.parentFolderId}
                           index={row.index}
-                          activeNoteId={state.notebook.activeNoteId}
+                          activeNoteId={state.vault.activeNoteId}
                           renamingItemId={renamingItemSurface === 'tree' ? renamingTreeItemId : ''}
                           renameDraft={treeRenameDraft}
                           draggingItemId={draggingTreeItemId}
@@ -8534,14 +8534,14 @@ export function NotebookApp() {
                     ))}
                   </div>
                 ) : (
-                  state.notebook.items.map((item, itemIndex) => (
+                  state.vault.items.map((item, itemIndex) => (
                     <MemoizedTreeItemRow
                       key={item.id}
                       item={item}
                       depth={0}
                       parentFolderId={null}
                       index={itemIndex}
-                      activeNoteId={state.notebook.activeNoteId}
+                      activeNoteId={state.vault.activeNoteId}
                       renamingItemId={renamingItemSurface === 'tree' ? renamingTreeItemId : ''}
                       renameDraft={treeRenameDraft}
                       draggingItemId={draggingTreeItemId}
@@ -8568,7 +8568,7 @@ export function NotebookApp() {
                   ))
                 )}
                 <div
-                  className={`notebook-tree-root-drop-zone ${treeDropTarget?.position === 'root' ? 'is-drop-root' : ''}`}
+                  className={`vault-tree-root-drop-zone ${treeDropTarget?.position === 'root' ? 'is-drop-root' : ''}`}
                   onDragOver={handleRootTreeDragOver}
                   onDrop={handleRootTreeDrop}
                   onDragLeave={() => {
@@ -8582,7 +8582,7 @@ export function NotebookApp() {
         {!state.ui.sidebarCollapsed ? (
           <button
             type="button"
-            className="notebook-sidebar-resize-handle"
+            className="vault-sidebar-resize-handle"
             aria-label="Resize sidebar"
             title="Resize sidebar"
             data-app-tooltip="Drag to resize. Double click to reset."
@@ -8592,18 +8592,18 @@ export function NotebookApp() {
             onPointerCancel={finishSidebarResize}
             onDoubleClick={resetSidebarWidth}
           >
-            <span className="notebook-sidebar-resize-capsule" aria-hidden="true" />
+            <span className="vault-sidebar-resize-capsule" aria-hidden="true" />
           </button>
         ) : null}
-        {renderSidebarNotebookFooter()}
+        {renderSidebarVaultFooter()}
       </aside>
-      <main className="notebook-main">
+      <main className="vault-main">
         {viewMode === 'main' ? (
           activeModel ? (
             <section
-              className="notebook-editor-surface"
+              className="vault-editor-surface"
               aria-label={activeModel.title}
-              onContextMenu={openNotebookEditorContextMenuFromPointer}
+              onContextMenu={openVaultEditorContextMenuFromPointer}
             >
               <NoteWorkspace
                 noteBodyId={activeModel.noteBody.id}
@@ -8650,7 +8650,7 @@ export function NotebookApp() {
                     pendingScrollToAisleIdRef.current = null
                   }
                   setActiveAisleId(targetAisleId)
-                  notebookEditors.activateAisleEditor(
+                  vaultEditors.activateAisleEditor(
                     editorKey,
                     pointer
                       ? {
@@ -8692,9 +8692,9 @@ export function NotebookApp() {
                     },
                   }))
                 }}
-                mountedAisleIds={notebookEditors.mountedAisleIds}
-                failedEditorMountAisleIds={notebookEditors.failedEditorMountAisleIds}
-                getPreviewMarkdownForAisle={notebookEditors.getPreviewMarkdownForAisle}
+                mountedAisleIds={vaultEditors.mountedAisleIds}
+                failedEditorMountAisleIds={vaultEditors.failedEditorMountAisleIds}
+                getPreviewMarkdownForAisle={vaultEditors.getPreviewMarkdownForAisle}
                 onCloseTableOfContentsAisle={closeTableOfContentsAisle}
                 onSelectTableOfContentsHeading={selectTableOfContentsHeading}
                 onSelectTableOfContentsLink={selectTableOfContentsLink}
@@ -8705,8 +8705,8 @@ export function NotebookApp() {
                 onOpenTagFilter={filterTag}
                 onSelectEditableAsset={selectEditableAssetFromWorkspace}
                 aisleWidths={activeAisleWidths}
-                onRegisterAislePaneRoot={notebookEditors.registerAislePaneRoot}
-                onRegisterAisleEditorRoot={notebookEditors.registerAisleEditorRoot}
+                onRegisterAislePaneRoot={vaultEditors.registerAislePaneRoot}
+                onRegisterAisleEditorRoot={vaultEditors.registerAisleEditorRoot}
                 noteTabs={activeModelIsScratchpad ? [] : noteTabItems}
                 renamingNoteTabId={renamingItemSurface === 'tab' ? renamingTreeItemId : ''}
                 noteTabRenameDraft={treeRenameDraft}
@@ -8719,7 +8719,7 @@ export function NotebookApp() {
                 onCommitNoteTabRename={commitTreeRename}
                 onCancelNoteTabRename={cancelTreeRename}
               />
-              <NotebookAisleContextMenu
+              <VaultAisleContextMenu
                 menu={aisleContextMenu}
                 canDecoupleAisle={canDecoupleAisleById(aisleContextMenu?.aisleId ?? '')}
                 onClose={() => setAisleContextMenu(null)}
@@ -8727,21 +8727,21 @@ export function NotebookApp() {
                 onQuickDecoupleAisle={() => decoupleAisle(aisleContextMenu?.aisleId ?? renderedActiveAisleId)}
                 onShowSyncedAisle={() => openDecoupleAisleDialog(aisleContextMenu?.aisleId ?? renderedActiveAisleId)}
               />
-              <NotebookEditorContextMenu
+              <VaultEditorContextMenu
                 menu={editorContextMenu}
                 canDecoupleAisle={canDecoupleAisleById(editorContextMenu?.aisleId ?? '')}
                 revealLabel={sidebarRevealLabel}
                 canReveal={typeof window !== 'undefined' && typeof window.electronAPI?.revealNoteLocation === 'function'}
                 onClose={() => setEditorContextMenu(null)}
                 onClipboard={runEditorContextClipboardAction}
-                onCommand={notebookEditors.runCommand}
+                onCommand={vaultEditors.runCommand}
                 onInsertUrlLink={openToolbarLinkPicker}
                 onEditLink={openUrlLinkPrompt}
                 onInsertNoteLink={() => openContextNoteReferencePicker('note-link')}
                 onInsertNotePreview={() => openContextNoteReferencePicker('note-preview')}
                 onInsertAisle={insertEditorContextAisle}
-                onInsertAttachment={notebookEditors.insertAttachmentFile}
-                onCopyAs={copyNotebookStructureAs}
+                onInsertAttachment={vaultEditors.insertAttachmentFile}
+                onCopyAs={copyVaultStructureAs}
                 onCreateSyncedCopy={openWholeNoteCopyPicker}
                 onFilterSyncedAisle={filterSyncedAisle}
                 onDecoupleAisle={decoupleAisle}
@@ -8811,7 +8811,7 @@ export function NotebookApp() {
               ) : null}
             </section>
           ) : (
-            <section className="notebook-empty-state">
+            <section className="vault-empty-state">
               <h2>No notes</h2>
               <button type="button" onClick={createNote}>Create note</button>
             </section>
@@ -8827,7 +8827,7 @@ export function NotebookApp() {
         </div>
       ) : null}
       {noteActionPicker ? (
-        <NotebookNoteActionPicker
+        <VaultNoteActionPicker
           title={noteActionPicker.title}
           entries={noteActionEntries}
           query={noteActionPicker.query}
@@ -8854,13 +8854,13 @@ export function NotebookApp() {
         onOpenLink={openPromptLinkUrl}
         onOpenNoteLink={openNoteLinkFromLinkPrompt}
       />
-      <NotebookNameDialog
-        dialog={notebookNameDialog}
-        onCancel={() => setNotebookNameDialog(null)}
-        onSubmit={submitNotebookNameDialog}
+      <VaultNameDialog
+        dialog={vaultNameDialog}
+        onCancel={() => setVaultNameDialog(null)}
+        onSubmit={submitVaultNameDialog}
       />
       {decoupleDialog ? (
-        <NotebookDecoupleDialog
+        <VaultDecoupleDialog
           title="Decouple aisle"
           description="Choose which synced aisles keep sharing this aisle body."
           rows={decoupleDialogRows}
@@ -8875,10 +8875,10 @@ export function NotebookApp() {
           onApply={applyDecoupleDialog}
         />
       ) : null}
-      <NotebookTreeContextMenu
+      <VaultTreeContextMenu
         menu={treeContextMenu}
         revealLabel={sidebarRevealLabel}
-        canReveal={typeof window !== 'undefined' && typeof window.electronAPI?.revealNotebookItemLocation === 'function'}
+        canReveal={typeof window !== 'undefined' && typeof window.electronAPI?.revealVaultItemLocation === 'function'}
         onClose={() => setTreeContextMenu(null)}
         onCreateNote={createTreeContextNote}
         onCreateFolder={createTreeContextFolder}
@@ -8887,7 +8887,7 @@ export function NotebookApp() {
         onRename={renameTreeContextItem}
         onDelete={deleteTreeContextItem}
       />
-      <NotebookFrontmatterModal
+      <VaultFrontmatterModal
         modal={frontmatterModal}
         templates={state.frontmatter.templates}
         onCancel={() => setFrontmatterModal(null)}

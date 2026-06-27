@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   getStorageProfileStatusToast,
-  hasActiveNotebookForStorageAction,
-  notebookSelectorTargetsActiveNotebook,
+  hasActiveVaultForStorageAction,
+  vaultSelectorTargetsActiveVault,
 } from './useStorageProfileController'
 import type { StorageProfileStatus } from '../types/app'
 
@@ -11,18 +11,18 @@ function storageStatus(event: string, overrides: Partial<StorageProfileStatus> =
     status: 'ready',
     event,
     profileRootPath: '/tmp/aislenote',
-    notebookPath: '/tmp/aislenote',
-    notebookName: 'aislenote',
+    vaultPath: '/tmp/aislenote',
+    vaultName: 'aislenote',
     hasProfile: true,
     canWrite: true,
     ...overrides,
   }
 }
 
-describe('notebook folder status toasts', () => {
+describe('vault folder status toasts', () => {
   it('shows a toast for true external folder loads', () => {
     expect(getStorageProfileStatusToast(storageStatus('external-loaded'))).toEqual({
-      message: 'External notebook folder changes loaded.',
+      message: 'External vault folder changes loaded.',
       tone: 'success',
     })
   })
@@ -31,17 +31,17 @@ describe('notebook folder status toasts', () => {
     expect(getStorageProfileStatusToast(storageStatus('external-echo-ignored'))).toBeNull()
   })
 
-  it('does not show the old paused-save toast after notebook auto recovery', () => {
+  it('does not show the old paused-save toast after vault auto recovery', () => {
     expect(
       getStorageProfileStatusToast(
-        storageStatus('notebook-auto-recovered', {
+        storageStatus('vault-auto-recovered', {
           recovery: {
-            event: 'notebook-auto-recovered',
+            event: 'vault-auto-recovered',
             mode: 'created-local',
-            failedNotebookPath: '/tmp/Broken',
-            failedNotebookName: 'Broken',
-            activeNotebookPath: '/tmp/Default Notebook',
-            activeNotebookName: 'Default Notebook',
+            failedVaultPath: '/tmp/Broken',
+            failedVaultName: 'Broken',
+            activeVaultPath: '/tmp/Default Vault',
+            activeVaultName: 'Default Vault',
             createdAt: '2026-06-01T00:00:00.000Z',
           },
         }),
@@ -49,15 +49,15 @@ describe('notebook folder status toasts', () => {
     ).toBeNull()
   })
 
-  it('does not show a toast while notebook setup is required', () => {
+  it('does not show a toast while vault setup is required', () => {
     expect(
       getStorageProfileStatusToast(
-        storageStatus('notebook-setup-required', {
+        storageStatus('vault-setup-required', {
           status: 'setup-required',
           profileRootPath: '',
-          notebookPath: '',
-          notebookName: '',
-          activeNotebookId: null,
+          vaultPath: '',
+          vaultName: '',
+          activeVaultId: null,
           hasProfile: false,
           canWrite: false,
         }),
@@ -99,52 +99,52 @@ describe('notebook folder status toasts', () => {
   })
 })
 
-describe('notebook storage action commit guards', () => {
-  it('does not require a pre-storage commit before setup creates the first notebook', () => {
+describe('vault storage action commit guards', () => {
+  it('does not require a pre-storage commit before setup creates the first vault', () => {
     expect(
-      hasActiveNotebookForStorageAction(
-        storageStatus('notebook-setup-required', {
+      hasActiveVaultForStorageAction(
+        storageStatus('vault-setup-required', {
           status: 'setup-required',
           profileRootPath: '',
-          notebookPath: '',
-          notebookName: '',
-          activeNotebookId: null,
+          vaultPath: '',
+          vaultName: '',
+          activeVaultId: null,
           hasProfile: false,
           canWrite: false,
         }),
       ),
     ).toBe(false)
     expect(
-      hasActiveNotebookForStorageAction(
+      hasActiveVaultForStorageAction(
         storageStatus('profile-error', {
           status: 'error',
-          activeNotebookId: 'broken-notebook',
-          notebookPath: '/tmp/Broken',
-          error: 'Notebook folder could not be loaded.',
+          activeVaultId: 'broken-vault',
+          vaultPath: '/tmp/Broken',
+          error: 'Vault folder could not be loaded.',
         }),
       ),
     ).toBe(false)
     expect(
-      hasActiveNotebookForStorageAction(
+      hasActiveVaultForStorageAction(
         storageStatus('paused', {
-          activeNotebookId: 'readonly-notebook',
+          activeVaultId: 'readonly-vault',
           canWrite: false,
         }),
       ),
     ).toBe(false)
   })
 
-  it('requires a pre-storage commit only when an action targets the active notebook', () => {
+  it('requires a pre-storage commit only when an action targets the active vault', () => {
     const status = storageStatus('ready', {
-      activeNotebookId: 'active-notebook',
-      notebookPath: '/tmp/Active',
+      activeVaultId: 'active-vault',
+      vaultPath: '/tmp/Active',
     })
 
-    expect(hasActiveNotebookForStorageAction(status)).toBe(true)
-    expect(notebookSelectorTargetsActiveNotebook(status)).toBe(true)
-    expect(notebookSelectorTargetsActiveNotebook(status, { notebookId: 'active-notebook' })).toBe(true)
-    expect(notebookSelectorTargetsActiveNotebook(status, { notebookPath: '/tmp/Active' })).toBe(true)
-    expect(notebookSelectorTargetsActiveNotebook(status, { notebookId: 'inactive-notebook' })).toBe(false)
-    expect(notebookSelectorTargetsActiveNotebook(status, { notebookPath: '/tmp/Inactive' })).toBe(false)
+    expect(hasActiveVaultForStorageAction(status)).toBe(true)
+    expect(vaultSelectorTargetsActiveVault(status)).toBe(true)
+    expect(vaultSelectorTargetsActiveVault(status, { vaultId: 'active-vault' })).toBe(true)
+    expect(vaultSelectorTargetsActiveVault(status, { vaultPath: '/tmp/Active' })).toBe(true)
+    expect(vaultSelectorTargetsActiveVault(status, { vaultId: 'inactive-vault' })).toBe(false)
+    expect(vaultSelectorTargetsActiveVault(status, { vaultPath: '/tmp/Inactive' })).toBe(false)
   })
 })

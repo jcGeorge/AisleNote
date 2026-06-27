@@ -8,33 +8,33 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import type { NoteSearchEntry } from '../../notes/note-locations'
-import type { NotebookNoteCopyMode, NotebookNoteReferenceActionKind } from '../../notes/notebook-note-actions'
+import type { VaultNoteCopyMode, VaultNoteReferenceActionKind } from '../../notes/vault-note-actions'
 import { AppIcon } from '../icons/AppIcon'
 
 void React
 
-export type NotebookNoteActionPickerAction =
-  | NotebookNoteReferenceActionKind
+export type VaultNoteActionPickerAction =
+  | VaultNoteReferenceActionKind
   | 'independent-copy'
   | 'synced-copy'
 
-export type NotebookNoteActionPickerAnchor = {
+export type VaultNoteActionPickerAnchor = {
   top: number
   left: number
 }
 
-export type NotebookNoteActionPickerAisleOption = {
+export type VaultNoteActionPickerAisleOption = {
   id: string
   label: string
 }
 
-export type NotebookNoteActionPickerActionOptions = {
+export type VaultNoteActionPickerActionOptions = {
   aisleId?: string
 }
 
 export type NoteActionPickerActiveRegion = 'results' | 'actions'
 
-export type NotebookNoteActionPickerKeyboardIntent =
+export type VaultNoteActionPickerKeyboardIntent =
   | 'close'
   | 'previous-result'
   | 'next-result'
@@ -43,35 +43,35 @@ export type NotebookNoteActionPickerKeyboardIntent =
   | 'next-action'
   | 'run-action'
 
-const ACTION_LABELS: Record<NotebookNoteActionPickerAction, string> = {
+const ACTION_LABELS: Record<VaultNoteActionPickerAction, string> = {
   'note-link': 'note link',
   'note-preview': 'note preview',
   'independent-copy': 'independent copy',
   'synced-copy': 'synced copy',
 }
 
-export function getNotebookNoteActionPickerActionIntent(
-  action: NotebookNoteActionPickerAction,
+export function getVaultNoteActionPickerActionIntent(
+  action: VaultNoteActionPickerAction,
   aisleCount: number,
 ): 'run-action' | 'choose-preview-aisle' {
   return action === 'note-preview' && aisleCount > 1 ? 'choose-preview-aisle' : 'run-action'
 }
 
-function toCopyMode(action: NotebookNoteActionPickerAction): NotebookNoteCopyMode | null {
+function toCopyMode(action: VaultNoteActionPickerAction): VaultNoteCopyMode | null {
   if (action === 'independent-copy') return 'independent'
   if (action === 'synced-copy') return 'synced'
   return null
 }
 
-export function getCopyModeForNoteAction(action: NotebookNoteActionPickerAction): NotebookNoteCopyMode | null {
+export function getCopyModeForNoteAction(action: VaultNoteActionPickerAction): VaultNoteCopyMode | null {
   return toCopyMode(action)
 }
 
-export function getReferenceKindForNoteAction(action: NotebookNoteActionPickerAction): NotebookNoteReferenceActionKind | null {
+export function getReferenceKindForNoteAction(action: VaultNoteActionPickerAction): VaultNoteReferenceActionKind | null {
   return action === 'note-link' || action === 'note-preview' ? action : null
 }
 
-export function getNotebookNoteActionPickerKeyboardIntent({
+export function getVaultNoteActionPickerKeyboardIntent({
   key,
   activeRegion,
   hasSelectedEntry,
@@ -79,7 +79,7 @@ export function getNotebookNoteActionPickerKeyboardIntent({
   key: string
   activeRegion: NoteActionPickerActiveRegion
   hasSelectedEntry: boolean
-}): NotebookNoteActionPickerKeyboardIntent | null {
+}): VaultNoteActionPickerKeyboardIntent | null {
   if (key === 'Escape') return 'close'
 
   const actionsActive = activeRegion === 'actions' && hasSelectedEntry
@@ -99,7 +99,7 @@ function consumeNavigationEvent(event: Pick<KeyboardEvent | ReactKeyboardEvent<H
   ;(nativeEvent as { stopImmediatePropagation?: () => void }).stopImmediatePropagation?.()
 }
 
-export function NotebookNoteActionPicker({
+export function VaultNoteActionPicker({
   title,
   entries,
   query,
@@ -122,21 +122,21 @@ export function NotebookNoteActionPicker({
   query: string
   showSearchInput?: boolean
   showHeader?: boolean
-  actions: NotebookNoteActionPickerAction[]
-  anchor?: NotebookNoteActionPickerAnchor | null
+  actions: VaultNoteActionPickerAction[]
+  anchor?: VaultNoteActionPickerAnchor | null
   initialSelectedNoteId?: string
   urlValue?: string
   urlEnabled?: boolean
   onQueryChange: (query: string) => void
   onSubmitUrl?: (url: string) => void
   onAction: (
-    action: NotebookNoteActionPickerAction,
+    action: VaultNoteActionPickerAction,
     noteId: string,
-    options?: NotebookNoteActionPickerActionOptions,
+    options?: VaultNoteActionPickerActionOptions,
   ) => void
   onClose: () => void
-  getActionsForNote?: (noteId: string) => NotebookNoteActionPickerAction[]
-  getAislesForNote?: (noteId: string) => NotebookNoteActionPickerAisleOption[]
+  getActionsForNote?: (noteId: string) => VaultNoteActionPickerAction[]
+  getAislesForNote?: (noteId: string) => VaultNoteActionPickerAisleOption[]
 }) {
   const [highlightedIndex, setHighlightedIndex] = useState(0)
   const [highlightedActionIndex, setHighlightedActionIndex] = useState(0)
@@ -209,9 +209,9 @@ export function NotebookNoteActionPicker({
   }, [entries, highlightedIndex])
 
   const runAction = useCallback(
-    (action: NotebookNoteActionPickerAction, noteId: string) => {
+    (action: VaultNoteActionPickerAction, noteId: string) => {
       const aisleOptions = getAislesForNote(noteId)
-      const intent = getNotebookNoteActionPickerActionIntent(action, aisleOptions.length)
+      const intent = getVaultNoteActionPickerActionIntent(action, aisleOptions.length)
       if (intent === 'choose-preview-aisle') {
         setPreviewAisleNoteId(noteId)
         setSelectedPreviewAisleId(aisleOptions[0]?.id ?? '')
@@ -241,7 +241,7 @@ export function NotebookNoteActionPicker({
   const handleNavigationKey = useCallback(
     (event: Pick<KeyboardEvent | ReactKeyboardEvent<HTMLDivElement>, 'key' | 'preventDefault'>) => {
       if ('isComposing' in event && event.isComposing) return false
-      const intent = getNotebookNoteActionPickerKeyboardIntent({
+      const intent = getVaultNoteActionPickerKeyboardIntent({
         key: event.key,
         activeRegion,
         hasSelectedEntry: Boolean(selectedEntry && selectedActions.length > 0),
@@ -288,7 +288,7 @@ export function NotebookNoteActionPicker({
     const onWindowKeyDown = (event: KeyboardEvent) => {
       const activeElement = document.activeElement
       if (activeElement instanceof HTMLInputElement && activeElement.getAttribute('aria-label') === 'URL') return
-      if (activeElement instanceof HTMLElement && activeElement.closest('.notebook-note-action-preview-aisles')) return
+      if (activeElement instanceof HTMLElement && activeElement.closest('.vault-note-action-preview-aisles')) return
       handleNavigationKey(event)
     }
     window.addEventListener('keydown', onWindowKeyDown, true)
@@ -301,7 +301,7 @@ export function NotebookNoteActionPicker({
       event.stopPropagation()
       return
     }
-    if (target?.closest('.notebook-note-action-preview-aisles')) {
+    if (target?.closest('.vault-note-action-preview-aisles')) {
       event.stopPropagation()
       return
     }
@@ -309,11 +309,11 @@ export function NotebookNoteActionPicker({
   }
 
   return (
-    <div className="notebook-note-action-layer" onPointerDown={(event) => {
+    <div className="vault-note-action-layer" onPointerDown={(event) => {
       if (event.target === event.currentTarget) onClose()
     }}>
       <section
-        className={`notebook-note-action-picker ${anchor ? 'is-anchored' : 'is-modal'}`}
+        className={`vault-note-action-picker ${anchor ? 'is-anchored' : 'is-modal'}`}
         role="dialog"
         aria-label={title}
         style={panelStyle}
@@ -321,11 +321,11 @@ export function NotebookNoteActionPicker({
         onPointerDown={(event) => event.stopPropagation()}
       >
         {showHeader ? (
-          <header className="notebook-note-action-header">
+          <header className="vault-note-action-header">
             <h2>{title}</h2>
             <button
               type="button"
-              className="notebook-note-action-close app-close-button"
+              className="vault-note-action-close app-close-button"
               aria-label="Close note actions"
               onClick={onClose}
             >
@@ -334,13 +334,13 @@ export function NotebookNoteActionPicker({
           </header>
         ) : null}
         {!showSearchInput ? (
-          <div className="notebook-note-action-query" aria-label="Current note search">
+          <div className="vault-note-action-query" aria-label="Current note search">
             @{query}
           </div>
         ) : null}
         {urlEnabled && (
           <form
-            className="notebook-note-action-url"
+            className="vault-note-action-url"
             onSubmit={(event) => {
               event.preventDefault()
               onSubmitUrl?.(urlDraft)
@@ -358,14 +358,14 @@ export function NotebookNoteActionPicker({
         )}
         {showSearchInput && (
           <input
-            className="notebook-note-action-search"
+            className="vault-note-action-search"
             value={query}
             placeholder="Search notes"
             autoFocus
             onChange={(event) => onQueryChange(event.target.value)}
           />
         )}
-        <div className="notebook-note-action-results" role="listbox" aria-label="Notebook notes">
+        <div className="vault-note-action-results" role="listbox" aria-label="Vault notes">
           {entries.length > 0 ? entries.map((entry, index) => {
             const highlighted = index === highlightedIndex
             const selected = entry.noteId === selectedNoteId
@@ -375,7 +375,7 @@ export function NotebookNoteActionPicker({
                 type="button"
                 role="option"
                 aria-selected={highlighted || selected}
-                className={`notebook-note-action-result ${highlighted ? 'is-highlighted' : ''} ${
+                className={`vault-note-action-result ${highlighted ? 'is-highlighted' : ''} ${
                   selected ? 'is-selected' : ''
                 }`}
                 onMouseEnter={() => {
@@ -391,25 +391,25 @@ export function NotebookNoteActionPicker({
                 }}
               >
                 <span>{entry.noteName}</span>
-                <small>{entry.folderPath || 'Notebook'}</small>
+                <small>{entry.folderPath || 'Vault'}</small>
               </button>
             )
           }) : (
-            <p className="notebook-note-action-empty">No matching notes</p>
+            <p className="vault-note-action-empty">No matching notes</p>
           )}
         </div>
         {selectedEntry && selectedActions.length > 0 && (
-          <div className="notebook-note-action-choices" aria-label={`Actions for ${selectedEntry.noteName}`}>
+          <div className="vault-note-action-choices" aria-label={`Actions for ${selectedEntry.noteName}`}>
             <div>
               <strong>{selectedEntry.noteName}</strong>
               <small>{selectedEntry.label}</small>
             </div>
-            <div className="notebook-note-action-choice-row">
+            <div className="vault-note-action-choice-row">
               {selectedActions.map((action, index) => (
                 <button
                   key={action}
                   type="button"
-                  className={`notebook-note-action-choice ${
+                  className={`vault-note-action-choice ${
                     activeRegion === 'actions' && index === highlightedActionIndex ? 'is-highlighted' : ''
                   }`}
                   onMouseEnter={() => {
@@ -423,14 +423,14 @@ export function NotebookNoteActionPicker({
               ))}
             </div>
             {showingPreviewAisleStep ? (
-              <div className="notebook-note-action-preview-aisles" aria-label={`Preview aisle for ${selectedEntry.noteName}`}>
-                <span className="notebook-note-action-preview-aisle-label">preview aisle</span>
-                <div className="notebook-note-action-preview-aisle-row">
+              <div className="vault-note-action-preview-aisles" aria-label={`Preview aisle for ${selectedEntry.noteName}`}>
+                <span className="vault-note-action-preview-aisle-label">preview aisle</span>
+                <div className="vault-note-action-preview-aisle-row">
                   {previewAisleOptions.map((aisle) => (
                     <button
                       key={aisle.id}
                       type="button"
-                      className={`notebook-note-action-preview-aisle ${
+                      className={`vault-note-action-preview-aisle ${
                         aisle.id === selectedPreviewAisleId ? 'is-selected' : ''
                       }`}
                       aria-pressed={aisle.id === selectedPreviewAisleId}
@@ -442,7 +442,7 @@ export function NotebookNoteActionPicker({
                 </div>
                 <button
                   type="button"
-                  className="notebook-note-action-preview-insert"
+                  className="vault-note-action-preview-insert"
                   onClick={insertSelectedPreviewAisle}
                 >
                   insert preview

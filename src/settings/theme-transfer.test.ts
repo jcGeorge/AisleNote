@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_CUSTOM_THEME_PALETTE } from '../theme/notebook-themes'
+import { DEFAULT_CUSTOM_THEME_PALETTE } from '../theme/vault-themes'
 import { parseThemeSettingsImport, serializeThemeSettings } from './theme-transfer'
 
 describe('theme transfer helpers', () => {

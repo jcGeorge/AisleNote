@@ -1,15 +1,15 @@
-import type { AppState, NoteLocation, NotebookNote } from '../types/app'
+import type { AppState, NoteLocation, VaultNote } from '../types/app'
 import { getAisleMarkdown } from './aisle-body-state'
 import {
-  findNotebookNote,
-  getFirstNotebookNote,
-  getNotebookNotePathLabel,
-  listNotebookNotes,
-  replaceNotebookNoteBodyId,
-} from '../state/notebook'
+  findVaultNote,
+  getFirstVaultNote,
+  getVaultNotePathLabel,
+  listVaultNotes,
+  replaceVaultNoteBodyId,
+} from '../state/vault'
 
 export type NoteLocationInfo = {
-  note: NotebookNote | null
+  note: VaultNote | null
   noteBodyId: string
   title: string
   folderPath: string
@@ -35,7 +35,7 @@ export function buildNoteLocationKey(location: NoteLocation): string {
 }
 
 export function getLocationInfo(sourceState: AppState, location: NoteLocation): NoteLocationInfo {
-  const notePath = findNotebookNote(sourceState.notebook.items, location.noteId)
+  const notePath = findVaultNote(sourceState.vault.items, location.noteId)
   if (!notePath) {
     return {
       note: null,
@@ -54,7 +54,7 @@ export function getLocationInfo(sourceState: AppState, location: NoteLocation): 
 }
 
 export function getNoteLocationBreadcrumbLabel(sourceState: AppState, location: NoteLocation): string {
-  return getNotebookNotePathLabel(sourceState.notebook.items, location.noteId) || 'note'
+  return getVaultNotePathLabel(sourceState.vault.items, location.noteId) || 'note'
 }
 
 export function getDefaultNoteLinkLabel(sourceState: AppState, source: NoteLocation, target: NoteLocation): string {
@@ -66,7 +66,7 @@ export function getDefaultNoteLinkLabel(sourceState: AppState, source: NoteLocat
 }
 
 export function listSearchableNoteLocations(sourceState: AppState): NoteSearchEntry[] {
-  return listNotebookNotes(sourceState.notebook.items).map(({ note, path }) => {
+  return listVaultNotes(sourceState.vault.items).map(({ note, path }) => {
     const folderSegments = path.slice(0, -1)
     const folderPath = folderSegments.map((segment) => segment.title).join('/')
     const folderName = folderSegments.at(-1)?.title ?? ''
@@ -111,11 +111,11 @@ export function getFirstNoteLocation(
   fallbackLocation?: NoteLocation,
 ): NoteLocation {
   const excludedKey = excludedLocation ? buildNoteLocationKey(excludedLocation) : ''
-  const first = listNotebookNotes(sourceState.notebook.items).find(
+  const first = listVaultNotes(sourceState.vault.items).find(
     ({ note }) => buildNoteLocationKey({ noteId: note.id }) !== excludedKey,
   )?.note
   if (first) return { noteId: first.id }
-  const fallback = getFirstNotebookNote(sourceState.notebook.items)
+  const fallback = getFirstVaultNote(sourceState.vault.items)
   return fallback ? { noteId: fallback.id } : fallbackLocation ?? { noteId: '' }
 }
 
@@ -128,12 +128,12 @@ export function getDefaultNoteReferenceTarget(
 }
 
 export function listNoteLocationsForBody(sourceState: AppState, noteBodyId: string): NoteLocationListEntry[] {
-  return listNotebookNotes(sourceState.notebook.items)
+  return listVaultNotes(sourceState.vault.items)
     .filter(({ note }) => note.noteBodyId === noteBodyId)
     .map(({ note }) => ({
       noteId: note.id,
       title: note.title,
-      label: getNotebookNotePathLabel(sourceState.notebook.items, note.id),
+      label: getVaultNotePathLabel(sourceState.vault.items, note.id),
     }))
 }
 
@@ -149,6 +149,6 @@ export function getNoteMarkdown(sourceState: AppState, location: NoteLocation): 
 export function updateNoteLocationBody(sourceState: AppState, location: NoteLocation, noteBodyId: string): AppState {
   return {
     ...sourceState,
-    notebook: replaceNotebookNoteBodyId(sourceState.notebook, location.noteId, noteBodyId),
+    vault: replaceVaultNoteBodyId(sourceState.vault, location.noteId, noteBodyId),
   }
 }

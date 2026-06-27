@@ -9,7 +9,7 @@ import {
   type PointerEvent,
 } from 'react'
 import { AppIcon } from '../icons/AppIcon'
-import type { NotebookTabStatus } from '../../types/app'
+import type { VaultTabStatus } from '../../types/app'
 
 void React
 
@@ -20,7 +20,7 @@ const NOTE_TAB_DRAG_MIME = 'application/x-aislenote-note-tab'
 export type NoteTabStripItem = {
   noteId: string
   title: string
-  status: NotebookTabStatus
+  status: VaultTabStatus
   active: boolean
 }
 

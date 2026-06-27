@@ -233,7 +233,7 @@
 }
 
 .modal-close-x-btn:hover {
-  background: var(--app-close-button-hover-bg, var(--notebook-control-hover-bg, color-mix(in srgb, currentColor 10%, transparent)));
+  background: var(--app-close-button-hover-bg, var(--vault-control-hover-bg, color-mix(in srgb, currentColor 10%, transparent)));
   color: var(--app-close-button-hover-text, var(--app-text-bright, currentColor));
 }
 

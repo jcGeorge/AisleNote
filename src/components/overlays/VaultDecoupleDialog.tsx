@@ -1,11 +1,11 @@
 import React from 'react'
-import type { NotebookDecoupleRow } from '../../notes/notebook-note-actions'
+import type { VaultDecoupleRow } from '../../notes/vault-note-actions'
 import { DecoupleCautionStripe } from '../decouple/DecoupleCautionStripe'
 import { AppIcon } from '../icons/AppIcon'
 
 void React
 
-export function NotebookDecoupleDialog({
+export function VaultDecoupleDialog({
   title,
   description,
   rows,
@@ -21,7 +21,7 @@ export function NotebookDecoupleDialog({
 }: {
   title: string
   description: string
-  rows: NotebookDecoupleRow[]
+  rows: VaultDecoupleRow[]
   keepKeys: string[]
   currentKey: string
   keepData: boolean
@@ -34,23 +34,23 @@ export function NotebookDecoupleDialog({
 }) {
   const keepKeySet = new Set(keepKeys)
   return (
-    <div className="notebook-decouple-layer" onPointerDown={(event) => {
+    <div className="vault-decouple-layer" onPointerDown={(event) => {
       if (event.target === event.currentTarget) onCancel()
     }}>
       <section
-        className="notebook-decouple-dialog"
+        className="vault-decouple-dialog"
         role="dialog"
         aria-label={title}
         onPointerDown={(event) => event.stopPropagation()}
       >
-        <header className="notebook-decouple-header">
+        <header className="vault-decouple-header">
           <h2>{title}</h2>
           <button type="button" className="app-close-button" aria-label="Close decouple dialog" onClick={onCancel}>
             <AppIcon iconId="x" className="app-close-button-icon" />
           </button>
         </header>
         <p>{description}</p>
-        <div className="notebook-decouple-rows">
+        <div className="vault-decouple-rows">
           {rows.length > 0 ? rows.map((row) => {
             const willDecouple = !keepKeySet.has(row.key)
             const current = row.key === currentKey
@@ -58,7 +58,7 @@ export function NotebookDecoupleDialog({
               <button
                 key={row.key}
                 type="button"
-                className={`notebook-decouple-row ${willDecouple ? 'is-will-decouple' : 'is-keep-synced'} ${
+                className={`vault-decouple-row ${willDecouple ? 'is-will-decouple' : 'is-keep-synced'} ${
                   current ? 'is-current' : ''
                 }`}
                 aria-pressed={willDecouple}
@@ -70,10 +70,10 @@ export function NotebookDecoupleDialog({
               </button>
             )
           }) : (
-            <p className="notebook-decouple-empty">No linked locations found.</p>
+            <p className="vault-decouple-empty">No linked locations found.</p>
           )}
         </div>
-        <label className="notebook-decouple-keep-data form-check form-switch settings-switch">
+        <label className="vault-decouple-keep-data form-check form-switch settings-switch">
           <span>{keepDataLabel}</span>
           <input
             type="checkbox"
@@ -83,8 +83,8 @@ export function NotebookDecoupleDialog({
             onChange={(event) => onKeepDataChange(event.target.checked)}
           />
         </label>
-        {error ? <p className="notebook-decouple-error">{error}</p> : null}
-        <footer className="notebook-decouple-actions">
+        {error ? <p className="vault-decouple-error">{error}</p> : null}
+        <footer className="vault-decouple-actions">
           <button type="button" onClick={onCancel}>Cancel</button>
           <button type="button" className="is-primary" onClick={onApply}>Apply</button>
         </footer>

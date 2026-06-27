@@ -60,11 +60,11 @@ function focusWindow(window) {
   return true
 }
 
-function sendOpenNotebookManagerToWindow(window) {
+function sendOpenVaultManagerToWindow(window) {
   if (!window || window.isDestroyed()) return
   const sendNavigationEvent = () => {
     if (!window.isDestroyed()) {
-      window.webContents.send('open-notebook-manager')
+      window.webContents.send('open-vault-manager')
     }
   }
   if (window.webContents.isLoadingMainFrame()) {
@@ -74,17 +74,17 @@ function sendOpenNotebookManagerToWindow(window) {
   sendNavigationEvent()
 }
 
-function openNotebookManager() {
+function openVaultManager() {
   const existingWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
   if (existingWindow && !existingWindow.isDestroyed()) {
     focusWindow(existingWindow)
-    sendOpenNotebookManagerToWindow(existingWindow)
+    sendOpenVaultManagerToWindow(existingWindow)
     return
   }
   if (!storageSession) return
   const window = createWindow(storageSession)
   focusWindow(window)
-  sendOpenNotebookManagerToWindow(window)
+  sendOpenVaultManagerToWindow(window)
 }
 
 function isExternalWebUrl(value) {
@@ -160,7 +160,7 @@ async function confirmAndResetUserSettings(window = BrowserWindow.getFocusedWind
     cancelId: 1,
     defaultId: 1,
     message: 'Reset user settings to defaults?',
-    detail: 'This resets theme, hotkeys, shortcuts, toolbar layouts, and app preferences. Notebook content is not changed.',
+    detail: 'This resets theme, hotkeys, shortcuts, toolbar layouts, and app preferences. Vault content is not changed.',
   })
   if (confirmation.response !== 0) return
   const result = await storageSession.resetUserSettingsToDefaults()
@@ -169,7 +169,7 @@ async function confirmAndResetUserSettings(window = BrowserWindow.getFocusedWind
   }
 }
 
-function installApplicationMenu({ onNewWindow, onOpenNotebook, onResetUserSettings }) {
+function installApplicationMenu({ onNewWindow, onOpenVault, onResetUserSettings }) {
   const isMac = process.platform === 'darwin'
   if (!isMac) {
     Menu.setApplicationMenu(null)
@@ -194,8 +194,8 @@ function installApplicationMenu({ onNewWindow, onOpenNotebook, onResetUserSettin
           click: onNewWindow,
         },
         {
-          label: 'Open Notebook',
-          click: onOpenNotebook,
+          label: 'Open Vault',
+          click: onOpenVault,
         },
         { type: 'separator' },
         {
@@ -454,7 +454,7 @@ if (!gotSingleInstanceLock) {
     registerImageAssetProtocol({ protocol, storageSession })
     installApplicationMenu({
       onNewWindow: openAppWindow,
-      onOpenNotebook: openNotebookManager,
+      onOpenVault: openVaultManager,
       onResetUserSettings: () => confirmAndResetUserSettings(),
     })
     registerFileIpc({ ipcMain, dialog, storageSession })

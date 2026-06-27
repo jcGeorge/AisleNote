@@ -10,12 +10,12 @@ function createState(): AppState {
       return () => `id-${index += 1}`
     })(),
   }) as AppState
-  const noteId = state.notebook.activeNoteId
-  const noteBodyId = state.notebook.items[0]?.type === 'note' ? state.notebook.items[0].noteBodyId : ''
+  const noteId = state.vault.activeNoteId
+  const noteBodyId = state.vault.items[0]?.type === 'note' ? state.vault.items[0].noteBodyId : ''
   return {
     ...state,
-    notebook: {
-      ...state.notebook,
+    vault: {
+      ...state.vault,
       activeNoteId: noteId,
       items: [
         {
@@ -61,19 +61,19 @@ function createState(): AppState {
 describe('findVisibleMatches', () => {
   it('searches every aisle of the current note without including scratchpad results in note scope', () => {
     const state = createState()
-    const matches = findVisibleMatches(state, { noteId: state.notebook.activeNoteId }, 'note', 'alpha', {
+    const matches = findVisibleMatches(state, { noteId: state.vault.activeNoteId }, 'note', 'alpha', {
       caseSensitive: false,
       wholeWord: false,
       regex: false,
     })
 
     expect(matches.map((match) => match.aisleId)).toEqual(['current-aisle-1', 'current-aisle-2'])
-    expect(matches.every((match) => match.location.noteId === state.notebook.activeNoteId)).toBe(true)
+    expect(matches.every((match) => match.location.noteId === state.vault.activeNoteId)).toBe(true)
   })
 
-  it('includes scratchpad only when searching notebook scope', () => {
+  it('includes scratchpad only when searching vault scope', () => {
     const state = createState()
-    const matches = findVisibleMatches(state, { noteId: state.notebook.activeNoteId }, 'notebook', 'alpha', {
+    const matches = findVisibleMatches(state, { noteId: state.vault.activeNoteId }, 'vault', 'alpha', {
       caseSensitive: false,
       wholeWord: false,
       regex: false,

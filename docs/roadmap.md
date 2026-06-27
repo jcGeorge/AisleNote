@@ -8,9 +8,9 @@ The guiding rule is: data integrity and recovery come before visual polish and p
 
 Cleaned up on 2026-05-17.
 
-- **Phase 1 is complete.** The stabilization pass covered real-workspace persistence, frontmatter, batch note workflows, rename persistence, trash/restore, export/images, and notebook-folder reload/move behavior.
-- **Phase 2 is complete for the current storage model.** The active manifest/Markdown/assets format is documented, Electron/browser storage behavior is hardened, notebook-folder health is visible in settings, and global user settings are separated from selected notebook folders.
-- **Phase 3 is complete for this roadmap gate.** The first targeted refactor pass extracted notebook-folder orchestration and cleared the hook-dependency cleanup target. Larger refactor slices are now normal engineering hygiene, not blockers for Phase 4.
+- **Phase 1 is complete.** The stabilization pass covered real-workspace persistence, frontmatter, batch note workflows, rename persistence, trash/restore, export/images, and vault-folder reload/move behavior.
+- **Phase 2 is complete for the current storage model.** The active manifest/Markdown/assets format is documented, Electron/browser storage behavior is hardened, vault-folder health is visible in settings, and global user settings are separated from selected vault folders.
+- **Phase 3 is complete for this roadmap gate.** The first targeted refactor pass extracted vault-folder orchestration and cleared the hook-dependency cleanup target. Larger refactor slices are now normal engineering hygiene, not blockers for Phase 4.
 - **Phase 4 is the current active phase.** The first input-polish slice is largely implemented; remaining Phase 4 work is continued bug polish plus the later design-system/UI overhaul.
 
 ## Phase 1: Stabilization Pass — Complete
@@ -22,7 +22,7 @@ Completed outcomes:
 - Frontmatter templates, computed values, default values, manual rows, derived rows, null date/datetime values, picker behavior, and template switching were tested and fixed where needed.
 - Batch note operations were exercised for frontmatter application, note movement, deletion, restore, and review flows.
 - Rename persistence for folders and notes was validated across app restart/storage reload.
-- Trash restore/delete behavior, export output, image asset handling, image resize/crop/rotation metadata, and notebook-folder move/retry/reload behavior were validated.
+- Trash restore/delete behavior, export output, image asset handling, image resize/crop/rotation metadata, and vault-folder move/retry/reload behavior were validated.
 - The manual real-workspace pass used QA-only copied data.
 
 Ongoing rule:
@@ -35,9 +35,9 @@ Goal: make the manifest/Markdown/assets storage model resilient enough for real 
 
 Completed outcomes:
 
-- `docs/storage-schema.md` now describes the current generic notebook tree, visible Markdown files, `.aislenote/` metadata, and asset layout as canonical.
+- `docs/storage-schema.md` now describes the current generic vault tree, visible Markdown files, `.aislenote/` metadata, and asset layout as canonical.
 - Missing Markdown files, missing/corrupt trash manifests, corrupt branch manifests, corrupt/unsupported root manifests, stale revisions, conflict folders, and paused-write safeguards are covered by storage behavior and tests.
-- Settings > Data surfaces notebook folder transfer, user-settings transfer, notebook create/switch/move actions, notebook-folder health, folder path, schema/writable state, issue details, reveal folder, and retry reload actions.
+- Settings > Data surfaces vault folder transfer, user-settings transfer, vault create/switch/move actions, vault-folder health, folder path, schema/writable state, issue details, reveal folder, and retry reload actions.
 - Browser hybrid storage and Electron filesystem storage have parity coverage for the current logical app state.
 - Automatic save copies have been removed in favor of explicit folder export/import and user-managed copies.
 - Pre-production storage compatibility has been removed before launch.
@@ -52,7 +52,7 @@ Goal: reduce risk in future feature work without doing a broad rewrite.
 
 Completed outcomes:
 
-- Notebook-folder state/actions moved out of `App.tsx` into a focused controller hook.
+- Vault-folder state/actions moved out of `App.tsx` into a focused controller hook.
 - Storage status loading, subscription, choose/move/reveal/retry/restore actions, and related toast handling are owned by the controller.
 - Hook-dependency warning cleanup was completed for the targeted editor/image-tools, navigation-history, note-body, and global-hotkey paths.
 - The pass stayed behavior-preserving and avoided image-tools internals until there is a specific reason to split them.
@@ -139,7 +139,7 @@ Goal: understand external note-app exports before committing to importer UX.
 Focus areas:
 
 - Collect or synthesize fixtures for Obsidian, OneNote, Apple Notes, Markdown folders/ZIPs, and generic HTML exports.
-- Define fixture expectations for Markdown conversion, image assets, nested notebooks/folders, frontmatter-like metadata, links, tags, and unsupported content.
+- Define fixture expectations for Markdown conversion, image assets, nested vaults/folders, frontmatter-like metadata, links, tags, and unsupported content.
 - Add parser spikes and tests only where the export format is stable enough to evaluate.
 - Document what can be imported losslessly, what needs review, and what should be left unsupported.
 
@@ -158,13 +158,13 @@ Focus areas:
 - Choose Electron Builder or Electron Forge and document the packaging workflow.
 - App identity, icons, metadata, installer strategy, Windows packaging, macOS packaging, signing/notarization, and update channels.
 - Crash-safe saves and storage migration guarantees suitable for non-developer users.
-- Explicit notebook folder transfer and user-settings transfer flows suitable for non-developer users.
+- Explicit vault folder transfer and user-settings transfer flows suitable for non-developer users.
 - Electron menu behavior and keyboard shortcuts on macOS and Windows.
 
 Exit criteria:
 
 - A clean machine can install, launch, choose storage, create notes, restart, and update without data loss.
-- Notebook folder and transfer behavior are understandable from inside the app.
+- Vault folder and transfer behavior are understandable from inside the app.
 - Release checklist passes on macOS and Windows.
 
 ## Phase 9: PWA And Mobile Deployment Prep
@@ -177,7 +177,7 @@ Focus areas:
 - IndexedDB durability and recovery.
 - iOS Safari limitations, Android behavior, and Android-compatible desktop/PWA targets such as AluminiumOS.
 - Touch ergonomics for editing, navigation, tooltip controls, and settings.
-- File access limitations compared with Electron notebook folders.
+- File access limitations compared with Electron vault folders.
 
 Exit criteria:
 

@@ -48,7 +48,7 @@ type SidebarSearchFolderSection = {
 }
 
 function getFolderSectionLabel(folderPath: string): string {
-  return folderPath.trim() || 'Local notebook'
+  return folderPath.trim() || 'Local vault'
 }
 
 function getFolderResultSections(resultGroups: SidebarSearchResultGroup[]): SidebarSearchFolderSection[] {
@@ -83,7 +83,7 @@ function SearchResultButton({
   return (
     <button
       type="button"
-      className="notebook-sidebar-search-result"
+      className="vault-sidebar-search-result"
       onClick={() => onOpenResult(result)}
       onMouseDown={(event) => {
         if (event.button !== 1) return
@@ -103,10 +103,10 @@ function SearchResultButton({
         onOpenResult(result, 'retained')
       }}
     >
-      <span className="notebook-sidebar-search-result-meta">
+      <span className="vault-sidebar-search-result-meta">
         {result.aisleCount > 1 ? `${result.aisleNumber})` : 'Note'}
       </span>
-      <span className="notebook-sidebar-search-result-snippet">{result.snippet || group.noteName}</span>
+      <span className="vault-sidebar-search-result-snippet">{result.snippet || group.noteName}</span>
     </button>
   )
 }
@@ -129,13 +129,13 @@ function SearchResultGroupHeading({
   )
 
   if (!firstResult) {
-    return <div className="notebook-sidebar-search-result-heading">{content}</div>
+    return <div className="vault-sidebar-search-result-heading">{content}</div>
   }
 
   return (
     <button
       type="button"
-      className="notebook-sidebar-search-result-heading notebook-sidebar-search-result-heading-button"
+      className="vault-sidebar-search-result-heading vault-sidebar-search-result-heading-button"
       onClick={() => onOpenResult(firstResult)}
       onMouseDown={(event) => {
         if (event.button !== 1) return
@@ -188,13 +188,13 @@ export function SidebarSearchPanel({
   const showSuggestions = focused && suggestions.length > 0
 
   return (
-    <section className={`notebook-sidebar-search ${active ? 'is-active' : ''}`} aria-label="Notebook search">
-      <div className="notebook-sidebar-search-field-shell">
-        <label className="notebook-sidebar-search-field">
-          <AppIcon iconId="search" className="notebook-sidebar-search-icon" />
+    <section className={`vault-sidebar-search ${active ? 'is-active' : ''}`} aria-label="Vault search">
+      <div className="vault-sidebar-search-field-shell">
+        <label className="vault-sidebar-search-field">
+          <AppIcon iconId="search" className="vault-sidebar-search-icon" />
           <input
             ref={inputRef}
-            className="notebook-search-input"
+            className="vault-search-input"
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             onFocus={() => setFocused(true)}
@@ -211,19 +211,19 @@ export function SidebarSearchPanel({
           {canClear ? (
             <button
               type="button"
-              className="notebook-sidebar-search-clear"
+              className="vault-sidebar-search-clear"
               aria-label="Clear search"
               data-app-tooltip="Clear search"
               onClick={onClearButtonClick ?? onClear}
             >
-              <AppIcon iconId="x" className="notebook-sidebar-search-clear-icon" />
+              <AppIcon iconId="x" className="vault-sidebar-search-clear-icon" />
             </button>
           ) : null}
         </label>
 
         {showSuggestions ? (
           <div
-            className="notebook-sidebar-search-dropdown notebook-sidebar-search-suggestions"
+            className="vault-sidebar-search-dropdown vault-sidebar-search-suggestions"
             role="listbox"
             aria-label="Search suggestions"
           >
@@ -231,55 +231,55 @@ export function SidebarSearchPanel({
               <button
                 key={`${suggestion.kind}:${suggestion.key}`}
                 type="button"
-                className="notebook-sidebar-search-suggestion"
+                className="vault-sidebar-search-suggestion"
                 role="option"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => onSelectSuggestion(suggestion)}
               >
-                <span className="notebook-sidebar-search-suggestion-token">{suggestion.tokenText}</span>
-                <span className="notebook-sidebar-search-suggestion-count">
+                <span className="vault-sidebar-search-suggestion-token">{suggestion.tokenText}</span>
+                <span className="vault-sidebar-search-suggestion-count">
                   {suggestion.count === 1 ? '1 match' : `${suggestion.count} matches`}
                 </span>
               </button>
             ))}
           </div>
         ) : showSearchMenu ? (
-          <div className="notebook-sidebar-search-dropdown notebook-sidebar-search-menu" aria-label="Search options">
-            <div className="notebook-sidebar-search-menu-section">
-              <div className="notebook-sidebar-search-menu-heading">Search options</div>
+          <div className="vault-sidebar-search-dropdown vault-sidebar-search-menu" aria-label="Search options">
+            <div className="vault-sidebar-search-menu-section">
+              <div className="vault-sidebar-search-menu-heading">Search options</div>
               {searchOptions.map((option) => (
                 <button
                   key={option.tokenText}
                   type="button"
-                  className="notebook-sidebar-search-menu-row"
+                  className="vault-sidebar-search-menu-row"
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => onSelectSearchOption(option)}
                 >
-                  <span className="notebook-sidebar-search-menu-token">{option.tokenText}</span>
-                  <span className="notebook-sidebar-search-menu-description">{option.description}</span>
+                  <span className="vault-sidebar-search-menu-token">{option.tokenText}</span>
+                  <span className="vault-sidebar-search-menu-description">{option.description}</span>
                 </button>
               ))}
             </div>
             {searchHistory.length > 0 ? (
-              <div className="notebook-sidebar-search-menu-section">
-                <div className="notebook-sidebar-search-history-heading">
+              <div className="vault-sidebar-search-menu-section">
+                <div className="vault-sidebar-search-history-heading">
                   <span>History</span>
                   <button
                     type="button"
-                    className="notebook-sidebar-search-history-clear"
+                    className="vault-sidebar-search-history-clear"
                     aria-label="Clear search history"
                     data-app-tooltip="Clear search history"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={onClearHistory}
                   >
-                    <AppIcon iconId="x" className="notebook-sidebar-search-history-clear-icon" />
+                    <AppIcon iconId="x" className="vault-sidebar-search-history-clear-icon" />
                   </button>
                 </div>
                 {searchHistory.map((historyQuery) => (
                   <button
                     key={historyQuery}
                     type="button"
-                    className="notebook-sidebar-search-history-row"
+                    className="vault-sidebar-search-history-row"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => onSelectHistory(historyQuery)}
                   >
@@ -293,18 +293,18 @@ export function SidebarSearchPanel({
       </div>
 
       {active ? (
-        <div className="notebook-sidebar-search-results" aria-label="Search results">
-          <div className="notebook-sidebar-search-summary">
+        <div className="vault-sidebar-search-results" aria-label="Search results">
+          <div className="vault-sidebar-search-summary">
             {resultCount === 1 ? '1 result' : `${resultCount} results`}
           </div>
           {resultGroups.length > 0 && textOnlySearchActive ? (
             folderSections.map((section) => (
-              <section key={section.key} className="notebook-sidebar-search-folder-section">
-                <div className="notebook-sidebar-search-folder-heading">
+              <section key={section.key} className="vault-sidebar-search-folder-section">
+                <div className="vault-sidebar-search-folder-heading">
                   {getFolderSectionLabel(section.folderPath)}
                 </div>
                 {section.groups.map((group) => (
-                  <section key={group.key} className="notebook-sidebar-search-result-group">
+                  <section key={group.key} className="vault-sidebar-search-result-group">
                     <SearchResultGroupHeading group={group} onOpenResult={onOpenResult} />
                     {group.results.map((result) => (
                       <SearchResultButton
@@ -320,7 +320,7 @@ export function SidebarSearchPanel({
             ))
           ) : resultGroups.length > 0 ? (
             resultGroups.map((group) => (
-              <section key={group.key} className="notebook-sidebar-search-result-group">
+              <section key={group.key} className="vault-sidebar-search-result-group">
                 <SearchResultGroupHeading group={group} showFolderPath onOpenResult={onOpenResult} />
                 {group.results.map((result) => (
                   <SearchResultButton
@@ -333,7 +333,7 @@ export function SidebarSearchPanel({
               </section>
             ))
           ) : (
-            <div className="notebook-sidebar-search-empty">No matching notes</div>
+            <div className="vault-sidebar-search-empty">No matching notes</div>
           )}
         </div>
       ) : null}

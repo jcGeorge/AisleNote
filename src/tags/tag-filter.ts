@@ -2,7 +2,7 @@ import { buildVisibleMarkdownIndex } from '../notes/find-replace'
 import { getAisleBodyId, getAisleMarkdown } from '../notes/note-markdown'
 import { buildNoteLocationKey } from '../notes/note-locations'
 import { SCRATCHPAD_FIND_LOCATION } from '../notes/find-replace'
-import { getNotebookIndexContext, type NotebookIndexContext, type NotebookOrderedLocation } from '../filters/notebook-index-context'
+import { getVaultIndexContext, type VaultIndexContext, type VaultOrderedLocation } from '../filters/vault-index-context'
 import type { AppState, NoteAisleBody, NoteBody, NoteLocation } from '../types/app'
 import { extractMarkdownTagRanges, normalizeTagLabel } from './tags.js'
 
@@ -139,7 +139,7 @@ function addSelectedOccurrenceToCounts(index: TagFilterIndex, occurrence: TagFil
   }
 }
 
-function populateFirstMatches(index: TagFilterIndex, orderedLocations: NotebookOrderedLocation[]) {
+function populateFirstMatches(index: TagFilterIndex, orderedLocations: VaultOrderedLocation[]) {
   orderedLocations.forEach(({ location }) => {
     const locationKey = buildNoteLocationKey(location)
     if ((index.noteCounts.get(locationKey) ?? 0) <= 0) return
@@ -150,9 +150,9 @@ function populateFirstMatches(index: TagFilterIndex, orderedLocations: NotebookO
 export function buildTagFilterIndex(
   state: AppState,
   selectedTagKeys: string[] = [],
-  context?: NotebookIndexContext,
+  context?: VaultIndexContext,
 ): TagFilterIndex {
-  const indexContext = getNotebookIndexContext(state, context)
+  const indexContext = getVaultIndexContext(state, context)
   const occurrences: TagFilterOccurrence[] = []
   const tagSummariesByKey = new Map<string, TagFilterTagSummary>()
   const { aisleBodiesById, noteBodiesById, orderedLocations, scratchpadBody } = indexContext

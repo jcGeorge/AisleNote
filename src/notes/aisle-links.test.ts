@@ -10,7 +10,7 @@ import {
 function createState(): AppState {
   return {
     theme: 'dark',
-    notebook: {
+    vault: {
       activeNoteId: 'note-1',
       items: [
         {
@@ -78,7 +78,7 @@ function createState(): AppState {
 }
 
 describe('linked aisle helpers', () => {
-  it('lists linked aisle slots with stable keys and notebook labels', () => {
+  it('lists linked aisle slots with stable keys and vault labels', () => {
     const slots = listLinkedAisleSlotsForAisleBody(createState(), 'shared-body')
 
     expect(slots.map((slot) => slot.key)).toEqual([

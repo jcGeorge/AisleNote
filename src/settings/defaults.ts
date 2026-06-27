@@ -34,7 +34,7 @@ import {
   removeThemePaletteOverride,
   setThemePaletteOverride,
   type BuiltInAppTheme,
-} from '../theme/notebook-themes'
+} from '../theme/vault-themes'
 
 export {
   APP_THEME_IDS,

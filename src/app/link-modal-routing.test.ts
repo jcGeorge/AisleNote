@@ -3,20 +3,20 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-const appSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), './NotebookApp.tsx'), 'utf8')
+const appSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), './VaultApp.tsx'), 'utf8')
 const contextMenuSource = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), '../components/overlays/NotebookEditorContextMenu.tsx'),
+  join(dirname(fileURLToPath(import.meta.url)), '../components/overlays/VaultEditorContextMenu.tsx'),
   'utf8',
 )
-const notebookEditorsSource = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), '../editor/useNotebookAisleEditors.ts'),
+const vaultEditorsSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../editor/useVaultAisleEditors.ts'),
   'utf8',
 )
 
-describe('Notebook link insertion routing', () => {
+describe('Vault link insertion routing', () => {
   it('routes toolbar URL links through the lightweight link prompt', () => {
     expect(appSource).toContain('const openToolbarLinkPicker = useCallback')
-    expect(appSource).toContain('notebookEditors.openUrlLinkPrompt()')
+    expect(appSource).toContain('vaultEditors.openUrlLinkPrompt()')
     expect(appSource).toContain('<LinkPrompt')
     expect(appSource).toContain('onOpenUrlLinkPrompt: openUrlLinkPrompt')
     expect(appSource).toContain('onOpenNoteLink={openNoteLinkFromLinkPrompt}')
@@ -24,10 +24,10 @@ describe('Notebook link insertion routing', () => {
     expect(appSource).toContain("title: 'Insert note reference'")
     expect(appSource).toContain("actions: ['note-link', 'note-preview']")
     expect(appSource).toContain('onInsertWebLink={openToolbarLinkPicker}')
-    expect(notebookEditorsSource).toContain('isUrlLinkShortcutEvent(event, isMacPlatformRef.current)')
-    expect(notebookEditorsSource).toContain("if (event.key !== 'Enter') return")
-    expect(notebookEditorsSource).toContain("root.addEventListener('click', handleLinkClick, true)")
-    expect(notebookEditorsSource).toContain('openExternalWebUrl(href)')
+    expect(vaultEditorsSource).toContain('isUrlLinkShortcutEvent(event, isMacPlatformRef.current)')
+    expect(vaultEditorsSource).toContain("if (event.key !== 'Enter') return")
+    expect(vaultEditorsSource).toContain("root.addEventListener('click', handleLinkClick, true)")
+    expect(vaultEditorsSource).toContain('openExternalWebUrl(href)')
   })
 
   it('exposes note link and note preview insert actions in the editor context menu', () => {
@@ -39,15 +39,15 @@ describe('Notebook link insertion routing', () => {
     expect(appSource).toContain("onInsertNotePreview={() => openContextNoteReferencePicker('note-preview')}")
   })
 
-  it('inserts notebook note references through the note-aware editor API', () => {
-    const insertStart = appSource.indexOf('const insertNotebookNoteReference = useCallback')
-    const insertEnd = appSource.indexOf('const applyNotebookNoteCopyAction = useCallback', insertStart)
+  it('inserts vault note references through the note-aware editor API', () => {
+    const insertStart = appSource.indexOf('const insertVaultNoteReference = useCallback')
+    const insertEnd = appSource.indexOf('const applyVaultNoteCopyAction = useCallback', insertStart)
     const insertBody = appSource.slice(insertStart, insertEnd)
 
     expect(insertBody).toContain('const insertRange = currentPicker?.source === \'mention\'')
-    expect(insertBody).toContain('notebookEditors.insertNoteReferenceAtSelection(token, insertRange)')
-    expect(insertBody).toContain('notebookEditors.insertNoteReferenceAtSelection(token)')
-    expect(insertBody).not.toContain('notebookEditors.insertTextAtSelection(token)')
-    expect(insertBody).not.toContain('notebookEditors.replaceActiveEditorRangeWithText')
+    expect(insertBody).toContain('vaultEditors.insertNoteReferenceAtSelection(token, insertRange)')
+    expect(insertBody).toContain('vaultEditors.insertNoteReferenceAtSelection(token)')
+    expect(insertBody).not.toContain('vaultEditors.insertTextAtSelection(token)')
+    expect(insertBody).not.toContain('vaultEditors.replaceActiveEditorRangeWithText')
   })
 })

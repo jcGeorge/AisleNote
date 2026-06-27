@@ -6,25 +6,25 @@ type StorageProfileActionResult =
   | { ok: true; status: StorageProfileStatus; warning?: string }
   | { ok: false; error?: string; status: StorageProfileStatus }
 
-type CreateNotebookPayload = {
+type CreateVaultPayload = {
   name: string
   locationPath: string
 }
 
-type NotebookSelectorPayload = {
-  notebookId?: string
-  notebookPath?: string
+type VaultSelectorPayload = {
+  vaultId?: string
+  vaultPath?: string
 }
 
-type RenameNotebookPayload = NotebookSelectorPayload & {
+type RenameVaultPayload = VaultSelectorPayload & {
   name: string
 }
 
-type NotebookDeletePayload = NotebookSelectorPayload & {
+type VaultDeletePayload = VaultSelectorPayload & {
   skipConfirmation?: boolean
 }
 
-type RevealRecoveredNotebookLocationPayload = {
+type RevealRecoveredVaultLocationPayload = {
   messageId?: string
   signature?: string
 }
@@ -41,14 +41,14 @@ export function getStorageProfileStatusToast(nextStatus: StorageProfileStatus): 
   tone: ToastTone
   durationMs?: number
 } | null {
-  if (nextStatus.status === 'setup-required' || nextStatus.event === 'notebook-setup-required') return null
+  if (nextStatus.status === 'setup-required' || nextStatus.event === 'vault-setup-required') return null
   if (nextStatus.event === 'external-loaded') {
-    return { message: 'External notebook folder changes loaded.', tone: 'success' }
+    return { message: 'External vault folder changes loaded.', tone: 'success' }
   }
-  if (nextStatus.event === 'notebook-auto-recovered') return null
+  if (nextStatus.event === 'vault-auto-recovered') return null
   if (nextStatus.status === 'error') {
     return {
-      message: nextStatus.error ?? 'Notebook folder could not be loaded. Saves are paused.',
+      message: nextStatus.error ?? 'Vault folder could not be loaded. Saves are paused.',
       tone: 'error',
       durationMs: STORAGE_ERROR_TOAST_DURATION_MS,
     }
@@ -56,25 +56,25 @@ export function getStorageProfileStatusToast(nextStatus: StorageProfileStatus): 
   return null
 }
 
-export function hasActiveNotebookForStorageAction(status: StorageProfileStatus | null | undefined): boolean {
+export function hasActiveVaultForStorageAction(status: StorageProfileStatus | null | undefined): boolean {
   return Boolean(
     status &&
       status.status === 'ready' &&
       status.canWrite &&
-      status.activeNotebookId &&
-      status.notebookPath,
+      status.activeVaultId &&
+      status.vaultPath,
   )
 }
 
-export function notebookSelectorTargetsActiveNotebook(
+export function vaultSelectorTargetsActiveVault(
   status: StorageProfileStatus | null | undefined,
-  selector: NotebookSelectorPayload = {},
+  selector: VaultSelectorPayload = {},
 ): boolean {
-  if (!hasActiveNotebookForStorageAction(status)) return false
-  const notebookId = typeof selector.notebookId === 'string' ? selector.notebookId.trim() : ''
-  const notebookPath = typeof selector.notebookPath === 'string' ? selector.notebookPath.trim() : ''
-  if (!notebookId && !notebookPath) return true
-  return notebookId === status?.activeNotebookId || notebookPath === status?.notebookPath
+  if (!hasActiveVaultForStorageAction(status)) return false
+  const vaultId = typeof selector.vaultId === 'string' ? selector.vaultId.trim() : ''
+  const vaultPath = typeof selector.vaultPath === 'string' ? selector.vaultPath.trim() : ''
+  if (!vaultId && !vaultPath) return true
+  return vaultId === status?.activeVaultId || vaultPath === status?.vaultPath
 }
 
 export function useStorageProfileController({ pushToast, beforeStorageAction }: UseStorageProfileControllerParams) {
@@ -126,107 +126,107 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
       return true
     }
     pushToastRef.current(
-      'ok' in result ? result.error ?? 'Notebook folder action failed.' : 'Notebook folder action failed.',
+      'ok' in result ? result.error ?? 'Vault folder action failed.' : 'Vault folder action failed.',
       'error',
       STORAGE_ERROR_TOAST_DURATION_MS,
     )
     return false
   }
 
-  const commitActiveNotebookBeforeStorageAction = async (selector?: NotebookSelectorPayload) => {
+  const commitActiveVaultBeforeStorageAction = async (selector?: VaultSelectorPayload) => {
     const status = storageProfileStatusRef.current
     const shouldCommit = selector
-      ? notebookSelectorTargetsActiveNotebook(status, selector)
-      : hasActiveNotebookForStorageAction(status)
+      ? vaultSelectorTargetsActiveVault(status, selector)
+      : hasActiveVaultForStorageAction(status)
     if (shouldCommit) await beforeStorageActionRef.current?.()
   }
 
-  const chooseNotebookLocation = async () => {
-    const result = await window.electronAPI?.chooseNotebookLocation?.()
+  const chooseVaultLocation = async () => {
+    const result = await window.electronAPI?.chooseVaultLocation?.()
     if (!result) {
-      pushToastRef.current('Notebook location selection is only available in the desktop app.', 'warning')
+      pushToastRef.current('Vault location selection is only available in the desktop app.', 'warning')
       return null
     }
     if ('canceled' in result && result.canceled) return null
     if ('ok' in result && result.ok) return result.locationPath
     pushToastRef.current(
-      'ok' in result ? result.error ?? 'Notebook location selection failed.' : 'Notebook location selection failed.',
+      'ok' in result ? result.error ?? 'Vault location selection failed.' : 'Vault location selection failed.',
       'error',
       STORAGE_ERROR_TOAST_DURATION_MS,
     )
     return null
   }
 
-  const createNotebook = async (payload: CreateNotebookPayload) => {
-    await commitActiveNotebookBeforeStorageAction()
-    const result = await window.electronAPI?.createNotebook?.(payload)
+  const createVault = async (payload: CreateVaultPayload) => {
+    await commitActiveVaultBeforeStorageAction()
+    const result = await window.electronAPI?.createVault?.(payload)
     if (!result) {
-      pushToastRef.current('New notebook is only available in the desktop app.', 'warning')
+      pushToastRef.current('New vault is only available in the desktop app.', 'warning')
       return false
     }
-    return handleStorageProfileResult(result, 'New notebook created.')
+    return handleStorageProfileResult(result, 'New vault created.')
   }
 
-  const renameNotebook = async (name: string, selector: NotebookSelectorPayload) => {
-    await commitActiveNotebookBeforeStorageAction(selector)
-    const result = await window.electronAPI?.renameNotebook?.({ ...selector, name } satisfies RenameNotebookPayload)
+  const renameVault = async (name: string, selector: VaultSelectorPayload) => {
+    await commitActiveVaultBeforeStorageAction(selector)
+    const result = await window.electronAPI?.renameVault?.({ ...selector, name } satisfies RenameVaultPayload)
     if (!result) {
-      pushToastRef.current('Notebook rename is only available in the desktop app.', 'warning')
+      pushToastRef.current('Vault rename is only available in the desktop app.', 'warning')
       return false
     }
-    return handleStorageProfileResult(result, 'Notebook renamed.')
+    return handleStorageProfileResult(result, 'Vault renamed.')
   }
 
-  const openNotebook = async () => {
-    await commitActiveNotebookBeforeStorageAction()
-    const result = await window.electronAPI?.openNotebook?.()
+  const openVault = async () => {
+    await commitActiveVaultBeforeStorageAction()
+    const result = await window.electronAPI?.openVault?.()
     if (!result) {
-      pushToastRef.current('Notebook opening is only available in the desktop app.', 'warning')
+      pushToastRef.current('Vault opening is only available in the desktop app.', 'warning')
       return false
     }
-    return handleStorageProfileResult(result, 'Notebook opened.')
+    return handleStorageProfileResult(result, 'Vault opened.')
   }
 
-  const normalizeNotebookSelector = (selector: string | NotebookSelectorPayload): NotebookSelectorPayload =>
-    typeof selector === 'string' ? { notebookPath: selector } : selector
+  const normalizeVaultSelector = (selector: string | VaultSelectorPayload): VaultSelectorPayload =>
+    typeof selector === 'string' ? { vaultPath: selector } : selector
 
-  const switchNotebook = async (selector: string | NotebookSelectorPayload) => {
-    await commitActiveNotebookBeforeStorageAction()
-    const result = await window.electronAPI?.switchNotebook?.(normalizeNotebookSelector(selector))
+  const switchVault = async (selector: string | VaultSelectorPayload) => {
+    await commitActiveVaultBeforeStorageAction()
+    const result = await window.electronAPI?.switchVault?.(normalizeVaultSelector(selector))
     if (!result) {
-      pushToastRef.current('Notebook switching is only available in the desktop app.', 'warning')
+      pushToastRef.current('Vault switching is only available in the desktop app.', 'warning')
       return false
     }
-    return handleStorageProfileResult(result, 'Notebook switched.')
+    return handleStorageProfileResult(result, 'Vault switched.')
   }
 
-  const forgetNotebook = async (selector: string | NotebookSelectorPayload) => {
-    const result = await window.electronAPI?.forgetNotebook?.(normalizeNotebookSelector(selector))
+  const forgetVault = async (selector: string | VaultSelectorPayload) => {
+    const result = await window.electronAPI?.forgetVault?.(normalizeVaultSelector(selector))
     if (!result) {
-      pushToastRef.current('Notebook list management is only available in the desktop app.', 'warning')
+      pushToastRef.current('Vault list management is only available in the desktop app.', 'warning')
       return false
     }
-    return handleStorageProfileResult(result, 'Notebook removed from list.')
+    return handleStorageProfileResult(result, 'Vault removed from list.')
   }
 
-  const deleteNotebook = async (payload: NotebookDeletePayload = {}) => {
-    await commitActiveNotebookBeforeStorageAction(payload)
-    const result = await window.electronAPI?.deleteNotebook?.(payload)
+  const deleteVault = async (payload: VaultDeletePayload = {}) => {
+    await commitActiveVaultBeforeStorageAction(payload)
+    const result = await window.electronAPI?.deleteVault?.(payload)
     if (!result) {
-      pushToastRef.current('Notebook deletion is only available in the desktop app.', 'warning')
+      pushToastRef.current('Vault deletion is only available in the desktop app.', 'warning')
       return false
     }
-    return handleStorageProfileResult(result, 'Notebook deleted.')
+    return handleStorageProfileResult(result, 'Vault deleted.')
   }
 
   const moveStorageProfile = async () => {
-    await commitActiveNotebookBeforeStorageAction()
+    await commitActiveVaultBeforeStorageAction()
     const result = await window.electronAPI?.moveStorageProfile?.()
     if (!result) {
-      pushToastRef.current('Notebook folder migration is only available in the desktop app.', 'warning')
+      pushToastRef.current('Vault folder migration is only available in the desktop app.', 'warning')
       return false
     }
-    return handleStorageProfileResult(result, 'Notebook folder moved.')
+    return handleStorageProfileResult(result, 'Vault folder moved.')
   }
 
   const revealStorageProfile = async () => {
@@ -238,8 +238,8 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
     if (!result.ok) pushToastRef.current(result.error, 'error', STORAGE_ERROR_TOAST_DURATION_MS)
   }
 
-  const revealRecoveredNotebookLocation = async (payload: RevealRecoveredNotebookLocationPayload = {}) => {
-    const result = await window.electronAPI?.revealRecoveredNotebookLocation?.(payload)
+  const revealRecoveredVaultLocation = async (payload: RevealRecoveredVaultLocationPayload = {}) => {
+    const result = await window.electronAPI?.revealRecoveredVaultLocation?.(payload)
     if (!result) {
       pushToastRef.current('Reveal folder is only available in the desktop app.', 'warning')
       return
@@ -248,27 +248,27 @@ export function useStorageProfileController({ pushToast, beforeStorageAction }: 
   }
 
   const retryStorageProfile = async () => {
-    await commitActiveNotebookBeforeStorageAction()
+    await commitActiveVaultBeforeStorageAction()
     const result = await window.electronAPI?.retryStorageProfile?.()
     if (!result) {
-      pushToastRef.current('Notebook folder reload is only available in the desktop app.', 'warning')
+      pushToastRef.current('Vault folder reload is only available in the desktop app.', 'warning')
       return false
     }
-    return handleStorageProfileResult(result, 'Notebook folder reloaded.')
+    return handleStorageProfileResult(result, 'Vault folder reloaded.')
   }
 
   return {
     storageProfileStatus,
-    chooseNotebookLocation,
-    createNotebook,
-    renameNotebook,
-    openNotebook,
-    switchNotebook,
-    forgetNotebook,
-    deleteNotebook,
+    chooseVaultLocation,
+    createVault,
+    renameVault,
+    openVault,
+    switchVault,
+    forgetVault,
+    deleteVault,
     moveStorageProfile,
     revealStorageProfile,
-    revealRecoveredNotebookLocation,
+    revealRecoveredVaultLocation,
     retryStorageProfile,
   }
 }

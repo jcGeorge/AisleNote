@@ -310,7 +310,7 @@ function collectNormalFindReplaceLocations(
   scope: FindReplaceScope,
 ): FindReplaceLocation[] {
   if (isScratchpadFindLocation(currentLocation)) {
-    if (scope !== 'notebook') return []
+    if (scope !== 'vault') return []
     return listSearchableNoteLocations(state).map((entry) => ({
       ...entry,
       context: getFindReplaceLocationContext(state, entry, {
@@ -338,7 +338,7 @@ function collectNormalFindReplaceLocations(
   const entries = listSearchableNoteLocations(state)
   const locations: FindReplaceLocation[] = entries
     .filter((entry) => {
-      if (scope === 'notebook') return true
+      if (scope === 'vault') return true
       if (scope === 'folder') return Boolean(currentEntry) && entry.parentFolderId === currentFolderId
       return entry.noteBodyId === currentInfo.noteBodyId
     })
@@ -359,7 +359,7 @@ export function collectFindReplaceLocations(
   scope: FindReplaceScope,
 ): FindReplaceLocation[] {
   const locations = collectNormalFindReplaceLocations(state, currentLocation, scope)
-  return scope === 'notebook' || isScratchpadFindLocation(currentLocation)
+  return scope === 'vault' || isScratchpadFindLocation(currentLocation)
     ? appendScratchpadFindReplaceLocation(state, locations)
     : locations
 }

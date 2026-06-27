@@ -50,17 +50,17 @@ describe('electron application menu', () => {
     expect(mainSource).not.toContain("{ role: 'zoomOut' }")
   })
 
-  it('does not expose the old native default-notebook reset path', () => {
-    expect(mainSource).not.toContain('Reset Notebook to Blank')
-    expect(mainSource).not.toContain('confirmAndResetLocalNotebook')
-    expect(mainSource).not.toContain('resetLocalNotebookToBlank')
+  it('does not expose the old native default-vault reset path', () => {
+    expect(mainSource).not.toContain('Reset Vault to Blank')
+    expect(mainSource).not.toContain('confirmAndResetLocalVault')
+    expect(mainSource).not.toContain('resetLocalVaultToBlank')
   })
 
-  it('routes Open Notebook to the renderer notebook manager instead of a folder picker', () => {
-    expect(mainSource).toContain("label: 'Open Notebook'")
-    expect(mainSource).toContain('openNotebookManager')
-    expect(mainSource).toContain("window.webContents.send('open-notebook-manager')")
-    expect(mainSource).not.toContain("label: 'Open Notebook',\n          click: () => dialog.showOpenDialog")
+  it('routes Open Vault to the renderer vault manager instead of a folder picker', () => {
+    expect(mainSource).toContain("label: 'Open Vault'")
+    expect(mainSource).toContain('openVaultManager')
+    expect(mainSource).toContain("window.webContents.send('open-vault-manager')")
+    expect(mainSource).not.toContain("label: 'Open Vault',\n          click: () => dialog.showOpenDialog")
   })
 
   it('wires persisted window bounds into native window creation', () => {
