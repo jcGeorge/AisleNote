@@ -411,6 +411,7 @@ export function useImageTools({
 
     const runSyncAndScheduleFollowUp = () => {
       syncEditorImageDisplayMetadata()
+      closeIfSelectedImageMissing()
       scheduleSync()
     }
 

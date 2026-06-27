@@ -12,9 +12,21 @@ export function scheduleNoteWorkspaceArrangeExit(onExitArrangeMode: (() => void)
 }
 
 export function getAisleActivationPointerFromNoteWorkspaceEvent(
-  event: Pick<PointerEvent, 'button' | 'clientX' | 'clientY'>,
+  event: Pick<PointerEvent, 'button' | 'clientX' | 'clientY'> & Partial<Pick<PointerEvent, 'pointerType'>>,
 ): { clientX: number; clientY: number; mode: 'coordinate' } | undefined {
-  return event.button === 0 ? { clientX: event.clientX, clientY: event.clientY, mode: 'coordinate' } : undefined
+  if (event.button !== 0 || event.pointerType === 'mouse') return undefined
+  return { clientX: event.clientX, clientY: event.clientY, mode: 'coordinate' }
+}
+
+export function getAisleActivationPointerFromNoteWorkspaceMouseEvent(
+  event: Pick<MouseEvent, 'button' | 'clientX' | 'clientY' | 'detail'>,
+): { clientX: number; clientY: number; mode: 'coordinate' | 'focus-only' } | undefined {
+  if (event.button !== 0) return undefined
+  return {
+    clientX: event.clientX,
+    clientY: event.clientY,
+    mode: event.detail > 1 ? 'focus-only' : 'coordinate',
+  }
 }
 
 type ClosestCapableTarget = {

@@ -12,6 +12,7 @@ import {
   isMarkdownPreviewLikelyExpensive,
 } from './note-workspace-preview'
 import {
+  getAisleActivationPointerFromNoteWorkspaceMouseEvent,
   getAisleActivationPointerFromNoteWorkspaceEvent,
   getAisleEditorKeyFromNoteWorkspacePointerTarget,
   getRightSideBlockGutterTarget,
@@ -990,17 +991,65 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(noteWorkspaceSource).toContain('shouldActivateAisleFromNoteWorkspacePointer(event.button)')
   })
 
-  it('captures first-click coordinates only for primary aisle activation pointers', () => {
+  it('captures first-click coordinates only for primary mouse aisle activation', () => {
+    expect(getAisleActivationPointerFromNoteWorkspaceMouseEvent({
+      button: 0,
+      clientX: 24,
+      clientY: 48,
+      detail: 1,
+    } as MouseEvent)).toEqual({ clientX: 24, clientY: 48, mode: 'coordinate' })
+    expect(getAisleActivationPointerFromNoteWorkspaceMouseEvent({
+      button: 0,
+      clientX: 24,
+      clientY: 48,
+      detail: 2,
+    } as MouseEvent)).toEqual({ clientX: 24, clientY: 48, mode: 'focus-only' })
+    expect(getAisleActivationPointerFromNoteWorkspaceMouseEvent({
+      button: 0,
+      clientX: 24,
+      clientY: 48,
+      detail: 3,
+    } as MouseEvent)).toEqual({ clientX: 24, clientY: 48, mode: 'focus-only' })
+    expect(getAisleActivationPointerFromNoteWorkspaceMouseEvent({
+      button: 1,
+      clientX: 24,
+      clientY: 48,
+      detail: 1,
+    } as MouseEvent)).toBeUndefined()
+    expect(getAisleActivationPointerFromNoteWorkspaceMouseEvent({
+      button: 2,
+      clientX: 24,
+      clientY: 48,
+      detail: 1,
+    } as MouseEvent)).toBeUndefined()
+  })
+
+  it('ignores mouse pointerdown activation while preserving non-mouse pointer coordinates', () => {
     expect(getAisleActivationPointerFromNoteWorkspaceEvent({
       button: 0,
       clientX: 24,
       clientY: 48,
+      pointerType: 'mouse',
+    } as PointerEvent)).toBeUndefined()
+    expect(getAisleActivationPointerFromNoteWorkspaceEvent({
+      button: 0,
+      clientX: 24,
+      clientY: 48,
+      pointerType: 'touch',
+    } as PointerEvent)).toEqual({ clientX: 24, clientY: 48, mode: 'coordinate' })
+    expect(getAisleActivationPointerFromNoteWorkspaceEvent({
+      button: 0,
+      clientX: 24,
+      clientY: 48,
+      pointerType: 'pen',
     } as PointerEvent)).toEqual({ clientX: 24, clientY: 48, mode: 'coordinate' })
     expect(getAisleActivationPointerFromNoteWorkspaceEvent({
       button: 2,
       clientX: 24,
       clientY: 48,
+      pointerType: 'touch',
     } as PointerEvent)).toBeUndefined()
+    expect(noteWorkspaceSource).toContain('getAisleActivationPointerFromNoteWorkspaceMouseEvent(event.nativeEvent)')
   })
 
   it('detects blank gutter clicks to the right of a table', () => {

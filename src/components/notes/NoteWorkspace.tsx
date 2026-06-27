@@ -42,6 +42,7 @@ import {
   createMarkdownPreviewUnorderedList,
 } from './markdown-preview-components'
 import {
+  getAisleActivationPointerFromNoteWorkspaceMouseEvent,
   getAisleActivationPointerFromNoteWorkspaceEvent,
   getAisleEditorKeyFromNoteWorkspacePointerTarget,
   getRightSideBlockGutterTarget,
@@ -542,6 +543,22 @@ export function NoteWorkspace({
     [onAisleWidthDragCommitted],
   )
 
+  const activateAisleFromWorkspaceTarget = useCallback(
+    (target: EventTarget | null, pointer?: AisleActivationPointer) => {
+      const editorKey = getAisleEditorKeyFromNoteWorkspacePointerTarget(target)
+      if (!editorKey) return null
+      const gutterTarget = pointer ? getRightSideBlockGutterTarget(target, pointer) : null
+      onActivateAisle(
+        editorKey,
+        pointer && gutterTarget
+          ? { ...pointer, mode: 'focus-only' }
+          : pointer,
+      )
+      return gutterTarget
+    },
+    [onActivateAisle],
+  )
+
   return (
     <section
       ref={onRootChange}
@@ -564,31 +581,21 @@ export function NoteWorkspace({
           if (shouldActivateAisle && !editorReadOnly && event.target instanceof Element) {
             onSelectEditableAsset(event.target)
           }
-          if (shouldActivateAisle) {
-            const editorKey = getAisleEditorKeyFromNoteWorkspacePointerTarget(event.target)
-            if (editorKey) {
-              const pointer = getAisleActivationPointerFromNoteWorkspaceEvent(event.nativeEvent)
-              const gutterTarget = pointer ? getRightSideBlockGutterTarget(event.target, pointer) : null
-              onActivateAisle(
-                editorKey,
-                pointer && gutterTarget
-                  ? { ...pointer, mode: 'focus-only' }
-                  : pointer,
-              )
-              if (gutterTarget) {
-                event.preventDefault()
-              }
+          const pointer = shouldActivateAisle
+            ? getAisleActivationPointerFromNoteWorkspaceEvent(event.nativeEvent)
+            : undefined
+          if (pointer) {
+            const gutterTarget = activateAisleFromWorkspaceTarget(event.target, pointer)
+            if (gutterTarget) {
+              event.preventDefault()
             }
           }
         }}
         onMouseDownCapture={(event) => {
-          if (
-            shouldActivateAisleFromNoteWorkspacePointer(event.button) &&
-            getRightSideBlockGutterTarget(event.target, {
-              clientX: event.clientX,
-              clientY: event.clientY,
-            })
-          ) {
+          if (!shouldActivateAisleFromNoteWorkspacePointer(event.button)) return
+          const pointer = getAisleActivationPointerFromNoteWorkspaceMouseEvent(event.nativeEvent)
+          const gutterTarget = activateAisleFromWorkspaceTarget(event.target, pointer)
+          if (gutterTarget) {
             event.preventDefault()
             event.stopPropagation()
             event.nativeEvent.stopImmediatePropagation()

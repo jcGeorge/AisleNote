@@ -102,6 +102,16 @@ describe('image tool viewport refresh behavior', () => {
     expect(source).toContain('refreshPosition({ closeOnMissing: false })')
   })
 
+  it('closes image tools when editor mutations remove the selected image', () => {
+    const source = readFileSync(new URL('./useImageTools.ts', import.meta.url), 'utf8')
+
+    expect(source).toContain(`const runSyncAndScheduleFollowUp = () => {
+      syncEditorImageDisplayMetadata()
+      closeIfSelectedImageMissing()
+      scheduleSync()
+    }`)
+  })
+
   it('reserves image layout only during resize commit to avoid drag-time work', () => {
     const source = readFileSync(new URL('./useImageTools.ts', import.meta.url), 'utf8')
 
