@@ -19,8 +19,9 @@ export const APP_COMMANDS: AppCommandDefinition[] = [
   { id: 'cyclePinnedNoteTabPrev', label: 'previous pinned note tab', defaultShortcut: 'Ctrl+Shift+Tab' },
   { id: 'reopenClosedNoteTab', label: 'reopen closed note tab', defaultShortcut: 'Mod+Shift+T' },
   { id: 'formatStrikethrough', label: 'strikethrough', defaultShortcut: '' },
-  { id: 'cycleAislePrev', label: 'previous aisle', defaultShortcut: 'Alt+[' },
-  { id: 'cycleAisleNext', label: 'next aisle', defaultShortcut: 'Alt+]' },
+  { id: 'formatHighlight', label: 'highlight', defaultShortcut: 'Mod+Shift+H' },
+  { id: 'cycleAislePrev', label: 'previous aisle', defaultShortcut: 'Mod+Ctrl+ArrowLeft' },
+  { id: 'cycleAisleNext', label: 'next aisle', defaultShortcut: 'Mod+Ctrl+ArrowRight' },
 ]
 
 export const APP_COMMAND_LABELS = APP_COMMANDS.reduce<Record<AppCommandId, string>>(

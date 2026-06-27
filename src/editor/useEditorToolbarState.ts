@@ -63,6 +63,7 @@ export function getToolbarFormatShortcutForEvent(
 ): ToolbarFormatKey | null {
   const normalizedHotkeys = normalizeHotkeySettings(hotkeys)
   if (eventMatchesShortcut(event, normalizedHotkeys.shortcuts.formatStrikethrough, isMacPlatform)) return 'strike'
+  if (eventMatchesShortcut(event, normalizedHotkeys.shortcuts.formatHighlight, isMacPlatform)) return 'highlight'
 
   const key = event.key.toLowerCase()
   const isMod = isMacPlatform ? event.metaKey : event.ctrlKey

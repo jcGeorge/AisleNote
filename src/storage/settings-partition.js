@@ -45,8 +45,9 @@ const DEFAULT_COMMAND_SHORTCUTS = {
   cyclePinnedNoteTabPrev: 'Ctrl+Shift+Tab',
   reopenClosedNoteTab: 'Mod+Shift+T',
   formatStrikethrough: '',
-  cycleAislePrev: 'Alt+[',
-  cycleAisleNext: 'Alt+]',
+  formatHighlight: 'Mod+Shift+H',
+  cycleAislePrev: 'Mod+Ctrl+ArrowLeft',
+  cycleAisleNext: 'Mod+Ctrl+ArrowRight',
 }
 
 const DEFAULT_NEWLINE_SHORTCUT_SETTINGS = {
@@ -208,6 +209,27 @@ function normalizeShortcutValue(raw, fallback) {
   return trimmed.length > 0 ? trimmed : fallback
 }
 
+const LEGACY_AISLE_SHORTCUTS = {
+  cycleAislePrev: new Set(['alt+[', 'mod+alt+arrowleft']),
+  cycleAisleNext: new Set(['alt+]', 'mod+alt+arrowright']),
+}
+
+function normalizeShortcutSignature(value) {
+  return value
+    .split('+')
+    .map((token) => token.trim().toLowerCase())
+    .filter(Boolean)
+    .join('+')
+}
+
+function normalizeCommandShortcutValue(raw, fallback, shortcutId) {
+  const shortcut = normalizeShortcutValue(raw, fallback)
+  const shortcutSignature = normalizeShortcutSignature(shortcut)
+  return shortcutSignature === normalizeShortcutSignature(fallback) || LEGACY_AISLE_SHORTCUTS[shortcutId]?.has(shortcutSignature)
+    ? fallback
+    : shortcut
+}
+
 function getRawShortcutValue(rawShortcuts, shortcutId) {
   return rawShortcuts[shortcutId]
 }
@@ -259,7 +281,7 @@ function normalizeShortcutSettings(raw) {
   const shortcuts = Object.fromEntries(
     Object.entries(DEFAULT_COMMAND_SHORTCUTS).map(([key, value]) => [
       key,
-      normalizeShortcutValue(getRawShortcutValue(rawShortcuts, key), value),
+      normalizeCommandShortcutValue(getRawShortcutValue(rawShortcuts, key), value, key),
     ]),
   )
 

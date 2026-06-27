@@ -2,10 +2,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getUserSettingsFilePath, loadAppStateResult, resolveNoteLocationRevealPath, saveAppState } from './app-state-storage.mjs'
-import { reconcileVaultLibraryForStartup, registerStorageIpc, resolvePreferredVaultRevealPath } from './ipc-storage.mjs'
+import { getUserSettingsFilePath, resolveNoteLocationRevealPath, saveAppState } from './app-state-storage.mjs'
+import { registerStorageIpc, resolvePreferredVaultRevealPath } from './ipc-storage.mjs'
 import { VAULT_LIBRARY_CONFIG_FILE, createVaultRecord } from './vault-library.mjs'
-import { STORAGE_PROFILE_CONFIG_FILE, STORAGE_PROFILE_DEFAULT_VAULT_NAME } from './storage-profile.mjs'
 
 const tempRoots = []
 const storageSessions = []
@@ -157,7 +156,7 @@ describe('preferred vault reveal paths', () => {
 })
 
 describe('startup vault folder loading', () => {
-  it('leaves folder-only vault records unchanged and loads closed-app edits from the vault folder', () => {
+  it('loads closed-app edits from the active vault folder at startup', () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
     const vaultPath = path.join(root, 'Christianity')
@@ -173,13 +172,14 @@ describe('startup vault folder loading', () => {
       vaults: [record],
     }
     writeFileSync(getRootNotePath(vaultPath), 'closed app folder edit', 'utf8')
+    writeFileSync(
+      path.join(userDataPath, VAULT_LIBRARY_CONFIG_FILE),
+      `${JSON.stringify(library, null, 2)}\n`,
+      'utf8',
+    )
 
-    const startup = reconcileVaultLibraryForStartup(userDataPath, library)
-
-    expect(startup.reconciliation).toBe(null)
-    expect(startup.library).toEqual(library)
-
-    const loadResult = loadAppStateResult(record.vaultPath)
+    const { ipcMain } = createStorageSession(userDataPath)
+    const loadResult = callSyncListener(ipcMain, 'load-app-state-result')
     expect(loadResult.ok).toBe(true)
     const loaded = JSON.parse(loadResult.serializedState)
     expect(loaded.noteAisleBodies.find((body) => body.id === 'aisle-body-root')?.markdown).toBe('closed app folder edit')
@@ -241,14 +241,6 @@ describe('vault folder IPC operations', () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
     mkdirSync(userDataPath, { recursive: true })
-    writeFileSync(
-      path.join(userDataPath, STORAGE_PROFILE_CONFIG_FILE),
-      `${JSON.stringify({ profileRootPath: path.join(root, 'legacy-external') }, null, 2)}\n`,
-      'utf8',
-    )
-    saveAppState(path.join(userDataPath, STORAGE_PROFILE_DEFAULT_VAULT_NAME), JSON.stringify(appState('legacy default')), {
-      userDataPath,
-    })
 
     const { ipcMain, session } = createStorageSession(userDataPath)
 
@@ -275,8 +267,6 @@ describe('vault folder IPC operations', () => {
     expect(saveResult.ok).toBe(false)
     expect(session.canWriteAppState()).toBe(false)
     expect(existsSync(path.join(userDataPath, VAULT_LIBRARY_CONFIG_FILE))).toBe(true)
-    expect(existsSync(path.join(userDataPath, STORAGE_PROFILE_CONFIG_FILE))).toBe(false)
-    expect(existsSync(path.join(userDataPath, STORAGE_PROFILE_DEFAULT_VAULT_NAME))).toBe(false)
   })
 
   it('creates vaults directly in selected folders and removes inactive vaults from the list without deleting files', async () => {
@@ -311,6 +301,62 @@ describe('vault folder IPC operations', () => {
     expect(forgotten.ok).toBe(true)
     expect(existsSync(path.join(vaultsRoot, 'Research', 'manifest.json'))).toBe(true)
     expect(forgotten.status.knownVaults.map((vault) => vault.vaultName)).toEqual(['Christianity'])
+  })
+
+  it('keeps current app settings when creating a new vault', async () => {
+    const root = tempRoot()
+    const userDataPath = path.join(root, 'user-data')
+    const vaultsRoot = path.join(root, 'vaults')
+    const existingVaultPath = path.join(vaultsRoot, 'Existing')
+    mkdirSync(userDataPath, { recursive: true })
+    mkdirSync(vaultsRoot, { recursive: true })
+    const currentState = appState('existing vault markdown')
+    currentState.theme = 'cheese'
+    currentState.ui = {
+      ...currentState.ui,
+      selectedCustomTheme: 'custom3',
+      settingsSection: 'visuals',
+      noteFontScale: 1.18,
+      toolbarButtonScale: 1.1,
+    }
+    const existingRecord = createVaultRecord(userDataPath, {
+      vaultPath: existingVaultPath,
+      serializedState: JSON.stringify(currentState),
+    })
+    writeFileSync(
+      path.join(userDataPath, VAULT_LIBRARY_CONFIG_FILE),
+      `${JSON.stringify({
+        version: 1,
+        activeVaultId: existingRecord.id,
+        vaults: [existingRecord],
+      }, null, 2)}\n`,
+      'utf8',
+    )
+    const { ipcMain } = createStorageSession(userDataPath)
+
+    const initialLoad = callSyncListener(ipcMain, 'load-app-state-result')
+    expect(JSON.parse(initialLoad.serializedState).theme).toBe('cheese')
+
+    const created = await callHandler(ipcMain, 'create-vault', {
+      name: 'New Vault',
+      locationPath: vaultsRoot,
+    })
+
+    expect(created.ok).toBe(true)
+    expect(created.status.vaultName).toBe('New Vault')
+    const loadResult = callSyncListener(ipcMain, 'load-app-state-result')
+    const loaded = JSON.parse(loadResult.serializedState)
+    expect(loaded.theme).toBe('cheese')
+    expect(loaded.ui.selectedCustomTheme).toBe('custom3')
+    expect(loaded.ui.settingsSection).toBe('visuals')
+    expect(loaded.ui.noteFontScale).toBe(1.18)
+    expect(loaded.ui.toolbarButtonScale).toBe(1.1)
+    expect(loaded.noteAisleBodies.some((body) => body.markdown === 'existing vault markdown')).toBe(false)
+    const localSettings = JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8'))
+    expect(localSettings.theme).toBe('cheese')
+    expect(localSettings.selectedCustomTheme).toBe('custom3')
+    expect(localSettings.noteFontScale).toBe(1.18)
+    expect(localSettings.toolbarButtonScale).toBe(1.1)
   })
 
   it('creates a vault inside the supplied parent folder using the supplied name', async () => {
@@ -528,6 +574,5 @@ describe('vault folder IPC operations', () => {
       canWrite: false,
     })
     expect(existsSync(vaultPath)).toBe(false)
-    expect(existsSync(path.join(userDataPath, STORAGE_PROFILE_DEFAULT_VAULT_NAME))).toBe(false)
   })
 })

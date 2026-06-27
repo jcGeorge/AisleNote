@@ -226,6 +226,7 @@ import { useAppNotifications } from './useAppNotifications'
 import {
   APP_THEME_IDS,
   CUSTOM_THEME_IDS,
+  CUSTOM_THEME_PALETTE_GROUPS,
   CUSTOM_THEME_PALETTE_LABELS,
   CUSTOM_THEME_PALETTE_SLOTS,
   copyThemePaletteToCustomPalette,
@@ -254,7 +255,7 @@ import {
   closeVaultTab,
   createVaultFolderInState,
   createVaultNoteInState,
-  deleteVaultItemInState,
+  deleteVaultItemsInState,
   findVaultFolder,
   findVaultItem,
   findVaultNote,
@@ -469,7 +470,7 @@ const SETTINGS_SECTION_TABS: Array<{ id: SettingsSection; label: string }> = [
 ]
 
 const DATA_SECTION_TABS: Array<{ id: DataSettingsSection; label: string }> = [
-  { id: 'transfer', label: 'Transfer' },
+  { id: 'transfer', label: 'Import' },
   { id: 'storage', label: 'Vaults' },
   { id: 'trash', label: 'Trash' },
 ]
@@ -497,6 +498,7 @@ const HOTKEY_ROWS: Array<{ id: ShortcutId; label: string }> = [
   { id: 'cyclePinnedNoteTabPrev', label: 'Previous pinned note tab' },
   { id: 'reopenClosedNoteTab', label: 'Reopen closed note tab' },
   { id: 'formatStrikethrough', label: 'Strikethrough' },
+  { id: 'formatHighlight', label: 'Highlight' },
   { id: 'cycleAislePrev', label: 'Previous aisle' },
   { id: 'cycleAisleNext', label: 'Next aisle' },
 ]
@@ -986,6 +988,23 @@ type VaultTreeNoteSelectionMode = 'replace' | 'toggle' | 'range'
 type VaultTreeRenameCommitSource = 'enter' | 'blur' | 'tab'
 type VaultRenameSurface = 'tree' | 'tab'
 
+function getVaultTreeContextDeleteNoteIds(
+  menu: VaultTreeContextMenuState | null,
+  selectedNoteIds: string[],
+  visibleNoteIds: string[],
+): string[] {
+  if (!menu || menu.kind !== 'item' || menu.itemType !== 'note') return []
+  if (!selectedNoteIds.includes(menu.itemId)) return [menu.itemId]
+  const selectedNoteIdSet = new Set(selectedNoteIds)
+  const noteIds = visibleNoteIds.filter((noteId) => selectedNoteIdSet.has(noteId))
+  return noteIds.length > 0 ? noteIds : [menu.itemId]
+}
+
+function getVaultTreeContextDeleteLabel(menu: VaultTreeContextMenuState | null, deleteNoteCount: number): string {
+  if (menu?.kind === 'item' && menu.itemType === 'folder') return 'Delete folder'
+  return deleteNoteCount > 1 ? 'Delete notes' : 'Delete note'
+}
+
 type VaultTreeFlatRow = {
   item: VaultTreeItem
   depth: number
@@ -1205,6 +1224,7 @@ function VaultTreeContextMenu({
   menu,
   revealLabel,
   canReveal,
+  deleteLabel,
   onClose,
   onCreateNote,
   onCreateFolder,
@@ -1216,6 +1236,7 @@ function VaultTreeContextMenu({
   menu: VaultTreeContextMenuState | null
   revealLabel: string
   canReveal: boolean
+  deleteLabel: string
   onClose: () => void
   onCreateNote: () => void
   onCreateFolder: () => void
@@ -1253,7 +1274,6 @@ function VaultTreeContextMenu({
     onClose()
   }
   const isItemMenu = menu.kind === 'item'
-  const deleteLabel = isItemMenu && menu.itemType === 'folder' ? 'Delete folder' : 'Delete note'
 
   return (
     <div
@@ -1306,7 +1326,7 @@ function TreeItemRow({
   depth,
   parentFolderId,
   index,
-  activeNoteId,
+  activeFolderId,
   renamingItemId,
   renameDraft,
   draggingItemId,
@@ -1335,7 +1355,7 @@ function TreeItemRow({
   depth: number
   parentFolderId: string | null
   index: number
-  activeNoteId: string
+  activeFolderId: string
   renamingItemId: string
   renameDraft: string
   draggingItemId: string
@@ -1364,7 +1384,7 @@ function TreeItemRow({
   const collapsed = isFolder && collapsedFolderIds.has(item.id)
   const children = isFolder ? item.children : []
   const folderIconId = isFolder && !collapsed && children.length > 0 ? 'folderOpen' : 'folder'
-  const active = item.type === 'note' && item.id === activeNoteId
+  const active = item.type === 'folder' && item.id === activeFolderId
   const selected = item.type === 'note' && selectedNoteIds.has(item.id)
   const renaming = item.id === renamingItemId
   const tabCreatesNext = item.id === createdRenameItemId
@@ -1593,7 +1613,7 @@ function TreeItemRow({
               depth={depth + 1}
               parentFolderId={item.id}
               index={childIndex}
-              activeNoteId={activeNoteId}
+              activeFolderId={activeFolderId}
               renamingItemId={renamingItemId}
               renameDraft={renameDraft}
               draggingItemId={draggingItemId}
@@ -2756,14 +2776,19 @@ function VaultThemeSettings({
         </div>
       </div>
       <div className="custom-theme-grid" aria-label="Active theme palette editor">
-        {CUSTOM_THEME_PALETTE_SLOTS.map((slot) => (
-          <CustomThemePaletteSlotRow
-            key={slot}
-            label={CUSTOM_THEME_PALETTE_LABELS[slot]}
-            value={draftPalette[slot]}
-            onPreviewChange={(value) => updatePaletteSlot(slot, value)}
-            onCommit={(value) => commitPaletteSlot(slot, value)}
-          />
+        {CUSTOM_THEME_PALETTE_GROUPS.map((group) => (
+          <section className="custom-theme-group" key={group.label} aria-label={`${group.label} colors`}>
+            <h3 className="custom-theme-group-title">{group.label}</h3>
+            {group.slots.map((slot) => (
+              <CustomThemePaletteSlotRow
+                key={slot}
+                label={CUSTOM_THEME_PALETTE_LABELS[slot]}
+                value={draftPalette[slot]}
+                onPreviewChange={(value) => updatePaletteSlot(slot, value)}
+                onCommit={(value) => commitPaletteSlot(slot, value)}
+              />
+            ))}
+          </section>
         ))}
       </div>
       <div className="custom-theme-transfer-actions">
@@ -2965,7 +2990,7 @@ export function VaultApp() {
   const [sidebarSearchMode, setSidebarSearchMode] = useState(false)
   const [scratchpadActive, setScratchpadActive] = useState(false)
   const [activeAisleId, setActiveAisleId] = useState('')
-  const [selectedFolderId, setSelectedFolderId] = useState('')
+  const [activeFolderId, setActiveFolderId] = useState('')
   const [renamingTreeItemId, setRenamingTreeItemId] = useState('')
   const [renamingItemSurface, setRenamingItemSurface] = useState<VaultRenameSurface | null>(null)
   const [treeRenameDraft, setTreeRenameDraft] = useState('')
@@ -3257,6 +3282,14 @@ export function VaultApp() {
   }, [vaultTreeFlatRows, vaultTreeViewport.height, vaultTreeViewport.scrollTop, useVirtualizedVaultTree])
   const selectedTreeNoteIdSet = useMemo(() => new Set(selectedTreeNoteIds), [selectedTreeNoteIds])
   const draggingTreeNoteIdSet = useMemo(() => new Set(draggingTreeNoteIds), [draggingTreeNoteIds])
+  const treeContextDeleteNoteIds = useMemo(
+    () => getVaultTreeContextDeleteNoteIds(treeContextMenu, selectedTreeNoteIds, visibleTreeNoteIds),
+    [treeContextMenu, selectedTreeNoteIds, visibleTreeNoteIds],
+  )
+  const treeContextDeleteLabel = useMemo(
+    () => getVaultTreeContextDeleteLabel(treeContextMenu, treeContextDeleteNoteIds.length),
+    [treeContextDeleteNoteIds.length, treeContextMenu],
+  )
   const vaultIndexContext = useMemo(
     () => createVaultIndexContext(stateRef.current),
     // Rebuild only for data that affects searchable vault indexes, not theme/UI-only state changes.
@@ -3417,11 +3450,17 @@ export function VaultApp() {
   }, [activeAisleId, activeAisleIdsSignature, activeModel, savedActiveAisleId])
 
   useEffect(() => {
-    if (!selectedFolderId) return
-    if (!findVaultFolder(state.vault.items, selectedFolderId)) {
-      setSelectedFolderId('')
+    if (!activeFolderId) return
+    if (!findVaultFolder(state.vault.items, activeFolderId)) {
+      setActiveFolderId('')
     }
-  }, [selectedFolderId, state.vault.items])
+  }, [activeFolderId, state.vault.items])
+
+  useEffect(() => {
+    setActiveFolderId(getContainingFolderId(stateRef.current.vault.items, stateRef.current.vault.activeNoteId) ?? '')
+    setSelectedTreeNoteIds(stateRef.current.vault.activeNoteId ? [stateRef.current.vault.activeNoteId] : [])
+    setTreeSelectionAnchorNoteId(stateRef.current.vault.activeNoteId)
+  }, [state.vault.activeNoteId, stateRef])
 
   useEffect(() => {
     const visibleNoteIdSet = new Set(visibleTreeNoteIds)
@@ -3511,6 +3550,10 @@ export function VaultApp() {
 
     const scrollNode = vaultTreeScrollRef.current
     if (!scrollNode || scrollNode.clientHeight <= 0) return
+    const sidebarFooter = scrollNode
+      .closest('.vault-sidebar')
+      ?.querySelector<HTMLElement>('.vault-sidebar-footer:not(.is-collapsed)')
+    const obscuredBottomInset = sidebarFooter?.getBoundingClientRect().height ?? 0
 
     const rowIndex = vaultTreeFlatRows.findIndex(
       (row) => row.item.type === 'note' && row.item.id === pendingNoteId,
@@ -3542,6 +3585,7 @@ export function VaultApp() {
         scrollTop: scrollNode.scrollTop,
         clientHeight: scrollNode.clientHeight,
         scrollHeight: scrollNode.scrollHeight,
+        bottomInset: obscuredBottomInset,
       },
       rowBounds,
     )
@@ -4490,7 +4534,9 @@ export function VaultApp() {
       pendingScrollToAisleIdRef.current = resolvedLocation.aisleId || null
       pendingNavigationTopAisleIdRef.current = null
       setActiveAisleId(resolvedLocation.aisleId)
-      setSelectedFolderId('')
+      setActiveFolderId(getContainingFolderId(snapshotState.vault.items, resolvedLocation.noteId) ?? '')
+      setSelectedTreeNoteIds([resolvedLocation.noteId])
+      setTreeSelectionAnchorNoteId(resolvedLocation.noteId)
       clearVaultNavigationTransientUi()
       phaseStartedAt = getVaultAppPerfNow()
       mutateState((previous) => {
@@ -5065,16 +5111,18 @@ export function VaultApp() {
 
   const createNoteAt = useCallback((targetParentFolderId?: string | null, targetIndex?: number) => {
     const createdRenameRef: { current: PendingCreatedTreeRename | null } = { current: null }
+    const parentFolderIdRef: { current: string | null } = { current: null }
     closeSidebarSearchMode()
     setScratchpadActive(false)
     mutateState((previous) => {
       const parentFolderId = targetParentFolderId === undefined
-        ? selectedFolderId && findVaultFolder(previous.vault.items, selectedFolderId)
-          ? selectedFolderId
-          : getContainingFolderId(previous.vault.items, previous.vault.activeNoteId)
+        ? activeFolderId && findVaultFolder(previous.vault.items, activeFolderId)
+          ? activeFolderId
+          : null
         : targetParentFolderId && findVaultFolder(previous.vault.items, targetParentFolderId)
           ? targetParentFolderId
           : null
+      parentFolderIdRef.current = parentFolderId
       const result = createVaultNoteInState(previous, 'Untitled', parentFolderId, '', undefined, targetIndex)
       createdRenameRef.current = {
         kind: 'note',
@@ -5092,13 +5140,11 @@ export function VaultApp() {
       beginCreatedTreeRename(createdRename, 'Untitled')
       if (createdRename.kind === 'note') setActiveAisleId(createdRename.aisleId)
     }
-    setSelectedFolderId('')
+    setActiveFolderId(parentFolderIdRef.current ?? '')
     setSelectedTreeNoteIds([])
     setTreeSelectionAnchorNoteId('')
     setViewMode('main')
-  }, [beginCreatedTreeRename, closeSidebarSearchMode, mutateState, selectedFolderId])
-
-  const createNote = useCallback(() => createNoteAt(), [createNoteAt])
+  }, [beginCreatedTreeRename, closeSidebarSearchMode, mutateState, activeFolderId])
 
   const createFolderAt = useCallback((targetParentFolderId?: string | null, targetIndex?: number) => {
     const createdRenameRef: { current: PendingCreatedTreeRename | null } = { current: null }
@@ -5110,9 +5156,9 @@ export function VaultApp() {
     setScratchpadActive(false)
     mutateState((previous) => {
       const parentFolderId = targetParentFolderId === undefined
-        ? selectedFolderId && findVaultFolder(previous.vault.items, selectedFolderId)
-          ? selectedFolderId
-          : getContainingFolderId(previous.vault.items, previous.vault.activeNoteId)
+        ? activeFolderId && findVaultFolder(previous.vault.items, activeFolderId)
+          ? activeFolderId
+          : null
         : targetParentFolderId && findVaultFolder(previous.vault.items, targetParentFolderId)
           ? targetParentFolderId
           : null
@@ -5131,14 +5177,12 @@ export function VaultApp() {
     const createdRename = createdRenameRef.current
     if (createdRename) {
       beginCreatedTreeRename(createdRename, 'Untitled folder')
-      setSelectedFolderId(createdRename.itemId)
+      setActiveFolderId(createdRename.itemId)
     }
     setSelectedTreeNoteIds([])
     setTreeSelectionAnchorNoteId('')
     setViewMode('main')
-  }, [activeVaultModel, beginCreatedTreeRename, closeSidebarSearchMode, mutateState, selectedFolderId, stateRef])
-
-  const createFolder = useCallback(() => createFolderAt(), [createFolderAt])
+  }, [activeVaultModel, beginCreatedTreeRename, closeSidebarSearchMode, mutateState, activeFolderId, stateRef])
 
   const importVault = useCallback(() => {
     if (!window.electronAPI?.openVaultImportSource) {
@@ -5172,7 +5216,7 @@ export function VaultApp() {
             ui: revealVaultTreeForCreatedItem(imported.state.ui, [imported.rootFolderId]),
           }))
           setScratchpadActive(false)
-          setSelectedFolderId(imported.rootFolderId)
+          setActiveFolderId(imported.rootFolderId)
           setSelectedTreeNoteIds([])
           setTreeSelectionAnchorNoteId('')
         } catch (error) {
@@ -5254,6 +5298,30 @@ export function VaultApp() {
     setTreeRenameDraft('')
   }, [createFolderAt, createNoteAt, finishCreatedTreeRename, renameItem, renamingTreeItemId, stateRef, treeRenameDraft])
 
+  const commitActiveTreeRenameBeforeCreate = useCallback(() => {
+    if (!renamingTreeItemId) return
+    renameItem(renamingTreeItemId, treeRenameDraft)
+    if (pendingCreatedTreeRenameRef.current?.itemId === renamingTreeItemId) {
+      pendingCreatedTreeRenameRef.current = null
+      pendingCreatedEditRef.current = null
+    }
+    skipNextTreeRenameCommitRef.current = false
+    skipTreeRenameBlurItemIdRef.current = renamingTreeItemId
+    setRenamingTreeItemId('')
+    setRenamingItemSurface(null)
+    setTreeRenameDraft('')
+  }, [renameItem, renamingTreeItemId, treeRenameDraft])
+
+  const createNote = useCallback(() => {
+    commitActiveTreeRenameBeforeCreate()
+    createNoteAt()
+  }, [commitActiveTreeRenameBeforeCreate, createNoteAt])
+
+  const createFolder = useCallback(() => {
+    commitActiveTreeRenameBeforeCreate()
+    createFolderAt()
+  }, [commitActiveTreeRenameBeforeCreate, createFolderAt])
+
   const cancelTreeRename = useCallback(() => {
     skipNextTreeRenameCommitRef.current = false
     skipTreeRenameBlurItemIdRef.current = renamingTreeItemId
@@ -5286,7 +5354,7 @@ export function VaultApp() {
     if (entry?.item.type === 'note') {
       setSelectedTreeNoteIds(nextDraggingNoteIds)
       setTreeSelectionAnchorNoteId(itemId)
-      setSelectedFolderId('')
+      setActiveFolderId('')
     } else {
       setSelectedTreeNoteIds([])
       setTreeSelectionAnchorNoteId('')
@@ -5324,7 +5392,7 @@ export function VaultApp() {
             : previous.ui,
         }
       })
-      if (target.parentFolderId && draggedNoteIds.length === 0) setSelectedFolderId(target.parentFolderId)
+      if (draggedNoteIds.length === 0) setActiveFolderId(target.parentFolderId ?? '')
       finishTreeDrag()
     },
     [draggingTreeItemId, draggingTreeNoteIds, finishTreeDrag, mutateState],
@@ -5377,6 +5445,9 @@ export function VaultApp() {
       if (target?.closest('.vault-tree-row, .tab-context-menu')) return
       event.preventDefault()
       event.stopPropagation()
+      setActiveFolderId('')
+      setSelectedTreeNoteIds([])
+      setTreeSelectionAnchorNoteId('')
       openTreeContextMenu({
         kind: 'root',
         x: event.clientX,
@@ -5386,9 +5457,23 @@ export function VaultApp() {
     [openTreeContextMenu],
   )
 
-  const deleteItem = useCallback(
-    (itemId: string) => {
-      mutateState((previous) => deleteVaultItemInState(previous, itemId))
+  const clearActiveFolderFromRootTreeClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element ? event.target : null
+    if (target?.closest('.vault-tree-row, .tab-context-menu')) return
+    setActiveFolderId('')
+    setSelectedTreeNoteIds([])
+    setTreeSelectionAnchorNoteId('')
+  }, [])
+
+  const deleteItems = useCallback(
+    (itemIds: string[]) => {
+      const targetItemIds = Array.from(new Set(itemIds.filter(Boolean)))
+      if (targetItemIds.length === 0) return
+      const targetItemIdSet = new Set(targetItemIds)
+      mutateState((previous) => deleteVaultItemsInState(previous, targetItemIds))
+      setSelectedTreeNoteIds((current) => current.filter((noteId) => !targetItemIdSet.has(noteId)))
+      setDraggingTreeNoteIds((current) => current.filter((noteId) => !targetItemIdSet.has(noteId)))
+      setTreeSelectionAnchorNoteId((current) => (targetItemIdSet.has(current) ? '' : current))
     },
     [mutateState],
   )
@@ -5468,8 +5553,8 @@ export function VaultApp() {
 
   const deleteTreeContextItem = useCallback(() => {
     if (!treeContextMenu || treeContextMenu.kind !== 'item') return
-    deleteItem(treeContextMenu.itemId)
-  }, [deleteItem, treeContextMenu])
+    deleteItems(treeContextMenu.itemType === 'note' ? treeContextDeleteNoteIds : [treeContextMenu.itemId])
+  }, [deleteItems, treeContextDeleteNoteIds, treeContextMenu])
 
   const revealTreeContextItem = useCallback(() => {
     if (!treeContextMenu || treeContextMenu.kind !== 'item') return
@@ -5534,7 +5619,7 @@ export function VaultApp() {
 
   const selectSidebarTreeNote = useCallback(
     (noteId: string, mode: VaultTreeNoteSelectionMode) => {
-      setSelectedFolderId('')
+      setActiveFolderId('')
       if (mode === 'range') {
         const requestedAnchorNoteId =
           treeSelectionAnchorNoteId || selectedTreeNoteIds[0] || state.vault.activeNoteId || noteId
@@ -5563,7 +5648,7 @@ export function VaultApp() {
 
   const openSidebarTreeNoteRetained = useCallback(
     (noteId: string) => {
-      setSelectedFolderId('')
+      setActiveFolderId('')
       setSelectedTreeNoteIds([noteId])
       setTreeSelectionAnchorNoteId(noteId)
       applyVaultNavigationLocation({ noteId, aisleId: '' }, { tabDisposition: 'retained' })
@@ -5574,7 +5659,7 @@ export function VaultApp() {
   const selectSidebarTreeFolder = useCallback((folderId: string) => {
     setSelectedTreeNoteIds([])
     setTreeSelectionAnchorNoteId('')
-    setSelectedFolderId(folderId)
+    setActiveFolderId(folderId)
   }, [])
 
   const revealSidebarSearch = useCallback(() => {
@@ -5687,7 +5772,7 @@ export function VaultApp() {
     const activeScratchpad = getScratchpadEditorModel(stateRef.current)
     const targetAisleId = getScratchpadActiveAisleId(stateRef.current) || (activeScratchpad?.noteBody.aisles[0]?.id ?? '')
     setScratchpadActive(true)
-    setSelectedFolderId('')
+    setActiveFolderId('')
     setSelectedTreeNoteIds([])
     setTreeSelectionAnchorNoteId('')
     setActiveAisleId(targetAisleId)
@@ -5858,6 +5943,9 @@ export function VaultApp() {
       cycleAisleNext: () => cycleActiveAisle(1),
       formatStrikethrough: () => {
         vaultEditors.runCommand('strike')
+      },
+      formatHighlight: () => {
+        vaultEditors.runCommand('highlight')
       },
       navigateHistoryBack: () => {
         navigateVaultHistoryBy(-1)
@@ -7011,6 +7099,11 @@ export function VaultApp() {
     void storageProfileController.openVault()
   }, [storageProfileController])
 
+  const createVaultFromSidebar = useCallback(() => {
+    setVaultSwitcherOpen(false)
+    createVaultFromSettings()
+  }, [createVaultFromSettings])
+
   const forgetVaultFromSettings = useCallback((vault: KnownVault) => {
     setOpenVaultActionMenuKey('')
     if (vault.isActive) return
@@ -7077,9 +7170,9 @@ export function VaultApp() {
           <div className="vault-manager-card">
             <div className="vault-manager-header">
               <div>
-                <span className="vault-manager-eyebrow">current vault</span>
-                <h3>Browser vault</h3>
-                <p className="vault-settings-help">Browser stores vault content in local browser storage.</p>
+                <span className="vault-manager-eyebrow">Current vault</span>
+                <h3>Browser cache</h3>
+                <p className="vault-settings-help">Browser builds use local cache persistence only. Desktop vault folders are unavailable.</p>
               </div>
             </div>
           </div>
@@ -7095,7 +7188,7 @@ export function VaultApp() {
         <div className={`vault-manager-card ${storageHealth === 'error' ? 'is-error' : ''} ${storageHealth === 'warning' ? 'is-warning' : ''}`.trim()}>
           <div className="vault-manager-header">
             <div>
-              <span className="vault-manager-eyebrow">current vault</span>
+              <span className="vault-manager-eyebrow">Current vault</span>
               <h3>{storageProfileStatus?.status === 'setup-required' ? 'No vault open' : storageProfileStatus?.vaultName || 'Vault'}</h3>
               <code className="vault-manager-path">{activeVaultPath || 'Choose a vault folder to start.'}</code>
             </div>
@@ -7118,9 +7211,9 @@ export function VaultApp() {
             </div>
           ) : null}
         </div>
-        <div className="vault-manager-list" aria-label="Remembered vaults">
+        <div className="vault-manager-list" aria-label="Vaults">
           <div className="vault-manager-list-header">
-            <span>Remembered vaults</span>
+            <span>Vaults</span>
           </div>
           {vaultRows.length === 0 ? (
             <p className="vault-settings-help">No vault folders are remembered yet.</p>
@@ -7217,7 +7310,7 @@ export function VaultApp() {
       ? storageProfileStatus?.status === 'setup-required'
         ? 'No vault open'
         : activeVault?.vaultName ?? storageProfileStatus?.vaultName ?? 'Vault'
-      : 'Browser vault'
+      : 'Browser cache'
     const activeVaultPath = activeVault?.vaultPath ?? storageProfileStatus?.vaultPath ?? ''
     const switcherTitle = activeVaultPath ? `${activeVaultName}\n${activeVaultPath}` : activeVaultName
 
@@ -7237,18 +7330,15 @@ export function VaultApp() {
               aria-label={
                 vaultFoldersAvailable
                   ? `Switch vault. Current vault: ${activeVaultName}`
-                  : 'Browser vault'
+                  : 'Browser cache'
               }
               aria-haspopup="menu"
               aria-expanded={vaultFoldersAvailable ? vaultSwitcherOpen : undefined}
               title={switcherTitle}
             >
               <span className="vault-sidebar-switcher-name">{activeVaultName}</span>
-              {vaultFoldersAvailable ? (
-                <AppIcon
-                  iconId={vaultSwitcherOpen ? 'minimize' : 'maximize'}
-                  className="vault-sidebar-switcher-chevron"
-                />
+              {vaultFoldersAvailable && vaultSwitcherOpen ? (
+                <AppIcon iconId="minimize" className="vault-sidebar-switcher-chevron" />
               ) : null}
             </button>
             {vaultSwitcherOpen && vaultFoldersAvailable ? (
@@ -7267,7 +7357,6 @@ export function VaultApp() {
                       >
                         <span className="vault-sidebar-switcher-row-copy">
                           <span className="vault-sidebar-switcher-row-name">{vault.vaultName}</span>
-                          <small>{vault.isActive ? 'current vault' : vault.available ? vault.vaultPath : 'folder missing'}</small>
                         </span>
                         <span className="vault-sidebar-switcher-row-status">
                           {vault.isActive ? 'current' : vault.available ? 'switch' : 'missing'}
@@ -7278,15 +7367,26 @@ export function VaultApp() {
                     <p className="vault-sidebar-switcher-empty">No remembered vaults.</p>
                   )}
                 </div>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="vault-sidebar-switcher-open"
-                  onClick={openVaultFromSidebar}
-                >
-                  <AppIcon iconId="folderOpen" className="vault-sidebar-switcher-row-icon" />
-                  <span>Open Vault...</span>
-                </button>
+                <div className="vault-sidebar-switcher-actions" role="group" aria-label="Vault actions">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="vault-sidebar-switcher-open"
+                    onClick={openVaultFromSidebar}
+                  >
+                    <AppIcon iconId="folderOpen" className="vault-sidebar-switcher-row-icon" />
+                    <span>Open Vault</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="vault-sidebar-switcher-new"
+                    onClick={createVaultFromSidebar}
+                  >
+                    <AppIcon iconId="plus" className="vault-sidebar-switcher-row-icon" />
+                    <span>New Vault</span>
+                  </button>
+                </div>
               </div>
             ) : null}
           </div>
@@ -7314,14 +7414,14 @@ export function VaultApp() {
         <div className="vault-settings-stack">
           <div className="vault-settings-actions">
             <button type="button" className="vault-settings-action" onClick={importVault}>
-              Import vault or Markdown
+              Import
             </button>
             <button type="button" className="vault-settings-action" onClick={exportVault}>
               Export vault
             </button>
           </div>
           <p className="vault-settings-help">
-            AisleNote vault imports replace the current vault. Markdown folder and ZIP imports add a new top-level folder.
+            Imports add a new top-level folder to the current vault. AisleNote vault files, Markdown folders, and ZIP files import without replacing existing notes.
           </p>
         </div>
       ) : null}
@@ -8213,7 +8313,7 @@ export function VaultApp() {
   )
 
   const renderMessagesContent = () => (
-    <section className="vault-utility-content" aria-label="Messages">
+    <section className="vault-utility-content vault-tabbed-utility-panel" aria-label="Messages">
       {renderSegmentedTabs('Messages sections', MESSAGE_SECTION_TABS, messagesSection, setMessagesSection)}
       <MessagesView
         section={messagesSection}
@@ -8250,7 +8350,7 @@ export function VaultApp() {
   )
 
   const renderAboutContent = () => (
-    <section className="vault-utility-content" aria-label="About">
+    <section className="vault-utility-content vault-tabbed-utility-panel" aria-label="About">
       {renderSegmentedTabs('About sections', ABOUT_SECTION_TABS, aboutSection, setAboutSection)}
       <AboutView section={aboutSection} />
     </section>
@@ -8477,14 +8577,15 @@ export function VaultApp() {
         ) : null}
         {!state.ui.sidebarCollapsed && !sidebarSearchVisible ? (
           <>
-            <div
-              className="vault-tree"
-              ref={vaultTreeScrollRef}
-              role="tree"
-              aria-multiselectable="true"
-              onScroll={handleVaultTreeScroll}
-              onContextMenu={openRootTreeContextMenu}
-            >
+              <div
+                className="vault-tree"
+                ref={vaultTreeScrollRef}
+                role="tree"
+                aria-multiselectable="true"
+                onScroll={handleVaultTreeScroll}
+                onClick={clearActiveFolderFromRootTreeClick}
+                onContextMenu={openRootTreeContextMenu}
+              >
                 {useVirtualizedVaultTree ? (
                   <div
                     className="vault-tree-virtual-spacer"
@@ -8505,7 +8606,7 @@ export function VaultApp() {
                           depth={row.depth}
                           parentFolderId={row.parentFolderId}
                           index={row.index}
-                          activeNoteId={state.vault.activeNoteId}
+                          activeFolderId={activeFolderId}
                           renamingItemId={renamingItemSurface === 'tree' ? renamingTreeItemId : ''}
                           renameDraft={treeRenameDraft}
                           draggingItemId={draggingTreeItemId}
@@ -8541,7 +8642,7 @@ export function VaultApp() {
                       depth={0}
                       parentFolderId={null}
                       index={itemIndex}
-                      activeNoteId={state.vault.activeNoteId}
+                      activeFolderId={activeFolderId}
                       renamingItemId={renamingItemSurface === 'tree' ? renamingTreeItemId : ''}
                       renameDraft={treeRenameDraft}
                       draggingItemId={draggingTreeItemId}
@@ -8879,6 +8980,7 @@ export function VaultApp() {
         menu={treeContextMenu}
         revealLabel={sidebarRevealLabel}
         canReveal={typeof window !== 'undefined' && typeof window.electronAPI?.revealVaultItemLocation === 'function'}
+        deleteLabel={treeContextDeleteLabel}
         onClose={() => setTreeContextMenu(null)}
         onCreateNote={createTreeContextNote}
         onCreateFolder={createTreeContextFolder}

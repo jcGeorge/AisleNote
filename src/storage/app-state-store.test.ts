@@ -8,7 +8,30 @@ afterEach(() => {
 
 describe('app state storage keys', () => {
   it('uses the current renderer cache key', () => {
-    expect(APP_STATE_STORAGE_KEY).toBe('aislenote:app-state-cache:v1')
+    expect(APP_STATE_STORAGE_KEY).toBe('aislenote:app-state-cache')
+  })
+})
+
+describe('browser app state store', () => {
+  it('uses only the local renderer cache even when IndexedDB is available', () => {
+    const cache = new Map<string, string>()
+    vi.stubGlobal('window', { indexedDB: {} })
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn((key: string) => cache.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        cache.set(key, value)
+      }),
+      removeItem: vi.fn((key: string) => {
+        cache.delete(key)
+      }),
+    })
+
+    const store = createAppStateStore()
+
+    expect(store.hydrate).toBeUndefined()
+    store.save('{"theme":"light"}')
+    expect(store.load()).toBe('{"theme":"light"}')
+    expect(localStorage.setItem).toHaveBeenCalledWith(APP_STATE_STORAGE_KEY, '{"theme":"light"}')
   })
 })
 

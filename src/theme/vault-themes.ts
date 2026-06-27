@@ -14,30 +14,23 @@ export const CUSTOM_THEME_IDS: CustomThemeId[] = ['custom1', 'custom2', 'custom3
 export const DEFAULT_CUSTOM_THEME_ID: CustomThemeId = 'custom1'
 export const APP_THEME_IDS: AppTheme[] = [...BUILT_IN_THEME_IDS, ...CUSTOM_THEME_IDS]
 
-export const CUSTOM_THEME_PALETTE_SLOTS: CustomThemePaletteSlot[] = [
-  'canvas',
-  'page',
-  'panel',
-  'raised',
-  'button',
-  'text',
-  'mutedText',
-  'border',
-  'primary',
-  'danger',
-  'warning',
-  'success',
-  'tagText',
-  'tagBg',
-  'sidebar',
+export const CUSTOM_THEME_PALETTE_GROUPS: Array<{ label: string; slots: CustomThemePaletteSlot[] }> = [
+  { label: 'Base', slots: ['canvas', 'page', 'sidebar'] },
+  { label: 'Panels', slots: ['panel', 'raised', 'border'] },
+  { label: 'Buttons', slots: ['primary', 'button'] },
+  { label: 'Text', slots: ['text', 'mutedText'] },
+  { label: 'States', slots: ['danger', 'warning', 'success'] },
+  { label: 'Tags', slots: ['tagText', 'tagBg'] },
 ]
+
+export const CUSTOM_THEME_PALETTE_SLOTS: CustomThemePaletteSlot[] = CUSTOM_THEME_PALETTE_GROUPS.flatMap((group) => group.slots)
 
 export const CUSTOM_THEME_PALETTE_LABELS: Record<CustomThemePaletteSlot, string> = {
   canvas: 'App background',
   page: 'Page background',
   panel: 'Panel',
   raised: 'Raised',
-  button: 'Button',
+  button: 'Unfocused',
   text: 'Text',
   mutedText: 'Muted text',
   border: 'Border',

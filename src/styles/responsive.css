@@ -237,7 +237,15 @@
     grid-template-columns: 1fr;
   }
 
+  .custom-theme-group {
+    grid-template-columns: 1fr;
+  }
+
   .custom-theme-slot {
+    grid-template-columns: minmax(6.5rem, 1fr) var(--custom-theme-color-size, 2.4rem) minmax(5.25rem, 0.55fr);
+  }
+
+  .custom-theme-group > .custom-theme-slot:nth-child(odd) {
     grid-template-columns: minmax(6.5rem, 1fr) var(--custom-theme-color-size, 2.4rem) minmax(5.25rem, 0.55fr);
   }
 

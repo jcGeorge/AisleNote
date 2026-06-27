@@ -68,7 +68,6 @@ function parseReadableMediaMetadata(value: string): MediaTransformMetadata | nul
     else if (key === 'volume') raw.volume = Number(rawValue)
     else if (part === 'flip-horizontal') raw.fh = true
     else if (part === 'flip-vertical') raw.fv = true
-    else if (key === 'crop' || key === 'ratio') continue
     else {
       return null
     }

@@ -56,7 +56,7 @@ describe('media utils', () => {
   })
 
   it('detects media urls with app-owned transform metadata fragments', () => {
-    expect(getMediaKindFromUrl('aislenote-asset:///assets/clip.webm#aislenote-media=width=320,ratio=shorts')).toBe('video')
+    expect(getMediaKindFromUrl('aislenote-asset:///assets/clip.webm#aislenote-media=width=320,rotate=90')).toBe('video')
     expect(getMediaKindFromUrl('aislenote-asset:///assets/song.mp3#aislenote-media=width=320')).toBe('audio')
   })
 

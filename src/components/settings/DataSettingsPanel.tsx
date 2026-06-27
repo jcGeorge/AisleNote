@@ -74,11 +74,11 @@ function TransferDataSection({
       <p>vault import:</p>
       <div className="settings-page-actions">
         <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportVault}>
-          import vault/markdown
+          import
         </button>
       </div>
       <p className="settings-help">
-        AisleNote vault imports replace the current vault. Markdown folder and ZIP imports add a new folder; user settings stay separate.
+        Imports add a new folder to the current vault. AisleNote vault files, Markdown folders, and ZIP files import without replacing existing notes.
       </p>
       <p>app settings transfer:</p>
       <div className="settings-page-actions">
@@ -174,16 +174,16 @@ function StorageDataSection({
   if (!dataCapabilities.vaultFolders) {
     return (
       <>
-        <p>{dataCapabilities.runtime === 'mobile' ? 'local app vault:' : 'local browser vault:'}</p>
+        <p>{dataCapabilities.runtime === 'mobile' ? 'local app data:' : 'local browser cache:'}</p>
         <p className="settings-help">
           {dataCapabilities.runtime === 'mobile'
-            ? 'Mobile and tablet store vault content inside this app.'
-            : 'Browser stores vault content in local browser storage.'}
+            ? 'Mobile and tablet vault storage is not part of this desktop release target.'
+            : 'Browser builds use local cache persistence only; desktop vault folders are unsupported.'}
         </p>
         <div className="storage-profile-card">
           <div className="storage-profile-row">
             <span className="settings-hotkey-label">storage</span>
-            <span>{dataCapabilities.runtime === 'mobile' ? 'app-private local' : 'browser local'}</span>
+            <span>{dataCapabilities.runtime === 'mobile' ? 'app cache' : 'browser cache'}</span>
           </div>
           <div className="storage-profile-row">
             <span className="settings-hotkey-label">folder controls</span>
@@ -205,7 +205,7 @@ function StorageDataSection({
       </p>
       <div className={storageProfileCardClassName}>
         <div className="storage-profile-row">
-          <label className="settings-hotkey-label" htmlFor="settings-vault-select">current vault</label>
+          <label className="settings-hotkey-label" htmlFor="settings-vault-select">Current vault</label>
           <select
             id="settings-vault-select"
             className="settings-select-input"
@@ -249,11 +249,11 @@ function StorageDataSection({
         </div>
         <div className="storage-profile-row">
           <span className="settings-hotkey-label">status</span>
-          <span>{storageProfileStatus?.status ?? 'browser local'}</span>
+          <span>{storageProfileStatus?.status ?? 'local cache'}</span>
         </div>
         <div className="storage-profile-row">
           <span className="settings-hotkey-label">writable</span>
-          <span>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'browser local'}</span>
+          <span>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'local cache'}</span>
         </div>
         {storageProfileStatus?.error && <p className="settings-help storage-profile-error">{storageProfileStatus.error}</p>}
         {storageIssues.length > 0 && (
@@ -287,7 +287,7 @@ function StorageDataSection({
           </div>
           <div className="storage-profile-row">
             <span className="settings-hotkey-label">status</span>
-            <span>{storageProfileStatus?.status ?? 'browser local'}</span>
+            <span>{storageProfileStatus?.status ?? 'local cache'}</span>
           </div>
           <div className="storage-profile-row">
             <span className="settings-hotkey-label">health</span>
@@ -299,7 +299,7 @@ function StorageDataSection({
           </div>
           <div className="storage-profile-row">
             <span className="settings-hotkey-label">writable</span>
-            <span>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'browser local'}</span>
+            <span>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'local cache'}</span>
           </div>
           <div className="settings-page-actions">
             <button type="button" className="btn btn-sm settings-action-btn" onClick={onRenameVault}>

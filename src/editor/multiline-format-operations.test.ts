@@ -540,18 +540,6 @@ describe('selection block indent operations', () => {
     expect(view.state.doc.child(0).textContent).toBe('quote')
   })
 
-  it('removes legacy block indent tokens inside blockquotes without lifting the quote', () => {
-    const view = createView(multilineFormatSchema.nodes.doc.create(null, [blockQuote([`${BLOCK_INDENT_TOKEN}quote`])]))
-    selectTextLines(view, 0)
-
-    const plan = buildSelectionRemoveBlockIndentOperationPlan(view)
-    expect(plan).not.toBeNull()
-    const nextState = view.apply(plan!.transaction)
-
-    expect(nextState.doc.child(0).type.name).toBe('blockQuote')
-    expect(nextState.doc.child(0).textContent).toBe('quote')
-  })
-
   it('applies and removes block indent tokens across multi-cursor rows', () => {
     const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('one'), paragraph('two')]))
     const applyPlan = buildMultiLineBlockIndentOperationPlan(view, multiLineState([0, 1], 3))

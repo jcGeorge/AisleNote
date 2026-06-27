@@ -8,6 +8,7 @@ const appCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 
 const baseCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../styles/base.css'), 'utf8')
 const editorShellCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../styles/editor-shell.css'), 'utf8')
 const settingsCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../styles/settings.css'), 'utf8')
+const themeSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../theme/vault-themes.ts'), 'utf8')
 const lightCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../styles/themes/light.css'), 'utf8')
 const cheeseCssSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../styles/themes/cheese.css'), 'utf8')
 
@@ -31,6 +32,30 @@ describe('vault settings access', () => {
     expect(vaultAppSource).not.toContain('Utility\\n')
   })
 
+  it('aligns tabbed utility content with its content panels', () => {
+    expect(vaultAppSource).toContain('className="vault-utility-content vault-settings-panel"')
+    expect(vaultAppSource).toContain('className="vault-utility-content vault-tabbed-utility-panel" aria-label="Messages"')
+    expect(vaultAppSource).toContain('className="vault-utility-content vault-tabbed-utility-panel" aria-label="About"')
+    expect(vaultAppSource).toContain('className="vault-utility-content vault-trash-panel" aria-label="Trash"')
+    expect(appCssSource).toContain('.vault-settings-panel > .vault-utility-tabs,\n.vault-tabbed-utility-panel > .vault-utility-tabs')
+    expect(appCssSource).toContain('margin: 0 auto 8px;')
+    expect(appCssSource).not.toContain('padding-inline: 14px;')
+    expect(appCssSource).toContain('.vault-utility-content .utility-page-card {\n  width: min(960px, 100%);\n  margin-inline: auto;')
+    expect(appCssSource).toContain('.vault-utility-content .utility-page-card.messages-view-card-diagnostics {\n  width: min(76rem, 100%);')
+    expect(appCssSource).toContain('.vault-trash-panel > .vault-utility-panel-header')
+    expect(appCssSource).toContain('.vault-trash-panel > .vault-settings-help')
+    expect(appCssSource).toContain('.vault-trash-table {\n  display: grid;\n  width: min(960px, 100%);\n  margin-inline: auto;')
+  })
+
+  it('labels data import settings without obsolete replacement language', () => {
+    expect(vaultAppSource).toContain("{ id: 'transfer', label: 'Import' }")
+    expect(vaultAppSource).toContain('Imports add a new top-level folder to the current vault.')
+    expect(vaultAppSource).toContain('without replacing existing notes')
+    expect(vaultAppSource).not.toContain("{ id: 'transfer', label: 'Transfer' }")
+    expect(vaultAppSource).not.toContain('AisleNote vault imports replace the current vault.')
+    expect(vaultAppSource).not.toContain('Import vault or Markdown')
+  })
+
   it('uses vault-native hotkeys and exposes the scratchpad shortcut row', () => {
     expect(vaultAppSource).toContain('useVaultHotkeys({')
     expect(vaultAppSource).not.toContain('useGlobalHotkeys')
@@ -38,6 +63,7 @@ describe('vault settings access', () => {
     expect(vaultAppSource).toContain("{ id: 'toggleNotesScratchpad', label: 'Toggle scratchpad' }")
     expect(vaultAppSource).toContain("{ id: 'newNote', label: 'New note' }")
     expect(vaultAppSource).toContain("{ id: 'newFolder', label: 'New folder' }")
+    expect(vaultAppSource).toContain("{ id: 'formatHighlight', label: 'Highlight' }")
   })
 
   it('uses platform-aware vault hotkey recorder buttons', () => {
@@ -171,6 +197,24 @@ describe('vault settings access', () => {
     expect(settingsCssSource).toContain('.custom-theme-transfer-actions')
     expect(settingsCssSource).toContain('justify-content: space-between;')
     expect(settingsCssSource).toContain('.custom-theme-transfer-actions-right')
+  })
+
+  it('renders grouped custom theme palette sections', () => {
+    expect(themeSource).toContain("{ label: 'Buttons', slots: ['primary', 'button'] }")
+    expect(themeSource).toContain("button: 'Unfocused'")
+    expect(vaultAppSource).toContain('CUSTOM_THEME_PALETTE_GROUPS.map((group) => (')
+    expect(vaultAppSource).toContain('className="custom-theme-group"')
+    expect(vaultAppSource).toContain('aria-label={`${group.label} colors`}')
+    expect(vaultAppSource).toContain('className="custom-theme-group-title"')
+    expect(vaultAppSource).not.toContain('CUSTOM_THEME_PALETTE_SLOTS.map((slot) => (')
+    expect(settingsCssSource).toContain('.custom-theme-grid')
+    expect(settingsCssSource).toContain('grid-template-columns: minmax(0, 1fr);')
+    expect(settingsCssSource).toContain('.custom-theme-group')
+    expect(settingsCssSource).toContain('grid-template-columns: repeat(2, minmax(0, 1fr));')
+    expect(settingsCssSource).toContain('.custom-theme-group-title')
+    expect(settingsCssSource).toContain('grid-column: 1 / -1;')
+    expect(settingsCssSource).toContain('.custom-theme-group > .custom-theme-slot:nth-child(odd)')
+    expect(settingsCssSource).toContain('grid-template-columns: minmax(5.35rem, 1fr) var(--custom-theme-color-size) minmax(5.1rem, max-content);')
   })
 
   it('uses theme-specific aisle resize affordance colors', () => {

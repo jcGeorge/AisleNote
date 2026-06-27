@@ -1270,14 +1270,15 @@
 }
 
 .note-tab-strip {
-  flex: 0 0 2.15rem;
-  min-height: 2.15rem;
+  flex: 0 0 var(--note-tab-strip-height, 45px);
+  min-height: var(--note-tab-strip-height, 45px);
   display: flex;
   align-items: stretch;
   min-width: 0;
   width: 100%;
   border-top: 1px solid var(--app-border);
   background: var(--app-panel);
+  font-size: var(--note-tab-font-size, 0.95rem);
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
@@ -1349,7 +1350,7 @@
 .note-tab-main {
   display: flex;
   align-items: center;
-  padding: 0 0.55rem;
+  padding: 0 0.7rem;
   text-align: left;
   overflow: hidden;
 }
@@ -1371,8 +1372,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  line-height: 1.2;
-  font-size: var(--ui-font-small);
+  line-height: 1.15;
+  font-size: 1em;
   letter-spacing: 0;
 }
 
@@ -1383,15 +1384,15 @@
 .note-tab-rename-input {
   width: 100%;
   min-width: 0;
-  height: 1.45rem;
+  height: 2rem;
   box-sizing: border-box;
-  padding: 0.1rem 0.3rem;
+  padding: 0.18rem 0.35rem;
   border: 1px solid color-mix(in srgb, var(--app-primary) 72%, var(--app-border));
   border-radius: 4px;
   background: var(--app-panel);
   color: var(--app-text);
   font: inherit;
-  font-size: var(--ui-font-small);
+  font-size: 1em;
   letter-spacing: 0;
   outline: none;
 }
@@ -1513,15 +1514,17 @@
 }
 
 .note-aisle-action-btn {
+  --editor-toolbar-icon-primary: currentColor;
+  --editor-toolbar-icon-secondary: currentColor;
   width: 1.75rem;
   height: 1.75rem;
   min-width: 1.75rem;
   min-height: 1.75rem;
   padding: 0;
-  border: 1px solid var(--action-chip-selected-border);
+  border: 1px solid var(--rail-control-border);
   border-radius: var(--rail-control-radius, 0.42rem);
-  background: var(--action-chip-selected-bg);
-  color: var(--action-chip-selected-text);
+  background: var(--rail-control-bg);
+  color: var(--rail-control-text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1532,9 +1535,23 @@
 .note-aisle-action-btn:hover,
 .note-aisle-action-btn:focus-visible,
 .note-aisle-action-btn:active {
-  border-color: var(--action-chip-selected-border);
-  background: var(--action-chip-selected-bg);
-  color: var(--action-chip-selected-text);
+  border-color: var(--rail-control-hover-border);
+  background: var(--rail-control-hover-bg);
+  color: var(--rail-control-hover-text);
+}
+
+.note-aisle-pane.is-active .note-aisle-action-btn {
+  border-color: var(--rail-control-selected-border);
+  background: var(--rail-control-selected-bg);
+  color: var(--rail-control-selected-text);
+}
+
+.note-aisle-pane.is-active .note-aisle-action-btn:hover,
+.note-aisle-pane.is-active .note-aisle-action-btn:focus-visible,
+.note-aisle-pane.is-active .note-aisle-action-btn:active {
+  border-color: var(--rail-control-selected-border);
+  background: var(--rail-control-selected-bg);
+  color: var(--rail-control-selected-text);
 }
 
 .note-aisle-action-wrap {
@@ -2535,7 +2552,7 @@
   border-radius: 0.22rem;
   background: color-mix(in srgb, var(--image-tool-btn-bg) 78%, transparent);
   box-shadow: var(--table-tool-btn-shadow);
-  cursor: pointer;
+  cursor: grab;
   pointer-events: auto;
   opacity: 0;
   padding: 0;
@@ -2556,6 +2573,23 @@
 
 .table-selector-row-segment {
   min-height: 0.75rem;
+}
+
+.table-reorder-pending .table-selector-segment.is-selected,
+.table-reorder-active .table-selector-segment.is-selected {
+  border-color: var(--editor-table-selection-layer-border);
+  background: var(--editor-table-selection-layer-bg);
+  opacity: 1;
+}
+
+.table-reorder-active .table-selector-segment {
+  cursor: grabbing;
+}
+
+.table-reorder-pending .table-tools,
+.table-reorder-active .table-tools {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .list-reorder-handle {

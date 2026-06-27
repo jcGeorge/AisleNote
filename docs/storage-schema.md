@@ -10,7 +10,7 @@ The design goals are:
 - keep app structure and metadata in JSON files
 - use stable IDs as durable identity
 - allow duplicate visible names without collisions
-- work with desktop filesystem sync and browser virtual-file storage
+- work with desktop filesystem sync
 - degrade safely when optional metadata is missing
 
 ## Root Layout
@@ -77,7 +77,7 @@ Note contents are stored in `.md` files.
 
 User frontmatter values live inside the aisle Markdown file as a top YAML block. `note-registry.json` keeps note-body IDs, aisle slots, shared aisle-body IDs, content hashes, derived tag caches, and internal `frontmatterMeta`, keyed by `aisleBodyId`.
 
-Tags are authored as visible Obsidian-style hashtags in aisle Markdown, such as `#tag`, `#multi-word`, and `#nested/tag`. The app derives aisle tags from visible Markdown text and note tags from the union of that note's aisle tags. Hashtags inside inline code and fenced code blocks are ignored. If valid YAML frontmatter already contains `tags`, the loader migrates those tags into a visible hashtag line in the Markdown body and then treats YAML `tags` as a computed projection of the visible tags.
+Tags are authored as visible Obsidian-style hashtags in aisle Markdown, such as `#tag`, `#multi-word`, and `#nested/tag`. The app derives aisle tags from visible Markdown text and note tags from the union of that note's aisle tags. Hashtags inside inline code and fenced code blocks are ignored. If valid YAML frontmatter already contains `tags`, the loader imports those tags into a visible hashtag line in the Markdown body and then treats YAML `tags` as a computed projection of the visible tags.
 
 Example aisle file:
 
@@ -218,18 +218,11 @@ Storage health UI should surface:
 - issue codes/messages/paths
 - reveal folder and retry reload actions
 
-## Browser Adapter
+## Browser Builds
 
-Browser builds persist the same logical vault tree in IndexedDB as virtual files. Browser and mobile runtimes may keep an app-private virtual `notes/` prefix internally because it is not a user-visible filesystem vault folder.
+Browser builds are not a supported durable vault format for the current desktop release target. Non-Electron runtimes may keep a local renderer app-state cache so development and previews can boot, but that cache is not the schema described here and must not be treated as a portable vault.
 
-Browser storage should remain logically compatible with the Electron filesystem adapter for:
-
-- folders and notes
-- deleted items
-- multiple aisles
-- assets
-- frontmatter, including null date/datetime values
-- scratchpad content
+If browser or PWA persistence becomes a product target later, it should be implemented deliberately against the current schema version instead of reviving the removed schema 1 virtual-vault adapter.
 
 ## Legacy Storage
 

@@ -11,10 +11,6 @@ import {
   initializeVaultLibrary,
   writeVaultLibrary,
 } from './vault-library.mjs'
-import {
-  STORAGE_PROFILE_CONFIG_FILE,
-  STORAGE_PROFILE_DEFAULT_VAULT_NAME,
-} from './storage-profile.mjs'
 
 const tempRoots = []
 
@@ -137,59 +133,26 @@ describe('vault library folders', () => {
     })
 
     expect(record.vaultPath).toBe(path.resolve(vaultPath))
-    expect(record).not.toHaveProperty('localMirrorPath')
-    expect(record).not.toHaveProperty('syncTargetPath')
     expect(existsSync(path.join(vaultPath, 'manifest.json'))).toBe(true)
     expect(getMarkdown(vaultPath)).toBe('original markdown')
     expect(readRawLibrary(userDataPath).vaults[0]).toEqual(library.vaults[0])
   })
 
-  it('cleans up the old app-private default vault without migrating storage-profile.json', () => {
+  it('ignores remembered records without a current vault path', () => {
     const root = tempRoot()
     const userDataPath = path.join(root, 'user-data')
-    const defaultVaultPath = path.join(userDataPath, STORAGE_PROFILE_DEFAULT_VAULT_NAME)
     const externalVaultPath = path.join(root, 'external-vault')
     mkdirSync(userDataPath, { recursive: true })
-    saveAppState(defaultVaultPath, JSON.stringify(appState('old default markdown')), { userDataPath })
-    saveAppState(externalVaultPath, JSON.stringify(appState('external markdown')), {
-      userDataPath,
-      vaultId: 'external-vault',
-    })
-    writeFileSync(
-      path.join(userDataPath, STORAGE_PROFILE_CONFIG_FILE),
-      `${JSON.stringify({ profileRootPath: externalVaultPath }, null, 2)}\n`,
-      'utf8',
-    )
-
-    const library = initializeVaultLibrary(userDataPath)
-
-    expect(library).toEqual({ version: 1, activeVaultId: null, vaults: [] })
-    expect(existsSync(defaultVaultPath)).toBe(false)
-    expect(existsSync(path.join(userDataPath, STORAGE_PROFILE_CONFIG_FILE))).toBe(false)
-    expect(existsSync(path.join(externalVaultPath, 'manifest.json'))).toBe(true)
-  })
-
-  it('filters remembered records that point at the old app-private default folder', () => {
-    const root = tempRoot()
-    const userDataPath = path.join(root, 'user-data')
-    const defaultVaultPath = path.join(userDataPath, STORAGE_PROFILE_DEFAULT_VAULT_NAME)
-    const externalVaultPath = path.join(root, 'external-vault')
-    mkdirSync(userDataPath, { recursive: true })
-    saveAppState(defaultVaultPath, JSON.stringify(appState('old default markdown')), {
-      userDataPath,
-      vaultId: 'default-vault',
-    })
     saveAppState(externalVaultPath, JSON.stringify(appState('external markdown')), {
       userDataPath,
       vaultId: 'external-vault',
     })
     writeRawLibrary(userDataPath, {
       version: 1,
-      activeVaultId: 'default-vault',
+      activeVaultId: 'missing-path',
       vaults: [
         {
-          id: 'default-vault',
-          vaultPath: defaultVaultPath,
+          id: 'missing-path',
           createdAt: '2024-01-01T00:00:00.000Z',
           updatedAt: '2024-01-01T00:00:00.000Z',
         },
@@ -210,7 +173,6 @@ describe('vault library folders', () => {
       id: 'external-vault',
       vaultPath: path.resolve(externalVaultPath),
     })
-    expect(existsSync(defaultVaultPath)).toBe(false)
     expect(getMarkdown(externalVaultPath)).toBe('external markdown')
   })
 

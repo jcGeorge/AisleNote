@@ -267,7 +267,7 @@ describe('schema 2 app-state storage', () => {
     expect(reloaded.noteAisleBodies.find((body) => body.id === 'aisle-body-scratch').markdown).toBe('scratch markdown')
   })
 
-  it('loads older vault indexes without open tab state', () => {
+  it('loads older vault indexes without open tab state or trash settings', () => {
     const root = tempRoot()
     const state = appState()
     const saveResult = saveAppState(root, JSON.stringify(state))
@@ -276,10 +276,12 @@ describe('schema 2 app-state storage', () => {
     const indexPath = pathFromRoot(root, '.aislenote/vault-index.json')
     const index = JSON.parse(readFileSync(indexPath, 'utf8'))
     delete index.openTabs
+    delete index.settings
     writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`, 'utf8')
 
     const reloaded = loadState(root)
     expect(reloaded.vault.openTabs).toEqual([{ noteId: 'note-root', status: 'temporary' }])
+    expect(reloaded.vault.settings.autoRemoveDeletedDays).toBe(7)
   })
 
   it('overlays app-support user settings when loading different vaults', () => {

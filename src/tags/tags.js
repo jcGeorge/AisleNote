@@ -158,7 +158,7 @@ export function materializeComputedFrontmatterTags(frontmatter, frontmatterMeta,
   }
 }
 
-function insertTagLine(markdown, tags) {
+function insertVisibleTagLine(markdown, tags) {
   if (!Array.isArray(tags) || tags.length === 0) return markdown
   const tagLine = tags.map((tag) => `#${normalizeTagLabel(tag)}`).filter((tag) => tag.length > 1).join(' ')
   if (!tagLine) return markdown
@@ -166,7 +166,8 @@ function insertTagLine(markdown, tags) {
   return body ? `${tagLine}\n\n${body}` : tagLine
 }
 
-export function migrateAisleTags({ markdown, frontmatter, frontmatterMeta }) {
+// Visible markdown hashtags are the source of truth; YAML tags are imported once or materialized as a computed projection.
+export function normalizeAisleTagsWithFrontmatter({ markdown, frontmatter, frontmatterMeta }) {
   const bodyMarkdown = String(markdown ?? '')
   if (hasComputedFrontmatterTags(frontmatterMeta)) {
     const tags = extractMarkdownTags(bodyMarkdown)
@@ -175,7 +176,7 @@ export function migrateAisleTags({ markdown, frontmatter, frontmatterMeta }) {
       frontmatter: materializeComputedFrontmatterTags(frontmatter, frontmatterMeta, tags),
       frontmatterMeta,
       tags,
-      migrated: false,
+      importedFrontmatterTags: false,
     }
   }
 
@@ -186,14 +187,14 @@ export function migrateAisleTags({ markdown, frontmatter, frontmatterMeta }) {
       frontmatter: isRecord(frontmatter) ? frontmatter : null,
       frontmatterMeta,
       tags: extractMarkdownTags(bodyMarkdown),
-      migrated: false,
+      importedFrontmatterTags: false,
     }
   }
 
   const bodyTags = extractMarkdownTags(bodyMarkdown)
   const bodyKeys = new Set(bodyTags.map(getTagKey))
   const missingTags = frontmatterTags.filter((tag) => !bodyKeys.has(getTagKey(tag)))
-  const nextMarkdown = insertTagLine(bodyMarkdown, missingTags)
+  const nextMarkdown = insertVisibleTagLine(bodyMarkdown, missingTags)
   const tags = extractMarkdownTags(nextMarkdown)
   const nextMeta = ensureComputedFrontmatterTagsMeta(frontmatterMeta)
   return {
@@ -201,7 +202,7 @@ export function migrateAisleTags({ markdown, frontmatter, frontmatterMeta }) {
     frontmatter: materializeComputedFrontmatterTags(frontmatter, nextMeta, tags),
     frontmatterMeta: nextMeta,
     tags,
-    migrated: true,
+    importedFrontmatterTags: true,
   }
 }
 

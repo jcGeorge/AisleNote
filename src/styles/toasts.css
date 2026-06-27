@@ -1,11 +1,11 @@
 .app-toast-layer {
   position: fixed;
-  left: 1rem;
+  right: 1rem;
   bottom: 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: flex-start;
   pointer-events: auto;
   z-index: 10000;
@@ -67,6 +67,13 @@
 .app-storage-alert-card {
   width: min(calc(24rem + 20px), calc(100vw - 2rem));
   border-left-color: var(--toast-error);
+}
+
+.app-storage-alert-layer {
+  right: auto;
+  left: 50%;
+  align-items: center;
+  transform: translateX(-50%);
 }
 
 .app-storage-alert-detail {

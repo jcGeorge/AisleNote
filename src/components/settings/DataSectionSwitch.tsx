@@ -2,7 +2,7 @@ import * as React from 'react'
 import type { DataSettingsSection } from '../../types/app'
 
 const DATA_SECTION_OPTIONS: Array<{ id: DataSettingsSection; label: string }> = [
-  { id: 'transfer', label: 'transfer' },
+  { id: 'transfer', label: 'import' },
   { id: 'storage', label: 'vaults' },
   { id: 'trash', label: 'trash' },
 ]

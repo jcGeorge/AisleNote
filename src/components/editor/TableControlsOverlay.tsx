@@ -10,7 +10,12 @@ type TableControlsOverlayProps = {
   onRemoveRow: () => void
   onAddColumn: () => void
   onRemoveColumn: () => void
-  onBeginSelectorGesture: (axis: TableReorderAxis, index: number, event: MouseEvent<HTMLButtonElement>) => void
+  onBeginSelectorGesture: (
+    axis: TableReorderAxis,
+    index: number,
+    tableStart: number | null,
+    event: MouseEvent<HTMLButtonElement>,
+  ) => void
 }
 
 function TableControlButton({
@@ -87,7 +92,11 @@ export function TableControlsOverlay({
                 height: `${column.height}px`,
               }}
               onPointerDown={stopPointerEvent}
-              onMouseDown={(event) => handleSelectorMouseDown(event, (nextEvent) => onBeginSelectorGesture('column', column.index, nextEvent))}
+              onMouseDown={(event) =>
+                handleSelectorMouseDown(event, (nextEvent) =>
+                  onBeginSelectorGesture('column', column.index, tableSelectionOverlay.tableStart, nextEvent),
+                )
+              }
               onClick={stopMouseEvent}
             />
           ))}
@@ -105,7 +114,11 @@ export function TableControlsOverlay({
                 height: `${row.height}px`,
               }}
               onPointerDown={stopPointerEvent}
-              onMouseDown={(event) => handleSelectorMouseDown(event, (nextEvent) => onBeginSelectorGesture('row', row.index, nextEvent))}
+              onMouseDown={(event) =>
+                handleSelectorMouseDown(event, (nextEvent) =>
+                  onBeginSelectorGesture('row', row.index, tableSelectionOverlay.tableStart, nextEvent),
+                )
+              }
               onClick={stopMouseEvent}
             />
           ))}

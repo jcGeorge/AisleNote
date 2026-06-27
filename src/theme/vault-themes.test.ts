@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   BUILT_IN_THEME_PALETTE_SEEDS,
+  CUSTOM_THEME_PALETTE_GROUPS,
   CUSTOM_THEME_PALETTE_LABELS,
   CUSTOM_THEME_PALETTE_SEEDS,
   CUSTOM_THEME_PALETTE_SLOTS,
@@ -14,30 +15,41 @@ import {
 } from './vault-themes'
 
 describe('vault theme palettes', () => {
-  it('exposes only vault-era custom palette slots', () => {
+  it('exposes custom palette groups in editor order', () => {
+    expect(CUSTOM_THEME_PALETTE_GROUPS).toEqual([
+      { label: 'Base', slots: ['canvas', 'page', 'sidebar'] },
+      { label: 'Panels', slots: ['panel', 'raised', 'border'] },
+      { label: 'Buttons', slots: ['primary', 'button'] },
+      { label: 'Text', slots: ['text', 'mutedText'] },
+      { label: 'States', slots: ['danger', 'warning', 'success'] },
+      { label: 'Tags', slots: ['tagText', 'tagBg'] },
+    ])
+  })
+
+  it('flattens custom palette groups to the storage slot contract', () => {
     expect(CUSTOM_THEME_PALETTE_SLOTS).toEqual([
       'canvas',
       'page',
+      'sidebar',
       'panel',
       'raised',
+      'border',
+      'primary',
       'button',
       'text',
       'mutedText',
-      'border',
-      'primary',
       'danger',
       'warning',
       'success',
       'tagText',
       'tagBg',
-      'sidebar',
     ])
   })
 
   it('uses short user-facing palette labels', () => {
     expect(CUSTOM_THEME_PALETTE_LABELS.panel).toBe('Panel')
     expect(CUSTOM_THEME_PALETTE_LABELS.raised).toBe('Raised')
-    expect(CUSTOM_THEME_PALETTE_LABELS.button).toBe('Button')
+    expect(CUSTOM_THEME_PALETTE_LABELS.button).toBe('Unfocused')
   })
 
   it('normalizes supported custom palette settings without carrying removed or unknown slots', () => {

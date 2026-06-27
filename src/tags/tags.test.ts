@@ -5,7 +5,7 @@ import {
   extractMarkdownTags,
   getAisleBodyTags,
   isRecognizedMarkdownTagLabel,
-  migrateAisleTags,
+  normalizeAisleTagsWithFrontmatter,
 } from './tags.js'
 
 describe('tag extraction', () => {
@@ -84,9 +84,9 @@ describe('tag extraction', () => {
   })
 })
 
-describe('tag migration', () => {
-  it('imports non-computed frontmatter tags into the top of the markdown body', () => {
-    const result = migrateAisleTags({
+describe('frontmatter tag normalization', () => {
+  it('imports non-computed frontmatter tags into visible markdown tags', () => {
+    const result = normalizeAisleTagsWithFrontmatter({
       markdown: 'Body text',
       frontmatter: { tags: ['Card', 'Unfinished'] },
       frontmatterMeta: undefined,
@@ -96,10 +96,11 @@ describe('tag migration', () => {
     expect(result.tags).toEqual(['Card', 'Unfinished'])
     expect(result.frontmatter).toEqual({ tags: ['Card', 'Unfinished'] })
     expect(result.frontmatterMeta).toMatchObject({ computedFields: { tags: 'tags' } })
+    expect(result.importedFrontmatterTags).toBe(true)
   })
 
-  it('uses visible tags instead of re-importing stale computed frontmatter tags', () => {
-    const result = migrateAisleTags({
+  it('updates computed frontmatter tags from visible markdown tags', () => {
+    const result = normalizeAisleTagsWithFrontmatter({
       markdown: 'Body without tags',
       frontmatter: { tags: ['Old'] },
       frontmatterMeta: { computedFields: { tags: 'tags' } },
@@ -108,5 +109,6 @@ describe('tag migration', () => {
     expect(result.markdown).toBe('Body without tags')
     expect(result.tags).toEqual([])
     expect(result.frontmatter).toEqual({ tags: [] })
+    expect(result.importedFrontmatterTags).toBe(false)
   })
 })

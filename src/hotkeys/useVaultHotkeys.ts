@@ -17,6 +17,7 @@ export type VaultHotkeyIntent = Extract<
   | 'cycleAislePrev'
   | 'cycleAisleNext'
   | 'formatStrikethrough'
+  | 'formatHighlight'
 >
 
 type VaultHotkeyActions = Record<VaultHotkeyIntent, () => void> & {
@@ -38,6 +39,7 @@ const VAULT_HOTKEY_INTENTS: VaultHotkeyIntent[] = [
   'cycleAislePrev',
   'cycleAisleNext',
   'formatStrikethrough',
+  'formatHighlight',
 ]
 
 const MAIN_ONLY_INTENTS = new Set<VaultHotkeyIntent>([
@@ -48,6 +50,7 @@ const MAIN_ONLY_INTENTS = new Set<VaultHotkeyIntent>([
   'cycleAisleNext',
   'closeCurrentNote',
   'formatStrikethrough',
+  'formatHighlight',
 ])
 
 const REPEATABLE_INTENTS = new Set<VaultHotkeyIntent>([

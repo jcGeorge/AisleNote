@@ -35,10 +35,16 @@ describe('vault sidebar tree', () => {
     expect(vaultAppSource).not.toContain('<button type="button" onClick={exportVault}>Export</button>')
   })
 
-  it('uses soft note-only tree selection instead of persistent folder highlighting', () => {
-    expect(appCssSource).toContain('.vault-tree-row.is-note.is-active .vault-tree-main')
+  it('uses soft active styling only for the active folder create target', () => {
+    expect(appCssSource).toContain('.vault-tree-row.is-folder.is-active .vault-tree-main')
+    expect(appCssSource).not.toContain('.vault-tree-row.is-note.is-active .vault-tree-main')
     expect(appCssSource).not.toContain('.vault-tree-row.is-active .vault-tree-main')
-    expect(vaultAppSource).toContain("const active = item.type === 'note' && item.id === activeNoteId")
+    expect(vaultAppSource).toContain("const [activeFolderId, setActiveFolderId] = useState('')")
+    expect(vaultAppSource).toContain('activeFolderId: string')
+    expect(vaultAppSource).toContain("const active = item.type === 'folder' && item.id === activeFolderId")
+    expect(vaultAppSource).not.toContain('activeNoteId: string')
+    expect(vaultAppSource).not.toContain('activeNoteId={state.vault.activeNoteId}')
+    expect(vaultAppSource).toContain('activeFolderId={activeFolderId}')
     expect(vaultAppSource).toContain("const selected = item.type === 'note' && selectedNoteIds.has(item.id)")
     expect(appCssSource).toContain('--vault-tree-row-bg: color-mix(in srgb, var(--app-text) 10%, transparent);')
     expect(appCssSource).toContain('.vault-tree-children::before')
@@ -53,6 +59,41 @@ describe('vault sidebar tree', () => {
     expect(appCssSource).toContain('height: 22px;')
     expect(appCssSource).toContain('linear-gradient(var(--vault-tree-row-bg), var(--vault-tree-row-bg))')
     expect(appCssSource).not.toContain('.vault-tree-row.is-active .vault-tree-main,\n.vault-search-result.is-active')
+  })
+
+  it('uses selected note rows for note navigation and clears tree state from root clicks', () => {
+    expect(vaultAppSource).toContain('setSelectedTreeNoteIds([resolvedLocation.noteId])')
+    expect(vaultAppSource).toContain('setTreeSelectionAnchorNoteId(resolvedLocation.noteId)')
+    expect(vaultAppSource).toContain('setSelectedTreeNoteIds(stateRef.current.vault.activeNoteId ? [stateRef.current.vault.activeNoteId] : [])')
+    expect(vaultAppSource).toContain('setTreeSelectionAnchorNoteId(stateRef.current.vault.activeNoteId)')
+    expect(appCssSource).toContain('.vault-tree-row.is-note.is-selected .vault-tree-main')
+  })
+
+  it('uses the active folder as the implicit header create target and clears it from root clicks', () => {
+    const createNoteSource = vaultAppSource.slice(
+      vaultAppSource.indexOf('const createNoteAt = useCallback'),
+      vaultAppSource.indexOf('const createFolderAt = useCallback'),
+    )
+    const createFolderSource = vaultAppSource.slice(
+      vaultAppSource.indexOf('const createFolderAt = useCallback'),
+      vaultAppSource.indexOf('const importVault = useCallback'),
+    )
+    expect(vaultAppSource).toContain("setActiveFolderId(getContainingFolderId(snapshotState.vault.items, resolvedLocation.noteId) ?? '')")
+    expect(createNoteSource).toContain('activeFolderId && findVaultFolder(previous.vault.items, activeFolderId)')
+    expect(createNoteSource).toContain('? activeFolderId')
+    expect(createNoteSource).toContain(': null')
+    expect(createNoteSource).not.toContain('getContainingFolderId')
+    expect(createNoteSource).toContain("setActiveFolderId(parentFolderIdRef.current ?? '')")
+    expect(createFolderSource).toContain('activeFolderId && findVaultFolder(previous.vault.items, activeFolderId)')
+    expect(createFolderSource).toContain('? activeFolderId')
+    expect(createFolderSource).toContain(': null')
+    expect(createFolderSource).not.toContain('getContainingFolderId')
+    expect(vaultAppSource).toContain('const clearActiveFolderFromRootTreeClick = useCallback')
+    expect(vaultAppSource).toContain('onClick={clearActiveFolderFromRootTreeClick}')
+    expect(vaultAppSource).toContain("if (target?.closest('.vault-tree-row, .tab-context-menu')) return")
+    expect(vaultAppSource).toContain("setActiveFolderId('')")
+    expect(vaultAppSource).toContain('setSelectedTreeNoteIds([])')
+    expect(vaultAppSource).toContain("setTreeSelectionAnchorNoteId('')")
   })
 
   it('supports intentional long-press rename and sidebar drag/drop reordering', () => {
@@ -82,6 +123,9 @@ describe('vault sidebar tree', () => {
     expect(vaultAppSource).toContain("event.shiftKey ? 'range' : event.metaKey || event.ctrlKey ? 'toggle' : 'replace'")
     expect(vaultAppSource).toContain('setSelectedTreeNoteIds([])')
     expect(vaultAppSource).toContain('draggingNoteIds.has(item.id)')
+    expect(vaultAppSource).toContain('function getVaultTreeContextDeleteNoteIds(')
+    expect(vaultAppSource).toContain("if (!selectedNoteIds.includes(menu.itemId)) return [menu.itemId]")
+    expect(vaultAppSource).toContain('visibleNoteIds.filter((noteId) => selectedNoteIdSet.has(noteId))')
     expect(appCssSource).toContain('.vault-tree-row.is-note.is-selected .vault-tree-main')
   })
 
@@ -132,6 +176,8 @@ describe('vault sidebar tree', () => {
     expect(vaultAppSource).toContain('previous.ui.collapsedFolderIds.filter(')
     expect(vaultAppSource).toContain('data-vault-tree-item-id={item.id}')
     expect(vaultAppSource).toContain("scrollNode.querySelectorAll<HTMLElement>('[data-vault-tree-item-id]')")
+    expect(vaultAppSource).toContain("querySelector<HTMLElement>('.vault-sidebar-footer:not(.is-collapsed)')")
+    expect(vaultAppSource).toContain('bottomInset: obscuredBottomInset')
     expect(vaultAppSource).toContain('rowIndex * VAULT_TREE_VIRTUAL_ROW_HEIGHT')
     expect(vaultAppSource).toContain('const nextScrollTop = getVaultTreeRevealScrollTop(')
     expect(vaultAppSource).toContain('if (Math.abs(nextScrollTop - scrollNode.scrollTop) > 0.5) {')
@@ -186,6 +232,16 @@ describe('vault sidebar tree', () => {
     expect(vaultAppSource).toContain("if (source === 'blur' && skipTreeRenameBlurItemIdRef.current === renamingTreeItemId)")
   })
 
+  it('commits active rename drafts before shortcut-created items replace the inline edit state', () => {
+    expect(vaultAppSource).toContain('const commitActiveTreeRenameBeforeCreate = useCallback(() => {')
+    expect(vaultAppSource).toContain('renameItem(renamingTreeItemId, treeRenameDraft)')
+    expect(vaultAppSource).toContain('pendingCreatedTreeRenameRef.current?.itemId === renamingTreeItemId')
+    expect(vaultAppSource).toContain('skipTreeRenameBlurItemIdRef.current = renamingTreeItemId')
+    expect(vaultAppSource).toContain('commitActiveTreeRenameBeforeCreate()')
+    expect(vaultAppSource).toContain('}, [commitActiveTreeRenameBeforeCreate, createNoteAt])')
+    expect(vaultAppSource).toContain('}, [commitActiveTreeRenameBeforeCreate, createFolderAt])')
+  })
+
   it('wires note and folder sidebar context menus with reveal, rename, and delete actions', () => {
     const treeContextMenuSource = vaultAppSource.slice(
       vaultAppSource.indexOf('function VaultTreeContextMenu'),
@@ -212,7 +268,9 @@ describe('vault sidebar tree', () => {
     expect(vaultAppSource).toContain('Sort')
     expect(vaultAppSource).toContain('Reveal in Finder')
     expect(vaultAppSource).toContain('Show in File Explorer')
-    expect(vaultAppSource).toContain("const deleteLabel = isItemMenu && menu.itemType === 'folder' ? 'Delete folder' : 'Delete note'")
+    expect(vaultAppSource).toContain("return deleteNoteCount > 1 ? 'Delete notes' : 'Delete note'")
+    expect(vaultAppSource).toContain('deleteLabel={treeContextDeleteLabel}')
+    expect(vaultAppSource).toContain("deleteItems(treeContextMenu.itemType === 'note' ? treeContextDeleteNoteIds : [treeContextMenu.itemId])")
     expect(vaultAppSource).toContain('onContextMenu={(event) => {')
     expect(vaultAppSource).toContain('revealVaultItemLocation(payload)')
     expect(vaultAppSource).toContain("trigger: 'vault-sidebar-reveal-item'")

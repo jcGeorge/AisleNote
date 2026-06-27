@@ -7,6 +7,7 @@ import {
   decoupleVaultAisleBodyInState,
   decoupleVaultNoteBodyInState,
   deleteVaultItemInState,
+  deleteVaultItemsInState,
   findVaultFolder,
   findVaultNote,
   getClosedVaultTab,
@@ -55,6 +56,7 @@ function createState(): AppState {
         cyclePinnedNoteTabPrev: 'ctrl+shift+tab',
         reopenClosedNoteTab: 'mod+shift+t',
         formatStrikethrough: '',
+        formatHighlight: 'mod+shift+h',
         cycleAislePrev: '',
         cycleAisleNext: '',
       },
@@ -103,6 +105,12 @@ function createTabVault(): VaultState {
 }
 
 describe('vault tree helpers', () => {
+  it('creates new vaults with a seven-day trash auto-remove default', () => {
+    const defaults = createDefaultVaultState(idSequence(['body-1', 'aisle-body-1', 'aisle-1', 'note-1']))
+
+    expect(defaults.vault.settings.autoRemoveDeletedDays).toBe(7)
+  })
+
   it('creates notes and folders inside the active folder', () => {
     const folderResult = createVaultFolderInState(createState(), 'Projects', null, idSequence(['folder-1']))
     const noteResult = createVaultNoteInState(
@@ -412,6 +420,31 @@ describe('vault tree helpers', () => {
     const restored = restoreDeletedVaultItemInState(deleted, 'deleted-1')
     expect(listVaultNotes(restored.vault.items).map((entry) => entry.note.id)).toEqual(['note-1', 'note-2'])
     expect(restored.vault.activeNoteId).toBe('note-1')
+  })
+
+  it('moves multiple deleted items to trash in one state update', () => {
+    let state = createState()
+    state = createVaultNoteInState(
+      state,
+      'Second',
+      null,
+      '',
+      idSequence(['body-2', 'aisle-body-2', 'aisle-2', 'note-2']),
+    ).state
+    state = createVaultNoteInState(
+      state,
+      'Third',
+      null,
+      '',
+      idSequence(['body-3', 'aisle-body-3', 'aisle-3', 'note-3']),
+    ).state
+
+    const deleted = deleteVaultItemsInState(state, ['note-1', 'note-2', 'note-1'], idSequence(['deleted-1', 'deleted-2']))
+
+    expect(listVaultNotes(deleted.vault.items).map((entry) => entry.note.id)).toEqual(['note-3'])
+    expect(deleted.vault.activeNoteId).toBe('note-3')
+    expect(deleted.vault.deletedItems.map((entry) => entry.id)).toEqual(['deleted-2', 'deleted-1'])
+    expect(deleted.vault.deletedItems.map((entry) => entry.item.id)).toEqual(['note-2', 'note-1'])
   })
 
   it('opens one replaceable temporary tab and keeps retained tabs', () => {

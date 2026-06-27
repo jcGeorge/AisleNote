@@ -1060,22 +1060,6 @@ describe('markdown WYSIWYG blank line preservation', () => {
     expect(stripAllIndentPrefixes(text)).toBe(`${BLOCK_INDENT_TOKEN.repeat(2)}one`)
     expect(mergeLeadingIndentsFromWysiwyg(editorForBlocks([block('paragraph', text)]), `${BLOCK_INDENT_TOKEN.repeat(2)}one`)).toBe(text)
   })
-
-  it('strips legacy block indent tokens from quoted lines during persistence and export', () => {
-    expect(normalizeMarkdownForPersistence(`> ${BLOCK_INDENT_TOKEN}quote\n${BLOCK_INDENT_TOKEN}normal`)).toBe(
-      [
-        '> quote',
-        '<div tab-block="1">',
-        '',
-        'normal',
-        '',
-        '</div>',
-      ].join('\n'),
-    )
-    expect(convertInternalAisleNoteForExport(`> ${BLOCK_INDENT_TOKEN}quote\n${BLOCK_INDENT_TOKEN}normal`)).toBe(
-      '> quote\n    normal',
-    )
-  })
 })
 
 describe('data image markdown repair', () => {

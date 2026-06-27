@@ -49,8 +49,9 @@ export const DEFAULT_SHORTCUTS = {
   cyclePinnedNoteTabPrev: 'ctrl+shift+tab',
   reopenClosedNoteTab: 'mod+shift+t',
   formatStrikethrough: 'mod+shift+x',
-  cycleAislePrev: 'mod+alt+arrowleft',
-  cycleAisleNext: 'mod+alt+arrowright',
+  formatHighlight: 'mod+shift+h',
+  cycleAislePrev: 'mod+ctrl+arrowleft',
+  cycleAisleNext: 'mod+ctrl+arrowright',
 }
 
 export const DEFAULT_NEWLINE_SHORTCUT_SETTINGS = {
@@ -90,7 +91,7 @@ export function createDefaultAppState(options = {}) {
       items: [welcomeNote],
       deletedItems: [],
       settings: {
-        autoRemoveDeletedDays: 30,
+        autoRemoveDeletedDays: 7,
       },
     },
     scratchpad: {

@@ -42,6 +42,7 @@ describe('portable app settings parsing', () => {
           cyclePinnedNoteTabNext: 'Ctrl+Tab',
           cyclePinnedNoteTabPrev: 'Ctrl+Shift+Tab',
           reopenClosedNoteTab: 'Mod+Shift+T',
+          formatHighlight: 'Mod+Shift+H',
         },
         newlineShortcuts: {
           shortcuts: {
@@ -226,6 +227,7 @@ describe('portable app settings parsing', () => {
             cyclePinnedNoteTabNext: 'Ctrl+Tab',
             cyclePinnedNoteTabPrev: 'Ctrl+Shift+Tab',
             reopenClosedNoteTab: 'Mod+Shift+T',
+            formatHighlight: 'Mod+Shift+H',
           },
           newlineShortcuts: {
             shortcuts: {
@@ -264,8 +266,28 @@ describe('portable app settings parsing', () => {
     expect(syncedSettings.hotkeys.shortcuts.cyclePinnedNoteTabNext).toBe('Ctrl+Tab')
     expect(syncedSettings.hotkeys.shortcuts.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')
     expect(syncedSettings.hotkeys.shortcuts.reopenClosedNoteTab).toBe('Mod+Shift+T')
-    expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Alt+]')
+    expect(syncedSettings.hotkeys.shortcuts.formatHighlight).toBe('Mod+Shift+H')
+    expect(syncedSettings.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Ctrl+ArrowLeft')
+    expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Ctrl+ArrowRight')
     expect(syncedSettings.hotkeys.newlineShortcuts.menuOperations).toEqual(['blockQuote', 'strikethrough'])
+  })
+
+  it('migrates split-file legacy aisle default shortcuts', () => {
+    const syncedSettings = buildSyncedSettingsFromSplitFiles({
+      appSettings: {
+        hotkeys: {
+          shortcuts: {
+            cycleAislePrev: 'Alt+[',
+            cycleAisleNext: 'mod+alt+arrowright',
+            closeCurrentNote: 'Ctrl+Alt+W',
+          },
+        },
+      },
+    })
+
+    expect(syncedSettings.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Ctrl+ArrowLeft')
+    expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Ctrl+ArrowRight')
+    expect(syncedSettings.hotkeys.shortcuts.closeCurrentNote).toBe('Ctrl+Alt+W')
   })
 
   it('keeps table of contents in split-file newline shortcut settings', () => {

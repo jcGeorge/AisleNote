@@ -606,7 +606,7 @@ function buildAppStateFromParts({ vaultIndex, navigationState, noteRegistry, tra
       settings: {
         autoRemoveDeletedDays: Number.isFinite(vaultIndex?.settings?.autoRemoveDeletedDays)
           ? vaultIndex.settings.autoRemoveDeletedDays
-          : 30,
+          : 7,
       },
     },
     scratchpad: isRecord(editorState?.scratchpad) ? editorState.scratchpad : undefined,
@@ -625,8 +625,9 @@ function buildAppStateFromParts({ vaultIndex, navigationState, noteRegistry, tra
             newFolder: 'mod+shift+n',
             closeCurrentNote: 'mod+w',
             formatStrikethrough: 'mod+shift+x',
-            cycleAislePrev: 'mod+alt+arrowleft',
-            cycleAisleNext: 'mod+alt+arrowright',
+            formatHighlight: 'mod+shift+h',
+            cycleAislePrev: 'mod+ctrl+arrowleft',
+            cycleAisleNext: 'mod+ctrl+arrowright',
           },
           newlineShortcuts: {
             shortcuts: {
@@ -985,7 +986,7 @@ export function saveAppState(profileRootPath, serializedState, options = {}) {
         appState?.vault?.activeNoteId ?? '',
       ),
       items: vaultItems,
-      settings: appState?.vault?.settings ?? { autoRemoveDeletedDays: 30 },
+      settings: appState?.vault?.settings ?? { autoRemoveDeletedDays: 7 },
     }
     const registry = buildNoteRegistry(appState, noteFileRecords)
     const writtenMarkdownFiles = writeVisibleVaultFiles(rootPath, appState, noteFileRecords)

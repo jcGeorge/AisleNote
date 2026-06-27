@@ -12,8 +12,9 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
   cyclePinnedNoteTabPrev: 'Ctrl+Shift+Tab',
   reopenClosedNoteTab: 'Mod+Shift+T',
   formatStrikethrough: '',
-  cycleAislePrev: 'Alt+[',
-  cycleAisleNext: 'Alt+]',
+  formatHighlight: 'Mod+Shift+H',
+  cycleAislePrev: 'Mod+Ctrl+ArrowLeft',
+  cycleAisleNext: 'Mod+Ctrl+ArrowRight',
 }
 
 export const NEWLINE_OPERATIONS: Array<{ id: NewlineOperationId; label: string }> = [
@@ -80,11 +81,31 @@ export const DEFAULT_NEWLINE_SHORTCUT_SETTINGS: AppState['hotkeys']['newlineShor
 
 const NEWLINE_OPERATION_IDS = new Set<NewlineOperationId>(NEWLINE_OPERATIONS.map((operation) => operation.id))
 const SHORTCUT_MENU_ELIGIBLE_OPERATION_IDS = new Set<NewlineOperationId>(SHORTCUT_MENU_ELIGIBLE_OPERATIONS)
+const LEGACY_AISLE_SHORTCUTS: Partial<Record<ShortcutId, Set<string>>> = {
+  cycleAislePrev: new Set(['alt+[', 'mod+alt+arrowleft']),
+  cycleAisleNext: new Set(['alt+]', 'mod+alt+arrowright']),
+}
+
+function normalizeShortcutSignature(value: string): string {
+  return value
+    .split('+')
+    .map((token) => token.trim().toLowerCase())
+    .filter((token) => token.length > 0)
+    .join('+')
+}
 
 function normalizeShortcutValue(raw: unknown, fallback: string): string {
   if (typeof raw !== 'string') return fallback
   const trimmed = raw.trim()
   return trimmed.length > 0 ? trimmed : fallback
+}
+
+function normalizeCommandShortcutValue(raw: unknown, fallback: string, shortcutId: ShortcutId): string {
+  const shortcut = normalizeShortcutValue(raw, fallback)
+  const shortcutSignature = normalizeShortcutSignature(shortcut)
+  return shortcutSignature === normalizeShortcutSignature(fallback) || LEGACY_AISLE_SHORTCUTS[shortcutId]?.has(shortcutSignature)
+    ? fallback
+    : shortcut
 }
 
 function getRawShortcutValue(rawShortcuts: Record<string, unknown>, shortcutId: ShortcutId): unknown {
@@ -102,7 +123,7 @@ export function normalizeHotkeySettings(raw: unknown): AppState['hotkeys'] {
 
   const shortcuts = Object.entries(DEFAULT_SHORTCUTS).reduce<Record<ShortcutId, string>>((acc, [key, value]) => {
     const shortcutKey = key as ShortcutId
-    acc[shortcutKey] = normalizeShortcutValue(getRawShortcutValue(rawShortcuts, shortcutKey), value)
+    acc[shortcutKey] = normalizeCommandShortcutValue(getRawShortcutValue(rawShortcuts, shortcutKey), value, shortcutKey)
     return acc
   }, {} as Record<ShortcutId, string>)
 
@@ -167,6 +188,8 @@ function getEventKeyToken(event: KeyboardEvent): string | null {
   if (event.code === 'Backquote') return 'Backquote'
   if (event.code === 'BracketLeft') return '['
   if (event.code === 'BracketRight') return ']'
+  if (event.key === 'ArrowLeft' || event.code === 'ArrowLeft') return 'ArrowLeft'
+  if (event.key === 'ArrowRight' || event.code === 'ArrowRight') return 'ArrowRight'
   if (event.key === 'Tab') return 'Tab'
   if (event.key.length === 1) return event.key.toUpperCase()
   return null

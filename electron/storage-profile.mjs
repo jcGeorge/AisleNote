@@ -1,8 +1,6 @@
 import path from 'node:path'
 
-export const STORAGE_PROFILE_CONFIG_FILE = 'storage-profile.json'
-export const STORAGE_PROFILE_DEFAULT_VAULT_NAME = 'Default Vault'
-
+const FALLBACK_VAULT_NAME = 'Vault'
 const WINDOWS_RESERVED_NAMES = new Set([
   'con',
   'prn',
@@ -28,17 +26,9 @@ const WINDOWS_RESERVED_NAMES = new Set([
   'lpt9',
 ])
 
-export function getStorageProfileConfigPath(userDataPath) {
-  return path.join(userDataPath, STORAGE_PROFILE_CONFIG_FILE)
-}
-
-export function getDefaultStorageProfileRoot(userDataPath) {
-  return path.resolve(userDataPath, STORAGE_PROFILE_DEFAULT_VAULT_NAME)
-}
-
 export function getStorageProfileVaultName(profileRootPath) {
   const name = path.basename(path.resolve(profileRootPath))
-  return name || STORAGE_PROFILE_DEFAULT_VAULT_NAME
+  return name || FALLBACK_VAULT_NAME
 }
 
 export function validateVaultName(value) {

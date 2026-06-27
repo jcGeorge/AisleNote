@@ -48,6 +48,26 @@ describe('toolbar format shortcut resolution', () => {
     expect(getToolbarFormatShortcutForEvent(keyboardEvent('s', { metaKey: true }), hotkeys, true)).toBeNull()
   })
 
+  it('runs highlight through the configured highlight shortcut', () => {
+    const hotkeys = hotkeysWithShortcuts()
+
+    expect(
+      getToolbarFormatShortcutForEvent(
+        keyboardEvent('h', { metaKey: true, shiftKey: true }),
+        hotkeys,
+        true,
+      ),
+    ).toBe('highlight')
+    expect(
+      getToolbarFormatShortcutForEvent(
+        keyboardEvent('h', { ctrlKey: true, shiftKey: true }),
+        hotkeys,
+        false,
+      ),
+    ).toBe('highlight')
+    expect(getToolbarFormatShortcutForEvent(keyboardEvent('h', { metaKey: true }), hotkeys, true)).toBeNull()
+  })
+
   it('keeps built-in bold and italic toolbar shortcuts', () => {
     const hotkeys = hotkeysWithShortcuts()
 

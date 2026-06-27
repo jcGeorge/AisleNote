@@ -439,6 +439,14 @@ describe('NoteWorkspace aisle mounting', () => {
         { noteId: 'note-child', title: 'Child', status: 'retained', active: false },
       ],
     })
+    const tabStripRule = editorShellCss.slice(
+      editorShellCss.indexOf('.note-tab-strip {'),
+      editorShellCss.indexOf('.note-tab {'),
+    )
+    const tabLabelRule = editorShellCss.slice(
+      editorShellCss.indexOf('.note-tab-label {'),
+      editorShellCss.indexOf('.note-tab.is-temporary .note-tab-label'),
+    )
 
     expect(html.indexOf('note-aisle-horizontal-scrollbar')).toBeLessThan(html.indexOf('note-tab-strip'))
     expect(html).toContain('aria-label="Open notes"')
@@ -446,6 +454,11 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('note-tab is-retained')
     expect(html).toContain('note-tab-close')
     expect(html).toContain('data-app-icon="x"')
+    expect(tabStripRule).toContain('flex: 0 0 var(--note-tab-strip-height, 45px);')
+    expect(tabStripRule).toContain('min-height: var(--note-tab-strip-height, 45px);')
+    expect(tabStripRule).toContain('font-size: var(--note-tab-font-size, 0.95rem);')
+    expect(tabLabelRule).toContain('font-size: 1em;')
+    expect(tabLabelRule).not.toContain('var(--ui-font-small)')
   })
 
   it('renders an inline rename input for tab-row initiated note renames', () => {
@@ -457,10 +470,18 @@ describe('NoteWorkspace aisle mounting', () => {
       renamingNoteTabId: 'note-parent',
       noteTabRenameDraft: 'Parent draft',
     })
+    const renameInputRuleStart = editorShellCss.indexOf('.note-tab-rename-input {')
+    const renameInputRule = editorShellCss.slice(
+      renameInputRuleStart,
+      editorShellCss.indexOf('.note-tab-close {', renameInputRuleStart),
+    )
 
     expect(html).toContain('note-tab is-active is-temporary is-renaming')
     expect(html).toContain('class="note-tab-rename-input"')
     expect(html).toContain('value="Parent draft"')
+    expect(renameInputRule).toContain('height: 2rem;')
+    expect(renameInputRule).toContain('font-size: 1em;')
+    expect(renameInputRule).not.toContain('var(--ui-font-small)')
   })
 
   it('wires vault tabs through the vault app while hiding them for scratchpad', () => {
@@ -528,6 +549,35 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('note-aisle-frontmatter-btn')
     expect(html).not.toContain('Filter by frontmatter template for aisle 1')
     expect(html).not.toContain('note-aisle-frontmatter-filter-btn')
+  })
+
+  it('styles aisle action buttons as unfocused by default and selected in active aisles', () => {
+    const defaultRule = editorShellCss.slice(
+      editorShellCss.indexOf('.note-aisle-action-btn {'),
+      editorShellCss.indexOf('.note-aisle-action-btn:hover,'),
+    )
+    const hoverRule = editorShellCss.slice(
+      editorShellCss.indexOf('.note-aisle-action-btn:hover,'),
+      editorShellCss.indexOf('.note-aisle-pane.is-active .note-aisle-action-btn {'),
+    )
+    const activeRule = editorShellCss.slice(
+      editorShellCss.indexOf('.note-aisle-pane.is-active .note-aisle-action-btn {'),
+      editorShellCss.indexOf('.note-aisle-action-wrap {'),
+    )
+
+    expect(defaultRule).toContain('--editor-toolbar-icon-primary: currentColor;')
+    expect(defaultRule).toContain('--editor-toolbar-icon-secondary: currentColor;')
+    expect(defaultRule).toContain('border: 1px solid var(--rail-control-border);')
+    expect(defaultRule).toContain('background: var(--rail-control-bg);')
+    expect(defaultRule).toContain('color: var(--rail-control-text);')
+    expect(defaultRule).not.toContain('action-chip-selected')
+    expect(hoverRule).toContain('border-color: var(--rail-control-hover-border);')
+    expect(hoverRule).toContain('background: var(--rail-control-hover-bg);')
+    expect(hoverRule).toContain('color: var(--rail-control-hover-text);')
+    expect(activeRule).toContain('.note-aisle-pane.is-active .note-aisle-action-btn')
+    expect(activeRule).toContain('border-color: var(--rail-control-selected-border);')
+    expect(activeRule).toContain('background: var(--rail-control-selected-bg);')
+    expect(activeRule).toContain('color: var(--rail-control-selected-text);')
   })
 
   it('applies persisted custom aisle widths to split panes', () => {

@@ -122,7 +122,7 @@ describe('media link plugin', () => {
       { text: 'Song ', href: 'aislenote-asset:///assets/song.mp3' },
       { text: 'One', href: 'aislenote-asset:///assets/song.mp3' },
       { text: ' and report ', href: 'aislenote-asset:///assets/report.pdf' },
-      { text: ' clip', href: 'clip.webm#aislenote-media=width=320,ratio=shorts' },
+      { text: ' clip', href: 'clip.webm#aislenote-media=width=320,rotate=90' },
     ]))
 
     expect(ranges).toEqual([
@@ -136,7 +136,7 @@ describe('media link plugin', () => {
       {
         from: 21,
         to: 26,
-        href: 'clip.webm#aislenote-media=width=320,ratio=shorts',
+        href: 'clip.webm#aislenote-media=width=320,rotate=90',
         label: ' clip',
         kind: 'video',
       },

@@ -16,6 +16,15 @@ describe('table controls interaction wiring', () => {
     expect(source).toContain("kind: 'cell-selection'")
   })
 
+  it('does not let capture-phase workspace mousedown clear selector overlay gestures', () => {
+    const handleMouseDownSource = getFunctionSource('handleMouseDown')
+    expect(source).toContain('function isTableOverlayTarget(target: Element | null)')
+    expect(handleMouseDownSource).toContain('if (isTableOverlayTarget(target)) return')
+    expect(handleMouseDownSource.indexOf('if (isTableOverlayTarget(target)) return')).toBeLessThan(
+      handleMouseDownSource.indexOf('setCurrentTableSelection(null)'),
+    )
+  })
+
   it('keeps plain cell mousedown caret-friendly until the pointer reaches another cell', () => {
     const handleMouseDownSource = getFunctionSource('handleMouseDown')
     expect(handleMouseDownSource).toContain('sourceCell,')
@@ -48,11 +57,20 @@ describe('table controls interaction wiring', () => {
     expect(source).toContain("kind: 'selector-gesture'")
     expect(source).toContain('const beginTableSelectorGesture = useCallback(')
     expect(source).toContain('getSelectedAxisRangeForGesture(')
+    expect(source).toContain('targetTableStart')
+    expect(source).toContain('getTableDomContextForTableStart(view, targetTableStart) ?? getActiveTableDomContext(view)')
     expect(source).toContain('setCurrentTableSelection(sourceSelection)')
     expect(source).toContain('updateTableSelectionOverlay(')
     expect(source).toContain('createSelectionOverlayState(table, tableStart, next)')
     expect(source).toContain('createAxisSelection(interactionState.context.tableStart, interactionState.axis, interactionState.index, interactionState.index)')
     expect(source).toContain("interactionState.kind === 'selector-gesture'")
+  })
+
+  it('suppresses Toast UI table context menus from table cells', () => {
+    expect(source).toContain('function handleTableContextMenu(event: MouseEvent)')
+    expect(source).toContain("element?.closest('td, th')")
+    expect(source).toContain("root?.addEventListener('contextmenu', handleTableContextMenu, true)")
+    expect(source).toContain('event.stopImmediatePropagation()')
   })
 
   it('preserves table selection through modifier-only keys and copy shortcuts', () => {

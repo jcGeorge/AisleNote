@@ -4,6 +4,7 @@ import {
   DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
   NEWLINE_OPERATION_LABELS,
   SHORTCUT_MENU_ELIGIBLE_OPERATIONS,
+  buildShortcutFromKeyboardEvent,
   eventMatchesShortcut,
   formatShortcutLabel,
   getNewlineShortcutIdForEvent,
@@ -74,6 +75,26 @@ describe('newline shortcut settings', () => {
     expect(SHORTCUT_MENU_ELIGIBLE_OPERATIONS).toContain('strikethrough')
     expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).toContain('strikethrough')
     expect(DEFAULT_SHORTCUTS.formatStrikethrough).toBe('')
+  })
+
+  it('defaults highlight formatting to a platform modifier shortcut', () => {
+    expect(DEFAULT_SHORTCUTS.formatHighlight).toBe('Mod+Shift+H')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.formatHighlight, true)).toBe('cmd+shift+h')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.formatHighlight, false)).toBe('ctrl+shift+h')
+    expect(
+      eventMatchesShortcut(
+        { key: 'H', code: 'KeyH', ctrlKey: false, metaKey: true, altKey: false, shiftKey: true } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.formatHighlight,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      eventMatchesShortcut(
+        { key: 'H', code: 'KeyH', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.formatHighlight,
+        false,
+      ),
+    ).toBe(true)
   })
 
   it('keeps block quote and block indent as separate newline operations', () => {
@@ -273,27 +294,37 @@ describe('newline shortcut settings', () => {
     expect(normalized.newlineShortcuts.menuOperations).toEqual(['tableOfContents', 'blockQuote', 'strikethrough'])
   })
 
-  it('defaults aisle cycle shortcuts to alt brackets and recognizes physical bracket keys', () => {
-    expect(DEFAULT_SHORTCUTS.cycleAislePrev).toBe('Alt+[')
-    expect(DEFAULT_SHORTCUTS.cycleAisleNext).toBe('Alt+]')
-    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cycleAislePrev, true)).toBe('option+[')
-    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cycleAisleNext, true)).toBe('option+]')
-    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cycleAislePrev, false)).toBe('alt+[')
-    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cycleAisleNext, false)).toBe('alt+]')
+  it('defaults aisle cycle shortcuts to command-control arrows and records arrow keys', () => {
+    expect(DEFAULT_SHORTCUTS.cycleAislePrev).toBe('Mod+Ctrl+ArrowLeft')
+    expect(DEFAULT_SHORTCUTS.cycleAisleNext).toBe('Mod+Ctrl+ArrowRight')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cycleAislePrev, true)).toBe('cmd+ctrl+arrowleft')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cycleAisleNext, true)).toBe('cmd+ctrl+arrowright')
     expect(
       eventMatchesShortcut(
-        { key: '“', code: 'BracketLeft', ctrlKey: false, metaKey: false, altKey: true, shiftKey: false } as KeyboardEvent,
+        { key: 'ArrowLeft', code: 'ArrowLeft', ctrlKey: true, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent,
         DEFAULT_SHORTCUTS.cycleAislePrev,
         true,
       ),
     ).toBe(true)
     expect(
       eventMatchesShortcut(
-        { key: ']', code: 'BracketRight', ctrlKey: false, metaKey: false, altKey: true, shiftKey: false } as KeyboardEvent,
+        { key: 'ArrowRight', code: 'ArrowRight', ctrlKey: true, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent,
         DEFAULT_SHORTCUTS.cycleAisleNext,
-        false,
+        true,
       ),
     ).toBe(true)
+    expect(
+      buildShortcutFromKeyboardEvent(
+        { key: 'ArrowLeft', code: 'ArrowLeft', ctrlKey: true, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent,
+        true,
+      ),
+    ).toBe('Mod+Ctrl+ArrowLeft')
+    expect(
+      buildShortcutFromKeyboardEvent(
+        { key: 'ArrowRight', code: 'ArrowRight', ctrlKey: true, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent,
+        true,
+      ),
+    ).toBe('Mod+Ctrl+ArrowRight')
   })
 
   it('normalizes aisle cycle shortcuts and removed shortcut payloads', () => {
@@ -304,13 +335,34 @@ describe('newline shortcut settings', () => {
     })
 
     expect(normalized.shortcuts).not.toHaveProperty('removedShortcut')
-    expect(normalized.shortcuts.cycleAislePrev).toBe('Alt+[')
-    expect(normalized.shortcuts.cycleAisleNext).toBe('Alt+]')
+    expect(normalized.shortcuts.cycleAislePrev).toBe('Mod+Ctrl+ArrowLeft')
+    expect(normalized.shortcuts.cycleAisleNext).toBe('Mod+Ctrl+ArrowRight')
     expect(normalized.shortcuts.formatStrikethrough).toBe('')
+    expect(normalized.shortcuts.formatHighlight).toBe('Mod+Shift+H')
     expect(normalized.shortcuts.toggleNotesFilter).toBe('')
     expect(normalized.shortcuts.closeCurrentNote).toBe('Mod+W')
     expect(normalized.shortcuts.cyclePinnedNoteTabNext).toBe('Ctrl+Tab')
     expect(normalized.shortcuts.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')
     expect(normalized.shortcuts.reopenClosedNoteTab).toBe('Mod+Shift+T')
+  })
+
+  it('migrates legacy default aisle shortcuts without overwriting custom shortcuts', () => {
+    const migrated = normalizeHotkeySettings({
+      shortcuts: {
+        cycleAislePrev: 'Alt+[',
+        cycleAisleNext: 'mod+alt+arrowright',
+      },
+    })
+    const custom = normalizeHotkeySettings({
+      shortcuts: {
+        cycleAislePrev: 'Ctrl+Shift+P',
+        cycleAisleNext: 'Meta+Shift+N',
+      },
+    })
+
+    expect(migrated.shortcuts.cycleAislePrev).toBe('Mod+Ctrl+ArrowLeft')
+    expect(migrated.shortcuts.cycleAisleNext).toBe('Mod+Ctrl+ArrowRight')
+    expect(custom.shortcuts.cycleAislePrev).toBe('Ctrl+Shift+P')
+    expect(custom.shortcuts.cycleAisleNext).toBe('Meta+Shift+N')
   })
 })

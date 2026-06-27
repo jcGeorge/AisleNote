@@ -3,7 +3,7 @@ import { splitMarkdownFrontmatter } from '../frontmatter/frontmatter'
 import {
   extractMarkdownTags,
   materializeComputedFrontmatterTags,
-  migrateAisleTags,
+  normalizeAisleTagsWithFrontmatter,
 } from '../tags/tags.js'
 import type { AppState, NoteAisle, NoteAisleBody, NoteCursorLocation, NoteCursorSelection, NoteLocation, ResolvedNoteAisle } from '../types/app'
 import { getAisleBodyId } from './note-markdown'
@@ -68,20 +68,20 @@ const buildSyncedAisleBody = (
     updatedAt: now,
   }
   if (split.status === 'valid') {
-    const migrated = migrateAisleTags({
+    const tagState = normalizeAisleTagsWithFrontmatter({
       markdown: normalizeMarkdownForPersistence(split.markdown),
       frontmatter: split.frontmatter,
       frontmatterMeta: existing?.frontmatterMeta,
     })
     return {
       ...base,
-      markdown: normalizeMarkdownForPersistence(migrated.markdown),
-      tags: migrated.tags,
-      frontmatter: migrated.frontmatter,
+      markdown: normalizeMarkdownForPersistence(tagState.markdown),
+      tags: tagState.tags,
+      frontmatter: tagState.frontmatter,
       frontmatterStatus: 'valid',
       frontmatterParseError: undefined,
       frontmatterRaw: split.rawFrontmatter ?? undefined,
-      frontmatterMeta: migrated.frontmatterMeta,
+      frontmatterMeta: tagState.frontmatterMeta,
     }
   }
   if (split.status === 'invalid') {
@@ -95,20 +95,20 @@ const buildSyncedAisleBody = (
       frontmatterRaw: split.rawFrontmatter ?? undefined,
     }
   }
-  const migrated = migrateAisleTags({
+  const tagState = normalizeAisleTagsWithFrontmatter({
     markdown: normalizedMarkdown,
     frontmatter: cloneFrontmatter(existing?.frontmatter),
     frontmatterMeta: existing?.frontmatterMeta,
   })
   return {
     ...base,
-    markdown: normalizeMarkdownForPersistence(migrated.markdown),
-    tags: migrated.tags,
-    frontmatter: materializeComputedFrontmatterTags(migrated.frontmatter, migrated.frontmatterMeta, migrated.tags),
-    frontmatterStatus: migrated.frontmatter ? 'valid' : existing?.frontmatterStatus ?? (existing?.frontmatter ? 'valid' : 'none'),
+    markdown: normalizeMarkdownForPersistence(tagState.markdown),
+    tags: tagState.tags,
+    frontmatter: materializeComputedFrontmatterTags(tagState.frontmatter, tagState.frontmatterMeta, tagState.tags),
+    frontmatterStatus: tagState.frontmatter ? 'valid' : existing?.frontmatterStatus ?? (existing?.frontmatter ? 'valid' : 'none'),
     frontmatterParseError: existing?.frontmatterParseError,
     frontmatterRaw: existing?.frontmatterRaw,
-    frontmatterMeta: migrated.frontmatterMeta,
+    frontmatterMeta: tagState.frontmatterMeta,
   }
 }
 

@@ -11,6 +11,7 @@ import { AisleEditModal } from './AisleEditModal'
 
 const aisle = (id: string, markdown = id): ResolvedNoteAisle => ({ id, aisleBodyId: id, markdown })
 const componentDir = dirname(fileURLToPath(import.meta.url))
+const editorShellCss = readFileSync(join(componentDir, '../../styles/editor-shell.css'), 'utf8')
 
 function renderModal(
   aisles: ResolvedNoteAisle[],
@@ -211,6 +212,20 @@ describe('AisleEditModal', () => {
     expect(html).not.toContain('will de-couple')
     expect(html).not.toContain('>undo</button>')
     expect(html).not.toContain('>de-couple</button>')
+  })
+
+  it('keeps staged removal action buttons on unfocused control tokens', () => {
+    const stagedRule = editorShellCss.slice(
+      editorShellCss.indexOf('.aisle-edit-card-action-btn.is-staged-removal {'),
+      editorShellCss.indexOf('.aisle-edit-card-controls {'),
+    )
+
+    expect(stagedRule).toContain('border-color: var(--rail-control-border);')
+    expect(stagedRule).toContain('background: var(--rail-control-bg);')
+    expect(stagedRule).toContain('color: var(--rail-control-text);')
+    expect(stagedRule).toContain('border-color: var(--rail-control-hover-border);')
+    expect(stagedRule).toContain('background: var(--rail-control-hover-bg);')
+    expect(stagedRule).toContain('color: var(--rail-control-hover-text);')
   })
 
   it('shows staged frontmatter removal and combined caution tape labels', () => {

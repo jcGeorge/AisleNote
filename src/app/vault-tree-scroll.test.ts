@@ -29,6 +29,24 @@ describe('vault tree row reveal scroll geometry', () => {
     ).toBe(212)
   })
 
+  it('treats the bottom inset as obscured when checking if a row is visible', () => {
+    expect(
+      getVaultTreeRevealScrollTop(
+        { scrollTop: 120, clientHeight: 240, scrollHeight: 1000, bottomInset: 60 },
+        { top: 280, bottom: 332 },
+      ),
+    ).toBe(152)
+  })
+
+  it('uses the real scroll range when revealing past a bottom inset', () => {
+    expect(
+      getVaultTreeRevealScrollTop(
+        { scrollTop: 700, clientHeight: 240, scrollHeight: 1000, bottomInset: 60 },
+        { top: 920, bottom: 972 },
+      ),
+    ).toBe(760)
+  })
+
   it('clamps the reveal position to the available scroll range', () => {
     expect(
       getVaultTreeRevealScrollTop(

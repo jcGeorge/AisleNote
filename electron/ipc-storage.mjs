@@ -42,6 +42,7 @@ import {
 } from './user-settings-location.mjs'
 import { normalizeImageAssetPath, parseImageAssetUrl } from '../src/markdown/image-asset-refs.js'
 import { createDefaultAppState } from '../src/state/default-app-state.js'
+import { applyPortableAppSettings } from '../src/storage/settings-partition.js'
 
 const STORAGE_VAULT_RECOVERED_MESSAGE_TYPE = 'storage-vault-recovered'
 
@@ -237,10 +238,6 @@ export function resolvePreferredVaultRevealPath({
   return fallback ?? { ok: false, error: 'Vault item could not be resolved.' }
 }
 
-export function reconcileVaultLibraryForStartup(userDataPath, library) {
-  return { library, reconciliation: null }
-}
-
 function createRecoveryIssueSummary(loadResult, failedVaultPath = null) {
   if (typeof failedVaultPath === 'string' && failedVaultPath.length > 0 && !existsSync(failedVaultPath)) {
     return ['Unable to locate folder.']
@@ -271,8 +268,18 @@ function createMissingActiveVaultResult(profileRootPath, loadResult = {}) {
   }
 }
 
-function createBlankVaultState(messages = []) {
-  return createDefaultAppState({ messages })
+function createBlankVaultState(messages = [], settingsSource = null) {
+  const blankState = createDefaultAppState({ messages })
+  if (!settingsSource) return blankState
+
+  try {
+    const parsedSettings = typeof settingsSource === 'string'
+      ? JSON.parse(settingsSource)
+      : settingsSource
+    return applyPortableAppSettings(blankState, parsedSettings)
+  } catch {
+    return blankState
+  }
 }
 
 function createRecoveryMessage(recovery) {
@@ -380,8 +387,6 @@ function getRecoveredVaultPathFromSerializedState(serializedState, selector) {
 export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null, shell = null }) {
   const userDataPath = app.getPath('userData')
   let vaultLibrary = initializeVaultLibrary(userDataPath)
-  const startupReconciliation = reconcileVaultLibraryForStartup(userDataPath, vaultLibrary)
-  vaultLibrary = startupReconciliation.library
   let profile = createProfileFromVaultLibrary(userDataPath, vaultLibrary)
   let userSettingsLocation = resolveUserSettingsLocation(userDataPath)
   const getStartupUserSettingsSeed = () => {
@@ -1243,9 +1248,10 @@ export function registerStorageIpc({ ipcMain, app, BrowserWindow, dialog = null,
     }
 
     try {
+      const currentSerializedState = coordinator.getSerializedState()
       const record = createVaultRecord(userDataPath, {
         vaultPath: target.profileRootPath,
-        serializedState: JSON.stringify(createBlankVaultState()),
+        serializedState: JSON.stringify(createBlankVaultState([], currentSerializedState)),
       })
       vaultLibrary = upsertVaultRecord(userDataPath, vaultLibrary, record, { activate: true })
       refreshProfileFromLibrary()

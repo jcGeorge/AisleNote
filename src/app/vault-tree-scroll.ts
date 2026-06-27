@@ -2,6 +2,7 @@ export type VaultTreeRevealViewport = {
   scrollTop: number
   clientHeight: number
   scrollHeight: number
+  bottomInset?: number
 }
 
 export type VaultTreeRevealRow = {
@@ -18,12 +19,14 @@ export function getVaultTreeRevealScrollTop(
   viewport: VaultTreeRevealViewport,
   row: VaultTreeRevealRow,
 ): number {
-  const currentScrollTop = clampScrollTop(viewport.scrollTop, viewport.scrollHeight - viewport.clientHeight)
   const viewportHeight = Math.max(0, viewport.clientHeight)
-  const viewportBottom = currentScrollTop + viewportHeight
+  const bottomInset = Math.max(0, viewport.bottomInset ?? 0)
+  const visibleViewportHeight = Math.max(0, viewportHeight - bottomInset)
   const maxScrollTop = Math.max(0, viewport.scrollHeight - viewportHeight)
+  const currentScrollTop = clampScrollTop(viewport.scrollTop, maxScrollTop)
+  const viewportBottom = currentScrollTop + visibleViewportHeight
 
   if (row.top >= currentScrollTop && row.bottom <= viewportBottom) return currentScrollTop
   if (row.top < currentScrollTop) return clampScrollTop(row.top, maxScrollTop)
-  return clampScrollTop(row.bottom - viewportHeight, maxScrollTop)
+  return clampScrollTop(row.bottom - visibleViewportHeight, maxScrollTop)
 }

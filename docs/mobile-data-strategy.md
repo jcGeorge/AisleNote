@@ -1,6 +1,6 @@
 # Cross-Platform Data Strategy
 
-AisleNote uses different storage capabilities by runtime. The data format stays portable, but folder control is not treated as universal.
+AisleNote uses different storage capabilities by runtime. The current release target is desktop; non-desktop persistence is not treated as a schema-compatible vault format.
 
 ## Desktop
 
@@ -11,21 +11,21 @@ AisleNote uses different storage capabilities by runtime. The data format stays 
 
 ## Mobile And Tablet
 
-- Vault content lives in app-private storage.
+- Future vault content should live in app-private storage.
 - Full-vault folder export is unavailable.
 - User settings transfer explicitly through `app-settings.json` import/export/share.
 - Live vault folders and live settings folders are unsupported for v1 on iOS, iPadOS, and Android.
 
-Capacitor filesystem access is intentionally scoped to app-private storage for v1. Android 11+ and iOS file-provider behavior make arbitrary live cloud folders a separate native sync problem, not a small adapter change.
+Android 11+ and iOS file-provider behavior make arbitrary live cloud folders a separate native sync problem, not a small adapter change.
 
 ## Browser
 
-- Vault content lives in IndexedDB, with localStorage as the synchronous startup cache.
+- Browser builds currently use local renderer cache persistence only.
 - Browser builds do not expose full-vault export, vault folder switching, settings folders, or live filesystem reload.
 - Markdown ZIP import and `app-settings.json` transfer remain available.
 
 ## Product Default
 
 - Free desktop: local vault folder, with optional OS-managed cloud folders and explicit folder export/import.
-- Free mobile/tablet: local app-private vault, with no full-vault export.
+- Future mobile/tablet: local app-private vault, with no full-vault export.
 - Future hosted sync: account-backed sync service, not OS-folder sync on mobile.

@@ -141,6 +141,10 @@ function isInteractiveTableCellTarget(target: Element | null) {
   return Boolean(target?.closest('a, button, input, textarea, select, img, .table-tools, .table-selector-segment'))
 }
 
+function isTableOverlayTarget(target: Element | null) {
+  return Boolean(target?.closest('.table-tools, .table-selector-segment, .table-selection-rect'))
+}
+
 function clearTableReorderClasses(root: HTMLElement) {
   root
     .querySelectorAll<HTMLElement>(`.${TABLE_REORDER_SOURCE_CLASS}, .${TABLE_REORDER_TARGET_CLASS}`)
@@ -278,6 +282,17 @@ function getTableCellAtViewportPoint(view: any, coords: { left: number; top: num
   const cell = hit instanceof Element ? hit.closest('td, th') : null
   if (!(cell instanceof HTMLTableCellElement) || !view?.dom?.contains?.(cell)) return null
   return cell
+}
+
+function getTableCellFromEventTarget(target: EventTarget | null) {
+  const element =
+    target instanceof Element
+      ? target
+      : typeof Text !== 'undefined' && target instanceof Text
+        ? target.parentElement
+        : null
+  const cell = element?.closest('td, th')
+  return cell instanceof HTMLTableCellElement ? cell : null
 }
 
 function createAxisSelection(tableStart: number, axis: TableReorderAxis, anchorIndex: number, headIndex: number): TableSelectionRange {
@@ -889,6 +904,7 @@ export function useTableControls({
     if (!target) return
     const sourceCell = target.closest('td, th')
     if (!(sourceCell instanceof HTMLTableCellElement)) {
+      if (isTableOverlayTarget(target)) return
       suppressNextClickRef.current = false
       setCurrentTableSelection(null)
       if (interactionStateRef.current) endInteraction()
@@ -932,6 +948,15 @@ export function useTableControls({
     event.stopPropagation()
   }
 
+  function handleTableContextMenu(event: MouseEvent) {
+    const cell = getTableCellFromEventTarget(event.target)
+    const root = editorEventRootRef.current
+    if (!cell || !root?.contains(cell)) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.stopImmediatePropagation()
+  }
+
   function handleKeyDown(event: KeyboardEvent) {
     if (event.key === 'Meta' || event.key === 'Control' || event.key === 'Alt' || event.key === 'Shift') return
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'c') return
@@ -966,14 +991,14 @@ export function useTableControls({
   }
 
   const beginTableSelectorGesture = useCallback(
-    (axis: TableReorderAxis, index: number, event: OverlayMouseEventLike) => {
+    (axis: TableReorderAxis, index: number, tableStart: number | null, event: OverlayMouseEventLike) => {
       event.preventDefault()
       event.stopPropagation()
       if (!visible || (event.button ?? 0) !== 0) return
       const editor = editorRef.current
       const view = getWysiwygView(editor)
-      const tableStart = tableSelectionOverlayRef.current.tableStart
-      const tableDomContext = getTableDomContextForTableStart(view, tableStart)
+      const targetTableStart = typeof tableStart === 'number' ? tableStart : tableSelectionOverlayRef.current.tableStart
+      const tableDomContext = getTableDomContextForTableStart(view, targetTableStart) ?? getActiveTableDomContext(view)
       if (!editor || !view || !tableDomContext) return
       const rows = getTableRows(tableDomContext.table)
       const columns = getTableColumns(tableDomContext.table)
@@ -1034,6 +1059,7 @@ export function useTableControls({
     root?.addEventListener('pointerup', handleEditorActivity, true)
     root?.addEventListener('mousedown', handleMouseDown, true)
     root?.addEventListener('click', handleClick, true)
+    root?.addEventListener('contextmenu', handleTableContextMenu, true)
     root?.addEventListener('keydown', handleKeyDown, true)
     root?.addEventListener('copy', handleCopy, true)
     root?.addEventListener('paste', handlePaste, true)
@@ -1049,6 +1075,7 @@ export function useTableControls({
       root?.removeEventListener('pointerup', handleEditorActivity, true)
       root?.removeEventListener('mousedown', handleMouseDown, true)
       root?.removeEventListener('click', handleClick, true)
+      root?.removeEventListener('contextmenu', handleTableContextMenu, true)
       root?.removeEventListener('keydown', handleKeyDown, true)
       root?.removeEventListener('copy', handleCopy, true)
       root?.removeEventListener('paste', handlePaste, true)

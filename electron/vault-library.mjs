@@ -3,7 +3,6 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs'
 import path from 'node:path'
@@ -13,9 +12,7 @@ import {
   saveAppState,
 } from './app-state-storage.mjs'
 import {
-  getDefaultStorageProfileRoot,
   getStorageProfileVaultName,
-  STORAGE_PROFILE_CONFIG_FILE,
 } from './storage-profile.mjs'
 
 export const VAULT_LIBRARY_CONFIG_FILE = 'vault-library.json'
@@ -54,20 +51,6 @@ function createVaultId() {
   return `vault-${randomUUID()}`
 }
 
-function cleanupLegacyAppPrivateVault(userDataPath) {
-  const defaultRoot = getDefaultStorageProfileRoot(userDataPath)
-  try {
-    rmSync(defaultRoot, { recursive: true, force: true })
-  } catch {
-    // Best-effort cleanup only; external vault folders are never touched here.
-  }
-  try {
-    rmSync(path.join(userDataPath, STORAGE_PROFILE_CONFIG_FILE), { force: true })
-  } catch {
-    // Best-effort cleanup only.
-  }
-}
-
 function createSyncMetadata(event, extra = {}) {
   return {
     version: 1,
@@ -75,10 +58,6 @@ function createSyncMetadata(event, extra = {}) {
     updatedAt: nowIso(),
     ...extra,
   }
-}
-
-function hasVaultManifest(vaultPath) {
-  return Boolean(vaultPath && existsSync(path.join(getHybridStorageRoot(vaultPath), 'manifest.json')))
 }
 
 export function ensureVaultFolderIdentity(userDataPath, vaultRootPath, requestedVaultId = null) {
@@ -112,22 +91,9 @@ export function ensureVaultFolderIdentity(userDataPath, vaultRootPath, requested
   return { ok: true, vaultId, upgraded: true }
 }
 
-function chooseVaultPathForLegacyRecord(record) {
-  const directPath = normalizePath(record?.vaultPath)
-  if (directPath) return directPath
-
-  const syncTargetPath = normalizePath(record?.syncTargetPath)
-  if (hasVaultManifest(syncTargetPath)) return syncTargetPath
-
-  const localMirrorPath = normalizePath(record?.localMirrorPath)
-  if (hasVaultManifest(localMirrorPath)) return localMirrorPath
-
-  return syncTargetPath ?? localMirrorPath
-}
-
-function normalizeVaultRecord(_userDataPath, record) {
+function normalizeVaultRecord(record) {
   const id = typeof record?.id === 'string' && record.id.trim() ? record.id.trim() : ''
-  const vaultPath = chooseVaultPathForLegacyRecord(record)
+  const vaultPath = normalizePath(record?.vaultPath)
   if (!id || !vaultPath) return null
   return {
     id,
@@ -139,16 +105,15 @@ function normalizeVaultRecord(_userDataPath, record) {
   }
 }
 
-function normalizeVaultLibrary(userDataPath, rawLibrary) {
-  const defaultRoot = getDefaultStorageProfileRoot(userDataPath)
+function normalizeVaultLibrary(rawLibrary) {
   const records = Array.isArray(rawLibrary?.vaults)
-    ? rawLibrary.vaults.map((record) => normalizeVaultRecord(userDataPath, record)).filter(Boolean)
+    ? rawLibrary.vaults.map((record) => normalizeVaultRecord(record)).filter(Boolean)
     : []
   const seenIds = new Set()
   const seenPaths = new Set()
   const vaults = records.filter((record) => {
     const pathKey = path.resolve(record.vaultPath)
-    if (pathKey === defaultRoot || seenIds.has(record.id) || seenPaths.has(pathKey)) return false
+    if (seenIds.has(record.id) || seenPaths.has(pathKey)) return false
     seenIds.add(record.id)
     seenPaths.add(pathKey)
     return true
@@ -167,11 +132,11 @@ function normalizeVaultLibrary(userDataPath, rawLibrary) {
 
 export function readVaultLibrary(userDataPath) {
   const rawLibrary = readJsonFile(getVaultLibraryConfigPath(userDataPath))
-  return rawLibrary ? normalizeVaultLibrary(userDataPath, rawLibrary) : null
+  return rawLibrary ? normalizeVaultLibrary(rawLibrary) : null
 }
 
 export function writeVaultLibrary(userDataPath, library) {
-  const normalized = normalizeVaultLibrary(userDataPath, library)
+  const normalized = normalizeVaultLibrary(library)
   writeJsonFile(getVaultLibraryConfigPath(userDataPath), normalized)
   return normalized
 }
@@ -194,7 +159,6 @@ function buildVaultRecordFromFolder(userDataPath, vaultRootPath, options = {}) {
 }
 
 export function initializeVaultLibrary(userDataPath) {
-  cleanupLegacyAppPrivateVault(userDataPath)
   const existing = readVaultLibrary(userDataPath)
   if (existing) return writeVaultLibrary(userDataPath, existing)
   return writeVaultLibrary(userDataPath, {
@@ -209,7 +173,7 @@ export function getActiveVaultRecord(library) {
 }
 
 export function upsertVaultRecord(userDataPath, library, record, options = {}) {
-  const nextRecord = normalizeVaultRecord(userDataPath, {
+  const nextRecord = normalizeVaultRecord({
     ...record,
     updatedAt: nowIso(),
   })

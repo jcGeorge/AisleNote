@@ -11,6 +11,7 @@ describe('default app state', () => {
     )
 
     expect(state.vault.items[0]).toMatchObject({ type: 'note', title: 'Welcome' })
+    expect(state.vault.settings.autoRemoveDeletedDays).toBe(7)
     expect(state.theme).toBe('dark')
     expect(state.noteAisleBodies[0]).toMatchObject({ markdown: '' })
     expect(scratchpadAisleBody?.markdown).toBe(DEFAULT_SCRATCHPAD_MARKDOWN)
@@ -20,6 +21,9 @@ describe('default app state', () => {
       cyclePinnedNoteTabNext: 'ctrl+tab',
       cyclePinnedNoteTabPrev: 'ctrl+shift+tab',
       reopenClosedNoteTab: 'mod+shift+t',
+      formatHighlight: 'mod+shift+h',
+      cycleAislePrev: 'mod+ctrl+arrowleft',
+      cycleAisleNext: 'mod+ctrl+arrowright',
     })
     expect(state.hotkeys.newlineShortcuts.shortcuts).toEqual({
       controlEnter: 'operationsMenu',
@@ -67,5 +71,19 @@ describe('default app state', () => {
     expect(parsed.hotkeys.shortcuts.cyclePinnedNoteTabNext).toBe('Ctrl+Tab')
     expect(parsed.hotkeys.shortcuts.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')
     expect(parsed.hotkeys.shortcuts.reopenClosedNoteTab).toBe('Mod+Shift+T')
+    expect(parsed.hotkeys.shortcuts.formatHighlight).toBe('Mod+Shift+H')
+    expect(parsed.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Ctrl+ArrowLeft')
+    expect(parsed.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Ctrl+ArrowRight')
+  })
+
+  it('migrates persisted legacy aisle default shortcuts', () => {
+    const state = createDefaultAppState()
+    state.hotkeys.shortcuts.cycleAislePrev = 'Alt+['
+    state.hotkeys.shortcuts.cycleAisleNext = 'mod+alt+arrowright'
+
+    const parsed = parseSavedState(JSON.stringify(state))
+
+    expect(parsed.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Ctrl+ArrowLeft')
+    expect(parsed.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Ctrl+ArrowRight')
   })
 })

@@ -96,13 +96,13 @@ describe('vault hotkey intents', () => {
       viewMode: 'main',
     })).toBe('toggleNotesFilter')
     expect(getVaultHotkeyIntent({
-      event: keyboardEvent('[', { code: 'BracketLeft', altKey: true }),
+      event: keyboardEvent('ArrowLeft', { code: 'ArrowLeft', ctrlKey: true, metaKey: true }),
       hotkeys,
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('cycleAislePrev')
     expect(getVaultHotkeyIntent({
-      event: keyboardEvent(']', { code: 'BracketRight', altKey: true }),
+      event: keyboardEvent('ArrowRight', { code: 'ArrowRight', ctrlKey: true, metaKey: true }),
       hotkeys,
       isMacPlatform: true,
       viewMode: 'main',
@@ -113,6 +113,18 @@ describe('vault hotkey intents', () => {
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('formatStrikethrough')
+    expect(getVaultHotkeyIntent({
+      event: keyboardEvent('H', { code: 'KeyH', metaKey: true, shiftKey: true }),
+      hotkeys,
+      isMacPlatform: true,
+      viewMode: 'main',
+    })).toBe('formatHighlight')
+    expect(getVaultHotkeyIntent({
+      event: keyboardEvent('H', { code: 'KeyH', ctrlKey: true, shiftKey: true }),
+      hotkeys,
+      isMacPlatform: false,
+      viewMode: 'main',
+    })).toBe('formatHighlight')
     expect(getVaultHotkeyIntent({
       event: keyboardEvent('Tab', { code: 'Tab', ctrlKey: true }),
       hotkeys,
@@ -153,7 +165,7 @@ describe('vault hotkey intents', () => {
       viewMode: 'settings',
     })).toBe('toggleNotesScratchpad')
     expect(getVaultHotkeyIntent({
-      event: keyboardEvent('[', { code: 'BracketLeft', altKey: true }),
+      event: keyboardEvent('ArrowLeft', { code: 'ArrowLeft', ctrlKey: true, metaKey: true }),
       hotkeys: defaultHotkeys,
       isMacPlatform: true,
       viewMode: 'settings',
@@ -172,6 +184,12 @@ describe('vault hotkey intents', () => {
     })).toBeNull()
     expect(getVaultHotkeyIntent({
       event: keyboardEvent('T', { code: 'KeyT', metaKey: true, shiftKey: true }),
+      hotkeys: defaultHotkeys,
+      isMacPlatform: true,
+      viewMode: 'settings',
+    })).toBeNull()
+    expect(getVaultHotkeyIntent({
+      event: keyboardEvent('H', { code: 'KeyH', metaKey: true, shiftKey: true }),
       hotkeys: defaultHotkeys,
       isMacPlatform: true,
       viewMode: 'settings',

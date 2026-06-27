@@ -20,7 +20,7 @@ import {
 import { parseSavedState } from '../state/app-state'
 import { collectVaultIds, insertVaultItem, openVaultTemporaryTab } from '../state/vault'
 import { createRandomId, createReservedIdAllocator, type IdGenerator } from '../state/navigation-ids'
-import { migrateAisleTags } from '../tags/tags.js'
+import { normalizeAisleTagsWithFrontmatter } from '../tags/tags.js'
 
 export type MarkdownImportFile = {
   relativePath: string
@@ -252,7 +252,7 @@ function createImportedAisleBody({
     }
   }
 
-  const migrated = migrateAisleTags({
+  const tagState = normalizeAisleTagsWithFrontmatter({
     markdown: split.markdown,
     frontmatter: cloneFrontmatter(split.frontmatter),
     frontmatterMeta: undefined,
@@ -261,11 +261,11 @@ function createImportedAisleBody({
     id,
     createdAt: timestamp,
     updatedAt: timestamp,
-    markdown: migrated.markdown,
-    tags: migrated.tags,
-    frontmatter: migrated.frontmatter,
+    markdown: tagState.markdown,
+    tags: tagState.tags,
+    frontmatter: tagState.frontmatter,
     frontmatterStatus: split.status,
-    frontmatterMeta: migrated.frontmatterMeta,
+    frontmatterMeta: tagState.frontmatterMeta,
   }
 }
 

@@ -1,11 +1,8 @@
-import { BrowserHybridStateAdapter } from './browser-hybrid-state'
-import { CapacitorHybridStateAdapter } from './capacitor-hybrid-state'
 import { recordDiagnosticEvent } from '../diagnostics/diagnostic-logger'
 import { measureSlowAsyncOperation, measureSlowOperation } from '../performance/performance-logging'
-import { isNativeCapacitorRuntime } from '../platform/data-platform'
 import type { AppStateSaveOptions } from './persistence-debounce'
 
-export const APP_STATE_STORAGE_KEY = 'aislenote:app-state-cache:v1'
+export const APP_STATE_STORAGE_KEY = 'aislenote:app-state-cache'
 const SAVE_DIAGNOSTIC_THROTTLE_MS = 10_000
 const SAVE_METRICS_SLOW_THRESHOLD_MS = 50
 
@@ -55,82 +52,6 @@ class BrowserLocalStorageAppStateStore implements AppStateStore {
       localStorage.removeItem(this.storageKey)
     } catch {
       // Keep browser persistence non-fatal.
-    }
-  }
-}
-
-class BrowserIndexedDbHybridAppStateStore implements AppStateStore {
-  private readonly cacheStore: BrowserLocalStorageAppStateStore
-  private readonly hybridAdapter = new BrowserHybridStateAdapter()
-
-  constructor(storageKey: string) {
-    this.cacheStore = new BrowserLocalStorageAppStateStore(storageKey)
-  }
-
-  load(): string | null {
-    return this.cacheStore.load()
-  }
-
-  save(serializedState: string): void {
-    this.cacheStore.save(serializedState)
-    void this.hybridAdapter.saveSerializedState(serializedState)
-  }
-
-  async hydrate(onHydratedState: (serializedState: string) => void): Promise<void> {
-    const durableState = await this.hybridAdapter.loadSerializedState()
-    const cachedState = this.cacheStore.load()
-
-    if (durableState !== null) {
-      if (durableState !== cachedState) {
-        this.cacheStore.save(durableState)
-        onHydratedState(durableState)
-      }
-      return
-    }
-
-    if (cachedState !== null) {
-      await this.hybridAdapter.saveSerializedState(cachedState)
-    }
-  }
-}
-
-class CapacitorHybridAppStateStore implements AppStateStore {
-  private readonly cacheStore: BrowserLocalStorageAppStateStore
-  private readonly hybridAdapter = new CapacitorHybridStateAdapter()
-  private saveQueue: Promise<void> = Promise.resolve()
-
-  constructor(storageKey: string) {
-    this.cacheStore = new BrowserLocalStorageAppStateStore(storageKey)
-  }
-
-  load(): string | null {
-    return this.cacheStore.load()
-  }
-
-  save(serializedState: string): void {
-    this.cacheStore.save(serializedState)
-    this.saveQueue = this.hybridAdapter.saveSerializedState(serializedState)
-  }
-
-  flush(): Promise<void> {
-    return this.saveQueue
-  }
-
-  async hydrate(onHydratedState: (serializedState: string) => void): Promise<void> {
-    const durableState = await this.hybridAdapter.loadSerializedState()
-    const cachedState = this.cacheStore.load()
-
-    if (durableState !== null) {
-      if (durableState !== cachedState) {
-        this.cacheStore.save(durableState)
-        onHydratedState(durableState)
-      }
-      return
-    }
-
-    if (cachedState !== null) {
-      this.saveQueue = this.hybridAdapter.saveSerializedState(cachedState)
-      await this.saveQueue
     }
   }
 }
@@ -471,12 +392,6 @@ class ElectronAppStateStore implements AppStateStore {
 export function createAppStateStore(): AppStateStore {
   if (typeof window !== 'undefined' && window.electronAPI) {
     return new ElectronAppStateStore()
-  }
-  if (typeof window !== 'undefined' && isNativeCapacitorRuntime()) {
-    return new CapacitorHybridAppStateStore(APP_STATE_STORAGE_KEY)
-  }
-  if (typeof window !== 'undefined' && 'indexedDB' in window) {
-    return new BrowserIndexedDbHybridAppStateStore(APP_STATE_STORAGE_KEY)
   }
   return new BrowserLocalStorageAppStateStore(APP_STATE_STORAGE_KEY)
 }

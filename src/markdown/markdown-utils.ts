@@ -223,21 +223,6 @@ export function repairBrokenMarkdownTables(markdown: string): string {
   return repairedLines.join('\n')
 }
 
-function stripBlockIndentTokensFromQuotedLines(markdown: string): string {
-  return String(markdown ?? '')
-    .split('\n')
-    .map((line) => {
-      const match = line.match(/^((?:\s*>[ \t]?)+)(.*)$/)
-      if (!match) return line
-      let content = match[2]
-      while (content.startsWith(BLOCK_INDENT_TOKEN)) {
-        content = content.slice(BLOCK_INDENT_TOKEN.length)
-      }
-      return `${match[1]}${content}`
-    })
-    .join('\n')
-}
-
 function readTabBlockOpenLevel(line: string): number | null {
   const match = line.match(TAB_BLOCK_OPEN_LINE_PATTERN)
   if (!match) return null
@@ -386,7 +371,7 @@ export function normalizeMarkdownForPersistence(markdown: string): string {
   const repaired = repairBrokenMarkdownTables(repairBrokenDataImageMarkdown(blankNormalized))
   const highlighted = normalizeHighlightMarkdownForPersistence(repaired)
   const normalizedInternalIndents = normalizeBlankLineRuns(
-    stripBlockIndentTokensFromQuotedLines(highlighted).replace(/(?<!\u2060)\u2003\u2003/g, INDENT_TOKEN),
+    highlighted.replace(/(?<!\u2060)\u2003\u2003/g, INDENT_TOKEN),
   )
   return encodeBlockIndentTokensForPersistence(normalizedInternalIndents)
 }
@@ -556,9 +541,7 @@ function stripStandaloneBlankLinePlaceholders(markdown: string): string {
 }
 
 export function convertInternalAisleNoteForExport(markdown: string): string {
-  return stripBlockIndentTokensFromQuotedLines(
-    stripStandaloneBlankLinePlaceholders(decodeBlockIndentHtmlForInternalMarkdown(markdown)),
-  )
+  return stripStandaloneBlankLinePlaceholders(decodeBlockIndentHtmlForInternalMarkdown(markdown))
     .replaceAll(BLOCK_INDENT_TOKEN, EXPORT_TAB_SPACES)
     .replace(/\u2060\u2003\u2003/g, EXPORT_TAB_SPACES)
     .replace(/\u2003\u2003/g, EXPORT_TAB_SPACES)

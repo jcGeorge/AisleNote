@@ -9,7 +9,7 @@ The guiding rule is: data integrity and recovery come before visual polish and p
 Cleaned up on 2026-05-17.
 
 - **Phase 1 is complete.** The stabilization pass covered real-workspace persistence, frontmatter, batch note workflows, rename persistence, trash/restore, export/images, and vault-folder reload/move behavior.
-- **Phase 2 is complete for the current storage model.** The active manifest/Markdown/assets format is documented, Electron/browser storage behavior is hardened, vault-folder health is visible in settings, and global user settings are separated from selected vault folders.
+- **Phase 2 is complete for the current storage model.** The active manifest/Markdown/assets format is documented, Electron storage behavior is hardened, vault-folder health is visible in settings, and global user settings are separated from selected vault folders.
 - **Phase 3 is complete for this roadmap gate.** The first targeted refactor pass extracted vault-folder orchestration and cleared the hook-dependency cleanup target. Larger refactor slices are now normal engineering hygiene, not blockers for Phase 4.
 - **Phase 4 is the current active phase.** The first input-polish slice is largely implemented; remaining Phase 4 work is continued bug polish plus the later design-system/UI overhaul.
 
@@ -38,7 +38,7 @@ Completed outcomes:
 - `docs/storage-schema.md` now describes the current generic vault tree, visible Markdown files, `.aislenote/` metadata, and asset layout as canonical.
 - Missing Markdown files, missing/corrupt trash manifests, corrupt branch manifests, corrupt/unsupported root manifests, stale revisions, conflict folders, and paused-write safeguards are covered by storage behavior and tests.
 - Settings > Data surfaces vault folder transfer, user-settings transfer, vault create/switch/move actions, vault-folder health, folder path, schema/writable state, issue details, reveal folder, and retry reload actions.
-- Browser hybrid storage and Electron filesystem storage have parity coverage for the current logical app state.
+- The obsolete browser schema 1 virtual-vault adapter has been removed; Electron schema 2 is the canonical durable storage target.
 - Automatic save copies have been removed in favor of explicit folder export/import and user-managed copies.
 - Pre-production storage compatibility has been removed before launch.
 
@@ -174,7 +174,7 @@ Goal: add PWA/mobile infrastructure after mobile editing UX is credible.
 Focus areas:
 
 - Web app manifest, service worker, install prompts, offline boot, and update behavior.
-- IndexedDB durability and recovery.
+- Schema-compatible browser/PWA persistence design, if browser storage becomes a release target.
 - iOS Safari limitations, Android behavior, and Android-compatible desktop/PWA targets such as AluminiumOS.
 - Touch ergonomics for editing, navigation, tooltip controls, and settings.
 - File access limitations compared with Electron vault folders.
@@ -192,7 +192,7 @@ Run this checklist before any public release candidate.
 Data and persistence:
 
 - Legacy JSON state parses.
-- Browser hybrid storage round-trips manifest, Markdown, and assets.
+- Non-Electron renderer cache persistence is not treated as release vault storage unless PWA/mobile storage is explicitly in scope.
 - Electron filesystem storage round-trips manifest, Markdown, and assets.
 - Rename, reorder, move, delete, restore, and export preserve stable IDs.
 - Sync folder move/retry/reload works after app restart.

@@ -145,7 +145,7 @@ describe('Markdown folder import', () => {
     expect(result.summary).toMatchObject({ folders: 2, notes: 2, noteBodies: 2 })
   })
 
-  it('splits valid frontmatter, migrates tags, and keeps invalid frontmatter in markdown', () => {
+  it('splits valid frontmatter, normalizes tags, and keeps invalid frontmatter in markdown', () => {
     const result = buildMarkdownImportState([
       {
         relativePath: 'Tagged.md',

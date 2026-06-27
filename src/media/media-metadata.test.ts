@@ -8,23 +8,16 @@ import {
   type MediaTransformMetadata,
 } from './media-metadata'
 
-type LegacyMediaMetadata = Partial<MediaTransformMetadata> & {
-  crop?: { x: number; y: number; w: number; h: number }
-  ratio?: string
-}
-
 describe('media metadata', () => {
   it('builds and parses readable media transform fragments', () => {
-    const legacyMetadata: LegacyMediaMetadata = {
+    const metadata: Partial<MediaTransformMetadata> = {
       v: 1,
       w: 420,
       r: 90,
       fh: true,
       fv: true,
-      crop: { x: 0.12504, y: 0.2, w: 0.5, h: 0.4 },
-      ratio: 'shorts',
     }
-    const url = withMediaTransformMetadata('aislenote-asset:///assets/clip.webm', legacyMetadata)
+    const url = withMediaTransformMetadata('aislenote-asset:///assets/clip.webm', metadata)
 
     expect(url).toBe(
       'aislenote-asset:///assets/clip.webm#aislenote-media=width=420,rotate=90,flip-horizontal,flip-vertical',
@@ -40,7 +33,7 @@ describe('media metadata', () => {
 
   it('splits and strips media metadata from urls', () => {
     const split = splitMediaMetadataFromUrl(
-      'aislenote-asset:///assets/clip.mp4#aislenote-media=width=640,crop=0.1:0.2:0.3:0.4',
+      'aislenote-asset:///assets/clip.mp4#aislenote-media=width=640',
     )
 
     expect(split.mediaUrl).toBe('aislenote-asset:///assets/clip.mp4')
@@ -75,8 +68,13 @@ describe('media metadata', () => {
     })
   })
 
-  it('ignores legacy crop-only metadata', () => {
-    expect(getMediaTransformMetadata('aislenote-asset:///assets/clip.mp4#aislenote-media=crop=0.1:0.2:0.3:0.4,ratio=shorts')).toBeNull()
+  it('rejects unknown metadata fields', () => {
+    expect(
+      getMediaTransformMetadata('aislenote-asset:///assets/clip.mp4#aislenote-media=width=640,crop=0.1:0.2:0.3:0.4'),
+    ).toBeNull()
+    expect(
+      getMediaTransformMetadata('aislenote-asset:///assets/clip.mp4#aislenote-media=crop=0.1:0.2:0.3:0.4,ratio=shorts'),
+    ).toBeNull()
   })
 
   it('omits empty metadata fragments', () => {

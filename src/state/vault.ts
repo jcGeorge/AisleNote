@@ -142,7 +142,7 @@ export function createDefaultVaultState(idGenerator: IdGenerator = createRandomI
       items: [note],
       deletedItems: [],
       settings: {
-        autoRemoveDeletedDays: 30,
+        autoRemoveDeletedDays: 7,
       },
     },
     noteBodies: [noteBody],
@@ -897,6 +897,19 @@ export function deleteVaultItem(vault: VaultState, itemId: string, idGenerator: 
   })
 }
 
+export function deleteVaultItems(
+  vault: VaultState,
+  itemIds: string[],
+  idGenerator: IdGenerator = createRandomId,
+): VaultState {
+  const seenItemIds = new Set<string>()
+  return itemIds.reduce((nextVault, itemId) => {
+    if (!itemId || seenItemIds.has(itemId)) return nextVault
+    seenItemIds.add(itemId)
+    return deleteVaultItem(nextVault, itemId, idGenerator)
+  }, vault)
+}
+
 export function restoreDeletedVaultItem(vault: VaultState, deletedItemId: string): VaultState {
   const entry = vault.deletedItems.find((candidate) => candidate.id === deletedItemId)
   if (!entry) return vault
@@ -1200,6 +1213,17 @@ export function deleteVaultItemInState(
   return {
     ...state,
     vault: deleteVaultItem(state.vault, itemId, idGenerator),
+  }
+}
+
+export function deleteVaultItemsInState(
+  state: AppState,
+  itemIds: string[],
+  idGenerator: IdGenerator = createReservedIdAllocator(collectVaultIds(state)),
+): AppState {
+  return {
+    ...state,
+    vault: deleteVaultItems(state.vault, itemIds, idGenerator),
   }
 }
 

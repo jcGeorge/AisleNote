@@ -29,6 +29,11 @@
   border: 1px solid var(--editor-table-selection-layer-border) !important;
 }
 
+.toastui-editor-context-menu {
+  display: none !important;
+  pointer-events: none !important;
+}
+
 .toastui-editor-popup-add-table .toastui-editor-table-description {
   color: var(--editor-table-description-text) !important;
 }
@@ -111,6 +116,24 @@
 .toastui-editor .ProseMirror th,
 .toastui-editor .ProseMirror td {
   border: 1px solid var(--editor-table-grid-border) !important;
+}
+
+.toastui-editor .ProseMirror th,
+.toastui-editor .ProseMirror td {
+  padding: 0 !important;
+}
+
+.toastui-editor .ProseMirror th > p,
+.toastui-editor .ProseMirror td > p {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  margin: 0 !important;
+  padding: 5px 14px 5px 12px !important;
+}
+
+.toastui-editor .ProseMirror th > p {
+  padding-top: 6px !important;
 }
 
 .toastui-editor-contents th,
