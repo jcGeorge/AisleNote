@@ -55,6 +55,7 @@ describe('portable app settings parsing', () => {
         settingsSection: 'hotkeys',
         dataSettingsSection: 'transfer',
         tabRenameEnterBehavior: 'goes-to-note',
+        tabColorIndicatorPlacement: 'bottom',
         noteFilter: {
           active: false,
           kind: 'tags',
@@ -81,6 +82,7 @@ describe('portable app settings parsing', () => {
           settingsSection: 'data',
           dataSettingsSection: 'storage',
           tabRenameEnterBehavior: 'goes-to-note',
+          tabColorIndicatorPlacement: 'bottom',
           noteFilter: {
             active: false,
             kind: 'tags',
@@ -267,8 +269,8 @@ describe('portable app settings parsing', () => {
     expect(syncedSettings.hotkeys.shortcuts.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')
     expect(syncedSettings.hotkeys.shortcuts.reopenClosedNoteTab).toBe('Mod+Shift+T')
     expect(syncedSettings.hotkeys.shortcuts.formatHighlight).toBe('Mod+Shift+H')
-    expect(syncedSettings.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Ctrl+ArrowLeft')
-    expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Ctrl+ArrowRight')
+    expect(syncedSettings.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Alt+ArrowLeft')
+    expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Alt+ArrowRight')
     expect(syncedSettings.hotkeys.newlineShortcuts.menuOperations).toEqual(['blockQuote', 'strikethrough'])
   })
 
@@ -278,15 +280,15 @@ describe('portable app settings parsing', () => {
         hotkeys: {
           shortcuts: {
             cycleAislePrev: 'Alt+[',
-            cycleAisleNext: 'mod+alt+arrowright',
+            cycleAisleNext: 'mod+ctrl+arrowright',
             closeCurrentNote: 'Ctrl+Alt+W',
           },
         },
       },
     })
 
-    expect(syncedSettings.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Ctrl+ArrowLeft')
-    expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Ctrl+ArrowRight')
+    expect(syncedSettings.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Alt+ArrowLeft')
+    expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Alt+ArrowRight')
     expect(syncedSettings.hotkeys.shortcuts.closeCurrentNote).toBe('Ctrl+Alt+W')
   })
 

@@ -626,8 +626,8 @@ function buildAppStateFromParts({ vaultIndex, navigationState, noteRegistry, tra
             closeCurrentNote: 'mod+w',
             formatStrikethrough: 'mod+shift+x',
             formatHighlight: 'mod+shift+h',
-            cycleAislePrev: 'mod+ctrl+arrowleft',
-            cycleAisleNext: 'mod+ctrl+arrowright',
+            cycleAislePrev: 'mod+alt+arrowleft',
+            cycleAisleNext: 'mod+alt+arrowright',
           },
           newlineShortcuts: {
             shortcuts: {
@@ -651,6 +651,7 @@ function buildAppStateFromParts({ vaultIndex, navigationState, noteRegistry, tra
       collapsedFolderIds: [],
       tableAddTargetMode: 'active-cell',
       tableDeleteTargetMode: 'active-cell',
+      tabColorIndicatorPlacement: 'bottom',
       noteFontScale: 1,
       settingsSection: 'data',
       noteCursorLocations: {},

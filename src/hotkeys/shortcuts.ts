@@ -13,8 +13,8 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
   reopenClosedNoteTab: 'Mod+Shift+T',
   formatStrikethrough: '',
   formatHighlight: 'Mod+Shift+H',
-  cycleAislePrev: 'Mod+Ctrl+ArrowLeft',
-  cycleAisleNext: 'Mod+Ctrl+ArrowRight',
+  cycleAislePrev: 'Mod+Alt+ArrowLeft',
+  cycleAisleNext: 'Mod+Alt+ArrowRight',
 }
 
 export const NEWLINE_OPERATIONS: Array<{ id: NewlineOperationId; label: string }> = [
@@ -82,8 +82,8 @@ export const DEFAULT_NEWLINE_SHORTCUT_SETTINGS: AppState['hotkeys']['newlineShor
 const NEWLINE_OPERATION_IDS = new Set<NewlineOperationId>(NEWLINE_OPERATIONS.map((operation) => operation.id))
 const SHORTCUT_MENU_ELIGIBLE_OPERATION_IDS = new Set<NewlineOperationId>(SHORTCUT_MENU_ELIGIBLE_OPERATIONS)
 const LEGACY_AISLE_SHORTCUTS: Partial<Record<ShortcutId, Set<string>>> = {
-  cycleAislePrev: new Set(['alt+[', 'mod+alt+arrowleft']),
-  cycleAisleNext: new Set(['alt+]', 'mod+alt+arrowright']),
+  cycleAislePrev: new Set(['alt+[', 'mod+ctrl+arrowleft']),
+  cycleAisleNext: new Set(['alt+]', 'mod+ctrl+arrowright']),
 }
 
 function normalizeShortcutSignature(value: string): string {

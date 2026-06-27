@@ -3,6 +3,7 @@ import type {
   CustomThemeId,
   DataSettingsSection,
   SettingsSection,
+  TabColorIndicatorPlacement,
   TableControlTargetMode,
   TableOfContentsScope,
   VisualsSettingsSection,
@@ -196,6 +197,10 @@ export function normalizeTableControlTargetMode(value: unknown): TableControlTar
 
 export function normalizeTableOfContentsScope(value: unknown): TableOfContentsScope {
   return normalizeRegisteredSyncedUiSetting('tableOfContentsScope', value)
+}
+
+export function normalizeTabColorIndicatorPlacement(value: unknown): TabColorIndicatorPlacement {
+  return normalizeRegisteredSyncedUiSetting('tabColorIndicatorPlacement', value)
 }
 
 export function normalizeScratchpadNewAisleSide(value: unknown): AppState['ui']['scratchpadNewAisleSide'] {

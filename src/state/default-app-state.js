@@ -50,8 +50,8 @@ export const DEFAULT_SHORTCUTS = {
   reopenClosedNoteTab: 'mod+shift+t',
   formatStrikethrough: 'mod+shift+x',
   formatHighlight: 'mod+shift+h',
-  cycleAislePrev: 'mod+ctrl+arrowleft',
-  cycleAisleNext: 'mod+ctrl+arrowright',
+  cycleAislePrev: 'mod+alt+arrowleft',
+  cycleAisleNext: 'mod+alt+arrowright',
 }
 
 export const DEFAULT_NEWLINE_SHORTCUT_SETTINGS = {
@@ -130,6 +130,7 @@ export function createDefaultAppState(options = {}) {
       tableAddTargetMode: 'active-cell',
       tableDeleteTargetMode: 'active-cell',
       tableOfContentsScope: 'all-aisles',
+      tabColorIndicatorPlacement: 'bottom',
       noteFontScale: 1,
       toolbarButtonScale: 1.2,
       settingsSection: 'data',

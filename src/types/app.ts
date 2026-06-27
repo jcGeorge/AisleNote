@@ -270,6 +270,7 @@ export type AboutSection = 'home' | 'tooltip-sources'
 export type FindReplaceScope = 'note' | 'folder' | 'vault'
 export type TableControlTargetMode = 'active-cell' | 'bottom-right'
 export type TableOfContentsScope = 'all-aisles' | 'focused-aisle'
+export type TabColorIndicatorPlacement = 'bottom' | 'top'
 export type NewAislePlacement = 'end' | 'left-of-focus' | 'right-of-focus'
 export type ScratchpadNewAisleSide = 'left' | 'right'
 export type TipId = 'task-undo' | 'delete-active-aisle-shortcut' | 'trash-delete-confirmation-setting' | 'aisle-width-reset'
@@ -416,6 +417,7 @@ export type AppState = {
     tableAddTargetMode: TableControlTargetMode
     tableDeleteTargetMode: TableControlTargetMode
     tableOfContentsScope?: TableOfContentsScope
+    tabColorIndicatorPlacement?: TabColorIndicatorPlacement
     noteFontScale: number
     toolbarButtonScale?: number
     settingsSection: SettingsSection

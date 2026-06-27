@@ -70,6 +70,10 @@ describe('vault settings access', () => {
     expect(vaultAppSource).toContain('buildShortcutFromKeyboardEvent')
     expect(vaultAppSource).toContain('settings-shortcut-btn')
     expect(vaultAppSource).toContain('formatShortcutLabel(shortcut, isMacPlatform)')
+    expect(vaultAppSource).toContain('const resetShortcutSettings = useCallback(() => {')
+    expect(vaultAppSource).toContain('setEditingShortcut(null)')
+    expect(vaultAppSource).toContain('shortcuts: { ...DEFAULT_SHORTCUTS }')
+    expect(vaultAppSource).toContain('Reset hotkeys')
     expect(vaultAppSource).not.toContain('placeholder={formatShortcutLabel(DEFAULT_SHORTCUTS[row.id] ?? \'\', isMacPlatform)}')
   })
 
@@ -89,6 +93,11 @@ describe('vault settings access', () => {
 
   it('uses restored vault misc and frontmatter settings controls', () => {
     expect(vaultAppSource).toContain('settings-segmented-control settings-flag-segmented-control')
+    expect(vaultAppSource).toContain('TAB_COLOR_INDICATOR_PLACEMENT_OPTIONS')
+    expect(vaultAppSource).toContain("{ id: 'bottom', label: 'Bottom' }")
+    expect(vaultAppSource).toContain("{ id: 'top', label: 'Top' }")
+    expect(vaultAppSource).toContain("'Tab Color Indicator'")
+    expect(vaultAppSource).toContain("state.ui.tabColorIndicatorPlacement ?? 'bottom'")
     expect(vaultAppSource).toContain('VaultSettingsSwitch')
     expect(vaultAppSource).toContain('frontmatterDraft')
     expect(vaultAppSource).toContain('Template changes apply only after saving.')

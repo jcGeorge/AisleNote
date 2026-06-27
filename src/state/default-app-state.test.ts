@@ -17,13 +17,14 @@ describe('default app state', () => {
     expect(scratchpadAisleBody?.markdown).toBe(DEFAULT_SCRATCHPAD_MARKDOWN)
     expect(state.ui).not.toHaveProperty('scratchpadAisleLimit')
     expect(state.ui).not.toHaveProperty('trashDeleteForRealRequiresConfirmation')
+    expect(state.ui.tabColorIndicatorPlacement).toBe('bottom')
     expect(state.hotkeys.shortcuts).toMatchObject({
       cyclePinnedNoteTabNext: 'ctrl+tab',
       cyclePinnedNoteTabPrev: 'ctrl+shift+tab',
       reopenClosedNoteTab: 'mod+shift+t',
       formatHighlight: 'mod+shift+h',
-      cycleAislePrev: 'mod+ctrl+arrowleft',
-      cycleAisleNext: 'mod+ctrl+arrowright',
+      cycleAislePrev: 'mod+alt+arrowleft',
+      cycleAisleNext: 'mod+alt+arrowright',
     })
     expect(state.hotkeys.newlineShortcuts.shortcuts).toEqual({
       controlEnter: 'operationsMenu',
@@ -72,18 +73,18 @@ describe('default app state', () => {
     expect(parsed.hotkeys.shortcuts.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')
     expect(parsed.hotkeys.shortcuts.reopenClosedNoteTab).toBe('Mod+Shift+T')
     expect(parsed.hotkeys.shortcuts.formatHighlight).toBe('Mod+Shift+H')
-    expect(parsed.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Ctrl+ArrowLeft')
-    expect(parsed.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Ctrl+ArrowRight')
+    expect(parsed.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Alt+ArrowLeft')
+    expect(parsed.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Alt+ArrowRight')
   })
 
   it('migrates persisted legacy aisle default shortcuts', () => {
     const state = createDefaultAppState()
     state.hotkeys.shortcuts.cycleAislePrev = 'Alt+['
-    state.hotkeys.shortcuts.cycleAisleNext = 'mod+alt+arrowright'
+    state.hotkeys.shortcuts.cycleAisleNext = 'mod+ctrl+arrowright'
 
     const parsed = parseSavedState(JSON.stringify(state))
 
-    expect(parsed.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Ctrl+ArrowLeft')
-    expect(parsed.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Ctrl+ArrowRight')
+    expect(parsed.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Alt+ArrowLeft')
+    expect(parsed.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Alt+ArrowRight')
   })
 })

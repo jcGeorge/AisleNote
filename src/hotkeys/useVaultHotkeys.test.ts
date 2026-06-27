@@ -96,13 +96,13 @@ describe('vault hotkey intents', () => {
       viewMode: 'main',
     })).toBe('toggleNotesFilter')
     expect(getVaultHotkeyIntent({
-      event: keyboardEvent('ArrowLeft', { code: 'ArrowLeft', ctrlKey: true, metaKey: true }),
+      event: keyboardEvent('ArrowLeft', { code: 'ArrowLeft', metaKey: true, altKey: true }),
       hotkeys,
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('cycleAislePrev')
     expect(getVaultHotkeyIntent({
-      event: keyboardEvent('ArrowRight', { code: 'ArrowRight', ctrlKey: true, metaKey: true }),
+      event: keyboardEvent('ArrowRight', { code: 'ArrowRight', metaKey: true, altKey: true }),
       hotkeys,
       isMacPlatform: true,
       viewMode: 'main',
@@ -165,7 +165,7 @@ describe('vault hotkey intents', () => {
       viewMode: 'settings',
     })).toBe('toggleNotesScratchpad')
     expect(getVaultHotkeyIntent({
-      event: keyboardEvent('ArrowLeft', { code: 'ArrowLeft', ctrlKey: true, metaKey: true }),
+      event: keyboardEvent('ArrowLeft', { code: 'ArrowLeft', metaKey: true, altKey: true }),
       hotkeys: defaultHotkeys,
       isMacPlatform: true,
       viewMode: 'settings',

@@ -20,6 +20,7 @@ export const SYNCED_UI_SIMPLE_SETTING_DEFINITIONS = Object.freeze([
   { key: 'tableAddTargetMode', kind: 'enum', defaultValue: 'bottom-right', values: ['bottom-right', 'active-cell'] },
   { key: 'tableDeleteTargetMode', kind: 'enum', defaultValue: 'bottom-right', values: ['bottom-right', 'active-cell'] },
   { key: 'tableOfContentsScope', kind: 'enum', defaultValue: 'all-aisles', values: ['all-aisles', 'focused-aisle'] },
+  { key: 'tabColorIndicatorPlacement', kind: 'enum', defaultValue: 'bottom', values: ['bottom', 'top'] },
   { key: 'toolbarEditorShowNames', kind: 'boolean', defaultValue: false },
 ])
 

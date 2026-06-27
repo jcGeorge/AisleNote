@@ -1278,15 +1278,19 @@
   width: 100%;
   border-top: 1px solid var(--app-border);
   background: var(--app-panel);
-  font-size: var(--note-tab-font-size, 0.95rem);
+  font-size: var(--note-tab-font-size, 1rem);
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
 }
 
 .note-tab {
+  --note-tab-active-line-size: 4px;
+  --note-tab-active-line-y: calc(-1 * var(--note-tab-active-line-size));
+  --note-tab-drop-line-size: 3px;
+  --note-tab-hover-bg: color-mix(in srgb, var(--app-text) 9%, var(--editor-bg));
   position: relative;
-  flex: 1 1 9rem;
+  flex: 0 1 max-content;
   min-width: 2.8rem;
   max-width: 13rem;
   display: grid;
@@ -1298,14 +1302,19 @@
   overflow: hidden;
 }
 
+.note-aisles-shell.is-tab-indicator-top .note-tab {
+  --note-tab-active-line-y: var(--note-tab-active-line-size);
+}
+
 .note-tab::before,
 .note-tab::after {
   content: '';
   position: absolute;
-  top: 0.25rem;
-  bottom: 0.25rem;
-  width: 2px;
-  border-radius: 999px;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: var(--note-tab-drop-line-size);
+  border-radius: 0;
   background: var(--app-primary);
   opacity: 0;
   pointer-events: none;
@@ -1325,9 +1334,26 @@
 }
 
 .note-tab.is-active {
-  background: var(--editor-bg);
   color: var(--app-text);
-  box-shadow: inset 0 -2px 0 var(--app-primary);
+  box-shadow: inset 0 var(--note-tab-active-line-y) 0 var(--app-primary);
+}
+
+.note-tab.is-active > :where(.note-tab-main, .note-tab-close) {
+  box-shadow: inset 0 var(--note-tab-active-line-y) 0 var(--app-primary);
+}
+
+.note-tab-main:focus-visible,
+.note-tab-close:focus-visible {
+  background: color-mix(in srgb, var(--app-text) 8%, transparent);
+}
+
+.note-tab:hover {
+  background: var(--note-tab-hover-bg);
+  color: var(--app-text);
+}
+
+.note-tab:hover > :where(.note-tab-main, .note-tab-close) {
+  background: var(--note-tab-hover-bg);
 }
 
 .note-tab.is-dragging {
@@ -1357,13 +1383,6 @@
 
 .note-tab-main.is-renaming {
   cursor: text;
-}
-
-.note-tab-main:hover,
-.note-tab-main:focus-visible,
-.note-tab-close:hover,
-.note-tab-close:focus-visible {
-  background: color-mix(in srgb, var(--app-text) 8%, transparent);
 }
 
 .note-tab-label {

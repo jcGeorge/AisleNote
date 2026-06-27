@@ -20,8 +20,8 @@ export const APP_COMMANDS: AppCommandDefinition[] = [
   { id: 'reopenClosedNoteTab', label: 'reopen closed note tab', defaultShortcut: 'Mod+Shift+T' },
   { id: 'formatStrikethrough', label: 'strikethrough', defaultShortcut: '' },
   { id: 'formatHighlight', label: 'highlight', defaultShortcut: 'Mod+Shift+H' },
-  { id: 'cycleAislePrev', label: 'previous aisle', defaultShortcut: 'Mod+Ctrl+ArrowLeft' },
-  { id: 'cycleAisleNext', label: 'next aisle', defaultShortcut: 'Mod+Ctrl+ArrowRight' },
+  { id: 'cycleAislePrev', label: 'previous aisle', defaultShortcut: 'Mod+Alt+ArrowLeft' },
+  { id: 'cycleAisleNext', label: 'next aisle', defaultShortcut: 'Mod+Alt+ArrowRight' },
 ]
 
 export const APP_COMMAND_LABELS = APP_COMMANDS.reduce<Record<AppCommandId, string>>(

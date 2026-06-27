@@ -156,7 +156,7 @@ describe('VaultApp sidebar resize handle', () => {
     expect(appCss).toContain('--vault-topbar-height: calc(var(--vault-topbar-content-height) + 1px);')
     expect(appCss).toContain('--vault-sidebar-footer-height: calc(')
     expect(appCss).toContain('--note-tab-strip-height: var(--vault-sidebar-footer-height);')
-    expect(appCss).toContain('--note-tab-font-size: 0.95rem;')
+    expect(appCss).toContain('--note-tab-font-size: 1rem;')
     expect(appCss).toContain('padding: var(--vault-sidebar-footer-block-padding) var(--vault-sidebar-control-inset-inline);')
     expect(appCss).toContain('--resize-handle-width: calc(1.4rem + 2px);')
     expect(appCss).toContain('--resize-handle-height: calc(4.4rem + 4px);')
@@ -265,6 +265,7 @@ describe('VaultApp large vault performance wiring', () => {
 
   it('memoizes and virtualizes the sidebar tree over the large-vault threshold', () => {
     expect(source).toContain('const VAULT_TREE_VIRTUALIZATION_THRESHOLD = 300')
+    expect(source).toContain('const VAULT_TREE_VIRTUAL_ROW_HEIGHT = 28')
     expect(source).toContain('function flattenVisibleVaultTreeRows(')
     expect(source).toContain('const MemoizedTreeItemRow = React.memo(TreeItemRow)')
     expect(source).toContain('const vaultTreeFlatRows = useMemo(')
@@ -274,6 +275,7 @@ describe('VaultApp large vault performance wiring', () => {
     expect(source).toContain('renderChildren={false}')
     expect(appCss).toContain('.vault-tree-virtual-spacer')
     expect(appCss).toContain('.vault-tree-virtual-row')
+    expect(appCss).toContain('min-height: 28px;')
   })
 
   it('uses a local draft palette before debounced global theme commits', () => {

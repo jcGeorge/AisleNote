@@ -21,7 +21,7 @@ import { RENDERED_MARKDOWN_SURFACE_CLASS } from '../../editor/rendered-markdown-
 import type { TableOfContentsLinkItem } from '../../editor/table-of-contents'
 import { recordDiagnosticEvent } from '../../diagnostics/diagnostic-logger'
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
-import type { AppState, NoteLocation, ResolvedNoteAisle } from '../../types/app'
+import type { AppState, NoteLocation, ResolvedNoteAisle, TabColorIndicatorPlacement } from '../../types/app'
 import { ToolbarToolIcon } from '../editor/ToolbarToolIcon'
 import { getAislePreviewSegments } from './aisle-markdown-preview-segments'
 import { NotePreviewContent } from './NotePreviewContent'
@@ -194,6 +194,7 @@ type NoteWorkspaceProps = {
   onSelectEditableAsset?: (target: Element) => void
   onRegisterAislePaneRoot: (aisleId: string, node: HTMLElement | null) => void
   onRegisterAisleEditorRoot: (editorKey: string, node: HTMLElement | null) => void
+  tabColorIndicatorPlacement?: TabColorIndicatorPlacement
   noteTabs?: NoteTabStripItem[]
   renamingNoteTabId?: string
   noteTabRenameDraft?: string
@@ -403,6 +404,7 @@ export function NoteWorkspace({
   onRegisterAislePaneRoot,
   onRegisterAisleEditorRoot,
   failedEditorMountAisleIds,
+  tabColorIndicatorPlacement = 'bottom',
   noteTabs = [],
   renamingNoteTabId = '',
   noteTabRenameDraft = '',
@@ -543,7 +545,7 @@ export function NoteWorkspace({
   return (
     <section
       ref={onRootChange}
-      className={`note-aisles-shell ${isSplitWorkspace ? 'is-split' : 'is-single'}`}
+      className={`note-aisles-shell ${isSplitWorkspace ? 'is-split' : 'is-single'} is-tab-indicator-${tabColorIndicatorPlacement}`}
     >
       {toolbar}
       {headingPopover}

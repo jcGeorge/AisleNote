@@ -86,6 +86,7 @@ function renderWorkspace(
     failedEditorMountAisleIds?: Set<string>
     appState?: AppState | null
     onOpenNoteReference?: (target: NoteLocation) => void
+    tabColorIndicatorPlacement?: 'bottom' | 'top'
     noteTabs?: Array<{ noteId: string; title: string; status: 'temporary' | 'retained'; active: boolean }>
     renamingNoteTabId?: string
     noteTabRenameDraft?: string
@@ -119,6 +120,7 @@ function renderWorkspace(
       onRegisterAisleEditorRoot={() => undefined}
       appState={options.appState}
       onOpenNoteReference={options.onOpenNoteReference}
+      tabColorIndicatorPlacement={options.tabColorIndicatorPlacement}
       noteTabs={options.noteTabs}
       renamingNoteTabId={options.renamingNoteTabId}
       noteTabRenameDraft={options.noteTabRenameDraft}
@@ -443,12 +445,34 @@ describe('NoteWorkspace aisle mounting', () => {
       editorShellCss.indexOf('.note-tab-strip {'),
       editorShellCss.indexOf('.note-tab {'),
     )
+    const tabRule = editorShellCss.slice(
+      editorShellCss.indexOf('.note-tab {'),
+      editorShellCss.indexOf('.note-tab::before,'),
+    )
+    const tabDropIndicatorRule = editorShellCss.slice(
+      editorShellCss.indexOf('.note-tab::before,'),
+      editorShellCss.indexOf('.note-tab::before {'),
+    )
     const tabLabelRule = editorShellCss.slice(
       editorShellCss.indexOf('.note-tab-label {'),
       editorShellCss.indexOf('.note-tab.is-temporary .note-tab-label'),
     )
+    const activeTabBaseRule = editorShellCss.slice(
+      editorShellCss.indexOf('.note-tab.is-active {'),
+      editorShellCss.indexOf('.note-tab.is-active > :where(.note-tab-main, .note-tab-close)'),
+    )
+    const activeTabControlRule = editorShellCss.slice(
+      editorShellCss.indexOf('.note-tab.is-active > :where(.note-tab-main, .note-tab-close)'),
+      editorShellCss.indexOf('.note-tab-main:focus-visible,'),
+    )
+    const activeTabRules = editorShellCss.slice(
+      editorShellCss.indexOf('.note-tab.is-active {'),
+      editorShellCss.indexOf('.note-tab.is-dragging {'),
+    )
+    const tabHoverRuleIndex = editorShellCss.indexOf('.note-tab:hover {')
 
     expect(html.indexOf('note-aisle-horizontal-scrollbar')).toBeLessThan(html.indexOf('note-tab-strip'))
+    expect(html).toContain('note-aisles-shell is-split is-tab-indicator-bottom')
     expect(html).toContain('aria-label="Open notes"')
     expect(html).toContain('note-tab is-active is-temporary')
     expect(html).toContain('note-tab is-retained')
@@ -456,9 +480,29 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).toContain('data-app-icon="x"')
     expect(tabStripRule).toContain('flex: 0 0 var(--note-tab-strip-height, 45px);')
     expect(tabStripRule).toContain('min-height: var(--note-tab-strip-height, 45px);')
-    expect(tabStripRule).toContain('font-size: var(--note-tab-font-size, 0.95rem);')
+    expect(tabStripRule).toContain('font-size: var(--note-tab-font-size, 1rem);')
     expect(tabLabelRule).toContain('font-size: 1em;')
     expect(tabLabelRule).not.toContain('var(--ui-font-small)')
+    expect(tabRule).toContain('flex: 0 1 max-content;')
+    expect(tabRule).toContain('--note-tab-active-line-size: 4px;')
+    expect(tabRule).toContain('--note-tab-active-line-y: calc(-1 * var(--note-tab-active-line-size));')
+    expect(tabRule).toContain('--note-tab-drop-line-size: 3px;')
+    expect(editorShellCss).toContain('.note-aisles-shell.is-tab-indicator-top .note-tab')
+    expect(editorShellCss).toContain('--note-tab-active-line-y: var(--note-tab-active-line-size);')
+    expect(editorShellCss).toContain('--note-tab-hover-bg: color-mix(in srgb, var(--app-text) 9%, var(--editor-bg));')
+    expect(editorShellCss).not.toContain('--note-tab-active-bg')
+    expect(tabDropIndicatorRule).toContain('top: 0;')
+    expect(tabDropIndicatorRule).toContain('bottom: 0;')
+    expect(tabDropIndicatorRule).toContain('z-index: 2;')
+    expect(tabDropIndicatorRule).toContain('width: var(--note-tab-drop-line-size);')
+    expect(activeTabBaseRule).toContain('box-shadow: inset 0 var(--note-tab-active-line-y) 0 var(--app-primary);')
+    expect(activeTabBaseRule).not.toContain('background:')
+    expect(activeTabControlRule).toContain('box-shadow: inset 0 var(--note-tab-active-line-y) 0 var(--app-primary);')
+    expect(activeTabControlRule).not.toContain('background:')
+    expect(activeTabRules).toContain('.note-tab:hover > :where(.note-tab-main, .note-tab-close)')
+    expect(activeTabRules).toContain('background: var(--note-tab-hover-bg);')
+    expect(tabHoverRuleIndex).toBeGreaterThan(editorShellCss.indexOf('.note-tab.is-active > :where(.note-tab-main, .note-tab-close)'))
+    expect(editorShellCss).not.toContain('.note-tab-main:hover')
   })
 
   it('renders an inline rename input for tab-row initiated note renames', () => {
@@ -484,8 +528,20 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(renameInputRule).not.toContain('var(--ui-font-small)')
   })
 
+  it('marks the workspace when the tab color indicator is configured for the top edge', () => {
+    const html = renderWorkspace(new Set(['a']), {
+      tabColorIndicatorPlacement: 'top',
+      noteTabs: [
+        { noteId: 'note-parent', title: 'Parent', status: 'temporary', active: true },
+      ],
+    })
+
+    expect(html).toContain('note-aisles-shell is-split is-tab-indicator-top')
+  })
+
   it('wires vault tabs through the vault app while hiding them for scratchpad', () => {
     expect(vaultAppSource).toContain('noteTabs={activeModelIsScratchpad ? [] : noteTabItems}')
+    expect(vaultAppSource).toContain("tabColorIndicatorPlacement={state.ui.tabColorIndicatorPlacement ?? 'bottom'}")
     expect(vaultAppSource).toContain("renamingNoteTabId={renamingItemSurface === 'tab' ? renamingTreeItemId : ''}")
     expect(vaultAppSource).toContain("applyVaultNavigationLocation({ noteId, aisleId: '' }, { tabDisposition: 'retained' })")
     expect(noteWorkspaceSource).toContain('<NoteTabStrip')

@@ -46,8 +46,8 @@ const DEFAULT_COMMAND_SHORTCUTS = {
   reopenClosedNoteTab: 'Mod+Shift+T',
   formatStrikethrough: '',
   formatHighlight: 'Mod+Shift+H',
-  cycleAislePrev: 'Mod+Ctrl+ArrowLeft',
-  cycleAisleNext: 'Mod+Ctrl+ArrowRight',
+  cycleAislePrev: 'Mod+Alt+ArrowLeft',
+  cycleAisleNext: 'Mod+Alt+ArrowRight',
 }
 
 const DEFAULT_NEWLINE_SHORTCUT_SETTINGS = {
@@ -210,8 +210,8 @@ function normalizeShortcutValue(raw, fallback) {
 }
 
 const LEGACY_AISLE_SHORTCUTS = {
-  cycleAislePrev: new Set(['alt+[', 'mod+alt+arrowleft']),
-  cycleAisleNext: new Set(['alt+]', 'mod+alt+arrowright']),
+  cycleAislePrev: new Set(['alt+[', 'mod+ctrl+arrowleft']),
+  cycleAisleNext: new Set(['alt+]', 'mod+ctrl+arrowright']),
 }
 
 function normalizeShortcutSignature(value) {

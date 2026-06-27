@@ -26,6 +26,7 @@ describe('synced UI settings registry', () => {
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tableOfContentsScope: 'all-aisles',
+      tabColorIndicatorPlacement: 'bottom',
       toolbarEditorShowNames: false,
     })
     expect(DEFAULT_SIMPLE_SYNCED_UI_SETTINGS).not.toHaveProperty('newAislePlacement')
@@ -41,6 +42,7 @@ describe('synced UI settings registry', () => {
       tableAddTargetMode: 'active-cell',
       tableDeleteTargetMode: 'not-real',
       tableOfContentsScope: 'focused-aisle',
+      tabColorIndicatorPlacement: 'top',
       tabRenameEnterBehavior: 'creates-another-tab',
       newAislePlacement: 'left-of-focus',
       removeNoteReferencesOnTrash: 'false',
@@ -56,6 +58,7 @@ describe('synced UI settings registry', () => {
       tableAddTargetMode: 'active-cell',
       tableDeleteTargetMode: 'bottom-right',
       tableOfContentsScope: 'focused-aisle',
+      tabColorIndicatorPlacement: 'top',
       tabRenameEnterBehavior: 'creates-another-tab',
       removeNoteReferencesOnTrash: true,
       trashDeleteForRealRequiresConfirmation: false,
@@ -68,6 +71,7 @@ describe('synced UI settings registry', () => {
     expect(normalizeRegisteredSyncedUiSetting('lastLinkInsertMode', 'note')).toBe('note-link')
     expect(normalizeRegisteredSyncedUiSetting('lastNoteCopyMode', 'linked')).toBe('synced')
     expect(normalizeRegisteredSyncedUiSetting('tabRenameEnterBehavior', 'bad')).toBe('goes-to-note')
+    expect(normalizeRegisteredSyncedUiSetting('tabColorIndicatorPlacement', 'bad')).toBe('bottom')
     expect(normalizeRegisteredSyncedUiSetting('trashDeleteForRealRequiresConfirmation', 'bad')).toBe(true)
   })
 

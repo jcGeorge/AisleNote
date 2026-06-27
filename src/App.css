@@ -42,7 +42,7 @@
     + var(--vault-sidebar-footer-border-size)
   );
   --note-tab-strip-height: var(--vault-sidebar-footer-height);
-  --note-tab-font-size: 0.95rem;
+  --note-tab-font-size: 1rem;
   --resize-handle-width: calc(1.4rem + 2px);
   --resize-handle-height: calc(4.4rem + 4px);
   --resize-handle-half-height: calc(2.2rem + 2px);
@@ -1014,8 +1014,8 @@
 
 .vault-tree-row {
   position: relative;
-  min-height: 30px;
-  margin: 1px 0;
+  min-height: 28px;
+  margin: 0;
 }
 
 .vault-tree-virtual-spacer {
@@ -1028,7 +1028,7 @@
   top: 0;
   right: 0;
   left: 0;
-  min-height: 32px;
+  min-height: 28px;
 }
 
 .vault-tree-row.is-dragging {
@@ -1067,7 +1067,8 @@
   display: flex;
   align-items: center;
   min-width: 0;
-  min-height: 30px;
+  min-height: 28px;
+  box-sizing: border-box;
   border: 1px solid transparent;
   border-radius: 6px;
   background: var(--vault-tree-row-bg, transparent);
@@ -1100,7 +1101,7 @@
   --vault-tree-row-bg: transparent;
   width: 100%;
   gap: 7px;
-  padding: 4px 8px 4px calc(var(--tree-depth, 0) * 12px + 5px);
+  padding: 2px 8px 2px calc(var(--tree-depth, 0) * 12px + 5px);
   overflow: hidden;
 }
 
@@ -1119,7 +1120,7 @@
   justify-content: center;
   width: 16px;
   min-width: 16px;
-  height: 22px;
+  height: 20px;
   border-radius: 4px;
   background:
     linear-gradient(var(--vault-tree-row-bg), var(--vault-tree-row-bg)),

@@ -41,6 +41,7 @@ import type {
   ResolvedNoteAisle,
   SettingsSection,
   ShortcutId,
+  TabColorIndicatorPlacement,
   TableControlTargetMode,
   TableOfContentsScope,
   TabSortMode,
@@ -358,7 +359,7 @@ const SIDEBAR_MIN_WIDTH = 212
 const SIDEBAR_MAX_WIDTH = 520
 const VAULT_FOCUS_BOUNDARY_FLUSH_DELAY_MS = 60
 const VAULT_TREE_VIRTUALIZATION_THRESHOLD = 300
-const VAULT_TREE_VIRTUAL_ROW_HEIGHT = 32
+const VAULT_TREE_VIRTUAL_ROW_HEIGHT = 28
 const VAULT_TREE_VIRTUAL_OVERSCAN = 12
 
 const SIDEBAR_SEARCH_HISTORY_STORAGE_KEY = 'aislenote:sidebar-search-history:v1'
@@ -517,6 +518,10 @@ const TABLE_TARGET_OPTIONS: Array<{ id: TableControlTargetMode; label: string }>
 const TABLE_OF_CONTENTS_SCOPE_OPTIONS: Array<{ id: TableOfContentsScope; label: string }> = [
   { id: 'all-aisles', label: 'All aisles' },
   { id: 'focused-aisle', label: 'Current aisle' },
+]
+const TAB_COLOR_INDICATOR_PLACEMENT_OPTIONS: Array<{ id: TabColorIndicatorPlacement; label: string }> = [
+  { id: 'bottom', label: 'Bottom' },
+  { id: 'top', label: 'Top' },
 ]
 
 const VAULT_TREE_SORT_OPTIONS: Array<{ id: TabSortMode; label: string }> = [
@@ -3856,6 +3861,20 @@ export function VaultApp() {
     },
     [mutateState],
   )
+
+  const resetShortcutSettings = useCallback(() => {
+    setEditingShortcut(null)
+    mutateState((previous) => {
+      const hotkeys = normalizeHotkeySettings(previous.hotkeys)
+      return {
+        ...previous,
+        hotkeys: {
+          ...hotkeys,
+          shortcuts: { ...DEFAULT_SHORTCUTS },
+        },
+      }
+    })
+  }, [mutateState])
 
   const updateNewlineShortcutSetting = useCallback(
     (shortcutId: NewlineShortcutId, operation: NewlineOperationId) => {
@@ -7523,6 +7542,11 @@ export function VaultApp() {
           )
         })}
       </div>
+      <div className="vault-settings-actions">
+        <button type="button" className="vault-settings-action" onClick={resetShortcutSettings}>
+          Reset hotkeys
+        </button>
+      </div>
       <p className="vault-settings-help">Select a hotkey to enter a new combination, escape to cancel.</p>
     </section>
   )
@@ -8255,6 +8279,19 @@ export function VaultApp() {
                 },
               })),
           )}
+          {renderSegmentedSetting(
+            'Tab Color Indicator',
+            state.ui.tabColorIndicatorPlacement ?? 'bottom',
+            TAB_COLOR_INDICATOR_PLACEMENT_OPTIONS,
+            (tabColorIndicatorPlacement) =>
+              mutateState((previous) => ({
+                ...previous,
+                ui: {
+                  ...previous.ui,
+                  tabColorIndicatorPlacement,
+                },
+              })),
+          )}
         </div>
       </section>
     )
@@ -8808,6 +8845,7 @@ export function VaultApp() {
                 aisleWidths={activeAisleWidths}
                 onRegisterAislePaneRoot={vaultEditors.registerAislePaneRoot}
                 onRegisterAisleEditorRoot={vaultEditors.registerAisleEditorRoot}
+                tabColorIndicatorPlacement={state.ui.tabColorIndicatorPlacement ?? 'bottom'}
                 noteTabs={activeModelIsScratchpad ? [] : noteTabItems}
                 renamingNoteTabId={renamingItemSurface === 'tab' ? renamingTreeItemId : ''}
                 noteTabRenameDraft={treeRenameDraft}
