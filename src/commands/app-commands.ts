@@ -10,19 +10,18 @@ export type AppCommandDefinition = {
 
 export const APP_COMMANDS: AppCommandDefinition[] = [
   { id: 'toggleNotesTrash', label: 'toggle notes / trash', defaultShortcut: 'Mod+T' },
-  { id: 'toggleNotesScratchpad', label: 'toggle notes / scratchpad', defaultShortcut: 'Mod+/' },
+  { id: 'toggleNotesScratchpad', label: 'toggle notes / scratchpad', defaultShortcut: 'Mod+S' },
   { id: 'toggleNotesFilter', label: 'toggle notes / filter', defaultShortcut: '' },
-  { id: 'openDomains', label: 'show/hide domain', defaultShortcut: 'Mod+D' },
-  { id: 'openSpaces', label: 'show/hide space', defaultShortcut: 'Mod+S' },
-  { id: 'newTab', label: 'new parent tab', defaultShortcut: 'Mod+Shift+N' },
-  { id: 'newSubTab', label: 'new sub tab', defaultShortcut: 'Mod+N' },
+  { id: 'newNote', label: 'new note', defaultShortcut: 'Mod+N' },
+  { id: 'newFolder', label: 'new folder', defaultShortcut: 'Mod+Shift+N' },
+  { id: 'closeCurrentNote', label: 'close current note', defaultShortcut: 'Mod+W' },
+  { id: 'cyclePinnedNoteTabNext', label: 'next pinned note tab', defaultShortcut: 'Ctrl+Tab' },
+  { id: 'cyclePinnedNoteTabPrev', label: 'previous pinned note tab', defaultShortcut: 'Ctrl+Shift+Tab' },
+  { id: 'reopenClosedNoteTab', label: 'reopen closed note tab', defaultShortcut: 'Mod+Shift+T' },
   { id: 'formatStrikethrough', label: 'strikethrough', defaultShortcut: '' },
-  { id: 'cycleParentTabNext', label: 'next parent tab', defaultShortcut: '' },
-  { id: 'cycleParentTabPrev', label: 'previous parent tab', defaultShortcut: '' },
-  { id: 'cycleSubTabNext', label: 'next sub tab', defaultShortcut: 'Ctrl+Tab' },
-  { id: 'cycleSubTabPrev', label: 'previous sub tab', defaultShortcut: 'Ctrl+Shift+Tab' },
-  { id: 'cycleAislePrev', label: 'previous aisle', defaultShortcut: 'Alt+[' },
-  { id: 'cycleAisleNext', label: 'next aisle', defaultShortcut: 'Alt+]' },
+  { id: 'formatHighlight', label: 'highlight', defaultShortcut: 'Mod+Shift+H' },
+  { id: 'cycleAislePrev', label: 'previous aisle', defaultShortcut: 'Mod+Alt+ArrowLeft' },
+  { id: 'cycleAisleNext', label: 'next aisle', defaultShortcut: 'Mod+Alt+ArrowRight' },
 ]
 
 export const APP_COMMAND_LABELS = APP_COMMANDS.reduce<Record<AppCommandId, string>>(

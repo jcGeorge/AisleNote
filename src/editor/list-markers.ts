@@ -1,7 +1,7 @@
 export type BulletListMarker = 'bullet' | 'dash'
 
-export const DASH_LIST_CLASS_NAME = 'tabs-dash-list'
-export const DASH_LIST_MARKER_ATTR = 'data-tabs-list-marker'
+export const DASH_LIST_CLASS_NAME = 'aislenote-dash-list'
+export const DASH_LIST_MARKER_ATTR = 'data-aislenote-list-marker'
 export const DASH_LIST_MARKER_VALUE = 'dash'
 
 type BulletListNodeAttrs = {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_CUSTOM_THEME_PALETTE } from './defaults'
+import { DEFAULT_CUSTOM_THEME_PALETTE } from '../theme/vault-themes'
 import { parseThemeSettingsImport, serializeThemeSettings } from './theme-transfer'
 
 describe('theme transfer helpers', () => {
@@ -19,7 +19,7 @@ describe('theme transfer helpers', () => {
   it('rejects wrapped theme json', () => {
     const result = parseThemeSettingsImport(
       JSON.stringify({
-        type: 'tabs.theme-settings',
+        type: 'aislenote.theme-settings',
         version: 1,
         theme: 'custom1',
         palette: {
@@ -36,10 +36,14 @@ describe('theme transfer helpers', () => {
   it('imports a partial plain palette object into the current palette', () => {
     const result = parseThemeSettingsImport(JSON.stringify({
       primary: 'abc',
+      button: '#123456',
+      surface: '#111111',
+      surfaceRaised: '#222222',
       secondary: '#112233',
       tagBg: '#ddeeff',
       tooltipPrimary: '#ccddee',
       tooltipSecondary: '#667788',
+      sidebarAccent: '#123456',
     }), DEFAULT_CUSTOM_THEME_PALETTE)
 
     expect(result).toEqual({
@@ -47,21 +51,32 @@ describe('theme transfer helpers', () => {
       palette: {
         ...DEFAULT_CUSTOM_THEME_PALETTE,
         primary: '#aabbcc',
-        secondary: '#112233',
+        button: '#123456',
         tagBg: '#ddeeff',
-        tooltipPrimary: '#ccddee',
-        tooltipSecondary: '#667788',
       },
-      importedSlots: ['primary', 'secondary', 'tagBg', 'tooltipPrimary', 'tooltipSecondary'],
+      importedSlots: ['button', 'primary', 'tagBg'],
     })
+  })
+
+  it('rejects imports containing only removed palette slots', () => {
+    const result = parseThemeSettingsImport(JSON.stringify({
+      surface: '#111111',
+      surfaceRaised: '#222222',
+      secondary: '#112233',
+      tooltipPrimary: '#ccddee',
+      tooltipSecondary: '#667788',
+      sidebarAccent: '#123456',
+    }), DEFAULT_CUSTOM_THEME_PALETTE)
+
+    expect(result).toEqual({ ok: false, error: 'No theme colors found.' })
   })
 
   it('rejects a palette nested in app state ui settings', () => {
     const result = parseThemeSettingsImport(JSON.stringify({
-      theme: 'dawn',
+      theme: 'cheese',
       ui: {
         themePalettes: {
-          dawn: {
+          cheese: {
             ...DEFAULT_CUSTOM_THEME_PALETTE,
             primary: '#654321',
           },

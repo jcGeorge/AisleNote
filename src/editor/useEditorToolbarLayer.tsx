@@ -244,7 +244,10 @@ export function useEditorToolbarLayer({
         toolbarPopoverPosition={toolbarPopoverPosition}
         onExecuteToolbarCommand={executeToolbarCommand}
         onOpenCopyModal={openCopyModalFromCopyMenu}
-        onOpenDeduplicateModal={openDeduplicateModalFromCopyMenu}
+        syncedItemKind={activeNoteDuplicateCount > 1 ? 'note' : null}
+        onFilterSyncedItem={openDeduplicateModalFromCopyMenu}
+        onQuickDecoupleSyncedItem={openDeduplicateModalFromCopyMenu}
+        onShowSyncedItems={openDeduplicateModalFromCopyMenu}
       />
     ) : null,
   }

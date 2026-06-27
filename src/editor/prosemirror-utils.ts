@@ -3,10 +3,9 @@ import { redo, undo } from 'prosemirror-history'
 import { Selection, TextSelection } from 'prosemirror-state'
 import {
   buildMarkdownNoteReferenceToken,
-  INTERNAL_NOTE_LINK_MARKDOWN_RE,
-  type InternalNoteLinkHit,
-  type ResolvedMarkdownNoteReference,
-} from '../notes/note-references'
+  MARKDOWN_NOTE_REFERENCE_RE,
+} from '../markdown/note-context-tokens.js'
+import type { NoteLocation, NoteNavigationTarget } from '../types/app'
 import {
   getLogicalEndpointForPosition,
   resolveLogicalEndpointPosition,
@@ -18,6 +17,28 @@ import {
 } from '../tags/tag-autocomplete'
 
 export const CODE_BLOCK_INDENT_TEXT = '    '
+const INTERNAL_NOTE_LINK_MARKDOWN_RE = MARKDOWN_NOTE_REFERENCE_RE
+
+type ResolvedMarkdownNoteReference = {
+  label: string
+  target: NoteNavigationTarget
+  payload?: {
+    aisleIds?: string[]
+  }
+}
+
+export type InternalNoteLinkHit = {
+  label: string
+  href: string
+  target: NoteLocation
+  aisleIds?: string[]
+  heading?: NoteNavigationTarget['heading']
+  startAt?: NoteNavigationTarget['startAt']
+  from: number
+  to: number
+  occurrence: number
+  range?: { from: number; to: number; href: string } | null
+}
 
 export type CommandCapableEditor = Editor & {
   exec: (name: string, payload?: Record<string, unknown>) => void
@@ -275,6 +296,49 @@ export function restoreEditorCursorSelection(
   return true
 }
 
+export function placeEditorCaretAtClientPoint(
+  editor: Editor | null,
+  point: { clientX: number; clientY: number },
+  options: { focus?: boolean } = {},
+): boolean {
+  const view = getWysiwygView(editor)
+  if (!editor || !view?.state?.doc || typeof view.posAtCoords !== 'function' || typeof view.dispatch !== 'function') {
+    return false
+  }
+
+  let targetPosition: number | null
+  try {
+    const result = view.posAtCoords({ left: point.clientX, top: point.clientY })
+    targetPosition = typeof result?.pos === 'number' ? result.pos : null
+  } catch {
+    return false
+  }
+  if (targetPosition === null) return false
+
+  const doc = view.state.doc
+  const docSize = typeof doc.content?.size === 'number' ? doc.content.size : 0
+  const position = clampEditorPosition(targetPosition, docSize)
+
+  try {
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(doc, position, position)).scrollIntoView())
+  } catch {
+    try {
+      view.dispatch(view.state.tr.setSelection(Selection.near(doc.resolve(position), 1)).scrollIntoView())
+    } catch {
+      return false
+    }
+  }
+
+  if (options.focus !== false) {
+    try {
+      editor.focus()
+    } catch {
+      return false
+    }
+  }
+  return true
+}
+
 export function collectProseMirrorTextPositions(doc: any): ProseMirrorTextPositionMap {
   let text = ''
   const positions: number[] = []
@@ -325,10 +389,7 @@ export function getInternalNoteLinkHitAtDocPosition(
         label: reference.label,
         href: match[0],
         target: {
-          domainId: reference.target.domainId,
-          spaceId: reference.target.spaceId,
-          tabId: reference.target.tabId,
-          subTabId: reference.target.subTabId,
+          noteId: reference.target.noteId,
         },
         aisleIds: reference.payload?.aisleIds ? [...reference.payload.aisleIds] : undefined,
         heading: reference.target.heading,
@@ -376,6 +437,7 @@ export function getNoteMentionQueryAtSelection(view: any | null): NoteMentionQue
   const parent = selection.$from?.parent
   const parentOffset = selection.$from?.parentOffset
   if (!parent?.isTextblock || typeof parentOffset !== 'number') return null
+  if (isCodeNodeType(parent) || isCursorInInlineCode(selection.$from, parentOffset)) return null
 
   const textBeforeCursor = String(parent.textBetween?.(0, parentOffset, '\n', '\n') ?? '')
   const match = /(^|\s)@([^@]*)$/.exec(textBeforeCursor)

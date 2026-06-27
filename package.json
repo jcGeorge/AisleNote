@@ -1,5 +1,5 @@
 {
-  "name": "tabs",
+  "name": "aislenote",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,7 +8,7 @@
     "dev": "kill-port 5173 && vite --port 5173 --strictPort",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "vitest run src/state/vault.test.ts src/state/default-app-state.test.ts src/theme/vault-themes.test.ts src/filters/sidebar-search.test.ts src/app/vault-editor-persistence.test.ts src/app/VaultApp-source.test.ts src/storage/usePersistentAppState-source.test.ts src/editor/useVaultAisleEditors-source.test.ts electron/storage-watcher.test.mjs electron/vault-library.test.mjs electron/ipc-storage.test.mjs electron/app-state-storage.schema2.test.mjs",
     "preview": "vite preview",
     "electron": "node scripts/start-electron.mjs",
     "electron:mac": "node scripts/start-electron.mjs",
@@ -20,7 +20,9 @@
     "build:electron": "npm run build && npm run electron",
     "build:electron:mac": "npm run build && npm run electron:mac",
     "build:electron:windows": "npm run build && npm run electron:windows",
+    "package:mac": "npm run build && electron-builder --mac",
     "package:win": "npm run build && electron-builder --win portable --x64",
+    "package:linux": "npm run build && electron-builder --linux --x64",
     "start:mac": "npm run build:electron:mac",
     "start:windows": "npm run build:electron:windows",
     "dev:electron": "npm run electron:dev",
@@ -34,8 +36,8 @@
     "cap:open:android": "npx cap open android"
   },
   "build": {
-    "productName": "Tabs",
-    "appId": "com.josephgeorge.tabs",
+    "productName": "AisleNote",
+    "appId": "com.josephgeorge.aislenote",
     "directories": {
       "output": "release"
     },
@@ -43,14 +45,20 @@
       "dist/**/*",
       "electron/**/*.mjs",
       "electron/preload.cjs",
+      "build/icon.png",
       "src/markdown/*.js",
       "src/storage/*.js",
       "src/settings/*.js",
+      "src/state/*.js",
       "src/tags/*.js",
       "package.json",
       "!**/*.test.*"
     ],
+    "mac": {
+      "icon": "build/icon.icns"
+    },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "portable",
@@ -59,6 +67,9 @@
           ]
         }
       ]
+    },
+    "linux": {
+      "icon": "build/icons"
     },
     "portable": {
       "artifactName": "${productName}-${version}-${arch}-portable.${ext}"

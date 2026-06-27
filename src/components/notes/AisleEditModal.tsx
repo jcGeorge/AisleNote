@@ -1,3 +1,4 @@
+import * as React from 'react'
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import {
   addAisleToDraftOrWarn,
@@ -6,24 +7,48 @@ import {
   deleteAisleFromDraft,
   reorderAisleDraftByInsertion,
 } from '../../editor/aisle-edit-draft'
-import { getPlacementNeighborId } from '../../arrange/arrange-utils'
-import { createNoteAisle } from '../../state/workspace'
+import { createRandomId } from '../../state/navigation-ids'
 import type { ResolvedNoteAisle } from '../../types/app'
 import { DecoupleCautionStripe } from '../decouple/DecoupleCautionStripe'
 import { ToolbarToolIcon } from '../editor/ToolbarToolIcon'
+import { AppIcon } from '../icons/AppIcon'
 import { AisleMarkdownPreview } from './AisleMarkdownPreview'
 import { AisleHorizontalScrollbar } from './AisleHorizontalScrollbar'
 import { getHorizontalDragAutoScrollDelta } from './aisle-horizontal-scroll'
 
-const AISLE_DRAG_MIME = 'application/x-tabs-aisle-id'
+const AISLE_DRAG_MIME = 'application/x-aislenote-aisle-id'
 const EMPTY_STAGED_DECOUPLE_IDS: string[] = []
 const EMPTY_STAGED_FRONTMATTER_IDS: string[] = []
 const AISLE_EDIT_DRAG_AUTO_SCROLL_EDGE_ZONE = 72
 const AISLE_EDIT_DRAG_AUTO_SCROLL_MAX_STEP = 8
 
+void React
+
+function createDraftAisle() {
+  const aisleBodyId = createRandomId()
+  return {
+    id: createRandomId(),
+    aisleBodyId,
+  }
+}
+
 type AisleDropTarget = {
   aisleId: string
   position: 'before' | 'after'
+}
+
+function getPlacementNeighborId(
+  itemIds: readonly string[],
+  targetId: string | null | undefined,
+  position: AisleDropTarget['position'] | null | undefined,
+  sourceId: string | null | undefined = null,
+) {
+  void sourceId
+  if (!targetId || !position) return null
+  const orderedIds = itemIds.filter(Boolean)
+  const targetIndex = orderedIds.indexOf(targetId)
+  if (targetIndex < 0) return null
+  return position === 'before' ? (orderedIds[targetIndex - 1] ?? null) : (orderedIds[targetIndex + 1] ?? null)
 }
 
 type AisleEditModalProps = {
@@ -374,7 +399,7 @@ export function AisleEditModal({
                             deleteAisle(aisle.id)
                           }}
                         >
-                          <span className="aisle-edit-delete-icon" aria-hidden="true" />
+                          <AppIcon iconId="trash" className="aisle-edit-delete-icon" />
                         </button>
                       </div>
                     </div>
@@ -400,7 +425,7 @@ export function AisleEditModal({
               className="btn btn-sm btn-outline-light modal-cancel-btn"
               onClick={() =>
                 setDraft((previous) =>
-                  addAisleToDraftOrWarn(previous, createNoteAisle(), onWarn, maxAisles, maxAislesWarningMessage, {
+                  addAisleToDraftOrWarn(previous, createDraftAisle(), onWarn, maxAisles, maxAislesWarningMessage, {
                     reclaimEmptyAisleAtLimit,
                   }),
                 )

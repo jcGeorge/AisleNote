@@ -4,26 +4,24 @@ import { splitAssetMetadataFromUrl } from '../markdown/asset-metadata.js'
 import { resolveAssetDisplayUrl } from '../markdown/image-asset-registry'
 import { getMediaDisplayTitle, getMediaKindFromUrl, type MediaKind } from '../media/media-utils'
 import { getAisleBodyId, getAisleMarkdown } from '../notes/note-markdown'
-import { buildNoteLocationKey, listSearchableNoteLocations } from '../notes/note-locations'
-import { getScratchpadNoteBody } from '../state/scratchpad'
+import { buildNoteLocationKey, type NoteSearchEntry } from '../notes/note-locations'
 import type { AppState, NoteBody, NoteLocation, NoteFilterKind } from '../types/app'
 import {
   buildTagFilterIndex,
   getTagFilterCountLabel,
-  getTagFilterParentKey,
-  getTagFilterSpaceKey,
   normalizeTagKey,
   sortTagFilterTags,
   type TagFilterOccurrence,
   type TagFilterSortMode,
 } from '../tags/tag-filter'
+import { getVaultIndexContext, type VaultIndexContext } from './vault-index-context'
 
 export type NoteFilterOptionType =
   | 'tag'
-  | 'synced-note'
   | 'synced-aisle'
   | 'frontmatter-template'
   | 'frontmatter-property'
+  | 'frontmatter-value'
   | 'media-image'
   | 'media-audio'
   | 'media-video'
@@ -62,29 +60,19 @@ export type NoteFilterIndex = {
   primaryKey: string
   allOccurrences: NoteFilterOccurrence[]
   selectedOccurrences: NoteFilterOccurrence[]
-  domainCounts: Map<string, number>
-  spaceCounts: Map<string, number>
-  parentCounts: Map<string, number>
   noteCounts: Map<string, number>
   scratchpadCount: number
   occurrencesByLocation: Map<string, NoteFilterOccurrence[]>
   primaryOccurrencesByLocation: Map<string, NoteFilterOccurrence[]>
-  firstMatchByDomain: Map<string, NoteLocation>
-  firstMatchBySpace: Map<string, NoteLocation>
-  firstMatchByParent: Map<string, NoteLocation>
+  firstMatchByNote: Map<string, NoteLocation>
 }
 
-type NormalLocation = ReturnType<typeof listSearchableNoteLocations>[number]
+type NormalLocation = NoteSearchEntry
 
-const SYNCED_NOTE_PREFIX = 'synced-note:'
 const SYNCED_AISLE_PREFIX = 'synced-aisle:'
 const FRONTMATTER_TEMPLATE_PREFIX = 'fm-template:'
 const FRONTMATTER_PROPERTY_PREFIX = 'fm-property:'
 const MEDIA_FILTER_PREFIX = 'media:'
-
-export function getSyncedNoteFilterKey(noteBodyId: string): string {
-  return `${SYNCED_NOTE_PREFIX}${noteBodyId}`
-}
 
 export function getSyncedAisleFilterKey(aisleBodyId: string): string {
   return `${SYNCED_AISLE_PREFIX}${aisleBodyId}`
@@ -147,16 +135,11 @@ function createEmptyIndex(kind: NoteFilterKind, selectedKeys: string[], options:
     primaryKey: selectedKeys[0] ?? '',
     allOccurrences: occurrences,
     selectedOccurrences: [],
-    domainCounts: new Map(),
-    spaceCounts: new Map(),
-    parentCounts: new Map(),
     noteCounts: new Map(),
     scratchpadCount: 0,
     occurrencesByLocation: new Map(),
     primaryOccurrencesByLocation: new Map(),
-    firstMatchByDomain: new Map(),
-    firstMatchBySpace: new Map(),
-    firstMatchByParent: new Map(),
+    firstMatchByNote: new Map(),
   }
 }
 
@@ -178,26 +161,16 @@ function addSelectedOccurrenceToCounts(index: NoteFilterIndex, occurrence: NoteF
     index.primaryOccurrencesByLocation.set(locationKey, [...currentPrimary, occurrence])
   }
 
-  if (occurrence.location.domainId === SCRATCHPAD_FIND_LOCATION.domainId) {
+  if (occurrence.location.noteId === SCRATCHPAD_FIND_LOCATION.noteId) {
     index.scratchpadCount += 1
-    return
   }
-
-  incrementCount(index.domainCounts, occurrence.location.domainId)
-  incrementCount(index.spaceCounts, getTagFilterSpaceKey(occurrence.location.domainId, occurrence.location.spaceId))
-  incrementCount(
-    index.parentCounts,
-    getTagFilterParentKey(occurrence.location.domainId, occurrence.location.spaceId, occurrence.location.tabId),
-  )
 }
 
 function populateFirstMatches(index: NoteFilterIndex, orderedLocations: NoteLocation[]) {
   orderedLocations.forEach((location) => {
     const locationKey = buildNoteLocationKey(location)
     if ((index.noteCounts.get(locationKey) ?? 0) <= 0) return
-    addFirstMatch(index.firstMatchByDomain, location.domainId, location)
-    addFirstMatch(index.firstMatchBySpace, getTagFilterSpaceKey(location.domainId, location.spaceId), location)
-    addFirstMatch(index.firstMatchByParent, getTagFilterParentKey(location.domainId, location.spaceId, location.tabId), location)
+    addFirstMatch(index.firstMatchByNote, locationKey, location)
   })
 }
 
@@ -218,19 +191,14 @@ function finalizeIndex(
   return index
 }
 
-function buildTagNoteFilterIndex(state: AppState, selectedKeys: string[]): NoteFilterIndex {
-  const availableOnlyIndex = buildTagFilterIndex(state, [])
+function buildTagNoteFilterIndex(
+  state: AppState,
+  selectedKeys: string[],
+  context?: VaultIndexContext,
+): NoteFilterIndex {
+  const indexContext = getVaultIndexContext(state, context)
   const normalizedSelectedKeys = normalizeSelectedKeys('tags', selectedKeys)
-  const effectiveKeys = normalizedSelectedKeys.length > 0
-    ? normalizedSelectedKeys
-    : availableOnlyIndex.availableTags.map((tag) => tag.key)
-  const tagIndex = buildTagFilterIndex(state, effectiveKeys)
-  const orderedLocations = listSearchableNoteLocations(state).map((entry) => ({
-    domainId: entry.domainId,
-    spaceId: entry.spaceId,
-    tabId: entry.tabId,
-    subTabId: entry.subTabId,
-  }))
+  const tagIndex = buildTagFilterIndex(state, normalizedSelectedKeys, indexContext)
   const options: NoteFilterOption[] = tagIndex.availableTags.map((tag) => ({
     ...tag,
     type: 'tag',
@@ -246,64 +214,34 @@ function buildTagNoteFilterIndex(state: AppState, selectedKeys: string[]): NoteF
     aisleBodyId: occurrence.aisleBodyId,
     tagOccurrence: occurrence,
   }))
-  return finalizeIndex('tags', normalizedSelectedKeys, options, occurrences, orderedLocations)
+  return finalizeIndex('tags', normalizedSelectedKeys, options, occurrences, indexContext.orderedNoteLocations)
 }
 
 function buildOptionLabel(locations: NormalLocation[], fallback: string): string {
   const first = locations[0]
   if (!first) return fallback
-  return first.noteName === 'home'
-    ? `${first.parentName} / home`
-    : `${first.parentName} / ${first.noteName}`
+  return first.folderPath ? `${first.folderPath} / ${first.noteName}` : first.noteName
 }
 
-function getBodyAisles(state: AppState, noteBodyId: string) {
-  return state.noteBodies.find((body) => body.id === noteBodyId)?.aisles ?? []
+function getBodyAisles(context: VaultIndexContext, noteBodyId: string) {
+  return context.noteBodiesById.get(noteBodyId)?.aisles ?? []
 }
 
 function getNoteLocationFromEntry(entry: NormalLocation): NoteLocation {
   return {
-    domainId: entry.domainId,
-    spaceId: entry.spaceId,
-    tabId: entry.tabId,
-    subTabId: entry.subTabId,
+    noteId: entry.noteId,
   }
 }
 
-function buildSyncedNoteFilterIndex(state: AppState, selectedKeys: string[]): NoteFilterIndex {
-  const locations = listSearchableNoteLocations(state)
-  const locationsByBodyId = new Map<string, NormalLocation[]>()
-  locations.forEach((location) => {
-    locationsByBodyId.set(location.noteBodyId, [...(locationsByBodyId.get(location.noteBodyId) ?? []), location])
-  })
-
+function buildSyncedFilterIndex(
+  state: AppState,
+  selectedKeys: string[],
+  context?: VaultIndexContext,
+): NoteFilterIndex {
+  const indexContext = getVaultIndexContext(state, context)
+  const locations = indexContext.locations
   const options: NoteFilterOption[] = []
   const occurrences: NoteFilterOccurrence[] = []
-  locationsByBodyId.forEach((bodyLocations, noteBodyId) => {
-    if (bodyLocations.length <= 1) return
-    const key = getSyncedNoteFilterKey(noteBodyId)
-    options.push({
-      key,
-      label: buildOptionLabel(bodyLocations, 'synced note'),
-      count: bodyLocations.length,
-      type: 'synced-note',
-    })
-    bodyLocations.forEach((location) => {
-      const firstAisle = getBodyAisles(state, noteBodyId)[0]
-      if (!firstAisle) return
-      occurrences.push({
-        kind: 'synced',
-        key,
-        label: buildOptionLabel(bodyLocations, 'synced note'),
-        optionType: 'synced-note',
-        location,
-        noteBodyId,
-        aisleId: firstAisle.id,
-        aisleBodyId: getAisleBodyId(firstAisle),
-      })
-    })
-  })
-
   const aisleSlotsByBodyId = new Map<string, {
     key: string
     location: NormalLocation
@@ -312,10 +250,10 @@ function buildSyncedNoteFilterIndex(state: AppState, selectedKeys: string[]): No
     aisleBodyId: string
   }[]>()
   locations.forEach((location) => {
-    getBodyAisles(state, location.noteBodyId).forEach((aisle) => {
+    getBodyAisles(indexContext, location.noteBodyId).forEach((aisle) => {
       const aisleBodyId = getAisleBodyId(aisle)
       if (!aisleBodyId) return
-      const slotKey = `${location.noteBodyId}::${aisle.id}`
+      const slotKey = `${location.noteId}::${location.noteBodyId}::${aisle.id}`
       const current = aisleSlotsByBodyId.get(aisleBodyId) ?? []
       if (current.some((slot) => slot.key === slotKey)) return
       aisleSlotsByBodyId.set(aisleBodyId, [
@@ -326,8 +264,7 @@ function buildSyncedNoteFilterIndex(state: AppState, selectedKeys: string[]): No
   })
 
   aisleSlotsByBodyId.forEach((slots, aisleBodyId) => {
-    const noteBodyIds = new Set(slots.map((slot) => slot.noteBodyId))
-    if (noteBodyIds.size <= 1) return
+    if (slots.length <= 1) return
     const key = getSyncedAisleFilterKey(aisleBodyId)
     const label = buildOptionLabel(slots.map((slot) => slot.location), 'synced aisle')
     options.push({
@@ -355,12 +292,7 @@ function buildSyncedNoteFilterIndex(state: AppState, selectedKeys: string[]): No
     selectedKeys,
     options,
     occurrences,
-    locations.map((entry) => ({
-      domainId: entry.domainId,
-      spaceId: entry.spaceId,
-      tabId: entry.tabId,
-      subTabId: entry.subTabId,
-    })),
+    indexContext.orderedNoteLocations,
   )
 }
 
@@ -368,12 +300,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-function buildFrontmatterNoteFilterIndex(state: AppState, selectedKeys: string[]): NoteFilterIndex {
-  const locations = listSearchableNoteLocations(state)
-  const templatesById = new Map(state.frontmatter.templates.map((template) => [template.id, template]))
+function buildFrontmatterNoteFilterIndex(
+  state: AppState,
+  selectedKeys: string[],
+  context?: VaultIndexContext,
+): NoteFilterIndex {
+  const indexContext = getVaultIndexContext(state, context)
+  const locations = indexContext.locations
+  const templatesById = indexContext.templatesById
   const optionsByKey = new Map<string, NoteFilterOption>()
   const occurrences: NoteFilterOccurrence[] = []
-  const aisleBodiesById = new Map((state.noteAisleBodies ?? []).map((body) => [body.id, body]))
 
   const pushOption = (option: NoteFilterOption) => {
     const current = optionsByKey.get(option.key)
@@ -385,9 +321,9 @@ function buildFrontmatterNoteFilterIndex(state: AppState, selectedKeys: string[]
   }
 
   locations.forEach((location) => {
-    getBodyAisles(state, location.noteBodyId).forEach((aisle) => {
+    getBodyAisles(indexContext, location.noteBodyId).forEach((aisle) => {
       const aisleBodyId = getAisleBodyId(aisle)
-      const aisleBody = aisleBodiesById.get(aisleBodyId)
+      const aisleBody = indexContext.aisleBodiesById.get(aisleBodyId)
       if (aisleBody?.frontmatterStatus !== 'valid' || !isRecord(aisleBody.frontmatter)) return
 
       const template = aisleBody.frontmatterMeta?.templateId
@@ -432,12 +368,7 @@ function buildFrontmatterNoteFilterIndex(state: AppState, selectedKeys: string[]
     selectedKeys,
     Array.from(optionsByKey.values()),
     occurrences,
-    locations.map((entry) => ({
-      domainId: entry.domainId,
-      spaceId: entry.spaceId,
-      tabId: entry.tabId,
-      subTabId: entry.subTabId,
-    })),
+    indexContext.orderedNoteLocations,
   )
 }
 
@@ -467,7 +398,7 @@ function getSourceFileName(source: string): string {
   if (!normalized || normalized.startsWith('data:')) return ''
 
   try {
-    const parsed = new URL(normalized, 'https://tabs.local')
+    const parsed = new URL(normalized, 'https://aislenote.local')
     const segment = parsed.pathname.split('/').pop() ?? ''
     return decodeURIComponent(segment).trim()
   } catch {
@@ -523,9 +454,13 @@ export function extractMediaFilterReferences(markdown: string): ExtractedMediaFi
   return references
 }
 
-function buildMediaNoteFilterIndex(state: AppState, selectedKeys: string[]): NoteFilterIndex {
-  const locations = listSearchableNoteLocations(state)
-  const noteBodiesById = new Map(state.noteBodies.map((body) => [body.id, body]))
+function buildMediaNoteFilterIndex(
+  state: AppState,
+  selectedKeys: string[],
+  context?: VaultIndexContext,
+): NoteFilterIndex {
+  const indexContext = getVaultIndexContext(state, context)
+  const locations = indexContext.locations
   const optionsByKey = new Map<string, NoteFilterOption>()
   const occurrences: NoteFilterOccurrence[] = []
 
@@ -533,7 +468,7 @@ function buildMediaNoteFilterIndex(state: AppState, selectedKeys: string[]): Not
     if (!body) return
     body.aisles.forEach((aisle) => {
       const aisleBodyId = getAisleBodyId(aisle)
-      const references = extractMediaFilterReferences(getAisleMarkdown(aisle, state.noteAisleBodies))
+      const references = extractMediaFilterReferences(getAisleMarkdown(aisle, indexContext.aisleBodiesById))
       references.forEach((reference) => {
         const current = optionsByKey.get(reference.key)
         if (current) {
@@ -567,17 +502,17 @@ function buildMediaNoteFilterIndex(state: AppState, selectedKeys: string[]): Not
   }
 
   locations.forEach((entry) => {
-    pushLocationMedia(getNoteLocationFromEntry(entry), noteBodiesById.get(entry.noteBodyId))
+    pushLocationMedia(getNoteLocationFromEntry(entry), indexContext.noteBodiesById.get(entry.noteBodyId))
   })
 
-  pushLocationMedia(SCRATCHPAD_FIND_LOCATION, getScratchpadNoteBody(state))
+  pushLocationMedia(SCRATCHPAD_FIND_LOCATION, indexContext.scratchpadBody)
 
   return finalizeIndex(
     'media',
     selectedKeys,
     Array.from(optionsByKey.values()),
     occurrences,
-    locations.map(getNoteLocationFromEntry),
+    indexContext.orderedNoteLocations,
   )
 }
 
@@ -585,32 +520,19 @@ export function buildNoteFilterIndex(
   state: AppState,
   kind: NoteFilterKind,
   selectedKeys: string[] = [],
+  context?: VaultIndexContext,
 ): NoteFilterIndex {
-  if (kind === 'tags') return buildTagNoteFilterIndex(state, selectedKeys)
-  if (kind === 'synced') return buildSyncedNoteFilterIndex(state, selectedKeys)
-  if (kind === 'frontmatter') return buildFrontmatterNoteFilterIndex(state, selectedKeys)
-  return buildMediaNoteFilterIndex(state, selectedKeys)
+  if (kind === 'tags') return buildTagNoteFilterIndex(state, selectedKeys, context)
+  if (kind === 'synced') return buildSyncedFilterIndex(state, selectedKeys, context)
+  if (kind === 'frontmatter') return buildFrontmatterNoteFilterIndex(state, selectedKeys, context)
+  return buildMediaNoteFilterIndex(state, selectedKeys, context)
 }
 
-export function getFirstMatchingNoteFilterLocationForDomain(index: NoteFilterIndex, domainId: string): NoteLocation | null {
-  return index.firstMatchByDomain.get(domainId) ?? null
-}
-
-export function getFirstMatchingNoteFilterLocationForSpace(
+export function getFirstMatchingNoteFilterLocation(
   index: NoteFilterIndex,
-  domainId: string,
-  spaceId: string,
+  location: NoteLocation,
 ): NoteLocation | null {
-  return index.firstMatchBySpace.get(getTagFilterSpaceKey(domainId, spaceId)) ?? null
-}
-
-export function getFirstMatchingNoteFilterLocationForParent(
-  index: NoteFilterIndex,
-  domainId: string,
-  spaceId: string,
-  tabId: string,
-): NoteLocation | null {
-  return index.firstMatchByParent.get(getTagFilterParentKey(domainId, spaceId, tabId)) ?? null
+  return index.firstMatchByNote.get(buildNoteLocationKey(location)) ?? null
 }
 
 export function getNoteFilterOccurrencesForLocation(
@@ -627,4 +549,4 @@ export function getPrimaryNoteFilterOccurrencesForLocation(
   return index.primaryOccurrencesByLocation.get(buildNoteLocationKey(location)) ?? []
 }
 
-export { getTagFilterParentKey as getNoteFilterParentKey, getTagFilterSpaceKey as getNoteFilterSpaceKey, sortTagFilterTags }
+export { sortTagFilterTags }

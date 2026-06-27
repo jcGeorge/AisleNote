@@ -1,14 +1,85 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Schema } from 'prosemirror-model'
+import type { AppState } from '../types/app'
+import { buildPreviewToken } from '../notes/note-references'
 
-const createNotePreviewWidgetElement = vi.hoisted(() => vi.fn(() => ({ nodeType: 'preview-widget' })))
-const createReadonlyNotePreviewWidgetElement = vi.hoisted(() => vi.fn(() => ({ nodeType: 'readonly-preview-widget' })))
+const renderRoot = vi.hoisted(() => vi.fn())
+const unmountRoot = vi.hoisted(() => vi.fn())
 
-vi.mock('./note-preview-widget', () => ({
-  createNotePreviewWidgetElement,
-  createReadonlyNotePreviewWidgetElement,
+vi.mock('react-dom/client', () => ({
+  createRoot: vi.fn(() => ({
+    render: renderRoot,
+    unmount: unmountRoot,
+  })),
 }))
 
-import { createNotePreviewPlugin } from './note-preview-plugin'
+import {
+  collectNotePreviewRanges,
+  convertNotePreviewRangeToLinkFromView,
+  createNotePreviewPlugin,
+  renameNotePreviewRangeLabelFromView,
+} from './note-preview-plugin'
+
+const pmSchema = new Schema({
+  nodes: {
+    doc: { content: 'block+' },
+    paragraph: { group: 'block', content: 'inline*', toDOM: () => ['p', 0] },
+    text: { group: 'inline' },
+  },
+})
+
+function createState(): AppState {
+  return {
+    theme: 'dark',
+    vault: {
+      activeNoteId: 'note-a',
+      items: [
+        { type: 'note', id: 'note-a', title: 'Alpha', noteBodyId: 'body-a' },
+        { type: 'note', id: 'note-b', title: 'Beta', noteBodyId: 'body-b' },
+      ],
+      deletedItems: [],
+      settings: { autoRemoveDeletedDays: 30 },
+    },
+    noteBodies: [
+      { id: 'body-a', aisles: [{ id: 'aisle-a', aisleBodyId: 'aisle-body-a' }] },
+      { id: 'body-b', aisles: [{ id: 'aisle-b', aisleBodyId: 'aisle-body-b' }] },
+    ],
+    noteAisleBodies: [
+      { id: 'aisle-body-a', markdown: 'Alpha' },
+      { id: 'aisle-body-b', markdown: 'Beta body' },
+    ],
+    hotkeys: { shortcuts: {} as AppState['hotkeys']['shortcuts'], newlineShortcuts: { shortcuts: {} as never, menuOperations: [] } },
+    frontmatter: { templates: [], settingsTemplateId: '', lastAppliedTemplateId: '' },
+    ui: {
+      sidebarCollapsed: false,
+      sidebarWidth: 280,
+      collapsedFolderIds: [],
+      tableAddTargetMode: 'active-cell',
+      tableDeleteTargetMode: 'active-cell',
+      noteFontScale: 1,
+      settingsSection: 'data',
+      noteCursorLocations: {},
+      headingCollapseState: {},
+      seenTipIds: [],
+      disabledTipIds: [],
+    },
+  }
+}
+
+function createDoc(text: string) {
+  return {
+    descendants(callback: (node: unknown, pos: number) => void) {
+      callback({ isText: true, text }, 1)
+    },
+  }
+}
+
+function createParagraphDoc(paragraphs: string[]) {
+  return pmSchema.nodes.doc.create(
+    null,
+    paragraphs.map((text) => pmSchema.nodes.paragraph.create(null, text ? pmSchema.text(text) : null)),
+  )
+}
 
 function createPluginContext() {
   class Plugin {
@@ -23,20 +94,20 @@ function createPluginContext() {
     pmState: { Plugin },
     pmView: {
       Decoration: {
-        widget: vi.fn((from: number, factory: () => unknown, options: Record<string, unknown>) => ({
+        widget: vi.fn((from: number, factory: (view?: unknown) => unknown, options: Record<string, unknown>) => ({
           type: 'widget',
           from,
           factory,
           options,
         })),
-        node: vi.fn((from: number, to: number, attrs: Record<string, unknown>) => ({
-          type: 'node',
+        inline: vi.fn((from: number, to: number, attrs: Record<string, unknown>) => ({
+          type: 'inline',
           from,
           to,
           attrs,
         })),
-        inline: vi.fn((from: number, to: number, attrs: Record<string, unknown>) => ({
-          type: 'inline',
+        node: vi.fn((from: number, to: number, attrs: Record<string, unknown>) => ({
+          type: 'node',
           from,
           to,
           attrs,
@@ -49,343 +120,287 @@ function createPluginContext() {
   }
 }
 
-function createTextDoc(text: string) {
-  return {
-    descendants(callback: (node: unknown, pos: number) => void) {
-      callback({ isText: true, text }, 1)
-    },
-  }
-}
-
-function createMarkedTextDoc(segments: Array<{ text: string; href?: string }>) {
-  return {
-    descendants(callback: (node: unknown, pos: number) => void) {
-      let position = 1
-      segments.forEach((segment) => {
-        callback(
-          {
-            isText: true,
-            text: segment.text,
-            marks: segment.href
-              ? [{ type: { name: 'link' }, attrs: { linkUrl: segment.href } }]
-              : [],
-          },
-          position,
-        )
-        position += segment.text.length
-      })
-    },
-  }
-}
-
-function createImageDoc(source: string, alt = 'Linked') {
-  return {
-    descendants(callback: (node: unknown, pos: number) => boolean | void) {
-      callback(
-        {
-          isText: false,
-          type: { name: 'image' },
-          attrs: { imageUrl: source, altText: alt },
-          nodeSize: 1,
-        },
-        4,
-      )
-    },
-  }
-}
-
 describe('note preview plugin', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('renders full preview widgets in editor mode', () => {
-    const context = createPluginContext()
-    const payload = {
-      id: 'preview-id',
-      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
-    }
-    const pluginFactory = createNotePreviewPlugin(context, {
-      sourceNoteBodyId: 'source-body',
-      getNotePreviewData: vi.fn(),
-      resolvePreviewToken: vi.fn(() => payload),
-      navigateToNoteLocation: vi.fn(),
-      deleteNotePreview: vi.fn(),
-    }).wysiwygPlugins[0]()
-
-    const decorations = pluginFactory.props.decorations({ doc: createTextDoc('Before ![Linked](Linked--123abc) after') })
-    const widget = decorations.find((decoration: any) => decoration.type === 'widget')
-    widget.factory()
-
-    expect(createNotePreviewWidgetElement).toHaveBeenCalledWith(
-      payload,
-      expect.objectContaining({ sourceNoteBodyId: 'source-body' }),
-      { from: 8, to: 33 },
-      'Linked',
-    )
-    expect(createReadonlyNotePreviewWidgetElement).not.toHaveBeenCalled()
-  })
-
-  it('reuses note preview decorations for unchanged document identity', () => {
-    const context = createPluginContext()
-    const payload = {
-      id: 'preview-id',
-      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
-    }
-    const pluginFactory = createNotePreviewPlugin(context, {
-      sourceNoteBodyId: 'source-body',
-      getNotePreviewData: vi.fn(),
-      resolvePreviewToken: vi.fn(() => payload),
-      navigateToNoteLocation: vi.fn(),
-      deleteNotePreview: vi.fn(),
-    }).wysiwygPlugins[0]()
-    const doc = createTextDoc('Before ![Linked](Linked--123abc) after')
-
-    const firstDecorations = pluginFactory.props.decorations({ doc })
-    const secondDecorations = pluginFactory.props.decorations({ doc })
-
-    expect(secondDecorations).toBe(firstDecorations)
-    expect(context.pmView.DecorationSet.create).toHaveBeenCalledTimes(1)
-  })
-
-  it('renders internal note image nodes as preview widgets and hides the image node', () => {
-    const context = createPluginContext()
-    const payload = {
-      id: 'preview-id',
-      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
-    }
-    const resolvePreviewToken = vi.fn(() => payload)
-    const pluginFactory = createNotePreviewPlugin(context, {
-      sourceNoteBodyId: 'source-body',
-      getNotePreviewData: vi.fn(),
-      resolvePreviewToken,
-      navigateToNoteLocation: vi.fn(),
-      deleteNotePreview: vi.fn(),
-    }).wysiwygPlugins[0]()
-
-    const decorations = pluginFactory.props.decorations({ doc: createImageDoc('Linked--123abc') })
-    const widget = decorations.find((decoration: any) => decoration.type === 'widget')
-    const hiddenNode = decorations.find((decoration: any) => decoration.type === 'node')
-    widget.factory()
-
-    expect(resolvePreviewToken).toHaveBeenCalledWith('![Linked](Linked--123abc)')
-    expect(createNotePreviewWidgetElement).toHaveBeenCalledWith(
-      payload,
-      expect.objectContaining({ sourceNoteBodyId: 'source-body' }),
-      { from: 4, to: 5 },
-      'Linked',
-    )
-    expect(hiddenNode).toMatchObject({ from: 4, to: 5, attrs: { class: 'note-context-node-hidden' } })
-  })
-
-  it('renders preview links parsed as an exclamation marker plus an internal link', () => {
-    const context = createPluginContext()
-    const payload = {
-      id: 'preview-id',
-      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
-    }
-    const resolvePreviewToken = vi.fn(() => payload)
-    const pluginFactory = createNotePreviewPlugin(context, {
-      sourceNoteBodyId: 'source-body',
-      getNotePreviewData: vi.fn(),
-      resolvePreviewToken,
-      navigateToNoteLocation: vi.fn(),
-      deleteNotePreview: vi.fn(),
-    }).wysiwygPlugins[0]()
-
-    const decorations = pluginFactory.props.decorations({
-      doc: createMarkedTextDoc([
-        { text: 'Before ' },
-        { text: '!' },
-        { text: 'Others', href: 'Others--123abc' },
-        { text: ' after' },
-      ]),
+    vi.stubGlobal('document', {
+      createElement: () => ({ className: '', contentEditable: '', setAttribute: vi.fn() }),
     })
-    const widget = decorations.find((decoration: any) => decoration.type === 'widget')
-    const hiddenSource = decorations.find((decoration: any) => decoration.type === 'inline')
-    widget.factory()
-
-    expect(resolvePreviewToken).toHaveBeenCalledWith('![Others](Others--123abc)')
-    expect(createNotePreviewWidgetElement).toHaveBeenCalledWith(
-      payload,
-      expect.objectContaining({ sourceNoteBodyId: 'source-body' }),
-      { from: 8, to: 15 },
-      'Others',
-    )
-    expect(hiddenSource).toMatchObject({ from: 8, to: 15, attrs: { class: 'note-context-token-hidden' } })
+    renderRoot.mockClear()
+    unmountRoot.mockClear()
   })
 
-  it('renders preview links when the exclamation marker is part of the link text', () => {
+  it('collects embedded note preview token ranges from mounted docs', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, { id: 'preview:beta', target: { noteId: 'note-b' } })
+    const ranges = collectNotePreviewRanges(createDoc(`before ${token} after`), state)
+
+    expect(ranges).toHaveLength(1)
+    expect(ranges[0]).toMatchObject({
+      from: 8,
+      to: 8 + token.length,
+      token,
+      payload: { target: { noteId: 'note-b' } },
+      label: 'Beta',
+    })
+  })
+
+  it('collects custom preview token labels', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, { id: 'preview:beta', target: { noteId: 'note-b' } }).replace('![Beta]', '![Pinned Beta]')
+    const ranges = collectNotePreviewRanges(createDoc(token), state)
+
+    expect(ranges[0]).toMatchObject({
+      token,
+      payload: { target: { noteId: 'note-b' } },
+      label: 'Pinned Beta',
+    })
+  })
+
+  it('preserves parsed aisle ids in preview token ranges', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, {
+      id: 'preview:beta:aisle-b',
+      target: { noteId: 'note-b' },
+      aisleIds: ['aisle-b'],
+    })
+    const ranges = collectNotePreviewRanges(createDoc(token), state)
+
+    expect(ranges[0]).toMatchObject({
+      token,
+      payload: { target: { noteId: 'note-b' }, aisleIds: ['aisle-b'] },
+    })
+  })
+
+  it('renders preview widgets and hides source tokens with decorations', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, {
+      id: 'preview:beta:aisle-b',
+      target: { noteId: 'note-b' },
+      aisleIds: ['aisle-b'],
+    })
     const context = createPluginContext()
-    const payload = {
-      id: 'preview-id',
-      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+    const plugin = createNotePreviewPlugin({
+      getAppState: () => state,
+      getCurrentNoteBodyId: () => 'body-a',
+      onOpenNote: vi.fn(),
+    })(context).wysiwygPlugins[0]()
+    const decorations = plugin.props.decorations({ doc: createDoc(token) })
+    const widget = decorations.find((decoration: any) => decoration.type === 'widget')
+    const inline = decorations.find((decoration: any) => decoration.type === 'inline')
+
+    widget.factory()
+
+    expect(widget.from).toBe(1)
+    expect(renderRoot).toHaveBeenCalled()
+    expect(renderRoot.mock.calls.at(-1)?.[0].props.aisleIds).toEqual(['aisle-b'])
+    expect(inline).toMatchObject({
+      from: 1,
+      to: 1 + token.length,
+      attrs: { class: 'aislenote-note-preview-source-hidden' },
+    })
+  })
+
+  it('anchors repeated preview tokens as separate block widgets', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, { id: 'preview:beta', target: { noteId: 'note-b' } })
+    const doc = createParagraphDoc([token, token, token])
+    const context = createPluginContext()
+    const plugin = createNotePreviewPlugin({
+      getAppState: () => state,
+      getCurrentNoteBodyId: () => 'body-a',
+      onOpenNote: vi.fn(),
+    })(context).wysiwygPlugins[0]()
+    const ranges = collectNotePreviewRanges(doc, state)
+    const decorations = plugin.props.decorations({ doc })
+    const widgets = decorations.filter((decoration: any) => decoration.type === 'widget')
+    const hiddenBlocks = decorations.filter((decoration: any) => decoration.type === 'node')
+    const paragraphSize = token.length + 2
+
+    expect(ranges).toHaveLength(3)
+    expect(ranges.map((range) => range.from)).toEqual([1, paragraphSize + 1, paragraphSize * 2 + 1])
+    expect(ranges.map((range) => range.to)).toEqual([
+      1 + token.length,
+      paragraphSize + 1 + token.length,
+      paragraphSize * 2 + 1 + token.length,
+    ])
+    expect(ranges.map((range) => range.widgetFrom)).toEqual([0, paragraphSize, paragraphSize * 2])
+    expect(widgets.map((widget: any) => widget.from)).toEqual([0, paragraphSize, paragraphSize * 2])
+    expect(hiddenBlocks).toEqual([
+      {
+        type: 'node',
+        from: 0,
+        to: paragraphSize,
+        attrs: { class: 'aislenote-note-preview-source-block-hidden' },
+      },
+      {
+        type: 'node',
+        from: paragraphSize,
+        to: paragraphSize * 2,
+        attrs: { class: 'aislenote-note-preview-source-block-hidden' },
+      },
+      {
+        type: 'node',
+        from: paragraphSize * 2,
+        to: paragraphSize * 3,
+        attrs: { class: 'aislenote-note-preview-source-block-hidden' },
+      },
+    ])
+  })
+
+  it('wires preview deletion to the hidden source token range', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, { id: 'preview:beta', target: { noteId: 'note-b' } })
+    const context = createPluginContext()
+    const plugin = createNotePreviewPlugin({
+      getAppState: () => state,
+      getCurrentNoteBodyId: () => 'body-a',
+      onOpenNote: vi.fn(),
+    })(context).wysiwygPlugins[0]()
+    const decorations = plugin.props.decorations({ doc: createDoc(token) })
+    const widget = decorations.find((decoration: any) => decoration.type === 'widget')
+    const transaction: any = {
+      delete: vi.fn(() => transaction),
+      scrollIntoView: vi.fn(() => transaction),
     }
-    const resolvePreviewToken = vi.fn(() => payload)
-    const pluginFactory = createNotePreviewPlugin(context, {
-      sourceNoteBodyId: 'source-body',
-      getNotePreviewData: vi.fn(),
-      resolvePreviewToken,
-      navigateToNoteLocation: vi.fn(),
-      deleteNotePreview: vi.fn(),
-    }).wysiwygPlugins[0]()
+    const view = {
+      state: {
+        doc: { content: { size: 1 + token.length } },
+        tr: transaction,
+      },
+      dispatch: vi.fn(),
+      focus: vi.fn(),
+    }
 
-    const decorations = pluginFactory.props.decorations({ doc: createMarkedTextDoc([{ text: '!Others', href: 'Others--123abc' }]) })
+    widget.factory(view)
+    const renderedPreview = renderRoot.mock.calls.at(-1)?.[0]
+    renderedPreview.props.onDelete()
+
+    expect(transaction.delete).toHaveBeenCalledWith(1, 1 + token.length)
+    expect(transaction.scrollIntoView).toHaveBeenCalled()
+    expect(view.dispatch).toHaveBeenCalledWith(transaction)
+    expect(view.focus).toHaveBeenCalled()
+  })
+
+  it('wires preview label rename to the hidden source token range', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, { id: 'preview:beta', target: { noteId: 'note-b' } })
+    const context = createPluginContext()
+    const plugin = createNotePreviewPlugin({
+      getAppState: () => state,
+      getCurrentNoteBodyId: () => 'body-a',
+      onOpenNote: vi.fn(),
+    })(context).wysiwygPlugins[0]()
+    const decorations = plugin.props.decorations({ doc: createDoc(token) })
     const widget = decorations.find((decoration: any) => decoration.type === 'widget')
-    widget.factory()
+    const transaction: any = {
+      insertText: vi.fn(() => transaction),
+      scrollIntoView: vi.fn(() => transaction),
+    }
+    const view = {
+      state: {
+        doc: { content: { size: 1 + token.length } },
+        tr: transaction,
+      },
+      dispatch: vi.fn(),
+      focus: vi.fn(),
+    }
 
-    expect(resolvePreviewToken).toHaveBeenCalledWith('![Others](Others--123abc)')
-    expect(createNotePreviewWidgetElement).toHaveBeenCalledWith(
-      payload,
-      expect.objectContaining({ sourceNoteBodyId: 'source-body' }),
-      { from: 1, to: 8 },
-      'Others',
+    widget.factory(view)
+    const renderedPreview = renderRoot.mock.calls.at(-1)?.[0]
+    renderedPreview.props.onRenameLabel('Pinned Beta')
+
+    expect(renderedPreview.props.label).toBe('Beta')
+    expect(transaction.insertText).toHaveBeenCalledWith(expect.stringMatching(/^!\[Pinned Beta\]\(Beta--[0-9a-f]{6}\)$/), 1, 1 + token.length)
+    expect(transaction.scrollIntoView).toHaveBeenCalled()
+    expect(view.dispatch).toHaveBeenCalledWith(transaction)
+    expect(view.focus).toHaveBeenCalled()
+  })
+
+  it('wires preview conversion to a normal note link token', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, { id: 'preview:beta', target: { noteId: 'note-b' } })
+    const context = createPluginContext()
+    const plugin = createNotePreviewPlugin({
+      getAppState: () => state,
+      getCurrentNoteBodyId: () => 'body-a',
+      onOpenNote: vi.fn(),
+    })(context).wysiwygPlugins[0]()
+    const decorations = plugin.props.decorations({ doc: createDoc(token) })
+    const widget = decorations.find((decoration: any) => decoration.type === 'widget')
+    const transaction: any = {
+      insertText: vi.fn(() => transaction),
+      scrollIntoView: vi.fn(() => transaction),
+    }
+    const view = {
+      state: {
+        doc: { content: { size: 1 + token.length } },
+        tr: transaction,
+      },
+      dispatch: vi.fn(),
+      focus: vi.fn(),
+    }
+
+    widget.factory(view)
+    const renderedPreview = renderRoot.mock.calls.at(-1)?.[0]
+    renderedPreview.props.onConvertToLink()
+
+    expect(transaction.insertText).toHaveBeenCalledWith(expect.stringMatching(/^\[Beta\]\(Beta--[0-9a-f]{6}\)$/), 1, 1 + token.length)
+    expect(transaction.scrollIntoView).toHaveBeenCalled()
+    expect(view.dispatch).toHaveBeenCalledWith(transaction)
+    expect(view.focus).toHaveBeenCalled()
+  })
+
+  it('renames preview labels with a direct transaction helper', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, {
+      id: 'preview:beta:aisle-b',
+      target: { noteId: 'note-b' },
+      aisleIds: ['aisle-b'],
+    })
+    const transaction: any = {
+      insertText: vi.fn(() => transaction),
+      scrollIntoView: vi.fn(() => transaction),
+    }
+    const view = {
+      state: {
+        doc: { content: { size: token.length } },
+        tr: transaction,
+      },
+      dispatch: vi.fn(),
+      focus: vi.fn(),
+    }
+
+    expect(renameNotePreviewRangeLabelFromView(view, { from: 0, to: token.length, token }, 'Pinned Beta')).toBe(true)
+    expect(transaction.insertText).toHaveBeenCalledWith(
+      expect.stringMatching(/^!\[Pinned Beta\]\(<Beta--[0-9a-f]{6}#aisle 1--[0-9a-f]{6}>\)$/),
+      0,
+      token.length,
     )
   })
 
-  it('resolves encoded internal note image node sources', () => {
-    const context = createPluginContext()
-    const payload = {
-      id: 'preview-id',
-      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+  it('converts preview labels with a direct transaction helper', () => {
+    const state = createState()
+    const token = buildPreviewToken(state, {
+      id: 'preview:beta:aisle-b',
+      target: { noteId: 'note-b' },
+      aisleIds: ['aisle-b'],
+    })
+    const transaction: any = {
+      insertText: vi.fn(() => transaction),
+      scrollIntoView: vi.fn(() => transaction),
     }
-    const resolvePreviewToken = vi.fn(() => payload)
-    const pluginFactory = createNotePreviewPlugin(context, {
-      sourceNoteBodyId: 'source-body',
-      getNotePreviewData: vi.fn(),
-      resolvePreviewToken,
-      navigateToNoteLocation: vi.fn(),
-      deleteNotePreview: vi.fn(),
-    }).wysiwygPlugins[0]()
-
-    const decorations = pluginFactory.props.decorations({ doc: createImageDoc('Linked%20note--123abc', 'Linked note') })
-    const widget = decorations.find((decoration: any) => decoration.type === 'widget')
-    widget.factory()
-
-    expect(resolvePreviewToken).toHaveBeenCalledWith('![Linked note](<Linked note--123abc>)')
-    expect(createNotePreviewWidgetElement).toHaveBeenCalledWith(
-      payload,
-      expect.objectContaining({ sourceNoteBodyId: 'source-body' }),
-      { from: 4, to: 5 },
-      'Linked note',
-    )
-  })
-
-  it('renders navigation-only preview widgets in readonly-preview mode', () => {
-    const context = createPluginContext()
-    const payload = {
-      id: 'preview-id',
-      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+    const view = {
+      state: {
+        doc: { content: { size: token.length } },
+        tr: transaction,
+      },
+      dispatch: vi.fn(),
+      focus: vi.fn(),
     }
-    const pluginFactory = createNotePreviewPlugin(context, {
-      sourceNoteBodyId: 'source-body',
-      getNotePreviewData: vi.fn(),
-      resolvePreviewToken: vi.fn(() => payload),
-      navigateToNoteLocation: vi.fn(),
-      deleteNotePreview: vi.fn(),
-      renderMode: 'readonly-preview',
-    }).wysiwygPlugins[0]()
 
-    const decorations = pluginFactory.props.decorations({ doc: createTextDoc('Before ![Linked](Linked--123abc) after') })
-    const widget = decorations.find((decoration: any) => decoration.type === 'widget')
-    widget.factory()
-
-    expect(createReadonlyNotePreviewWidgetElement).toHaveBeenCalledWith(payload, expect.objectContaining({ sourceNoteBodyId: 'source-body' }))
-    expect(createNotePreviewWidgetElement).not.toHaveBeenCalled()
-  })
-
-  it('renders internal note image nodes as readonly preview widgets', () => {
-    const context = createPluginContext()
-    const payload = {
-      id: 'preview-id',
-      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
-    }
-    const pluginFactory = createNotePreviewPlugin(context, {
-      sourceNoteBodyId: 'source-body',
-      getNotePreviewData: vi.fn(),
-      resolvePreviewToken: vi.fn(() => payload),
-      navigateToNoteLocation: vi.fn(),
-      deleteNotePreview: vi.fn(),
-      renderMode: 'readonly-preview',
-    }).wysiwygPlugins[0]()
-
-    const decorations = pluginFactory.props.decorations({ doc: createImageDoc('Linked--123abc') })
-    const widget = decorations.find((decoration: any) => decoration.type === 'widget')
-    const hiddenNode = decorations.find((decoration: any) => decoration.type === 'node')
-    widget.factory()
-
-    expect(createReadonlyNotePreviewWidgetElement).toHaveBeenCalledWith(
-      payload,
-      expect.objectContaining({ sourceNoteBodyId: 'source-body' }),
-    )
-    expect(createNotePreviewWidgetElement).not.toHaveBeenCalled()
-    expect(hiddenNode).toMatchObject({ from: 4, to: 5, attrs: { class: 'note-context-node-hidden' } })
-  })
-
-  it('leaves external image nodes undecorated', () => {
-    const context = createPluginContext()
-    const pluginFactory = createNotePreviewPlugin(context, {
-      sourceNoteBodyId: 'source-body',
-      getNotePreviewData: vi.fn(),
-      resolvePreviewToken: vi.fn(() => null),
-      navigateToNoteLocation: vi.fn(),
-      deleteNotePreview: vi.fn(),
-    }).wysiwygPlugins[0]()
-
-    const decorations = pluginFactory.props.decorations({ doc: createImageDoc('https://example.com/pixel.png', 'pixel') })
-
-    expect(decorations).toEqual([])
-  })
-
-  it('does not replace normal markdown note hyperlinks with widgets', () => {
-    const context = createPluginContext()
-    const resolvePreviewToken = vi.fn(() => null)
-    const pluginFactory = createNotePreviewPlugin(context, {
-      sourceNoteBodyId: 'source-body',
-      getNotePreviewData: vi.fn(),
-      resolvePreviewToken,
-      navigateToNoteLocation: vi.fn(),
-      deleteNotePreview: vi.fn(),
-    }).wysiwygPlugins[0]()
-
-    const decorations = pluginFactory.props.decorations({ doc: createTextDoc('Before [Linked](Linked--123abc) after') })
-
-    expect(decorations).toEqual([])
-    expect(resolvePreviewToken).not.toHaveBeenCalled()
-  })
-
-  it('does not replace parsed internal note hyperlinks without a preview marker', () => {
-    const context = createPluginContext()
-    const resolvePreviewToken = vi.fn(() => ({
-      id: 'preview-id',
-      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
-    }))
-    const pluginFactory = createNotePreviewPlugin(context, {
-      sourceNoteBodyId: 'source-body',
-      getNotePreviewData: vi.fn(),
-      resolvePreviewToken,
-      navigateToNoteLocation: vi.fn(),
-      deleteNotePreview: vi.fn(),
-    }).wysiwygPlugins[0]()
-
-    const decorations = pluginFactory.props.decorations({ doc: createMarkedTextDoc([{ text: 'Others', href: 'Others--123abc' }]) })
-
-    expect(decorations).toEqual([])
-    expect(resolvePreviewToken).not.toHaveBeenCalled()
-  })
-
-  it('leaves unresolved markdown preview references undecorated', () => {
-    const context = createPluginContext()
-    const pluginFactory = createNotePreviewPlugin(context, {
-      sourceNoteBodyId: 'source-body',
-      getNotePreviewData: vi.fn(),
-      resolvePreviewToken: vi.fn(() => null),
-      navigateToNoteLocation: vi.fn(),
-      deleteNotePreview: vi.fn(),
-    }).wysiwygPlugins[0]()
-
-    const decorations = pluginFactory.props.decorations({ doc: createTextDoc('Before ![Missing](Missing--999999) after') })
-
-    expect(decorations).toEqual([])
+    expect(convertNotePreviewRangeToLinkFromView(view, { from: 0, to: token.length, token })).toBe(true)
+    expect(transaction.insertText).toHaveBeenCalledWith(expect.stringMatching(/^\[aisle 1\]\(<Beta--[0-9a-f]{6}#aisle 1--[0-9a-f]{6}>\)$/), 0, token.length)
+    expect(view.dispatch).toHaveBeenCalledWith(transaction)
+    expect(view.focus).toHaveBeenCalled()
   })
 })

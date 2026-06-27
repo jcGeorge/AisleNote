@@ -83,7 +83,7 @@ export function createMediaPlayerElement({
   assignStyles(wrapper, getMediaRootStyle(transformMetadata))
 
   const media = document.createElement(kind)
-  media.className = kind === 'video' ? 'tabs-media-video' : 'tabs-media-native'
+  media.className = kind === 'video' ? 'aislenote-media-video' : 'aislenote-media-native'
   media.preload = 'metadata'
   media.src = resolveMediaDisplayUrl(src)
   media.playbackRate = playbackSpeed
@@ -94,43 +94,43 @@ export function createMediaPlayerElement({
   }
 
   const controls = document.createElement('span')
-  controls.className = 'tabs-media-controls'
+  controls.className = 'aislenote-media-controls'
 
   const title = document.createElement('span')
-  title.className = 'tabs-media-title'
+  title.className = 'aislenote-media-title'
   title.textContent = displayTitle
 
   const playButton = document.createElement('button')
   playButton.type = 'button'
-  playButton.className = 'tabs-media-btn tabs-media-play-btn'
+  playButton.className = 'aislenote-media-btn aislenote-media-play-btn'
   playButton.setAttribute('aria-label', 'Play')
   setButtonIcon(playButton, 'play')
 
   const backButton = document.createElement('button')
   backButton.type = 'button'
-  backButton.className = 'tabs-media-btn tabs-media-back-btn'
+  backButton.className = 'aislenote-media-btn aislenote-media-back-btn'
   backButton.setAttribute('aria-label', `Back ${MEDIA_SEEK_STEP_SECONDS} seconds`)
   backButton.classList.add('editor-history-toolbar-btn', 'editor-history-toolbar-btn-undo')
   setButtonIcon(backButton, 'undo')
 
   const forwardButton = document.createElement('button')
   forwardButton.type = 'button'
-  forwardButton.className = 'tabs-media-btn tabs-media-forward-btn'
+  forwardButton.className = 'aislenote-media-btn aislenote-media-forward-btn'
   forwardButton.setAttribute('aria-label', `Forward ${MEDIA_SEEK_STEP_SECONDS} seconds`)
   forwardButton.classList.add('editor-history-toolbar-btn', 'editor-history-toolbar-btn-redo')
   setButtonIcon(forwardButton, 'redo')
 
   const currentTime = document.createElement('span')
-  currentTime.className = 'tabs-media-time tabs-media-time-current'
+  currentTime.className = 'aislenote-media-time aislenote-media-time-current'
   currentTime.textContent = '0:00'
 
   const durationTime = document.createElement('span')
-  durationTime.className = 'tabs-media-time tabs-media-time-duration'
+  durationTime.className = 'aislenote-media-time aislenote-media-time-duration'
   durationTime.textContent = '0:00'
 
   const slider = document.createElement('input')
   slider.type = 'range'
-  slider.className = 'tabs-media-slider'
+  slider.className = 'aislenote-media-slider'
   slider.min = '0'
   slider.max = '0'
   slider.step = '0.01'
@@ -141,42 +141,42 @@ export function createMediaPlayerElement({
 
   const loopButton = document.createElement('button')
   loopButton.type = 'button'
-  loopButton.className = 'tabs-media-btn tabs-media-loop-btn'
+  loopButton.className = 'aislenote-media-btn aislenote-media-loop-btn'
   loopButton.setAttribute('aria-label', 'Loop off')
   loopButton.setAttribute('aria-pressed', 'false')
   setButtonIcon(loopButton, 'loop')
 
   const speedWrap = document.createElement('span')
-  speedWrap.className = 'tabs-media-speed-wrap'
+  speedWrap.className = 'aislenote-media-speed-wrap'
 
   const speedButton = document.createElement('button')
   speedButton.type = 'button'
-  speedButton.className = 'tabs-media-btn tabs-media-speed-btn'
+  speedButton.className = 'aislenote-media-btn aislenote-media-speed-btn'
   speedButton.setAttribute('aria-haspopup', 'listbox')
   speedButton.textContent = formatMediaSpeedLabel(playbackSpeed)
 
   const speedMenu = document.createElement('span')
-  speedMenu.className = 'tabs-media-speed-menu'
+  speedMenu.className = 'aislenote-media-speed-menu'
   speedMenu.setAttribute('role', 'listbox')
   speedMenu.setAttribute('popover', 'manual')
   speedMenu.hidden = true
 
   const volumeWrap = document.createElement('span')
-  volumeWrap.className = 'tabs-media-volume-wrap'
+  volumeWrap.className = 'aislenote-media-volume-wrap'
 
   const volumeButton = document.createElement('button')
   volumeButton.type = 'button'
-  volumeButton.className = 'tabs-media-btn tabs-media-volume-btn'
+  volumeButton.className = 'aislenote-media-btn aislenote-media-volume-btn'
   volumeButton.setAttribute('aria-haspopup', 'true')
 
   const volumePopup = document.createElement('span')
-  volumePopup.className = 'tabs-media-volume-popup'
+  volumePopup.className = 'aislenote-media-volume-popup'
   volumePopup.setAttribute('popover', 'manual')
   volumePopup.hidden = true
 
   const volumeSlider = document.createElement('input')
   volumeSlider.type = 'range'
-  volumeSlider.className = 'tabs-media-volume-slider'
+  volumeSlider.className = 'aislenote-media-volume-slider'
   volumeSlider.min = '0'
   volumeSlider.max = '150'
   volumeSlider.step = '1'
@@ -184,7 +184,7 @@ export function createMediaPlayerElement({
   volumeSlider.setAttribute('aria-label', 'Media volume')
 
   const errorMessage = document.createElement('span')
-  errorMessage.className = 'tabs-media-error'
+  errorMessage.className = 'aislenote-media-error'
   errorMessage.hidden = true
   errorMessage.setAttribute('role', 'status')
 
@@ -232,7 +232,7 @@ export function createMediaPlayerElement({
   }
 
   const syncSpeedOptions = () => {
-    speedMenu.querySelectorAll<HTMLButtonElement>('.tabs-media-speed-option').forEach((option) => {
+    speedMenu.querySelectorAll<HTMLButtonElement>('.aislenote-media-speed-option').forEach((option) => {
       const optionSpeed = normalizeMediaPlaybackSpeed(option.dataset.speed)
       option.setAttribute('aria-selected', optionSpeed === playbackSpeed ? 'true' : 'false')
     })
@@ -355,7 +355,7 @@ export function createMediaPlayerElement({
   for (const speed of MEDIA_SPEED_PRESETS) {
     const option = document.createElement('button')
     option.type = 'button'
-    option.className = 'tabs-media-speed-option'
+    option.className = 'aislenote-media-speed-option'
     option.dataset.speed = String(speed)
     option.setAttribute('role', 'option')
     option.textContent = formatMediaSpeedLabel(speed)
@@ -447,10 +447,10 @@ export function createMediaPlayerElement({
   )
   if (kind === 'video') {
     const viewport = document.createElement('span')
-    viewport.className = 'tabs-media-viewport'
+    viewport.className = 'aislenote-media-viewport'
     assignStyles(viewport, getMediaViewportStyle(transformMetadata, DEFAULT_VIDEO_ASPECT_RATIO))
     const frame = document.createElement('span')
-    frame.className = 'tabs-media-frame'
+    frame.className = 'aislenote-media-frame'
     assignStyles(frame, getMediaFrameStyle(transformMetadata))
     assignStyles(media, getMediaVideoStyle(transformMetadata))
     frame.append(media)

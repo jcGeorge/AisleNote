@@ -1,3 +1,4 @@
+import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MessagesView } from './MessagesView'
@@ -18,7 +19,7 @@ const message: AppMessage = {
     {
       label: 'de-coupled',
       path: 'notes/other.md',
-      location: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+      location: { noteId: 'note-1' },
     },
   ],
 }
@@ -75,7 +76,7 @@ describe('MessagesView', () => {
         messages={[]}
         toastHistory={[]}
         onDismissMessage={vi.fn()}
-        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenRecoveredVaultLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
@@ -93,7 +94,7 @@ describe('MessagesView', () => {
         messages={[message]}
         toastHistory={[]}
         onDismissMessage={vi.fn()}
-        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenRecoveredVaultLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
@@ -109,7 +110,7 @@ describe('MessagesView', () => {
         messages={[message]}
         toastHistory={toastHistory}
         onDismissMessage={vi.fn()}
-        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenRecoveredVaultLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
@@ -127,7 +128,7 @@ describe('MessagesView', () => {
         messages={[message]}
         toastHistory={toastHistory}
         onDismissMessage={vi.fn()}
-        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenRecoveredVaultLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
@@ -148,7 +149,7 @@ describe('MessagesView', () => {
         messages={[message]}
         toastHistory={[]}
         onDismissMessage={vi.fn()}
-        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenRecoveredVaultLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
@@ -162,13 +163,13 @@ describe('MessagesView', () => {
   it('renders storage recovery details', () => {
     const recoveryMessage: AppMessage = {
       id: 'message-2',
-      type: 'storage-notebook-recovered',
+      type: 'storage-vault-recovered',
       status: 'acknowledged',
       createdAt: '2026-06-01T00:02:00.000Z',
       signature: 'storage-recovered-1',
-      title: 'Started local notebook',
-      body: 'Tabs could not load the connected notebook.',
-      failedNotebookPath: '/Users/me/Broken Notebook',
+      title: 'Recovered vault',
+      body: 'AisleNote could not load this vault folder.',
+      failedVaultPath: '/Users/me/Broken Vault',
       recoveryMode: 'created-local',
       issueSummary: ['manifest.json: Root manifest is corrupt.'],
     }
@@ -178,30 +179,58 @@ describe('MessagesView', () => {
         messages={[recoveryMessage]}
         toastHistory={[]}
         onDismissMessage={vi.fn()}
-        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenRecoveredVaultLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
 
-    expect(html).toContain('Started local notebook')
-    expect(html).toContain('failed notebook folder')
-    expect(html).toContain('/Users/me/Broken Notebook')
+    expect(html).toContain('Recovered vault')
+    expect(html).toContain('failed vault folder')
+    expect(html).toContain('/Users/me/Broken Vault')
     expect(html).toContain('issue summary')
     expect(html).toContain('manifest.json: Root manifest is corrupt.')
-    expect(html).toContain('open previous notebook folder')
+    expect(html).toContain('open previous vault folder')
+  })
+
+  it('hides storage recovery actions when no recovery action is available', () => {
+    const recoveryMessage: AppMessage = {
+      id: 'message-2',
+      type: 'storage-vault-recovered',
+      status: 'acknowledged',
+      createdAt: '2026-06-01T00:02:00.000Z',
+      signature: 'storage-recovered-1',
+      title: 'Recovered vault',
+      body: 'AisleNote could not load this vault folder.',
+      failedVaultPath: '/Users/me/Broken Vault',
+      recoveryMode: 'created-local',
+      issueSummary: ['manifest.json: Root manifest is corrupt.'],
+    }
+    const html = renderToStaticMarkup(
+      <MessagesView
+        section="inbox"
+        messages={[recoveryMessage]}
+        toastHistory={[]}
+        onDismissMessage={vi.fn()}
+        onOpenLocation={vi.fn()}
+      />,
+    )
+
+    expect(html).toContain('Recovered vault')
+    expect(html).toContain('failed vault folder')
+    expect(html).not.toContain('open previous vault folder')
   })
 
   it('hides recovery folder actions when the failed folder is unavailable', () => {
     const recoveryMessage: AppMessage = {
       id: 'message-2',
-      type: 'storage-notebook-recovered',
+      type: 'storage-vault-recovered',
       status: 'acknowledged',
       createdAt: '2026-06-01T00:02:00.000Z',
       signature: 'storage-recovered-1',
-      title: 'Started local notebook',
-      body: 'Tabs could not load the connected notebook.',
-      failedNotebookPath: '/Users/me/Missing Notebook',
-      failedNotebookAvailable: false,
+      title: 'Recovered vault',
+      body: 'AisleNote could not load this vault folder.',
+      failedVaultPath: '/Users/me/Missing Vault',
+      failedVaultAvailable: false,
       recoveryMode: 'created-local',
       issueSummary: ['Unable to locate folder.'],
     }
@@ -211,16 +240,16 @@ describe('MessagesView', () => {
         messages={[recoveryMessage]}
         toastHistory={[]}
         onDismissMessage={vi.fn()}
-        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenRecoveredVaultLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
 
-    expect(html).toContain('failed notebook folder')
-    expect(html).toContain('/Users/me/Missing Notebook')
+    expect(html).toContain('failed vault folder')
+    expect(html).toContain('/Users/me/Missing Vault')
     expect(html).toContain('Unable to locate folder.')
-    expect(html).not.toContain('open previous notebook folder')
-    expect(html).not.toContain('open local notebook folder')
+    expect(html).not.toContain('open previous vault folder')
+    expect(html).not.toContain('open vault folder')
   })
 
   it('renders toast history newest first with tone and timestamp', () => {
@@ -230,7 +259,7 @@ describe('MessagesView', () => {
         messages={[message]}
         toastHistory={toastHistory}
         onDismissMessage={vi.fn()}
-        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenRecoveredVaultLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
@@ -251,7 +280,7 @@ describe('MessagesView', () => {
         diagnosticDays={[]}
         diagnosticEntries={[]}
         onDismissMessage={vi.fn()}
-        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenRecoveredVaultLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
@@ -283,7 +312,7 @@ describe('MessagesView', () => {
         diagnosticMode="all"
         onDiagnosticDayChange={vi.fn()}
         onDismissMessage={vi.fn()}
-        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenRecoveredVaultLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
@@ -314,7 +343,7 @@ describe('MessagesView', () => {
         onOpenDiagnosticsFolder={vi.fn()}
         onDiagnosticDayChange={vi.fn()}
         onDismissMessage={vi.fn()}
-        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenRecoveredVaultLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
@@ -337,7 +366,7 @@ describe('MessagesView', () => {
         diagnosticLevelFilter="warning"
         onDiagnosticDayChange={vi.fn()}
         onDismissMessage={vi.fn()}
-        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenRecoveredVaultLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
@@ -398,7 +427,7 @@ describe('MessagesView', () => {
         diagnosticEntries={entries}
         onDiagnosticDayChange={vi.fn()}
         onDismissMessage={vi.fn()}
-        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenRecoveredVaultLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
@@ -432,7 +461,7 @@ describe('MessagesView', () => {
         diagnosticMode="all"
         onDiagnosticDayChange={vi.fn()}
         onDismissMessage={vi.fn()}
-        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenRecoveredVaultLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )
@@ -448,7 +477,7 @@ describe('MessagesView', () => {
         diagnosticMode="all"
         onDiagnosticDayChange={vi.fn()}
         onDismissMessage={vi.fn()}
-        onOpenRecoveredNotebookLocation={vi.fn()}
+        onOpenRecoveredVaultLocation={vi.fn()}
         onOpenLocation={vi.fn()}
       />,
     )

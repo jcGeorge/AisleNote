@@ -1,4 +1,4 @@
-import { Fragment, type RefObject } from 'react'
+import * as React from 'react'
 import {
   getDefaultToolbarLayout,
   getToolbarGroupClassName,
@@ -17,9 +17,9 @@ const TOOLBAR_FORMAT_LABELS: Record<ToolbarFormatKey, string> = {
 
 type SharedEditorToolbarProps = {
   layout?: ToolbarLayout
-  copyButtonRef: RefObject<HTMLButtonElement | null>
-  headingButtonRef: RefObject<HTMLButtonElement | null>
-  aisleButtonRef: RefObject<HTMLButtonElement | null>
+  copyButtonRef: React.RefObject<HTMLButtonElement | null>
+  headingButtonRef: React.RefObject<HTMLButtonElement | null>
+  aisleButtonRef: React.RefObject<HTMLButtonElement | null>
   tooltipsDisabled?: boolean
   interactionDisabled?: boolean
   toolbarFormatState: ToolbarFormatState
@@ -40,9 +40,9 @@ type SharedEditorToolbarProps = {
 }
 
 type ToolbarRenderContext = {
-  copyButtonRef: RefObject<HTMLButtonElement | null>
-  headingButtonRef: RefObject<HTMLButtonElement | null>
-  aisleButtonRef: RefObject<HTMLButtonElement | null>
+  copyButtonRef: React.RefObject<HTMLButtonElement | null>
+  headingButtonRef: React.RefObject<HTMLButtonElement | null>
+  aisleButtonRef: React.RefObject<HTMLButtonElement | null>
   tooltipsDisabled: boolean
   toolbarFormatState: ToolbarFormatState
   activeHeadingLevel: ToolbarHeadingLevel
@@ -60,7 +60,10 @@ type ToolbarRenderContext = {
   onClear: () => void
 }
 
-function getToolbarToolRef(toolId: ToolbarToolId, context: ToolbarRenderContext): RefObject<HTMLButtonElement | null> | undefined {
+function getToolbarToolRef(
+  toolId: ToolbarToolId,
+  context: ToolbarRenderContext,
+): React.RefObject<HTMLButtonElement | null> | undefined {
   if (toolId === 'copy') return context.copyButtonRef
   if (toolId === 'heading') return context.headingButtonRef
   if (toolId === 'aisles') return context.aisleButtonRef
@@ -253,9 +256,9 @@ export function SharedEditorToolbar({
           ) : (
             <div key={`${layout.id}-${segment.id}`} className={getToolbarGroupClassName(segment.items)}>
               {segment.items.map((item) => (
-                <Fragment key={item.id}>
+                <React.Fragment key={item.id}>
                   {item.type === 'tool' ? renderToolbarTool(item.toolId, renderContext) : null}
-                </Fragment>
+                </React.Fragment>
               ))}
               {groupHasShortcutFeedback(segment.items, toolbarShortcutFeedback) && (
                 <span className="note-toolbar-shortcut-feedback" role="status">

@@ -11,7 +11,7 @@ import {
 describe('synced UI settings registry', () => {
   it('exposes defaults for simple synced UI settings', () => {
     expect(DEFAULT_SIMPLE_SYNCED_UI_SETTINGS).toMatchObject({
-      lastLinkInsertMode: 'note',
+      lastLinkInsertMode: 'note-link',
       lastNoteCopyMode: 'independent',
       findCaseSensitive: false,
       findWholeWord: false,
@@ -20,76 +20,73 @@ describe('synced UI settings registry', () => {
       findReplaceScope: 'note',
       removeNoteReferencesOnTrash: true,
       noteMentionCopyRequiresConfirmation: true,
-      deleteActiveAisleShortcutEnabled: false,
       tabRenameEnterBehavior: 'goes-to-note',
       decoupledItemsKeepData: true,
       trashDeleteForRealRequiresConfirmation: true,
       tableAddTargetMode: 'bottom-right',
       tableDeleteTargetMode: 'bottom-right',
       tableOfContentsScope: 'all-aisles',
+      tabColorIndicatorPlacement: 'bottom',
       toolbarEditorShowNames: false,
     })
     expect(DEFAULT_SIMPLE_SYNCED_UI_SETTINGS).not.toHaveProperty('newAislePlacement')
-    expect(DEFAULT_SIMPLE_SYNCED_UI_SETTINGS).not.toHaveProperty('toggleTabsTarget')
   })
 
   it('normalizes booleans and enum values with invalid-value fallbacks', () => {
     const normalized = normalizeRegisteredSyncedUiSettings({
-      toggleTabsTarget: 'messages',
       findRegex: true,
       findReplaceMode: 'replace',
-      findReplaceScope: 'domain',
-      lastLinkInsertMode: 'url',
-      lastNoteCopyMode: 'linked',
+      findReplaceScope: 'folder',
+      lastLinkInsertMode: 'note-preview',
+      lastNoteCopyMode: 'synced',
       tableAddTargetMode: 'active-cell',
       tableDeleteTargetMode: 'not-real',
       tableOfContentsScope: 'focused-aisle',
+      tabColorIndicatorPlacement: 'top',
       tabRenameEnterBehavior: 'creates-another-tab',
       newAislePlacement: 'left-of-focus',
       removeNoteReferencesOnTrash: 'false',
-      deleteActiveAisleShortcutEnabled: true,
       trashDeleteForRealRequiresConfirmation: false,
     })
 
     expect(normalized).toMatchObject({
       findRegex: true,
       findReplaceMode: 'replace',
-      findReplaceScope: 'domain',
-      lastLinkInsertMode: 'url',
-      lastNoteCopyMode: 'linked',
+      findReplaceScope: 'folder',
+      lastLinkInsertMode: 'note-preview',
+      lastNoteCopyMode: 'synced',
       tableAddTargetMode: 'active-cell',
       tableDeleteTargetMode: 'bottom-right',
       tableOfContentsScope: 'focused-aisle',
+      tabColorIndicatorPlacement: 'top',
       tabRenameEnterBehavior: 'creates-another-tab',
       removeNoteReferencesOnTrash: true,
-      deleteActiveAisleShortcutEnabled: true,
       trashDeleteForRealRequiresConfirmation: false,
     })
-    expect(normalized).not.toHaveProperty('toggleTabsTarget')
     expect(normalized).not.toHaveProperty('newAislePlacement')
     expect(normalized).not.toHaveProperty('showParentHomeTab')
     expect(normalizeRegisteredSyncedUiSetting('findReplaceMode', 'bad')).toBe('find')
     expect(normalizeRegisteredSyncedUiSetting('findReplaceScope', 'bad')).toBe('note')
-    expect(normalizeRegisteredSyncedUiSetting('findReplaceScope', 'notebook')).toBe('notebook')
+    expect(normalizeRegisteredSyncedUiSetting('findReplaceScope', 'vault')).toBe('vault')
+    expect(normalizeRegisteredSyncedUiSetting('lastLinkInsertMode', 'note')).toBe('note-link')
+    expect(normalizeRegisteredSyncedUiSetting('lastNoteCopyMode', 'linked')).toBe('synced')
     expect(normalizeRegisteredSyncedUiSetting('tabRenameEnterBehavior', 'bad')).toBe('goes-to-note')
+    expect(normalizeRegisteredSyncedUiSetting('tabColorIndicatorPlacement', 'bad')).toBe('bottom')
     expect(normalizeRegisteredSyncedUiSetting('trashDeleteForRealRequiresConfirmation', 'bad')).toBe(true)
   })
 
   it('picks registered settings and boolean drafts from a source object', () => {
     const picked = pickRegisteredSyncedUiSettings({
       findCaseSensitive: true,
-      alwaysShowSpaces: true,
-      toggleTabsTarget: 'messages',
+      unknownBoolean: true,
     })
     expect(picked).toMatchObject({
       findCaseSensitive: true,
       findWholeWord: false,
     })
-    expect(picked).not.toHaveProperty('toggleTabsTarget')
     expect(getSyncedUiBooleanSettings({ noteMentionCopyRequiresConfirmation: false })).toMatchObject({
       noteMentionCopyRequiresConfirmation: false,
       removeNoteReferencesOnTrash: true,
-      deleteActiveAisleShortcutEnabled: false,
       trashDeleteForRealRequiresConfirmation: true,
     })
   })
@@ -98,7 +95,6 @@ describe('synced UI settings registry', () => {
     expect(MISC_SYNCED_UI_BOOLEAN_SETTINGS.map((setting) => setting.key)).toEqual([
       'removeNoteReferencesOnTrash',
       'noteMentionCopyRequiresConfirmation',
-      'deleteActiveAisleShortcutEnabled',
     ])
   })
 })

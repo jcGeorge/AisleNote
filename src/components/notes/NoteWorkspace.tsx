@@ -1,8 +1,10 @@
+import * as React from 'react'
 import {
   Fragment,
   memo,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -15,16 +17,16 @@ import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { buildAisleEditorKey } from '../../editor/aisle-editor'
 import { clampAisleWidth } from '../../notes/aisle-widths'
-import type { HeadingOutlineItem } from '../../editor/heading-outline'
-import type { TableOfContentsLinkItem } from '../../editor/table-of-contents-links'
 import { RENDERED_MARKDOWN_SURFACE_CLASS } from '../../editor/rendered-markdown-surface'
+import type { TableOfContentsLinkItem } from '../../editor/table-of-contents'
 import { recordDiagnosticEvent } from '../../diagnostics/diagnostic-logger'
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
-import type { ResolvedNoteAisle } from '../../types/app'
+import type { AppState, NoteLocation, ResolvedNoteAisle, TabColorIndicatorPlacement } from '../../types/app'
 import { ToolbarToolIcon } from '../editor/ToolbarToolIcon'
-import { AppIcon } from '../icons/AppIcon'
 import { getAislePreviewSegments } from './aisle-markdown-preview-segments'
+import { NotePreviewContent } from './NotePreviewContent'
 import { AisleHorizontalScrollbar } from './AisleHorizontalScrollbar'
+import { NoteTabStrip, type NoteTabRenameCommitSource, type NoteTabStripItem } from './NoteTabStrip'
 import {
   MarkdownPreviewHeading1,
   MarkdownPreviewHeading2,
@@ -32,14 +34,20 @@ import {
   MarkdownPreviewHeading4,
   MarkdownPreviewHeading5,
   MarkdownPreviewHeading6,
+  MarkdownPreviewInput,
   MarkdownPreviewLink,
   MarkdownPreviewListItem,
   MarkdownPreviewParagraph,
+  createMarkdownPreviewListItem,
+  createMarkdownPreviewUnorderedList,
 } from './markdown-preview-components'
 import {
+  getAisleActivationPointerFromNoteWorkspaceMouseEvent,
   getAisleActivationPointerFromNoteWorkspaceEvent,
   getAisleEditorKeyFromNoteWorkspacePointerTarget,
+  getRightSideBlockGutterTarget,
   scheduleNoteWorkspaceArrangeExit,
+  shouldActivateAisleFromNoteWorkspacePointer,
   shouldExitArrangeModeFromNoteWorkspacePointer,
 } from './note-workspace-events'
 import {
@@ -47,43 +55,81 @@ import {
   getLightweightPreviewText,
   getMarkdownWorkloadProfile,
 } from './note-workspace-preview'
+import { getTableOfContentsPanelKeyboardAction } from './table-of-contents-panel-keyboard'
+
+void React
+
+type HeadingOutlineItem = {
+  key: string
+  level: number
+  text: string
+}
 
 const transformAislePreviewUrl = (url: string, key: string) => {
-  if (key === 'href' && /^tabs-asset:/i.test(url)) return url
-  if (key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^tabs-asset:/i.test(url))) {
+  if (key === 'href' && /^aislenote-asset:/i.test(url)) return url
+  if (key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^aislenote-asset:/i.test(url))) {
     return resolveAssetDisplayUrl(url)
   }
   return defaultUrlTransform(url)
 }
 
 const noteWorkspacePreviewMarkdownComponents = {
-  a: MarkdownPreviewLink,
   h1: MarkdownPreviewHeading1,
   h2: MarkdownPreviewHeading2,
   h3: MarkdownPreviewHeading3,
   h4: MarkdownPreviewHeading4,
   h5: MarkdownPreviewHeading5,
   h6: MarkdownPreviewHeading6,
+  input: MarkdownPreviewInput,
   li: MarkdownPreviewListItem,
   p: MarkdownPreviewParagraph,
 }
 
-const NoteWorkspaceMarkdownPreview = memo(function NoteWorkspaceMarkdownPreview({ markdown }: { markdown: string }) {
-  return getAislePreviewSegments(markdown).map((segment, segmentIndex) => (
+const NoteWorkspaceMarkdownPreview = memo(function NoteWorkspaceMarkdownPreview({
+  markdown,
+  appState,
+  currentNoteBodyId,
+  onOpenNoteReference,
+}: {
+  markdown: string
+  appState?: AppState | null
+  currentNoteBodyId: string
+  onOpenNoteReference?: (target: NoteLocation) => void
+}) {
+  const markdownComponents = useMemo(
+    () => ({
+      ...noteWorkspacePreviewMarkdownComponents,
+      li: createMarkdownPreviewListItem(markdown),
+      ul: createMarkdownPreviewUnorderedList(markdown),
+      a: (props: React.ComponentProps<typeof MarkdownPreviewLink>) => (
+        <MarkdownPreviewLink {...props} appState={appState} onOpenNote={onOpenNoteReference} />
+      ),
+    }),
+    [appState, markdown, onOpenNoteReference],
+  )
+
+  return getAislePreviewSegments(markdown, appState).map((segment, segmentIndex) => (
     <Fragment key={`${segment.type}-${segmentIndex}`}>
       {segment.type === 'markdown' ? (
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           urlTransform={transformAislePreviewUrl}
-          components={noteWorkspacePreviewMarkdownComponents}
+          components={markdownComponents}
         >
           {segment.markdown}
         </ReactMarkdown>
+      ) : appState ? (
+        <NotePreviewContent
+          appState={appState}
+          target={segment.payload.target}
+          currentNoteBodyId={currentNoteBodyId}
+          depth={1}
+          label={segment.label}
+          aisleIds={segment.payload.aisleIds}
+          onOpenNote={onOpenNoteReference}
+        />
       ) : (
-        <div className="aisle-edit-context-preview">
-          <span className="aisle-edit-context-preview-label">note preview</span>
-          <span className="aisle-edit-context-preview-title">{segment.label}</span>
-        </div>
+        null
       )}
     </Fragment>
   ))
@@ -100,17 +146,10 @@ function assignRef<T>(ref: Ref<T>, value: T | null) {
   }
 }
 
-type NoteAisleControls = {
-  showAddButtons?: boolean
-  showDeleteButton?: boolean
-  onAddAisleLeft: () => void
-  onAddAisleRight: () => void
-  onDeleteActiveAisle: () => void
-}
-
 type AisleActivationPointer = {
   clientX: number
   clientY: number
+  mode: 'coordinate' | 'focus-only'
 }
 
 type NoteWorkspaceProps = {
@@ -127,6 +166,7 @@ type NoteWorkspaceProps = {
   headingPopover: ReactNode
   imageToolsOverlay: ReactNode
   tableControlsOverlay: ReactNode
+  listReorderControlsOverlay?: ReactNode
   arrangeDestinationPrompt?: ReactNode
   tableOfContentsHeadingsByAisle?: Record<string, HeadingOutlineItem[]>
   tableOfContentsLinksByAisle?: Record<string, TableOfContentsLinkItem[]>
@@ -140,20 +180,33 @@ type NoteWorkspaceProps = {
   onResetAisleWidth?: (aisleId: string) => void
   onAisleWidthDragCommitted?: () => void
   mountedAisleIds: Set<string>
+  failedEditorMountAisleIds?: Set<string>
   suppressActiveAislePreviewFallback?: boolean
   deferInactivePreviewFallbacks?: boolean
   getPreviewMarkdownForAisle: (aisle: ResolvedNoteAisle) => string
   onCloseTableOfContentsAisle?: (aisleId: string) => void
   onSelectTableOfContentsHeading?: (aisleId: string, headingKey: string) => void
   onSelectTableOfContentsLink?: (aisleId: string, linkKey: string) => void
-  onOpenTableOfContentsLink?: (aisleId: string, link: TableOfContentsLinkItem) => void
   onOpenAisleFrontmatter?: (aisleId: string) => void
   onOpenAisleLink?: (aisleId: string) => void
+  appState?: AppState | null
+  onOpenNoteReference?: (target: NoteLocation) => void
   onOpenTagFilter?: (tag: string) => void
-  scratchpadAisleControls?: NoteAisleControls
-  regularNoteAisleControls?: NoteAisleControls
+  onSelectEditableAsset?: (target: Element) => void
   onRegisterAislePaneRoot: (aisleId: string, node: HTMLElement | null) => void
   onRegisterAisleEditorRoot: (editorKey: string, node: HTMLElement | null) => void
+  tabColorIndicatorPlacement?: TabColorIndicatorPlacement
+  noteTabs?: NoteTabStripItem[]
+  renamingNoteTabId?: string
+  noteTabRenameDraft?: string
+  onSelectNoteTab?: (noteId: string) => void
+  onCloseNoteTab?: (noteId: string) => void
+  onPromoteNoteTab?: (noteId: string) => void
+  onReorderNoteTabs?: (sourceNoteId: string, targetIndex: number) => void
+  onStartNoteTabRename?: (noteId: string, title: string) => void
+  onNoteTabRenameDraftChange?: (title: string) => void
+  onCommitNoteTabRename?: (source: NoteTabRenameCommitSource) => void
+  onCancelNoteTabRename?: () => void
 }
 
 type AisleTableOfContentsPanelProps = {
@@ -163,7 +216,6 @@ type AisleTableOfContentsPanelProps = {
   onClose: (aisleId: string) => void
   onSelectHeading: (aisleId: string, headingKey: string) => void
   onSelectLink: (aisleId: string, linkKey: string) => void
-  onOpenLink: (aisleId: string, link: TableOfContentsLinkItem) => void
 }
 
 function AisleTableOfContentsPanel({
@@ -173,10 +225,44 @@ function AisleTableOfContentsPanel({
   onClose,
   onSelectHeading,
   onSelectLink,
-  onOpenLink,
 }: AisleTableOfContentsPanelProps) {
   const hasHeadings = headings.length > 0
   const hasLinks = links.length > 0
+  const itemCount = headings.length + links.length
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const [activeIndex, setActiveIndex] = useState(0)
+  const panelClassName = [
+    'aisle-toc-panel',
+    hasHeadings ? 'has-headings' : '',
+    hasLinks ? 'has-links' : '',
+  ].filter(Boolean).join(' ')
+
+  const setItemRef = useCallback((index: number, node: HTMLButtonElement | null) => {
+    itemRefs.current[index] = node
+  }, [])
+
+  const focusItem = useCallback(
+    (index: number) => {
+      if (itemCount <= 0) return
+      const nextIndex = Math.max(0, Math.min(itemCount - 1, index))
+      setActiveIndex(nextIndex)
+      itemRefs.current[nextIndex]?.focus({ preventScroll: true })
+    },
+    [itemCount],
+  )
+
+  useEffect(() => {
+    itemRefs.current = itemRefs.current.slice(0, itemCount)
+    setActiveIndex(0)
+    if (itemCount <= 0) return undefined
+    const frame = window.requestAnimationFrame(() => {
+      itemRefs.current[0]?.focus({ preventScroll: true })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [aisleId, itemCount])
+
+  let keyboardItemIndex = 0
+
   return (
     <div
       className="aisle-toc-panel-layer"
@@ -190,58 +276,73 @@ function AisleTableOfContentsPanel({
       }}
     >
       <section
-        className="aisle-toc-panel"
+        className={panelClassName}
         role="dialog"
         aria-label="Table of contents"
+        onKeyDown={(event) => {
+          const action = getTableOfContentsPanelKeyboardAction(event.nativeEvent, activeIndex, itemCount)
+          if (action.type === 'none') return
+          event.preventDefault()
+          event.stopPropagation()
+          if (action.type === 'close') {
+            onClose(aisleId)
+            return
+          }
+          if (action.type === 'highlight') {
+            focusItem(action.index)
+            return
+          }
+          itemRefs.current[action.index]?.click()
+        }}
         onPointerDown={(event) => {
           event.stopPropagation()
         }}
       >
         <div className="aisle-toc-sections">
           {hasHeadings && (
-            <section className="aisle-toc-section" aria-label="Table of contents headings">
-              <div className="aisle-toc-panel-title">table of contents</div>
-              <div className="aisle-toc-list">
-                {headings.map((heading) => (
-                  <button
-                    key={heading.key}
-                    type="button"
-                    className="aisle-toc-heading-btn"
-                    style={{ '--toc-heading-indent': `${Math.max(0, heading.level - 1) * 0.78}rem` } as CSSProperties}
-                    onClick={(event) => {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      onSelectHeading(aisleId, heading.key)
-                    }}
-                  >
-                    {heading.text || `heading ${heading.level}`}
-                  </button>
-                ))}
+            <section className="aisle-toc-section aisle-toc-heading-section" aria-label="Table of contents headings">
+              <h4 className="aisle-toc-panel-title">Headers</h4>
+              <div className="aisle-toc-list aisle-toc-heading-list">
+                {headings.map((heading) => {
+                  const itemIndex = keyboardItemIndex
+                  keyboardItemIndex += 1
+                  return (
+                    <button
+                      key={heading.key}
+                      ref={(node) => setItemRef(itemIndex, node)}
+                      type="button"
+                      className={`aisle-toc-heading-btn${itemIndex === activeIndex ? ' is-active' : ''}`}
+                      aria-current={itemIndex === activeIndex ? 'true' : undefined}
+                      style={{ '--toc-heading-indent': `${Math.max(0, heading.level - 1) * 0.78}rem` } as CSSProperties}
+                      onFocus={() => setActiveIndex(itemIndex)}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        onSelectHeading(aisleId, heading.key)
+                      }}
+                    >
+                      {heading.text || `heading ${heading.level}`}
+                    </button>
+                  )
+                })}
               </div>
             </section>
           )}
           {hasLinks && (
-            <section className="aisle-toc-section" aria-label="Table of contents links">
-              <div className="aisle-toc-panel-title">links</div>
-              <div className="aisle-toc-list">
-                {links.map((link) => (
-                  <div key={link.key} className="aisle-toc-link-row">
+            <section className="aisle-toc-section aisle-toc-links-section" aria-label="Table of contents links">
+              <h4 className="aisle-toc-panel-title">Links</h4>
+              <div className="aisle-toc-list aisle-toc-link-list">
+                {links.map((link) => {
+                  const itemIndex = keyboardItemIndex
+                  keyboardItemIndex += 1
+                  return (
                     <button
+                      key={link.key}
+                      ref={(node) => setItemRef(itemIndex, node)}
                       type="button"
-                      className="aisle-toc-link-open-btn"
-                      aria-label={`Open ${link.label}`}
-                      data-app-tooltip="Open"
-                      onClick={(event) => {
-                        event.preventDefault()
-                        event.stopPropagation()
-                        onOpenLink(aisleId, link)
-                      }}
-                    >
-                      <span className="aisle-toc-link-open-icon" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="aisle-toc-heading-btn aisle-toc-link-btn"
+                      className={`aisle-toc-heading-btn aisle-toc-link-btn${itemIndex === activeIndex ? ' is-active' : ''}`}
+                      aria-current={itemIndex === activeIndex ? 'true' : undefined}
+                      onFocus={() => setActiveIndex(itemIndex)}
                       onClick={(event) => {
                         event.preventDefault()
                         event.stopPropagation()
@@ -250,8 +351,8 @@ function AisleTableOfContentsPanel({
                     >
                       {link.label}
                     </button>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </section>
           )}
@@ -275,6 +376,7 @@ export function NoteWorkspace({
   headingPopover,
   imageToolsOverlay,
   tableControlsOverlay,
+  listReorderControlsOverlay = null,
   arrangeDestinationPrompt = null,
   tableOfContentsHeadingsByAisle = {},
   tableOfContentsLinksByAisle = {},
@@ -294,14 +396,27 @@ export function NoteWorkspace({
   onCloseTableOfContentsAisle = () => undefined,
   onSelectTableOfContentsHeading = () => undefined,
   onSelectTableOfContentsLink = () => undefined,
-  onOpenTableOfContentsLink = () => undefined,
   onOpenAisleFrontmatter = () => undefined,
   onOpenAisleLink = () => undefined,
+  appState = null,
+  onOpenNoteReference,
   onOpenTagFilter = () => undefined,
-  scratchpadAisleControls,
-  regularNoteAisleControls,
+  onSelectEditableAsset = () => undefined,
   onRegisterAislePaneRoot,
   onRegisterAisleEditorRoot,
+  failedEditorMountAisleIds,
+  tabColorIndicatorPlacement = 'bottom',
+  noteTabs = [],
+  renamingNoteTabId = '',
+  noteTabRenameDraft = '',
+  onSelectNoteTab = () => undefined,
+  onCloseNoteTab = () => undefined,
+  onPromoteNoteTab = () => undefined,
+  onReorderNoteTabs = () => undefined,
+  onStartNoteTabRename = () => undefined,
+  onNoteTabRenameDraftChange = () => undefined,
+  onCommitNoteTabRename = () => undefined,
+  onCancelNoteTabRename = () => undefined,
 }: NoteWorkspaceProps) {
   const [aisleScrollNode, setAisleScrollNode] = useState<HTMLDivElement | null>(null)
   const aisleResizeDragRef = useRef<{
@@ -428,15 +543,32 @@ export function NoteWorkspace({
     [onAisleWidthDragCommitted],
   )
 
+  const activateAisleFromWorkspaceTarget = useCallback(
+    (target: EventTarget | null, pointer?: AisleActivationPointer) => {
+      const editorKey = getAisleEditorKeyFromNoteWorkspacePointerTarget(target)
+      if (!editorKey) return null
+      const gutterTarget = pointer ? getRightSideBlockGutterTarget(target, pointer) : null
+      onActivateAisle(
+        editorKey,
+        pointer && gutterTarget
+          ? { ...pointer, mode: 'focus-only' }
+          : pointer,
+      )
+      return gutterTarget
+    },
+    [onActivateAisle],
+  )
+
   return (
     <section
       ref={onRootChange}
-      className={`note-aisles-shell ${isSplitWorkspace ? 'is-split' : 'is-single'}`}
+      className={`note-aisles-shell ${isSplitWorkspace ? 'is-split' : 'is-single'} is-tab-indicator-${tabColorIndicatorPlacement}`}
     >
       {toolbar}
       {headingPopover}
       {imageToolsOverlay}
       {tableControlsOverlay}
+      {listReorderControlsOverlay}
       {arrangeDestinationPrompt}
       <div
         ref={setAisleScrollRef}
@@ -445,15 +577,34 @@ export function NoteWorkspace({
           if (shouldExitArrangeModeFromNoteWorkspacePointer(arrangeModeActive, event.button)) {
             scheduleNoteWorkspaceArrangeExit(onExitArrangeMode)
           }
-          const editorKey = getAisleEditorKeyFromNoteWorkspacePointerTarget(event.target)
-          if (editorKey) {
-            onActivateAisle(editorKey, getAisleActivationPointerFromNoteWorkspaceEvent(event.nativeEvent))
+          const shouldActivateAisle = shouldActivateAisleFromNoteWorkspacePointer(event.button)
+          if (shouldActivateAisle && !editorReadOnly && event.target instanceof Element) {
+            onSelectEditableAsset(event.target)
+          }
+          const pointer = shouldActivateAisle
+            ? getAisleActivationPointerFromNoteWorkspaceEvent(event.nativeEvent)
+            : undefined
+          if (pointer) {
+            const gutterTarget = activateAisleFromWorkspaceTarget(event.target, pointer)
+            if (gutterTarget) {
+              event.preventDefault()
+            }
+          }
+        }}
+        onMouseDownCapture={(event) => {
+          if (!shouldActivateAisleFromNoteWorkspacePointer(event.button)) return
+          const pointer = getAisleActivationPointerFromNoteWorkspaceMouseEvent(event.nativeEvent, event.target)
+          const gutterTarget = activateAisleFromWorkspaceTarget(event.target, pointer)
+          if (gutterTarget) {
+            event.preventDefault()
+            event.stopPropagation()
+            event.nativeEvent.stopImmediatePropagation()
           }
         }}
         onClickCapture={(event) => {
           const target = event.target instanceof Element ? event.target : null
-          const tagToken = target?.closest<HTMLElement>('[data-tabs-tag]')
-          const tag = tagToken?.dataset.tabsTag?.trim()
+          const tagToken = target?.closest<HTMLElement>('[data-aislenote-tag]')
+          const tag = tagToken?.dataset.aislenoteTag?.trim()
           if (!tag) return
           event.preventDefault()
           event.stopPropagation()
@@ -463,8 +614,10 @@ export function NoteWorkspace({
       >
         {aisles.map((aisle, index) => {
           const editorKey = buildAisleEditorKey(noteBodyId, aisle.id)
-          const editorMounted = mountedAisleIds.has(aisle.id)
-          const editorMountPending = suppressActiveAislePreviewFallback && !editorMounted && aisle.id === activeAisleId
+          const editorMountFailed = failedEditorMountAisleIds?.has(aisle.id) ?? false
+          const editorMounted = mountedAisleIds.has(aisle.id) && !editorMountFailed
+          const editorMountPending =
+            suppressActiveAislePreviewFallback && !editorMounted && !editorMountFailed && aisle.id === activeAisleId
           const previewMarkdown = editorMounted || editorMountPending ? '' : getPreviewMarkdownForAisle(aisle)
           const previewProfile =
             previewMarkdown.length > 0
@@ -494,25 +647,21 @@ export function NoteWorkspace({
             (tableOfContentsHeadings.length > 0 || tableOfContentsLinks.length > 0)
           const showLinkButton = wholeNoteLinked || linkedAisleIds.has(aisle.id)
           const showFrontmatterButton = frontmatterAisleIds.has(aisle.id)
-          const aisleControls = scratchpadAisleControls ?? regularNoteAisleControls
-          const showAisleAddButtons = aisleControls?.showAddButtons ?? true
-          const showAisleDeleteButton = aisleControls?.showDeleteButton ?? false
-          const showAisleControls = Boolean(
-            aisleControls && aisle.id === activeAisleId && (showAisleAddButtons || showAisleDeleteButton),
-          )
-          const aisleControlsLabel = scratchpadAisleControls ? 'Scratchpad aisle' : 'Aisle'
           const customAisleWidth = isSplitWorkspace ? aisleWidths[aisle.id] : undefined
           const aislePaneStyle =
             typeof customAisleWidth === 'number'
               ? ({ '--note-aisle-width': `${customAisleWidth}px` } as CSSProperties)
               : undefined
+          const aislePaneClassName = [
+            'note-aisle-pane',
+            aisle.id === activeAisleId ? 'is-active' : '',
+            customAisleWidth ? 'has-custom-width' : '',
+          ].filter(Boolean).join(' ')
           return (
             <section
               key={aisle.id}
               ref={(node) => onRegisterAislePaneRoot(aisle.id, node)}
-              className={`note-aisle-pane ${aisle.id === activeAisleId ? 'is-active' : ''} ${
-                customAisleWidth ? 'has-custom-width' : ''
-              }`}
+              className={aislePaneClassName}
               style={aislePaneStyle}
               aria-label={`Aisle ${index + 1}`}
               data-aisle-id={aisle.id}
@@ -599,86 +748,30 @@ export function NoteWorkspace({
                     className={`toast-editor-host aisle-editor-preview-fallback ${RENDERED_MARKDOWN_SURFACE_CLASS} ${
                       editorMountPending ? 'is-editor-mount-pending' : ''
                     } ${
+                      editorMountFailed ? 'is-editor-mount-failed' : ''
+                    } ${
                       previewHydrationPending ? 'is-preview-hydration-pending' : ''
                     } ${
                       previewRenderMode === 'lightweight-preview' ? 'is-lightweight-preview' : ''
                     }`}
                     data-aisle-host-mode="preview"
                     data-aisle-preview-mode={previewRenderMode}
-                    aria-hidden="true"
+                    data-aisle-editor-mount-failed={editorMountFailed ? 'true' : undefined}
+                    aria-hidden={editorMountFailed ? undefined : 'true'}
                   >
                     {lightweightPreviewText.trim().length > 0 ? (
                       <pre className="aisle-editor-lightweight-preview">{lightweightPreviewText}</pre>
                     ) : renderedPreviewMarkdown.trim().length > 0 ? (
-                      <NoteWorkspaceMarkdownPreview markdown={renderedPreviewMarkdown} />
+                      <NoteWorkspaceMarkdownPreview
+                        markdown={renderedPreviewMarkdown}
+                        appState={appState}
+                        currentNoteBodyId={noteBodyId}
+                        onOpenNoteReference={onOpenNoteReference}
+                      />
                     ) : null}
                   </div>
                 )}
               </section>
-              {showAisleControls && aisleControls && (
-                <div
-                  className="note-scratchpad-aisle-controls"
-                  aria-label={`${aisleControlsLabel} ${index + 1} controls`}
-                >
-                  {showAisleAddButtons && (
-                    <button
-                      type="button"
-                      className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-add-btn note-scratchpad-aisle-add-left-btn"
-                      aria-label={`Add aisle to left of aisle ${index + 1}`}
-                      data-app-tooltip="Add aisle left"
-                      data-note-workspace-skip-aisle-activation="true"
-                      onPointerDown={(event) => {
-                        event.stopPropagation()
-                      }}
-                      onClick={(event) => {
-                        event.preventDefault()
-                        event.stopPropagation()
-                        aisleControls.onAddAisleLeft()
-                      }}
-                    >
-                      <AppIcon iconId="aisleRight" className="note-scratchpad-aisle-add-icon" flipHorizontal />
-                    </button>
-                  )}
-                  {showAisleDeleteButton && (
-                    <button
-                      type="button"
-                      className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-delete-btn"
-                      aria-label={`Delete aisle ${index + 1}`}
-                      data-app-tooltip="Delete aisle"
-                      data-note-workspace-skip-aisle-activation="true"
-                      onPointerDown={(event) => {
-                        event.stopPropagation()
-                      }}
-                      onClick={(event) => {
-                        event.preventDefault()
-                        event.stopPropagation()
-                        aisleControls.onDeleteActiveAisle()
-                      }}
-                    >
-                      <span className="aisle-edit-delete-icon note-scratchpad-aisle-delete-icon" aria-hidden="true" />
-                    </button>
-                  )}
-                  {showAisleAddButtons && (
-                    <button
-                      type="button"
-                      className="note-scratchpad-aisle-control-btn note-scratchpad-aisle-add-btn note-scratchpad-aisle-add-right-btn"
-                      aria-label={`Add aisle to right of aisle ${index + 1}`}
-                      data-app-tooltip="Add aisle right"
-                      data-note-workspace-skip-aisle-activation="true"
-                      onPointerDown={(event) => {
-                        event.stopPropagation()
-                      }}
-                      onClick={(event) => {
-                        event.preventDefault()
-                        event.stopPropagation()
-                        aisleControls.onAddAisleRight()
-                      }}
-                    >
-                      <AppIcon iconId="aisleRight" className="note-scratchpad-aisle-add-icon" />
-                    </button>
-                  )}
-                </div>
-              )}
               {tableOfContentsOpen && (
                 <AisleTableOfContentsPanel
                   aisleId={aisle.id}
@@ -687,7 +780,6 @@ export function NoteWorkspace({
                   onClose={onCloseTableOfContentsAisle}
                   onSelectHeading={onSelectTableOfContentsHeading}
                   onSelectLink={onSelectTableOfContentsLink}
-                  onOpenLink={onOpenTableOfContentsLink}
                 />
               )}
             </section>
@@ -701,6 +793,21 @@ export function NoteWorkspace({
           onScrollLeftChange={onAisleScroll}
         />
       )}
+      {noteTabs.length > 0 ? (
+        <NoteTabStrip
+          tabs={noteTabs}
+          renamingNoteId={renamingNoteTabId}
+          renameDraft={noteTabRenameDraft}
+          onSelectTab={onSelectNoteTab}
+          onCloseTab={onCloseNoteTab}
+          onPromoteTab={onPromoteNoteTab}
+          onReorderTabs={onReorderNoteTabs}
+          onStartRenameTab={onStartNoteTabRename}
+          onRenameDraftChange={onNoteTabRenameDraftChange}
+          onCommitRenameTab={onCommitNoteTabRename}
+          onCancelRenameTab={onCancelNoteTabRename}
+        />
+      ) : null}
     </section>
   )
 }

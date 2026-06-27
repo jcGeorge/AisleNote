@@ -247,7 +247,7 @@ export function createMediaLinkPlugin(context: any) {
                       },
                     ),
                   )
-                  decorations.push(Decoration.inline(range.from, range.to, { class: 'tabs-media-link-source-hidden' }))
+                  decorations.push(Decoration.inline(range.from, range.to, { class: 'aislenote-media-link-source-hidden' }))
                 }
                 return DecorationSet.create(doc, decorations)
               })

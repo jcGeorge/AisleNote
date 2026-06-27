@@ -1,18 +1,18 @@
-# Tabs
+# AisleNote
 
-Tabs is a local-first React/Electron note workspace with domains, spaces, parent tabs, sub-tabs, trash, aisles, image handling, and keyboard shortcuts.
+AisleNote is a local-first React/Electron note workspace with vaults, folders, notes, trash, aisles, image handling, and keyboard shortcuts.
 
 ## Architecture Map
 
 - `src/App.tsx` is still the main shell, but persistence and trash selection live in focused hooks under `src/storage/` and `src/trash/`.
-- `src/state/` owns durable app-state normalization, domain projection, workspace creation, trash purging, and legacy migration.
+- `src/state/` owns durable app-state normalization, domain projection, workspace creation, and trash purging.
 - `src/editor/` wraps Toast UI Editor and ProseMirror internals. Keep editor-specific `any` usage inside this boundary.
-- `src/storage/` owns the hybrid manifest/Markdown storage adapter. Browser IndexedDB and Electron filesystem storage share common helpers in `hybrid-storage-core.js`.
+- `src/storage/` owns renderer app-state persistence plumbing and shared storage helpers. The desktop manifest/Markdown filesystem adapter lives behind Electron.
 - `electron/` owns the desktop shell, preload bridge, filesystem storage adapter, export archive creation, and native menu shortcuts.
 
 ## Storage Model
 
-Runtime state remains an `AppState` object, but durable storage is moving toward the manifest/Markdown/assets model documented in `docs/storage-schema.md`.
+Runtime state remains an `AppState` object, but desktop durable storage uses the manifest/Markdown/assets model documented in `docs/storage-schema.md`.
 
 - Manifests hold structure, IDs, ordering, active locations, settings, and trash metadata.
 - Markdown note bodies are written separately from manifests.
@@ -30,7 +30,7 @@ When changing storage behavior, add or update a round-trip test before editing s
 
 - Toast UI Editor exposes ProseMirror internals that are not fully typed. Keep those accesses behind `src/editor/` helpers where practical.
 - Markdown persistence normalizes internal indentation tokens and repairs broken data-image Markdown.
-- Aisles are part of note bodies, not separate tabs. Keep the legacy `homeContent` and `content` mirrors synchronized with `noteBodies`.
+- Aisles are part of note bodies, not separate notes. Keep note-body structure synchronized with `noteAisleBodies`.
 - Keyboard and multiline editing behavior has Electron menu integration; verify desktop shortcuts when changing editor event handling.
 
 ## Commands
@@ -58,16 +58,16 @@ npm ci
 npm run package:win
 ```
 
-The expected output is `release/Tabs-0.0.0-x64-portable.exe`. Electron Builder also creates an unpacked app folder under `release/win-unpacked/`; smoke test both `release/win-unpacked/Tabs.exe` and the portable `.exe`.
+The expected output is `release/AisleNote-0.0.0-x64-portable.exe`. Electron Builder also creates an unpacked app folder under `release/win-unpacked/`; smoke test both `release/win-unpacked/AisleNote.exe` and the portable `.exe`.
 
-The MVP smoke test is: open the app, create the default notebook, save a note, close and reopen with the data still present, verify file/image dialogs, export a notebook, and confirm external links open in the browser. The executable is unsigned, so Windows SmartScreen warnings are expected.
+The MVP smoke test is: open the app, create the default vault, save a note, close and reopen with the data still present, verify file/image dialogs, export a vault, and confirm external links open in the browser. The executable is unsigned, so Windows SmartScreen warnings are expected.
 
 `npm run lint` is expected to exit successfully. Existing `react-hooks/exhaustive-deps` warnings mark known ref-heavy areas that should be retired as those controllers are split.
 
 ## Do Not Break
 
 - Legacy JSON state must still parse through `parseSavedState`.
-- Browser hybrid storage must round-trip manifest and Markdown content.
-- Electron storage must preserve the same logical schema as browser storage.
+- Non-Electron renderer cache persistence must remain non-fatal and must not be treated as a supported vault schema.
+- Electron storage must preserve the desktop schema documented in `docs/storage-schema.md`.
 - Trash restore/delete flows must preserve original parent/sub-tab relationships.
 - Export should keep Markdown readable and externalize image assets where possible.

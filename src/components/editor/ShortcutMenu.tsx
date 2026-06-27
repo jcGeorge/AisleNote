@@ -1,6 +1,10 @@
+import * as React from 'react'
 import { useEffect, useRef } from 'react'
 import { NEWLINE_OPERATION_LABELS } from '../../hotkeys/shortcuts'
 import type { NewlineOperationId } from '../../types/app'
+import { getShortcutMenuKeyboardAction } from './shortcut-menu-keyboard'
+
+void React
 
 type ShortcutMenuProps = {
   top: number
@@ -9,6 +13,7 @@ type ShortcutMenuProps = {
   activeIndex: number
   onHighlight: (index: number) => void
   onRun: (operation: NewlineOperationId) => void
+  onClose?: () => void
 }
 
 function getShortcutLabel(index: number): string {
@@ -22,6 +27,7 @@ export function ShortcutMenu({
   activeIndex,
   onHighlight,
   onRun,
+  onClose,
 }: ShortcutMenuProps) {
   const menuRef = useRef<HTMLDivElement | null>(null)
 
@@ -38,6 +44,22 @@ export function ShortcutMenu({
       aria-label="Shortcut menu"
       tabIndex={-1}
       onPointerDown={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        const action = getShortcutMenuKeyboardAction(event.nativeEvent, activeIndex, operations.length)
+        if (action.type === 'none') return
+        event.preventDefault()
+        event.stopPropagation()
+        if (action.type === 'close') {
+          onClose?.()
+          return
+        }
+        if (action.type === 'highlight') {
+          onHighlight(action.index)
+          return
+        }
+        const operation = operations[action.index]
+        if (operation) onRun(operation)
+      }}
     >
       {operations.length > 0 ? (
         operations.map((operation, index) => (

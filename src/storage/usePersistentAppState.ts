@@ -8,13 +8,6 @@ import {
 } from '../state/app-state'
 import type { AppState } from '../types/app'
 import { appPersistenceService } from './app-persistence-service'
-import {
-  extractDeviceSettingsFromAppState,
-  loadDeviceSettings,
-  loadDeviceSettingsRecord,
-  mergeLoadedSettings,
-  saveDeviceSettings,
-} from './device-settings-store'
 import { createPersistenceDebounceController } from './persistence-debounce'
 import {
   APP_STATE_EDITOR_CONTENT_PERSISTENCE_DEBOUNCE_MS,
@@ -29,6 +22,7 @@ type PersistentAppStateController = {
   setState: Dispatch<SetStateAction<AppState>>
   stateRef: MutableRefObject<AppState>
   storageHydrated: boolean
+  externalStateLoadVersion: number
   flushPendingPersistence: (options?: AppStateSaveOptions) => Promise<void>
   commitAppStateNow: (nextState: AppState, options?: AppStateCommitOptions) => Promise<AppState>
 }
@@ -46,11 +40,11 @@ function roundMetricMs(value: number): number {
 }
 
 function parsePersistedStateWithDeviceSettings(serializedState: string | null): AppState {
-  return mergeLoadedSettings(parseSavedState(serializedState), loadDeviceSettingsRecord())
+  return parseSavedState(serializedState)
 }
 
 function saveDeviceSettingsForState(state: AppState): void {
-  saveDeviceSettings(extractDeviceSettingsFromAppState(state, loadDeviceSettings()))
+  void state
 }
 
 export function usePersistentAppState(): PersistentAppStateController {
@@ -61,6 +55,7 @@ export function usePersistentAppState(): PersistentAppStateController {
   )
   const [state, setReactState] = useState<AppState>(() => initialParsedState)
   const [storageHydrated, setStorageHydrated] = useState(() => typeof appPersistenceService.hydrateSerializedState !== 'function')
+  const [externalStateLoadVersion, setExternalStateLoadVersion] = useState(0)
   const autoPurgeScheduleSignature = useMemo(() => getAutoPurgeScheduleSignatureForAppState(state), [state])
   const stateRef = useRef(state)
   const storageHydratedRef = useRef(storageHydrated)
@@ -100,6 +95,7 @@ export function usePersistentAppState(): PersistentAppStateController {
     const nextState = typeof action === 'function'
       ? (action as (previous: AppState) => AppState)(stateRef.current)
       : action
+    if (Object.is(nextState, stateRef.current)) return
     stateRef.current = nextState
     setReactState(nextState)
   }, [])
@@ -123,7 +119,6 @@ export function usePersistentAppState(): PersistentAppStateController {
         initialStateRef.current = nextState
         if (nextState === stateRef.current) return
         externallyAppliedStateRef.current = nextState
-        stateRef.current = nextState
         setState(nextState)
       }),
     ).finally(() => {
@@ -148,7 +143,7 @@ export function usePersistentAppState(): PersistentAppStateController {
       stateDirtySinceBootRef.current = false
       if (nextState === stateRef.current) return
       externallyAppliedStateRef.current = nextState
-      stateRef.current = nextState
+      setExternalStateLoadVersion((version) => version + 1)
       setState(nextState)
     })
 
@@ -161,7 +156,6 @@ export function usePersistentAppState(): PersistentAppStateController {
   useEffect(() => {
     const sanitizedState = applyAutoPurgeToAppState(state)
     if (sanitizedState !== state) {
-      stateRef.current = sanitizedState
       setState(sanitizedState)
       return
     }
@@ -207,7 +201,6 @@ export function usePersistentAppState(): PersistentAppStateController {
     options: AppStateCommitOptions = { preferSync: true, flushQueue: true },
   ) => {
     const sanitizedState = applyAutoPurgeToAppState(nextState)
-    stateRef.current = sanitizedState
     setState(sanitizedState)
     saveDeviceSettingsForState(sanitizedState)
 
@@ -269,7 +262,6 @@ export function usePersistentAppState(): PersistentAppStateController {
         const current = stateRef.current
         const purged = applyAutoPurgeToAppState(current)
         if (purged !== current) {
-          stateRef.current = purged
           setState(purged)
           return
         }
@@ -316,6 +308,7 @@ export function usePersistentAppState(): PersistentAppStateController {
     setState,
     stateRef,
     storageHydrated,
+    externalStateLoadVersion,
     flushPendingPersistence,
     commitAppStateNow,
   }

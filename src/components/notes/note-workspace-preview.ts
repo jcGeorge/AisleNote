@@ -37,12 +37,12 @@ function isExternalDestination(destination: string) {
 }
 
 function isMediaCandidateDestination(destination: string) {
-  return /^(?:data:image\/|blob:|tabs-asset:)/i.test(destination) || MEDIA_EXTENSION_RE.test(destination)
+  return /^(?:data:image\/|blob:|aislenote-asset:)/i.test(destination) || MEDIA_EXTENSION_RE.test(destination)
 }
 
 function isInternalNoteCandidateDestination(destination: string) {
   if (!destination || isExternalDestination(destination)) return false
-  if (/^(?:data:|blob:|tabs-asset:|mailto:|tel:|#)/i.test(destination)) return false
+  if (/^(?:data:|blob:|aislenote-asset:|mailto:|tel:|#)/i.test(destination)) return false
   return true
 }
 
@@ -140,7 +140,8 @@ export function getAislePreviewRenderMode({
   if (editorMountPending) return 'empty-pending'
   if (!profile) return 'markdown-preview'
   if (!active && arrangeModeActive && profile.markdownLength > 0 && profile.externalLinkCount > 0) return 'lightweight-preview'
-  if (!active && deferInactivePreviewFallbacks && !inactivePreviewsHydrated && profile.isLinkHeavy) return 'lightweight-preview'
+  void deferInactivePreviewFallbacks
+  void inactivePreviewsHydrated
   return 'markdown-preview'
 }
 

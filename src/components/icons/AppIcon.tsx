@@ -20,20 +20,20 @@ export function AppIcon({ iconId, className = '', flipHorizontal = false }: AppI
     return createElement(tag, { key: `${iconId}-${index}`, ...attrs })
   })
 
-  return (
-    <svg
-      className={getAppIconClassName(iconId, className)}
-      viewBox={APP_ICON_VIEW_BOX}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={Number(APP_ICON_STROKE_WIDTH)}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-      data-app-icon={iconId}
-    >
-      {flipHorizontal ? <g transform={APP_ICON_FLIP_HORIZONTAL_TRANSFORM}>{shapes}</g> : shapes}
-    </svg>
+  return createElement(
+    'svg',
+    {
+      className: getAppIconClassName(iconId, className),
+      viewBox: APP_ICON_VIEW_BOX,
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: Number(APP_ICON_STROKE_WIDTH),
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      'aria-hidden': 'true',
+      focusable: 'false',
+      'data-app-icon': iconId,
+    },
+    flipHorizontal ? createElement('g', { transform: APP_ICON_FLIP_HORIZONTAL_TRANSFORM }, shapes) : shapes,
   )
 }

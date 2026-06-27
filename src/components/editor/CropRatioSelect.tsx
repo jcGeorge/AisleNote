@@ -1,8 +1,11 @@
+import React from 'react'
 import {
   CROP_RATIO_PRESETS,
   normalizeCropRatioPresetId,
   type CropRatioPresetId,
 } from '../../editor/crop-ratios'
+
+void React
 
 type CropRatioSelectProps = {
   value: string
@@ -28,4 +31,3 @@ export function CropRatioSelect({ value, className = '', onChange }: CropRatioSe
     </select>
   )
 }
-

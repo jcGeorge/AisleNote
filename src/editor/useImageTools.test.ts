@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   CLOSED_IMAGE_TOOLS_STATE,
@@ -86,5 +87,40 @@ describe('image crop diagnostics', () => {
       activeImageConnected: false,
       hadLookup: true,
     })
+  })
+})
+
+describe('image tool viewport refresh behavior', () => {
+  it('refreshes selected image tool positions from passive scroll and resize listeners', () => {
+    const source = readFileSync(new URL('./useImageTools.ts', import.meta.url), 'utf8')
+
+    expect(source).toContain("document.addEventListener('scroll', scheduleViewportRefresh, listenerOptions)")
+    expect(source).toContain("window.addEventListener('resize', scheduleViewportRefresh, listenerOptions)")
+    expect(source).toContain('const listenerOptions: AddEventListenerOptions = { capture: true, passive: true }')
+    expect(source).toContain('if (!hasActiveState() || frameId) return')
+    expect(source).toContain('window.requestAnimationFrame(() => {')
+    expect(source).toContain('refreshPosition({ closeOnMissing: false })')
+  })
+
+  it('closes image tools when editor mutations remove the selected image', () => {
+    const source = readFileSync(new URL('./useImageTools.ts', import.meta.url), 'utf8')
+
+    expect(source).toContain(`const runSyncAndScheduleFollowUp = () => {
+      syncEditorImageDisplayMetadata()
+      closeIfSelectedImageMissing()
+      scheduleSync()
+    }`)
+  })
+
+  it('reserves image layout only during resize commit to avoid drag-time work', () => {
+    const source = readFileSync(new URL('./useImageTools.ts', import.meta.url), 'utf8')
+
+    expect(source).toContain('reservedDisplayBox?: ImageDisplayLayoutReservation')
+    expect(source).toContain('reserveImageDisplayLayout(image, resizeCommitLayout)')
+    expect(source).toContain('reservedDisplayBox: resizeCommitLayout')
+    expect(source).toContain('releaseReservedImageDisplayLayoutWhenReady(selectedImage)')
+    expect(source).toContain(`if (imageResizeRef.current) {
+        continueResize(event.clientX)
+      }`)
   })
 })

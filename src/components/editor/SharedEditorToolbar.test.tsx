@@ -1,4 +1,4 @@
-import { createRef } from 'react'
+import React, { createRef } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { TOOLBAR_TOOL_IDS } from '../../editor/toolbar-layouts'
@@ -77,8 +77,8 @@ describe('SharedEditorToolbar block quote and block indent controls', () => {
     expect(html).toContain('data-app-icon="aisleRight"')
     expect(html).not.toContain('viewBox="0 0 36 32"')
     expect(html).not.toContain('M20 22V2')
-    expect(html).toContain('data-app-tooltip="Find &amp; replace"')
-    expect(html).toContain('aria-label="Find &amp; replace"')
+    expect(html).toContain('data-app-tooltip="Search notes"')
+    expect(html).toContain('aria-label="Search notes"')
     expect(html).toContain('toolbar-tool-icon-find-replace')
     expect(html).toContain('data-app-tooltip="Highlight"')
     expect(html).toContain('aria-label="Highlight"')

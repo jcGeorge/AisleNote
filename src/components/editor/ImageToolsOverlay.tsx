@@ -1,4 +1,4 @@
-import type { MouseEvent, PointerEvent, ReactNode } from 'react'
+import React, { type MouseEvent, type PointerEvent, type ReactNode } from 'react'
 import type { CropRatioPresetId } from '../../editor/crop-ratios'
 import type { ImageTransformOperation } from '../../editor/image-transform'
 import type { GeneralIconId } from '../../icons/app-icons'
@@ -6,6 +6,8 @@ import type { ImageToolsState, InlineCropState } from '../../types/app'
 import { AppIcon } from '../icons/AppIcon'
 import { CropRatioSelect } from './CropRatioSelect'
 import { ResizeCornerIcon } from './ResizeCornerIcon'
+
+void React
 
 export type InlineCropDragMode = 'move' | 'resize-n' | 'resize-e' | 'resize-s' | 'resize-w' | 'resize-se'
 

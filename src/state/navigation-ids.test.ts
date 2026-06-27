@@ -1,11 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_FRONTMATTER_SETTINGS } from '../frontmatter/frontmatter'
-import { DEFAULT_NEWLINE_SHORTCUT_SETTINGS, DEFAULT_SHORTCUTS } from '../hotkeys/shortcuts'
-import { DEFAULT_UI_SETTINGS } from '../settings/defaults'
-import type { AppState, Domain, Space, WorkspaceData } from '../types/app'
+import { createDefaultAppState } from './default-app-state.js'
 import {
   collectAppNavigationEntityIds,
-  collectWorkspaceNavigationEntityIds,
   createRandomId,
   createReservedIdAllocator,
   ensureUniqueId,
@@ -14,80 +10,6 @@ import {
 function generator(values: string[]) {
   let index = 0
   return () => values[index++] ?? `fallback-${index}`
-}
-
-const workspace: WorkspaceData = {
-  activeTabId: 'tab-live',
-  tabs: [
-    {
-      id: 'tab-live',
-      title: 'Live',
-      noteBodyId: 'body-live',
-      activeSubTabId: 'sub-live',
-      subTabs: [{ id: 'sub-live', title: 'Sub', noteBodyId: 'body-sub-live'}],
-    },
-  ],
-  deletedTabs: [
-    {
-      id: 'deleted-tab-entry',
-      deletedAt: 1,
-      tab: {
-        id: 'tab-deleted',
-        title: 'Deleted',
-        noteBodyId: 'body-deleted',
-        activeSubTabId: 'sub-deleted-nested',
-        subTabs: [{ id: 'sub-deleted-nested', title: 'Nested', noteBodyId: 'body-deleted-nested'}],
-      },
-    },
-  ],
-  deletedSubTabs: [
-    {
-      id: 'deleted-sub-entry',
-      parentTabId: 'tab-live',
-      parentTabTitle: 'Live',
-      deletedAt: 2,
-      subTab: { id: 'sub-deleted', title: 'Deleted sub', noteBodyId: 'body-sub-deleted'},
-    },
-  ],
-}
-
-function makeSpace(id: string, data: WorkspaceData = workspace): Space {
-  return {
-    id,
-    name: id,
-    settings: { autoRemoveDeletedDays: 7 },
-    data,
-  }
-}
-
-function makeState(): AppState {
-  const space = makeSpace('space-live')
-  const domain: Domain = {
-    id: 'domain-live',
-    name: 'Domain',
-    activeSpaceId: space.id,
-    spaces: [space],
-  }
-  return {
-    theme: 'dawn',
-    activeDomainId: domain.id,
-    domains: [domain],
-    noteBodies: [
-      {
-        id: 'note-body',
-        aisles: [{ id: 'aisle-slot', aisleBodyId: 'aisle-body' }],
-      },
-    ],
-    noteAisleBodies: [{ id: 'aisle-body', markdown: '' }],
-    activeSpaceId: space.id,
-    spaces: [space],
-    hotkeys: {
-      shortcuts: DEFAULT_SHORTCUTS,
-      newlineShortcuts: DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
-    },
-    frontmatter: DEFAULT_FRONTMATTER_SETTINGS,
-    ui: DEFAULT_UI_SETTINGS,
-  }
 }
 
 describe('navigation id helpers', () => {
@@ -116,34 +38,76 @@ describe('navigation id helpers', () => {
     expect(allocate()).toBe('fresh-2')
   })
 
-  it('collects navigation ids from live and trashed workspace entries', () => {
-    const ids = collectWorkspaceNavigationEntityIds(workspace)
+  it('collects ids across vault items, note bodies, aisles, and app-level projections', () => {
+    const state = createDefaultAppState()
+    state.vault.activeNoteId = 'note-live'
+    state.vault.items = [
+      {
+        type: 'folder',
+        id: 'folder-live',
+        title: 'Live folder',
+        children: [
+          {
+            type: 'note',
+            id: 'note-live',
+            title: 'Live note',
+            noteBodyId: 'body-live',
+          },
+        ],
+      },
+    ]
+    state.vault.deletedItems = [
+      {
+        id: 'deleted-entry',
+        deletedAt: 1,
+        originalParentFolderId: null,
+        originalIndex: 0,
+        item: {
+          type: 'note',
+          id: 'note-deleted',
+          title: 'Deleted note',
+          noteBodyId: 'body-deleted',
+        },
+      },
+    ]
+    state.noteBodies = [
+      {
+        id: 'body-live',
+        aisles: [{ id: 'aisle-slot', aisleBodyId: 'aisle-body' }],
+      },
+    ]
+    state.noteAisleBodies = [{ id: 'aisle-body', markdown: '' }]
+    state.frontmatter.templates = [
+      {
+        id: 'template-id',
+        name: 'Template',
+        fields: [{ id: 'field-id', key: 'status', type: 'text', defaultValue: '', computed: 'none' }],
+      },
+    ]
+    state.ui.toolbarLayouts = [
+      {
+        id: 'toolbar-layout',
+        name: 'Toolbar',
+        items: [{ id: 'toolbar-item', type: 'tool', toolId: 'bold' }],
+      },
+    ]
+
+    const ids = collectAppNavigationEntityIds(state)
 
     expect(Array.from(ids)).toEqual(
       expect.arrayContaining([
-        'tab-live',
-        'sub-live',
-        'deleted-tab-entry',
-        'tab-deleted',
-        'sub-deleted-nested',
-        'deleted-sub-entry',
-        'sub-deleted',
-      ]),
-    )
-  })
-
-  it('collects ids across domains, spaces, notes, aisles, and app-level projections', () => {
-    const ids = collectAppNavigationEntityIds(makeState())
-
-    expect(Array.from(ids)).toEqual(
-      expect.arrayContaining([
-        'domain-live',
-        'space-live',
-        'tab-live',
-        'sub-live',
-        'note-body',
+        'folder-live',
+        'note-live',
+        'body-live',
+        'deleted-entry',
+        'note-deleted',
+        'body-deleted',
         'aisle-slot',
         'aisle-body',
+        'template-id',
+        'field-id',
+        'toolbar-layout',
+        'toolbar-item',
       ]),
     )
   })

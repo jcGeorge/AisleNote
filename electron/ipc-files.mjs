@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import JSZip from 'jszip'
 import {
   getHybridStorageRoot,
-  importNotebookZipArchive,
+  importVaultZipArchive,
   loadAppStateResult,
-  writeNotebookFolderExport,
+  writeVaultFolderExport,
 } from './app-state-storage.mjs'
 import { parseStrictPortableAppSettingsJson } from '../src/storage/settings-partition.js'
 
@@ -15,6 +16,7 @@ const MARKDOWN_IMPORT_MAX_FILE_BYTES = 10 * 1024 * 1024
 const MARKDOWN_IMPORT_MAX_TOTAL_BYTES = 250 * 1024 * 1024
 const FOLDER_IMPORT_MAX_ASSET_BYTES = 100 * 1024 * 1024
 const MARKDOWN_EXTENSION_RE = /\.(?:md|markdown)$/i
+const DEFAULT_MARKDOWN_ASSET_ROOT_ID = 'source'
 
 function toArrayBuffer(buffer) {
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
@@ -142,36 +144,139 @@ function walkMarkdownImportFolder(rootPath) {
   return files.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
 }
 
-export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
-  const folderImportSources = new Map()
-
-  function openZipFile(filePath, fallbackError = null) {
+function findObsidianVaultRoot(folderPath) {
+  let cursor = path.resolve(folderPath)
+  while (true) {
+    const obsidianPath = path.join(cursor, '.obsidian')
     try {
-      const bytes = readFileSync(filePath)
-      return {
-        canceled: false,
-        ok: true,
-        kind: 'zip',
-        bytes: toArrayBuffer(bytes),
-        filePath,
-        ...(fallbackError ? { nativeNotebookError: fallbackError } : {}),
+      if (lstatSync(obsidianPath).isDirectory()) return cursor
+    } catch {
+      // Keep walking toward the filesystem root.
+    }
+    const parent = path.dirname(cursor)
+    if (!parent || parent === cursor) return null
+    cursor = parent
+  }
+}
+
+function buildPublicAssetRoot(root) {
+  return {
+    id: root.id,
+    name: root.name,
+    sourceBasePath: root.sourceBasePath,
+  }
+}
+
+function buildMarkdownFolderAssetRoots(folderPath) {
+  const roots = [{
+    id: DEFAULT_MARKDOWN_ASSET_ROOT_ID,
+    name: path.basename(folderPath),
+    rootPath: folderPath,
+    sourceBasePath: '',
+  }]
+  const vaultRoot = findObsidianVaultRoot(folderPath)
+  if (vaultRoot && path.resolve(vaultRoot) !== path.resolve(folderPath)) {
+    roots.push({
+      id: 'vault',
+      name: path.basename(vaultRoot),
+      rootPath: vaultRoot,
+      sourceBasePath: path.relative(vaultRoot, folderPath).split(path.sep).join('/'),
+    })
+  }
+  return roots
+}
+
+function getMarkdownZipRootName(filePath) {
+  const baseName = path.basename(filePath, path.extname(filePath))
+  return baseName || 'Markdown import'
+}
+
+async function openMarkdownZipImportFile(filePath, fallbackError = null) {
+  try {
+    const zip = await JSZip.loadAsync(readFileSync(filePath))
+    const files = []
+    const assets = []
+    let totalBytes = 0
+
+    for (const file of Object.values(zip.files)) {
+      if (file.dir) continue
+      const relativePath = normalizeFolderImportRelativePath(file.name)
+      if (!relativePath) {
+        return { canceled: false, ok: false, error: 'Markdown ZIP contains an invalid path.' }
       }
-    } catch (error) {
+      const bytes = await file.async('nodebuffer')
+      if (MARKDOWN_EXTENSION_RE.test(relativePath)) {
+        if (bytes.byteLength > MARKDOWN_IMPORT_MAX_FILE_BYTES) {
+          return { canceled: false, ok: false, error: `Markdown file is too large: ${relativePath}` }
+        }
+        if (files.length >= MARKDOWN_IMPORT_MAX_FILES) {
+          return {
+            canceled: false,
+            ok: false,
+            error: `Markdown ZIP contains more than ${MARKDOWN_IMPORT_MAX_FILES} Markdown files.`,
+          }
+        }
+        totalBytes += bytes.byteLength
+        if (totalBytes > MARKDOWN_IMPORT_MAX_TOTAL_BYTES) {
+          return { canceled: false, ok: false, error: 'Markdown ZIP is too large to import.' }
+        }
+        files.push({
+          relativePath,
+          markdown: bytes.toString('utf8'),
+          size: bytes.byteLength,
+        })
+        continue
+      }
+      if (bytes.byteLength > FOLDER_IMPORT_MAX_ASSET_BYTES) continue
+      assets.push({
+        assetRootId: DEFAULT_MARKDOWN_ASSET_ROOT_ID,
+        relativePath,
+        bytes: toArrayBuffer(bytes),
+        fileName: path.basename(relativePath),
+        name: path.basename(relativePath),
+        mimeType: getMimeTypeFromFileName(relativePath),
+        extension: path.extname(relativePath).slice(1).toLowerCase(),
+      })
+    }
+
+    if (files.length === 0) {
       return {
         canceled: false,
         ok: false,
-        error: error instanceof Error ? error.message : 'ZIP file could not be opened.',
+        error: fallbackError ?? 'Markdown ZIP does not contain Markdown files.',
       }
     }
+    const rootName = getMarkdownZipRootName(filePath)
+    return {
+      canceled: false,
+      ok: true,
+      kind: 'markdown-zip',
+      filePath,
+      rootName,
+      files: files.sort((a, b) => a.relativePath.localeCompare(b.relativePath)),
+      assets,
+      assetRoots: [{ id: DEFAULT_MARKDOWN_ASSET_ROOT_ID, name: rootName, sourceBasePath: '' }],
+      ...(fallbackError ? { nativeVaultError: fallbackError } : {}),
+    }
+  } catch (error) {
+    return {
+      canceled: false,
+      ok: false,
+      error: error instanceof Error ? error.message : 'Markdown ZIP could not be imported.',
+    }
   }
+}
 
-  async function openNotebookZipImportFile(filePath) {
-    const result = await importNotebookZipArchive(filePath)
+export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
+  const folderImportSources = new Map()
+
+  async function openVaultZipImportFile(filePath) {
+    const result = await importVaultZipArchive(filePath)
     if (result.ok) {
       return {
         canceled: false,
         ok: true,
-        kind: 'notebook-zip',
+        kind: 'vault-zip',
         filePath,
         serializedState: result.serializedState,
         schemaVersion: result.schemaVersion,
@@ -183,30 +288,30 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
     const canTryMarkdownZip = result.issues?.some((issue) =>
       issue.code === 'missing-root-manifest' || issue.code === 'unexpected-archive-entry'
     )
-    if (canTryMarkdownZip) return openZipFile(filePath, result.error)
+    if (canTryMarkdownZip) return openMarkdownZipImportFile(filePath, result.error)
     return {
       canceled: false,
       ok: false,
-      error: result.error ?? 'Notebook ZIP could not be imported.',
+      error: result.error ?? 'Vault ZIP could not be imported.',
       health: result.health,
       issues: result.issues,
     }
   }
 
-  function openNotebookFolderImportPath(folderPathRaw) {
+  function openVaultFolderImportPath(folderPathRaw) {
     const folderPath = path.resolve(folderPathRaw)
-    const notebookRootPath = getHybridStorageRoot(folderPath)
-    const manifestPath = path.join(notebookRootPath, 'manifest.json')
+    const vaultRootPath = getHybridStorageRoot(folderPath)
+    const manifestPath = path.join(vaultRootPath, 'manifest.json')
     try {
       const folderStats = lstatSync(folderPath)
       if (folderStats.isSymbolicLink()) {
-        return { canceled: false, ok: false, error: 'Notebook folder import does not allow symlinks.' }
+        return { canceled: false, ok: false, error: 'Vault folder import does not allow symlinks.' }
       }
     } catch (error) {
       return {
         canceled: false,
         ok: false,
-        error: error instanceof Error ? error.message : 'Notebook folder could not be opened.',
+        error: error instanceof Error ? error.message : 'Vault folder could not be opened.',
       }
     }
     if (!existsSync(manifestPath)) {
@@ -222,21 +327,21 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
       return {
         canceled: false,
         ok: false,
-        error: result.ok ? 'Notebook folder did not contain readable notebook data.' : result.error ?? 'Notebook folder could not be loaded.',
+        error: result.ok ? 'Vault folder did not contain readable vault data.' : result.error ?? 'Vault folder could not be loaded.',
         health: result.health,
         issues: result.issues,
       }
     }
 
     const sourceId = rememberFolderImportSource(folderImportSources, {
-      kind: 'notebook',
-      rootPath: notebookRootPath,
+      kind: 'vault',
+      rootPath: vaultRootPath,
       folderPath,
     })
     return {
       canceled: false,
       ok: true,
-      kind: 'notebook-folder',
+      kind: 'vault-folder',
       sourceId,
       folderPath,
       serializedState: result.serializedState,
@@ -257,10 +362,12 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
       if (files.length === 0) {
         return { canceled: false, ok: false, error: 'Folder does not contain Markdown files.' }
       }
+      const assetRoots = buildMarkdownFolderAssetRoots(folderPath)
       const sourceId = rememberFolderImportSource(folderImportSources, {
         kind: 'markdown',
         rootPath: folderPath,
         folderPath,
+        assetRoots,
       })
       return {
         canceled: false,
@@ -270,6 +377,7 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
         folderPath,
         rootName: path.basename(folderPath),
         files,
+        assetRoots: assetRoots.map(buildPublicAssetRoot),
       }
     } catch (error) {
       return {
@@ -280,7 +388,7 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
     }
   }
 
-  function openNotebookImportSourcePath(selectedPathRaw) {
+  function openVaultImportSourcePath(selectedPathRaw) {
     const selectedPath = path.resolve(selectedPathRaw)
     let stats
     try {
@@ -289,38 +397,38 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
       return {
         canceled: false,
         ok: false,
-        error: error instanceof Error ? error.message : 'Notebook import source could not be opened.',
+        error: error instanceof Error ? error.message : 'Vault import source could not be opened.',
       }
     }
-    if (stats.isSymbolicLink()) return { canceled: false, ok: false, error: 'Notebook import does not allow symlinks.' }
+    if (stats.isSymbolicLink()) return { canceled: false, ok: false, error: 'Vault import does not allow symlinks.' }
     if (stats.isDirectory()) {
-      const notebookResult = existsSync(path.join(selectedPath, 'manifest.json'))
-        ? openNotebookFolderImportPath(selectedPath)
+      const vaultResult = existsSync(path.join(selectedPath, 'manifest.json'))
+        ? openVaultFolderImportPath(selectedPath)
         : openMarkdownFolderImportPath(selectedPath)
-      return notebookResult
+      return vaultResult
     }
-    if (!stats.isFile()) return { canceled: false, ok: false, error: 'Notebook import source must be a ZIP file or folder.' }
+    if (!stats.isFile()) return { canceled: false, ok: false, error: 'Vault import source must be a ZIP file or folder.' }
     if (path.extname(selectedPath).toLowerCase() !== '.zip') {
-      return { canceled: false, ok: false, error: 'Notebook import file must be a .zip archive.' }
+      return { canceled: false, ok: false, error: 'Vault import file must be a .zip archive.' }
     }
-    return openNotebookZipImportFile(selectedPath)
+    return openVaultZipImportFile(selectedPath)
   }
 
-  async function chooseNotebookImportSourcePath() {
+  async function chooseVaultImportSourcePath() {
     if (!dialog || typeof dialog.showOpenDialog !== 'function') {
-      return { canceled: false, ok: false, error: 'Notebook import is unavailable.' }
+      return { canceled: false, ok: false, error: 'Vault import is unavailable.' }
     }
 
     let properties = ['openFile', 'openDirectory']
-    let filters = [{ name: 'Notebook Import Source', extensions: ['zip'] }]
+    let filters = [{ name: 'Vault Import Source', extensions: ['zip'] }]
     if (process.platform !== 'darwin' && typeof dialog.showMessageBox === 'function') {
       const choice = await dialog.showMessageBox({
         type: 'question',
         buttons: ['Choose ZIP archive', 'Choose folder', 'Cancel'],
         cancelId: 2,
         defaultId: 0,
-        message: 'Import notebook',
-        detail: 'Choose a notebook ZIP, a Tabs notebook folder, or a Markdown folder.',
+        message: 'Import vault',
+        detail: 'Choose an AisleNote vault ZIP, Markdown ZIP, AisleNote vault folder, or Markdown folder.',
       })
       if (choice.response === 2) return { canceled: true }
       if (choice.response === 0) {
@@ -333,25 +441,25 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
     }
 
     const openResult = await dialog.showOpenDialog({
-      title: 'Import notebook',
+      title: 'Import vault',
       filters,
       properties,
     })
     if (openResult.canceled || !openResult.filePaths?.[0]) return { canceled: true }
-    return openNotebookImportSourcePath(openResult.filePaths[0])
+    return openVaultImportSourcePath(openResult.filePaths[0])
   }
 
-  ipcMain.handle('export-notebook-folder', async (_event, payload = {}) => {
+  ipcMain.handle('export-vault-folder', async (_event, payload = {}) => {
     const serializedState = typeof payload?.serializedState === 'string' ? payload.serializedState : ''
     if (!serializedState.trim()) {
-      return { canceled: false, ok: false, error: 'Notebook export payload is invalid.' }
+      return { canceled: false, ok: false, error: 'Vault export payload is invalid.' }
     }
     if (!dialog || typeof dialog.showOpenDialog !== 'function') {
-      return { canceled: false, ok: false, error: 'Notebook folder export is unavailable.' }
+      return { canceled: false, ok: false, error: 'Vault folder export is unavailable.' }
     }
 
     const selection = await dialog.showOpenDialog({
-      title: 'Export notebook folder',
+      title: 'Export vault folder',
       properties: ['openDirectory', 'createDirectory'],
     })
     if (selection.canceled || !selection.filePaths?.[0]) return { canceled: true }
@@ -359,19 +467,19 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
     const destinationRootPath = path.resolve(selection.filePaths[0])
     const activeProfileRootPath = storageSession?.getProfileRootPath?.()
     if (typeof activeProfileRootPath === 'string' && isInsidePath(activeProfileRootPath, destinationRootPath)) {
-      return { canceled: false, ok: false, error: 'Choose a folder outside the active notebook folder.' }
+      return { canceled: false, ok: false, error: 'Choose a folder outside the active vault folder.' }
     }
     if (existsSync(getHybridStorageRoot(destinationRootPath))) {
       if (existsSync(path.join(getHybridStorageRoot(destinationRootPath), 'manifest.json'))) {
-        return { canceled: false, ok: false, error: 'Destination folder already contains a notebook.' }
+        return { canceled: false, ok: false, error: 'Destination folder already contains a vault.' }
       }
       if (readdirSync(getHybridStorageRoot(destinationRootPath)).length > 0) {
-        return { canceled: false, ok: false, error: 'Destination notebook folder must be empty.' }
+        return { canceled: false, ok: false, error: 'Destination vault folder must be empty.' }
       }
     }
 
     try {
-      const result = writeNotebookFolderExport(destinationRootPath, serializedState, {
+      const result = writeVaultFolderExport(destinationRootPath, serializedState, {
         assetSourceRoot: activeProfileRootPath ? getHybridStorageRoot(activeProfileRootPath) : null,
       })
       return { canceled: false, ok: true, ...result }
@@ -379,7 +487,7 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
       return {
         canceled: false,
         ok: false,
-        error: error instanceof Error ? error.message : 'Notebook folder could not be exported.',
+        error: error instanceof Error ? error.message : 'Vault folder could not be exported.',
       }
     }
   })
@@ -422,7 +530,7 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
     }
   })
 
-  ipcMain.handle('open-notebook-import-source', async () => chooseNotebookImportSourcePath())
+  ipcMain.handle('open-vault-import-source', async () => chooseVaultImportSourcePath())
 
   ipcMain.handle('read-folder-import-asset', async (_event, payload = {}) => {
     try {
@@ -430,16 +538,24 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
       const source = folderImportSources.get(sourceId)
       if (!source) return { ok: false, error: 'Import source is no longer available.' }
 
+      const requestedAssetRootId = typeof payload?.assetRootId === 'string' && payload.assetRootId.trim()
+        ? payload.assetRootId.trim()
+        : DEFAULT_MARKDOWN_ASSET_ROOT_ID
+      const assetRoot =
+        source.assetRoots?.find((candidate) => candidate.id === requestedAssetRootId) ??
+        source.assetRoots?.[0] ??
+        { rootPath: source.rootPath, id: DEFAULT_MARKDOWN_ASSET_ROOT_ID }
+      const rootPath = path.resolve(assetRoot.rootPath)
       const relativePath = normalizeFolderImportRelativePath(payload?.relativePath)
       if (!relativePath) return { ok: false, error: 'Invalid import asset path.' }
 
-      const absolutePath = path.resolve(source.rootPath, ...relativePath.split('/'))
-      if (!isInsidePath(source.rootPath, absolutePath)) {
+      const absolutePath = path.resolve(rootPath, ...relativePath.split('/'))
+      if (!isInsidePath(rootPath, absolutePath)) {
         return { ok: false, error: 'Invalid import asset path.' }
       }
 
       const stats = lstatSync(absolutePath)
-      if (stats.isSymbolicLink() || importPathContainsSymlink(source.rootPath, relativePath) || !stats.isFile()) {
+      if (stats.isSymbolicLink() || importPathContainsSymlink(rootPath, relativePath) || !stats.isFile()) {
         return { ok: false, error: 'Import asset is not a readable file.' }
       }
       if (stats.size > FOLDER_IMPORT_MAX_ASSET_BYTES) {
@@ -495,9 +611,9 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
     }
   })
 
-  ipcMain.handle('open-user-settings-from-notebook-folder', async () => {
+  ipcMain.handle('open-user-settings-from-vault-folder', async () => {
     const openResult = await dialog.showOpenDialog({
-      title: 'Import user settings from notebook folder',
+      title: 'Import user settings from vault folder',
       properties: ['openDirectory'],
     })
 
@@ -506,7 +622,7 @@ export function registerFileIpc({ ipcMain, dialog, storageSession = null }) {
     const folderPath = openResult.filePaths[0]
     const filePath = path.join(folderPath, 'settings', 'app-settings.json')
     if (!existsSync(filePath)) {
-      return { canceled: false, ok: false, error: 'Notebook folder does not contain settings/app-settings.json.' }
+      return { canceled: false, ok: false, error: 'Vault folder does not contain settings/app-settings.json.' }
     }
 
     try {

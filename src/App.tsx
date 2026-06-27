@@ -1,10 +1,8 @@
 import './App.css'
-import { AppShell } from './app/AppShell'
-import { useAppController } from './app/useAppController'
+import { VaultApp } from './app/VaultApp'
 
 function App() {
-  const controller = useAppController()
-  return <AppShell controller={controller} />
+  return <VaultApp />
 }
 
 export default App

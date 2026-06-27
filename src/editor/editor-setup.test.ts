@@ -20,6 +20,7 @@ import {
   applyParagraphSpaceShortcut,
   applyTypedCodeBlockShortcut,
   annotationLinePlugin,
+  BLOCK_INDENT_BOUNDARY_ACTIVE_CLASS_NAME,
   BLOCK_INDENT_CLASS_NAME,
   BLOCK_INDENT_TOKEN_HIDDEN_CLASS_NAME,
   blockIndentPlugin,
@@ -28,7 +29,11 @@ import {
   getArrowMarkerDeletionRange,
   getArrowMarkerNavigationPosition,
   getArrowMarkerSelectionSnapPosition,
+  getBlockIndentBoundaryArrowDownPosition,
+  getBlockIndentBoundaryNavigationPosition,
+  getBlockIndentClickBoundaryPosition,
   getBlockIndentDecorationRanges,
+  getBlockIndentVisibleLineStartPosition,
   getClosedHighlightMarkerShortcut,
   getParagraphSpaceShortcut,
   getToastUiToolbarTooltipLabelFromClassName,
@@ -37,6 +42,8 @@ import {
   headingSpaceShortcutPlugin,
   highlightPlugin,
   installEditorSpellcheck,
+  normalizeBlockIndentBoundaryPosition,
+  normalizeBlockIndentSelectionBoundaries,
   TAG_JUMP_HIGHLIGHT_META,
   TAG_JUMP_TARGET_CLASS_NAME,
   thematicBreakShortcutPlugin,
@@ -49,8 +56,7 @@ import { BLOCK_INDENT_TOKEN, INDENT_TOKEN } from '../markdown/markdown-utils'
 import { TAG_TOKEN_CLASS_NAME } from '../tags/tags.js'
 
 const editorSetupSource = readFileSync(fileURLToPath(new URL('./editor-setup.ts', import.meta.url)), 'utf8')
-const legacyEditorSource = readFileSync(fileURLToPath(new URL('./useLegacyEditor.ts', import.meta.url)), 'utf8')
-const aisleEditorsSource = readFileSync(fileURLToPath(new URL('./useAisleEditors.ts', import.meta.url)), 'utf8')
+const vaultAisleEditorsSource = readFileSync(fileURLToPath(new URL('./useVaultAisleEditors.ts', import.meta.url)), 'utf8')
 
 function node(typeName: string, textContent = '', contentSize = 0) {
   return {
@@ -76,8 +82,7 @@ describe('imperative editor toolbar tooltips', () => {
       "createToolbarTextButton('aisles-toolbar-btn', 'aisles', 'A', options.onAisles, 'Aisles')",
     )
     expect(editorSetupSource).toContain("button.removeAttribute('title')")
-    expect(legacyEditorSource).toContain('const cleanupToolbarAppTooltips = installToolbarAppTooltips(editorMountRef.current)')
-    expect(aisleEditorsSource).toContain('installToolbarAppTooltips(root)')
+    expect(vaultAisleEditorsSource).toContain('installToolbarAppTooltips(root)')
   })
 
   it('does not bind app-created toolbar buttons to the Toast UI internal tooltip', () => {
@@ -102,14 +107,11 @@ describe('imperative editor toolbar tooltips', () => {
     cleanup()
   })
 
-  it('installs editor spellcheck for legacy and aisle editors only', () => {
+  it('installs editor spellcheck for vault aisle editors', () => {
     expect(editorSetupSource).toContain(
       "export const EDITOR_SPELLCHECK_ROOT_SELECTOR = '.toastui-editor .ProseMirror[contenteditable=\"true\"]'",
     )
-    expect(legacyEditorSource).toContain('const cleanupEditorSpellcheck = installEditorSpellcheck(editorMountRef.current)')
-    expect(legacyEditorSource).toContain('cleanupEditorSpellcheck()')
-    expect(aisleEditorsSource).toContain('installEditorSpellcheck(root)')
-    expect(aisleEditorsSource).toContain('cleanupEditorSpellcheck()')
+    expect(vaultAisleEditorsSource).toContain('installEditorSpellcheck(root)')
   })
 })
 
@@ -402,6 +404,23 @@ function getParagraphSpaceBindings() {
   return pluginBundle.wysiwygPlugins[0]() as Record<string, any>
 }
 
+function getParagraphSpaceTextInputPlugin() {
+  const pluginBundle = headingSpaceShortcutPlugin({
+    pmKeymap: {
+      keymap: (bindings: Record<string, unknown>) => bindings,
+    },
+    pmState: {
+      Selection: Selection as unknown as {
+        near: (resolvedPos: unknown, bias?: number) => unknown
+      },
+      TextSelection: TextSelection as unknown as {
+        create: (doc: unknown, anchor: number, head?: number) => unknown
+      },
+    },
+  })
+  return pluginBundle.wysiwygPlugins[1]() as { props?: { handleTextInput?: (view: any, from: number, to: number, text: string) => boolean } }
+}
+
 function getThematicBreakBindings() {
   const pluginBundle = thematicBreakShortcutPlugin({
     pmKeymap: {
@@ -605,6 +624,30 @@ describe('paragraph space shortcut WYSIWYG behavior', () => {
     expect(nextState.doc.child(0).type.name).toBe('blockQuote')
     expect(nextState.doc.child(0).child(0).type.name).toBe('paragraph')
     expect(nextState.doc.child(0).textContent).toBe('')
+  })
+
+  it('turns a bare greater-than marker into a blockquote from typed Space input', () => {
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [
+      paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('>')),
+    ])
+    let state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 2),
+    })
+    const plugin = getParagraphSpaceTextInputPlugin()
+    const view = {
+      get state() {
+        return state
+      },
+      dispatch: (transaction: any) => {
+        state = state.apply(transaction)
+      },
+    }
+
+    expect(plugin.props?.handleTextInput?.(view, 2, 2, ' ')).toBe(true)
+
+    expect(state.doc.child(0).type.name).toBe('blockQuote')
+    expect(state.doc.child(0).textContent).toBe('')
   })
 
   it('turns an ordered-list marker at the start of existing text into a numbered list', () => {
@@ -1083,7 +1126,11 @@ function blockIndentDoc(textContent: string, textChildren?: Array<{ text: string
   }
 }
 
-function getBlockIndentDecorationCalls(textContent: string, textChildren?: Array<{ text: string; position: number }>) {
+function getBlockIndentDecorationCalls(
+  textContent: string,
+  textChildren?: Array<{ text: string; position: number }>,
+  selection?: { empty: boolean; from: number },
+) {
   const calls: DecorationCall[] = []
   class FakePlugin {
     spec: any
@@ -1107,6 +1154,16 @@ function getBlockIndentDecorationCalls(textContent: string, textChildren?: Array
           calls.push({ kind: 'inline', from, to, attrs })
           return calls.at(-1)
         },
+        widget: (from: number, _toDOM: () => HTMLElement, spec?: Record<string, unknown>) => {
+          calls.push({
+            kind: 'widget',
+            from,
+            classNames: Array.isArray(spec?.classNames) ? spec.classNames as string[] : [],
+            relaxedSide: spec?.relaxedSide,
+            side: spec?.side,
+          })
+          return calls.at(-1)
+        },
       },
       DecorationSet: {
         create: (_doc: unknown, decorations: unknown[]) => decorations,
@@ -1115,8 +1172,96 @@ function getBlockIndentDecorationCalls(textContent: string, textChildren?: Array
   })
   const plugin = pluginBundle.wysiwygPlugins[0]() as FakePlugin
 
-  plugin.spec.props.decorations({ doc: blockIndentDoc(textContent, textChildren) })
+  plugin.spec.props.decorations({ doc: blockIndentDoc(textContent, textChildren), selection })
   return calls
+}
+
+function blockIndentEditorDoc(textContent: string) {
+  return paragraphShortcutSchema.nodes.doc.create(null, [
+    paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text(textContent)),
+  ])
+}
+
+function getBlockIndentTestPlugin() {
+  const pluginBundle = blockIndentPlugin({
+    pmState: {
+      Plugin,
+    },
+    pmView: {
+      Decoration: {
+        node: () => null,
+        inline: () => null,
+        widget: () => null,
+      },
+      DecorationSet: {
+        create: (_doc: unknown, decorations: unknown[]) => decorations,
+      },
+    },
+  })
+  return pluginBundle.wysiwygPlugins[0]() as Plugin
+}
+
+function blockIndentKeyboardEvent(
+  key: string,
+  modifiers: Partial<Pick<KeyboardEvent, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>> = {},
+): KeyboardEvent {
+  return {
+    key,
+    code: key,
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    preventDefault: vi.fn(),
+    getModifierState: () => false,
+    ...modifiers,
+  } as unknown as KeyboardEvent
+}
+
+function createBlockIndentBoundaryKeydownView() {
+  const previousParagraph = paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('before'))
+  const indentedParagraph = paragraphShortcutSchema.nodes.paragraph.create(
+    null,
+    paragraphShortcutSchema.text(`${BLOCK_INDENT_TOKEN}visible`),
+  )
+  const nextParagraph = paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('next'))
+  const doc = paragraphShortcutSchema.nodes.doc.create(null, [previousParagraph, indentedParagraph, nextParagraph])
+  const tokenTo = previousParagraph.nodeSize + 1 + BLOCK_INDENT_TOKEN.length
+  let state = EditorState.create({
+    doc,
+    selection: TextSelection.create(doc, tokenTo),
+  })
+  const element = {
+    ownerDocument: {
+      defaultView: {
+        getComputedStyle: () => ({
+          fontSize: '16px',
+          lineHeight: '20px',
+          paddingLeft: '28px',
+        }),
+      },
+    },
+    getBoundingClientRect: () => ({
+      left: 100,
+      top: 50,
+      bottom: 74,
+      height: 24,
+    }),
+  }
+  const dispatch = vi.fn((transaction: any) => {
+    state = state.apply(transaction)
+  })
+  const posAtCoords = vi.fn(() => ({ pos: previousParagraph.nodeSize + indentedParagraph.nodeSize + 1 }))
+  const view = {
+    get state() {
+      return state
+    },
+    dispatch,
+    nodeDOM: vi.fn(() => element),
+    posAtCoords,
+  }
+
+  return { view, dispatch, posAtCoords }
 }
 
 function tagDoc(children: Array<{
@@ -1210,7 +1355,7 @@ describe('block indent WYSIWYG decorations', () => {
         kind: 'node',
         from: 0,
         to: BLOCK_INDENT_TOKEN.length + 3 + 2,
-        attrs: { class: BLOCK_INDENT_CLASS_NAME, style: '--tabs-block-indent-level: 1;' },
+        attrs: { class: BLOCK_INDENT_CLASS_NAME, style: '--aislenote-block-indent-level: 1;' },
       },
       {
         kind: 'inline',
@@ -1219,6 +1364,260 @@ describe('block indent WYSIWYG decorations', () => {
         attrs: { class: BLOCK_INDENT_TOKEN_HIDDEN_CLASS_NAME },
       },
     ])
+  })
+
+  it('marks the paragraph active at the first visible block indent character boundary', () => {
+    const tokenTo = 1 + BLOCK_INDENT_TOKEN.length
+    const calls = getBlockIndentDecorationCalls(`${BLOCK_INDENT_TOKEN}one`, [
+      { text: BLOCK_INDENT_TOKEN, position: 0 },
+      { text: 'one', position: BLOCK_INDENT_TOKEN.length },
+    ], { empty: true, from: tokenTo })
+
+    expect(calls.some((call) => call.kind === 'widget')).toBe(false)
+    expect(calls.find((call) => call.kind === 'node')?.attrs?.class).toBe(
+      `${BLOCK_INDENT_CLASS_NAME} ${BLOCK_INDENT_BOUNDARY_ACTIVE_CLASS_NAME}`,
+    )
+  })
+
+  it('does not mark the paragraph active outside the first visible boundary', () => {
+    const tokenTo = 1 + BLOCK_INDENT_TOKEN.length
+
+    expect(getBlockIndentDecorationCalls(`${BLOCK_INDENT_TOKEN}one`, undefined, { empty: true, from: tokenTo + 1 })
+      .find((call) => call.kind === 'node')?.attrs?.class).toBe(BLOCK_INDENT_CLASS_NAME)
+    expect(getBlockIndentDecorationCalls(`${BLOCK_INDENT_TOKEN}one`, undefined, { empty: false, from: tokenTo })
+      .find((call) => call.kind === 'node')?.attrs?.class).toBe(BLOCK_INDENT_CLASS_NAME)
+    expect(getBlockIndentDecorationCalls('one', undefined, { empty: true, from: 1 })
+      .find((call) => call.kind === 'node')).toBeUndefined()
+  })
+
+  it('snaps hidden-token cursor positions to the first visible character', () => {
+    const doc = blockIndentEditorDoc(`${BLOCK_INDENT_TOKEN.repeat(2)}one`)
+    const tokenFrom = 1
+    const tokenTo = 1 + BLOCK_INDENT_TOKEN.length * 2
+
+    expect(normalizeBlockIndentBoundaryPosition(doc, tokenFrom)).toBe(tokenTo)
+    expect(normalizeBlockIndentBoundaryPosition(doc, tokenTo - 1)).toBe(tokenTo)
+    expect(normalizeBlockIndentBoundaryPosition(doc, tokenTo)).toBe(tokenTo)
+    expect(normalizeBlockIndentBoundaryPosition(doc, tokenTo + 1)).toBe(tokenTo + 1)
+  })
+
+  it('keeps normal paragraph cursor positions unchanged', () => {
+    const doc = blockIndentEditorDoc('normal')
+
+    expect(normalizeBlockIndentBoundaryPosition(doc, 1)).toBe(1)
+    expect(normalizeBlockIndentSelectionBoundaries(doc, { anchor: 1, head: 4 })).toBeNull()
+  })
+
+  it('clamps non-collapsed selection endpoints out of hidden block indent tokens', () => {
+    const doc = blockIndentEditorDoc(`${BLOCK_INDENT_TOKEN}visible`)
+    const tokenFrom = 1
+    const tokenTo = 1 + BLOCK_INDENT_TOKEN.length
+    const visibleEnd = tokenTo + 'visible'.length
+
+    expect(normalizeBlockIndentSelectionBoundaries(doc, { anchor: tokenFrom, head: visibleEnd })).toEqual({
+      anchor: tokenTo,
+      head: visibleEnd,
+    })
+    expect(normalizeBlockIndentSelectionBoundaries(doc, { anchor: visibleEnd, head: tokenFrom + 1 })).toEqual({
+      anchor: visibleEnd,
+      head: tokenTo,
+    })
+  })
+
+  it('moves left and up from the first visible block indent character with a real selection', () => {
+    const previousParagraph = paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('before'))
+    const indentedParagraph = paragraphShortcutSchema.nodes.paragraph.create(
+      null,
+      paragraphShortcutSchema.text(`${BLOCK_INDENT_TOKEN}visible`),
+    )
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [previousParagraph, indentedParagraph])
+    const tokenFrom = previousParagraph.nodeSize + 1
+    const tokenTo = tokenFrom + BLOCK_INDENT_TOKEN.length
+    const selection = { empty: true, from: tokenTo }
+
+    expect(getBlockIndentBoundaryNavigationPosition(doc, selection, 'ArrowLeft')).toBeLessThan(tokenFrom)
+    expect(getBlockIndentBoundaryNavigationPosition(doc, selection, 'ArrowUp')).toBeLessThan(tokenFrom)
+    expect(getBlockIndentBoundaryNavigationPosition(doc, selection, 'ArrowDown')).toBeNull()
+  })
+
+  it('moves down from the first visible block indent character using the visible text column', () => {
+    const indentedParagraph = paragraphShortcutSchema.nodes.paragraph.create(
+      null,
+      paragraphShortcutSchema.text(`${BLOCK_INDENT_TOKEN}first line wraps`),
+    )
+    const nextParagraph = paragraphShortcutSchema.nodes.paragraph.create(null, paragraphShortcutSchema.text('next'))
+    const doc = paragraphShortcutSchema.nodes.doc.create(null, [indentedParagraph, nextParagraph])
+    const tokenTo = 1 + BLOCK_INDENT_TOKEN.length
+    const posAtCoords = vi.fn(() => ({ pos: indentedParagraph.nodeSize + 1 }))
+    const element = {
+      ownerDocument: {
+        defaultView: {
+          getComputedStyle: () => ({
+            fontSize: '16px',
+            lineHeight: '20px',
+            paddingLeft: '28px',
+          }),
+        },
+      },
+      getBoundingClientRect: () => ({
+        left: 100,
+        top: 50,
+        bottom: 74,
+        height: 24,
+      }),
+    }
+    const view = {
+      state: {
+        doc,
+        selection: { empty: true, from: tokenTo },
+      },
+      nodeDOM: vi.fn(() => element),
+      posAtCoords,
+    }
+
+    expect(getBlockIndentBoundaryArrowDownPosition(view)).toBe(indentedParagraph.nodeSize + 1)
+    expect(view.nodeDOM).toHaveBeenCalledWith(0)
+    expect(posAtCoords).toHaveBeenCalledWith({ left: 129, top: 81 })
+  })
+
+  it('handles plain ArrowDown from the block indent boundary through the plugin', () => {
+    const plugin = getBlockIndentTestPlugin()
+    const { view, dispatch, posAtCoords } = createBlockIndentBoundaryKeydownView()
+    const event = blockIndentKeyboardEvent('ArrowDown')
+
+    expect((plugin.props.handleKeyDown as any)?.(view, event)).toBe(true)
+
+    expect(event.preventDefault).toHaveBeenCalled()
+    expect(posAtCoords).toHaveBeenCalled()
+    expect(dispatch).toHaveBeenCalled()
+  })
+
+  it.each([
+    ['Command Down', 'ArrowDown', { metaKey: true }],
+    ['Option Down', 'ArrowDown', { altKey: true }],
+    ['Shift Down', 'ArrowDown', { shiftKey: true }],
+    ['Control Down', 'ArrowDown', { ctrlKey: true }],
+    ['Command Up', 'ArrowUp', { metaKey: true }],
+    ['Option Up', 'ArrowUp', { altKey: true }],
+  ])('lets %s fall through at the block indent boundary', (_label, key, modifiers) => {
+    const plugin = getBlockIndentTestPlugin()
+    const { view, dispatch, posAtCoords } = createBlockIndentBoundaryKeydownView()
+    const event = blockIndentKeyboardEvent(
+      key,
+      modifiers as Partial<Pick<KeyboardEvent, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>>,
+    )
+
+    expect((plugin.props.handleKeyDown as any)?.(view, event)).toBe(false)
+
+    expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(posAtCoords).not.toHaveBeenCalled()
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  it('moves home-style navigation to the visible start of a block-indented paragraph', () => {
+    const doc = blockIndentEditorDoc(`${BLOCK_INDENT_TOKEN}visible`)
+    const tokenTo = 1 + BLOCK_INDENT_TOKEN.length
+
+    expect(getBlockIndentVisibleLineStartPosition(doc, { empty: true, from: tokenTo + 3 }, 'line-start')).toBe(tokenTo)
+    expect(getBlockIndentVisibleLineStartPosition(doc, { empty: true, from: tokenTo + 1 }, 'word-boundary')).toBe(tokenTo)
+    expect(getBlockIndentVisibleLineStartPosition(doc, { empty: true, from: tokenTo + 3 }, 'word-boundary')).toBeNull()
+    expect(getBlockIndentVisibleLineStartPosition(doc, { empty: true, from: tokenTo })).toBe(tokenTo)
+    expect(getBlockIndentVisibleLineStartPosition(doc, { empty: false, from: tokenTo + 3 })).toBeNull()
+    expect(getBlockIndentVisibleLineStartPosition(blockIndentEditorDoc('visible'), { empty: true, from: 4 })).toBeNull()
+  })
+
+  it('maps clicks near the visible start of a block-indented paragraph to the first visible character boundary', () => {
+    const doc = blockIndentEditorDoc(`${BLOCK_INDENT_TOKEN}visible`)
+    const tokenTo = 1 + BLOCK_INDENT_TOKEN.length
+    const posAtCoords = vi.fn(() => ({ pos: tokenTo + 2 }))
+    const element = {
+      ownerDocument: {
+        defaultView: {
+          getComputedStyle: () => ({
+            paddingLeft: '28px',
+          }),
+        },
+      },
+      getBoundingClientRect: () => ({
+        left: 100,
+        top: 50,
+        right: 500,
+        bottom: 80,
+        height: 30,
+      }),
+    }
+    const view = {
+      state: { doc },
+      nodeDOM: vi.fn(() => element),
+      posAtCoords,
+    }
+
+    expect(getBlockIndentClickBoundaryPosition(view, { clientX: 129, clientY: 62 })).toBe(tokenTo)
+    expect(getBlockIndentClickBoundaryPosition(view, { clientX: 170, clientY: 62 })).toBeNull()
+    expect(view.nodeDOM).toHaveBeenCalledWith(0)
+  })
+
+  it('normalizes plugin selections that land inside a hidden block indent token', () => {
+    const plugin = getBlockIndentTestPlugin()
+    const doc = blockIndentEditorDoc(`${BLOCK_INDENT_TOKEN}one`)
+    const tokenTo = 1 + BLOCK_INDENT_TOKEN.length
+    const oldState = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, tokenTo),
+    })
+    const hiddenState = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, tokenTo - 1),
+    })
+
+    const transaction = plugin.spec.appendTransaction?.([], oldState, hiddenState)
+    expect(transaction).not.toBeNull()
+    const nextState = hiddenState.apply(transaction as any)
+
+    expect(nextState.selection.from).toBe(tokenTo)
+  })
+
+  it('normalizes the caret after native Delete leaves it before a remaining block indent token', () => {
+    const plugin = getBlockIndentTestPlugin()
+    const doc = blockIndentEditorDoc(`${BLOCK_INDENT_TOKEN}after`)
+    const tokenFrom = 1
+    const tokenTo = 1 + BLOCK_INDENT_TOKEN.length
+    const oldState = EditorState.create({ doc })
+    const deleteResultState = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, tokenFrom),
+    })
+
+    const transaction = plugin.spec.appendTransaction?.([], oldState, deleteResultState)
+    expect(transaction).not.toBeNull()
+    const nextState = deleteResultState.apply(transaction as any)
+
+    expect(nextState.selection.from).toBe(tokenTo)
+    expect(nextState.doc.child(0).textContent).toBe(`${BLOCK_INDENT_TOKEN}after`)
+  })
+
+  it('inserts printable text at the first visible character from an invalid hidden-token caret', () => {
+    const plugin = getBlockIndentTestPlugin()
+    const doc = blockIndentEditorDoc(`${BLOCK_INDENT_TOKEN}after`)
+    const tokenFrom = 1
+    const tokenTo = 1 + BLOCK_INDENT_TOKEN.length
+    let state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, tokenFrom),
+    })
+    const view = {
+      get state() {
+        return state
+      },
+      dispatch: (transaction: any) => {
+        state = state.apply(transaction)
+      },
+    }
+
+    expect((plugin.props.handleTextInput as any)?.(view, tokenFrom, tokenFrom, 'X')).toBe(true)
+
+    expect(state.doc.child(0).textContent).toBe(`${BLOCK_INDENT_TOKEN}Xafter`)
+    expect(state.selection.from).toBe(tokenTo + 1)
   })
 })
 
@@ -1229,6 +1628,15 @@ describe('tag WYSIWYG decorations', () => {
     ]))).toEqual([
       { from: 6, to: 12, text: '#Tag-3', tag: 'Tag-3' },
       { from: 17, to: 22, text: '#asdf', tag: 'asdf' },
+    ])
+  })
+
+  it('keeps numeric hashtags undecorated while allowing mixed numeric tags', () => {
+    expect(getTagDecorationRanges(tagDoc([
+      { text: 'Read #1 #4word #4-5 #2024-q1', position: 1 },
+    ]))).toEqual([
+      { from: 9, to: 15, text: '#4word', tag: '4word' },
+      { from: 21, to: 29, text: '#2024-q1', tag: '2024-q1' },
     ])
   })
 
@@ -1249,7 +1657,7 @@ describe('tag WYSIWYG decorations', () => {
         kind: 'inline',
         from: 4,
         to: 10,
-        attrs: { class: TAG_TOKEN_CLASS_NAME, 'data-tabs-tag': 'Tag-3', 'data-app-tooltip': 'filter by tag' },
+        attrs: { class: TAG_TOKEN_CLASS_NAME, 'data-aislenote-tag': 'Tag-3', 'data-app-tooltip': 'filter by tag' },
       },
     ])
   })
@@ -1265,7 +1673,7 @@ describe('tag WYSIWYG decorations', () => {
         to: 5,
         attrs: {
           class: `${TAG_TOKEN_CLASS_NAME} ${TAG_JUMP_TARGET_CLASS_NAME}`,
-          'data-tabs-tag': 'one',
+          'data-aislenote-tag': 'one',
           'data-app-tooltip': 'filter by tag',
         },
       },
@@ -1273,7 +1681,7 @@ describe('tag WYSIWYG decorations', () => {
         kind: 'inline',
         from: 6,
         to: 10,
-        attrs: { class: TAG_TOKEN_CLASS_NAME, 'data-tabs-tag': 'two', 'data-app-tooltip': 'filter by tag' },
+        attrs: { class: TAG_TOKEN_CLASS_NAME, 'data-aislenote-tag': 'two', 'data-app-tooltip': 'filter by tag' },
       },
     ])
     expect(getTagDecorationCalls(doc, [{ from: 1, to: 5, requestId: 1 }, null]).map((call) => call.attrs?.class)).toEqual([
@@ -1374,7 +1782,7 @@ describe('annotation line WYSIWYG decorations', () => {
   it('adds a visible caret proxy at arrow marker boundaries', () => {
     expect(
       getAnnotationDecorationCalls('asdf --^', undefined, 6).find((call) =>
-        call.kind === 'widget' && call.classNames?.includes('tabs-annotation-arrow-boundary-caret'),
+        call.kind === 'widget' && call.classNames?.includes('aislenote-annotation-arrow-boundary-caret'),
       ),
     ).toMatchObject({
       from: 6,
@@ -1384,7 +1792,7 @@ describe('annotation line WYSIWYG decorations', () => {
 
     expect(
       getAnnotationDecorationCalls('asdf --^', undefined, 9).find((call) =>
-        call.kind === 'widget' && call.classNames?.includes('tabs-annotation-arrow-boundary-caret'),
+        call.kind === 'widget' && call.classNames?.includes('aislenote-annotation-arrow-boundary-caret'),
       ),
     ).toMatchObject({
       from: 9,

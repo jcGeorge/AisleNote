@@ -2,58 +2,236 @@ import type { Editor } from '@toast-ui/editor'
 import {
   EDITOR_BLANK_LINE_PLACEHOLDER,
   type BlankParagraphDisplayOptions,
+  decodeBlockIndentHtmlForInternalMarkdown,
   isBlankParagraphNode,
   mergeLeadingIndentsFromWysiwyg,
+  normalizeEscapedAnnotationLineMarkers,
+  normalizeEscapedMarkdownLinks,
   normalizeEmptyHeadingMarkersFromWysiwyg,
   normalizeMarkdownForPersistence,
   prepareBlankParagraphsForEditorDisplay,
   prepareMarkdownHighlightsForDisplay,
   preserveBlankParagraphsFromWysiwyg,
+  transformOutsideFencedCode,
+  transformOutsideInlineCode,
 } from '../markdown/markdown-utils'
 import {
   normalizeMarkdownImageSourcesForPersistence,
   prepareMarkdownImagesForDisplay,
 } from '../markdown/image-asset-registry'
+import {
+  formatEditorMarkdownNoteReferenceHref,
+  formatMarkdownNoteReferenceDestination,
+  parseMarkdownNoteReferenceDestination,
+} from '../notes/note-references'
 import { measureSlowOperation } from '../performance/performance-logging'
 import { getWysiwygView, markWysiwygLoadedUndoBoundary } from './prosemirror-utils'
 
+const MARKDOWN_LINK_DESTINATION_RE = /(!?\[((?:\\.|[^\]\\])*)\])\((<[^>\n]*>|[^)\s\n]+)\)/g
+const INTERNAL_NOTE_HANDLE_RE = /--[0-9a-f]{6}(?:-\d+)?$/i
+const HIGHLIGHT_DELIMITER_RE = /(^|[^=])==([^\n]*?\S[^\n]*?)==(?=$|[^=])/g
+
+type HighlightDelimiterRange = {
+  openFrom: number
+  openTo: number
+  contentFrom: number
+  contentTo: number
+  closeFrom: number
+  closeTo: number
+}
+
+function getSyntaxInternalNoteTarget(destination: string): string | null {
+  const target = parseMarkdownNoteReferenceDestination(destination)
+  if (!target) return null
+  const noteHandle = target.split('#')[0]?.trim() ?? ''
+  return INTERNAL_NOTE_HANDLE_RE.test(noteHandle) ? target : null
+}
+
+function transformMarkdownLinkDestinationsOutsideCode(
+  markdown: string,
+  transformDestination: (destination: string) => string | null,
+): string {
+  return transformOutsideFencedCode(String(markdown ?? ''), (line) =>
+    transformOutsideInlineCode(line, (segment) =>
+      segment.replace(MARKDOWN_LINK_DESTINATION_RE, (source, linkPrefix: string, _label: string, destination: string) => {
+        const nextDestination = transformDestination(destination)
+        return nextDestination ? `${linkPrefix}(${nextDestination})` : source
+      }),
+    ),
+  )
+}
+
+function escapeMarkdownPreviewTokenPart(value: string): string {
+  return String(value ?? '').replace(/([\\[\]()<>!#])/g, '\\$1')
+}
+
+export function escapeNotePreviewTokensForEditorDisplay(markdown: string): string {
+  return transformOutsideFencedCode(String(markdown ?? ''), (line) =>
+    transformOutsideInlineCode(line, (segment) =>
+      segment.replace(MARKDOWN_LINK_DESTINATION_RE, (source, linkPrefix: string, label: string, destination: string) => {
+        if (!linkPrefix.startsWith('!') || !getSyntaxInternalNoteTarget(destination)) return source
+        return `\\!\\[${escapeMarkdownPreviewTokenPart(label)}\\]\\(${escapeMarkdownPreviewTokenPart(destination)}\\)`
+      }),
+    ),
+  )
+}
+
+export function prepareMarkdownNoteLinkDestinationsForEditorDisplay(markdown: string): string {
+  return transformMarkdownLinkDestinationsOutsideCode(markdown, (destination) => {
+    const target = getSyntaxInternalNoteTarget(destination)
+    return target ? formatEditorMarkdownNoteReferenceHref(target) : null
+  })
+}
+
+export function normalizeEditorNoteLinkDestinationsForPersistence(markdown: string): string {
+  return transformMarkdownLinkDestinationsOutsideCode(markdown, (destination) => {
+    const target = getSyntaxInternalNoteTarget(destination)
+    return target ? formatMarkdownNoteReferenceDestination(target) : null
+  })
+}
+
 export function getEditorMarkdownForPersistence(editor: Editor): string {
+  const editorMarkdown = mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())
+  const blankPreservedMarkdown = preserveBlankParagraphsFromWysiwyg(editor, editorMarkdown)
   return normalizeMarkdownImageSourcesForPersistence(
-    normalizeEmptyHeadingMarkersFromWysiwyg(
-      editor,
-      preserveBlankParagraphsFromWysiwyg(
+    normalizeEditorNoteLinkDestinationsForPersistence(
+      normalizeEmptyHeadingMarkersFromWysiwyg(
         editor,
-        normalizeMarkdownForPersistence(mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())),
+        normalizeMarkdownForPersistence(blankPreservedMarkdown),
       ),
     ),
   )
+}
+
+function trimHighlightDelimiterContentRange(rawText: string): { left: number; right: number } {
+  if (!rawText.startsWith(' ') || !rawText.endsWith(' ') || rawText.trim().length === 0) {
+    return { left: 0, right: 0 }
+  }
+  return { left: 1, right: 1 }
+}
+
+function rangeContainsCodeMark(doc: any, from: number, to: number): boolean {
+  let containsCode = false
+  doc.nodesBetween(from, to, (node: any, position: number) => {
+    if (containsCode) return false
+    if (!node?.isText || typeof node.text !== 'string') return true
+    const segmentFrom = Math.max(from, position)
+    const segmentTo = Math.min(to, position + node.text.length)
+    if (segmentTo <= segmentFrom) return false
+    if (node.marks?.some((mark: any) => mark?.type?.name === 'code' || mark?.type?.spec?.code)) {
+      containsCode = true
+    }
+    return false
+  })
+  return containsCode
+}
+
+function collectHighlightDelimiterRanges(doc: any): HighlightDelimiterRange[] {
+  const ranges: HighlightDelimiterRange[] = []
+  doc.descendants((node: any, position: number) => {
+    if (!node?.isTextblock) return true
+    if (node.type?.spec?.code) return false
+
+    const text = String(node.textContent ?? '')
+    if (!text.includes('==')) return false
+
+    for (const match of text.matchAll(HIGHLIGHT_DELIMITER_RE)) {
+      const rawText = match[2] ?? ''
+      const matchIndex = match.index ?? 0
+      const markerStartOffset = matchIndex + (match[1]?.length ?? 0)
+      const rawContentStartOffset = markerStartOffset + 2
+      const rawContentEndOffset = rawContentStartOffset + rawText.length
+      const closeEndOffset = rawContentEndOffset + 2
+      const trim = trimHighlightDelimiterContentRange(rawText)
+      const contentStartOffset = rawContentStartOffset + trim.left
+      const contentEndOffset = rawContentEndOffset - trim.right
+      if (contentEndOffset <= contentStartOffset) continue
+
+      const textStart = position + 1
+      const openFrom = textStart + markerStartOffset
+      const openTo = textStart + rawContentStartOffset + trim.left
+      const contentFrom = textStart + contentStartOffset
+      const contentTo = textStart + contentEndOffset
+      const closeFrom = textStart + rawContentEndOffset - trim.right
+      const closeTo = textStart + closeEndOffset
+      if (rangeContainsCodeMark(doc, openFrom, closeTo)) continue
+
+      ranges.push({
+        openFrom,
+        openTo,
+        contentFrom,
+        contentTo,
+        closeFrom,
+        closeTo,
+      })
+    }
+
+    return false
+  })
+  return ranges
+}
+
+export function applyMarkdownHighlightDelimitersToEditorDisplay(editor: Editor | null): boolean {
+  const view = getWysiwygView(editor)
+  const markType = view?.state?.schema?.marks?.mark
+  const doc = view?.state?.doc
+  if (!view || !doc || !markType || typeof view.dispatch !== 'function') return false
+
+  const ranges = collectHighlightDelimiterRanges(doc)
+  if (ranges.length === 0) return false
+
+  let transaction = view.state.tr
+  ranges
+    .sort((left, right) => right.openFrom - left.openFrom)
+    .forEach((range) => {
+      transaction = transaction
+        .addMark(range.contentFrom, range.contentTo, markType.create())
+        .delete(range.closeFrom, range.closeTo)
+        .delete(range.openFrom, range.openTo)
+    })
+  view.dispatch(transaction.setMeta('addToHistory', false))
+  return true
+}
+
+function prepareMarkdownForBlankParagraphPlanning(markdown: string): string {
+  const blockIndentsPrepared = decodeBlockIndentHtmlForInternalMarkdown(markdown)
+  const escapedLinksPrepared = normalizeEscapedMarkdownLinks(blockIndentsPrepared)
+  return normalizeEscapedAnnotationLineMarkers(escapedLinksPrepared)
 }
 
 export function prepareMarkdownForEditorDisplay(
   markdown: string,
   options: BlankParagraphDisplayOptions = {},
 ): string {
-  const blankPrepared = prepareBlankParagraphsForEditorDisplay(markdown, options)
-  return prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(blankPrepared.markdown))
+  const annotationMarkersPrepared = prepareMarkdownForBlankParagraphPlanning(markdown)
+  const blankPrepared = prepareBlankParagraphsForEditorDisplay(annotationMarkersPrepared, options)
+  const noteLinksPrepared = prepareMarkdownNoteLinkDestinationsForEditorDisplay(blankPrepared.markdown)
+  const notePreviewsPrepared = escapeNotePreviewTokensForEditorDisplay(noteLinksPrepared)
+  return prepareMarkdownImagesForDisplay(prepareMarkdownHighlightsForDisplay(notePreviewsPrepared, {
+    preserveLinkedHighlights: true,
+  }))
 }
 
 export function restoreEditorBlankParagraphs(editor: Editor | null, markdown: string): boolean {
-  return measureSlowOperation('editor blank paragraph restoration', () => restoreEditorBlankParagraphsUnmeasured(editor, markdown))
+  return measureBlankParagraphRestore(editor, markdown) === 'restored'
 }
 
 export type EditorDisplayRestoreResult = {
   restored: boolean
   viewReady: boolean
+  displayReady: boolean
 }
 
 export function restoreEditorDisplay(editor: Editor | null, markdown: string): EditorDisplayRestoreResult {
   const view = getWysiwygView(editor)
   const viewReady = Boolean(view?.state?.doc)
-  const restored = viewReady ? restoreEditorBlankParagraphs(editor, markdown) : false
-  if (viewReady) {
+  const restoreState = viewReady ? measureBlankParagraphRestore(editor, markdown) : 'pending'
+  const displayReady = restoreState !== 'pending'
+  const restored = restoreState === 'restored'
+  if (displayReady) {
     markWysiwygLoadedUndoBoundary(editor)
   }
-  return { restored, viewReady }
+  return { restored, viewReady, displayReady }
 }
 
 type TopLevelEditorNode = {
@@ -235,25 +413,40 @@ function applyFullBlankParagraphRestore({
   }
 }
 
-function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown: string): boolean {
-  const blankPrepared = prepareBlankParagraphsForEditorDisplay(markdown)
-  if (hasMarkdownTable(markdown) && !hasExplicitBlankRestoreMarker(markdown)) return false
+type BlankParagraphRestoreState = 'restored' | 'ready' | 'pending'
+
+function measureBlankParagraphRestore(editor: Editor | null, markdown: string): BlankParagraphRestoreState {
+  return measureSlowOperation('editor blank paragraph restoration', () => restoreEditorBlankParagraphsUnmeasured(editor, markdown))
+}
+
+function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown: string): BlankParagraphRestoreState {
+  const planningMarkdown = prepareMarkdownForBlankParagraphPlanning(markdown)
+  let blankPrepared = prepareBlankParagraphsForEditorDisplay(planningMarkdown)
+  const tableRestoreWithoutExplicitMarkers = hasMarkdownTable(planningMarkdown) && !hasExplicitBlankRestoreMarker(markdown)
 
   const view = getWysiwygView(editor)
   const doc = view?.state?.doc
   const paragraphType = view?.state?.schema?.nodes?.paragraph
-  if (!view?.dispatch || !doc || typeof doc.forEach !== 'function' || !paragraphType) return false
+  if (!view?.dispatch || !doc || typeof doc.forEach !== 'function' || !paragraphType) return 'pending'
 
   const topLevelNodes = collectTopLevelEditorNodes(doc)
-  if (!blankPrepared.blockKinds.includes('blank') && topLevelNodes.every((item) => item.kind !== 'blank')) return false
+  if (!blankPrepared.blockKinds.includes('blank') && topLevelNodes.every((item) => item.kind !== 'blank')) return 'ready'
 
   if (hasExpectedBlankParagraphLayout(topLevelNodes, blankPrepared.blockKinds)) {
-    return false
+    return 'ready'
   }
 
   const currentContentCount = topLevelNodes.filter((item) => item.kind === 'content').length
-  const expectedContentCount = getContentNodeCount(blankPrepared.blockKinds)
-  if (currentContentCount !== expectedContentCount) return false
+  let expectedContentCount = getContentNodeCount(blankPrepared.blockKinds)
+  if (currentContentCount !== expectedContentCount) {
+    const splitPlainPrepared = prepareBlankParagraphsForEditorDisplay(planningMarkdown, { splitPlainParagraphLines: true })
+    const splitPlainContentCount = getContentNodeCount(splitPlainPrepared.blockKinds)
+    if (currentContentCount === splitPlainContentCount) {
+      blankPrepared = splitPlainPrepared
+      expectedContentCount = splitPlainContentCount
+    }
+  }
+  if (currentContentCount !== expectedContentCount) return 'pending'
 
   if (applyTargetedBlankParagraphRestore({
     view,
@@ -262,8 +455,10 @@ function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown:
     topLevelNodes,
     blockKinds: blankPrepared.blockKinds,
   })) {
-    return true
+    return 'restored'
   }
+
+  if (tableRestoreWithoutExplicitMarkers) return 'pending'
 
   return applyFullBlankParagraphRestore({
     view,
@@ -272,6 +467,8 @@ function restoreEditorBlankParagraphsUnmeasured(editor: Editor | null, markdown:
     topLevelNodes,
     blockKinds: blankPrepared.blockKinds,
   })
+    ? 'restored'
+    : 'pending'
 }
 
 export function setEditorMarkdownForDisplay(
@@ -282,6 +479,7 @@ export function setEditorMarkdownForDisplay(
 ): void {
   measureSlowOperation('editor display markdown rewrite', () => {
     editor.setMarkdown(prepareMarkdownForEditorDisplay(markdown, options), cursorToEnd)
+    applyMarkdownHighlightDelimitersToEditorDisplay(editor)
     restoreEditorDisplay(editor, markdown)
   })
 }

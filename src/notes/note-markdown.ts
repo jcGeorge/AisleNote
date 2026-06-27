@@ -1,4 +1,4 @@
-import { createId, createTimestamp } from '../state/workspace'
+import { createId, createTimestamp } from './note-content'
 import { getAisleBodyTags } from '../tags/tags.js'
 import type { FrontmatterMeta, NoteAisle, NoteAisleBody, NoteBody, ResolvedNoteAisle, ResolvedNoteBody } from '../types/app'
 

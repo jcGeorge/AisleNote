@@ -69,18 +69,16 @@ type SaveAppStateResult =
       serializedState?: string | null
     }
 
-type NotebookSelectorPayload = {
-  notebookId?: string
-  notebookPath?: string
+type VaultSelectorPayload = {
+  vaultId?: string
+  vaultPath?: string
 }
 
-type NotebookSyncTargetPayload = NotebookSelectorPayload & {
-  syncTargetPath?: string
-  locationPath?: string
+type VaultRenamePayload = VaultSelectorPayload & {
+  name: string
 }
 
-type NotebookDeletePayload = NotebookSelectorPayload & {
-  trashSyncTarget?: boolean
+type VaultDeletePayload = VaultSelectorPayload & {
   skipConfirmation?: boolean
 }
 
@@ -98,8 +96,12 @@ type ImportImageAssetPayload = {
 
 type ImportAssetPayload = ImportImageAssetPayload
 export type ElectronNoteRevealPayload =
-  | { type: 'live-note'; location: NoteLocation }
+  | { type: 'live-note'; location: NoteLocation; aisleId?: string }
   | { type: 'scratchpad' }
+export type ElectronVaultItemRevealPayload = {
+  itemId: string
+  itemType: 'note' | 'folder'
+}
 export type EditorSpellcheckContext = {
   suggestions: string[]
   misspelledWord: string
@@ -130,7 +132,7 @@ type ReadAssetResult =
       error: string
     }
 
-type ExportNotebookFolderResult =
+type ExportVaultFolderResult =
   | {
       canceled: true
     }
@@ -138,8 +140,8 @@ type ExportNotebookFolderResult =
       canceled: false
       ok: true
       profileRootPath: string
-      notebookPath: string
-      notebookName: string
+      vaultPath: string
+      vaultName: string
     }
   | {
       canceled: false
@@ -147,22 +149,14 @@ type ExportNotebookFolderResult =
       error: string
     }
 
-type OpenNotebookImportSourceResult =
+type OpenVaultImportSourceResult =
   | {
       canceled: true
     }
   | {
       canceled: false
       ok: true
-      kind: 'zip'
-      bytes: ArrayBuffer
-      filePath?: string
-      nativeNotebookError?: string
-    }
-  | {
-      canceled: false
-      ok: true
-      kind: 'notebook-zip'
+      kind: 'vault-zip'
       filePath?: string
       serializedState: string | null
       schemaVersion?: number | null
@@ -180,7 +174,7 @@ type OpenNotebookImportSourceResult =
   | {
       canceled: false
       ok: true
-      kind: 'notebook-folder'
+      kind: 'vault-folder'
       sourceId: string
       folderPath: string
       serializedState: string
@@ -196,6 +190,26 @@ type OpenNotebookImportSourceResult =
       folderPath: string
       rootName?: string
       files: Array<{ relativePath: string; markdown: string; size?: number }>
+      assetRoots?: Array<{ id: string; name?: string; sourceBasePath?: string }>
+    }
+  | {
+      canceled: false
+      ok: true
+      kind: 'markdown-zip'
+      filePath?: string
+      rootName?: string
+      files: Array<{ relativePath: string; markdown: string; size?: number }>
+      assets?: Array<{
+        assetRootId?: string
+        relativePath: string
+        bytes: ArrayBuffer
+        fileName?: string
+        name?: string
+        mimeType?: string
+        extension?: string
+      }>
+      assetRoots?: Array<{ id: string; name?: string; sourceBasePath?: string }>
+      nativeVaultError?: string
     }
   | {
       canceled: false
@@ -276,6 +290,12 @@ type OpenDiagnosticsFolderResult =
       error?: string
     }
 
+type AppZoomChangedPayload = {
+  zoomLevel: number
+  zoomFactor: number
+  percent: number
+}
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -304,6 +324,7 @@ declare global {
       openAsset?: (payload: { url?: string; assetPath?: string }) => Promise<{ ok: boolean; error?: string }>
       revealAsset?: (payload: { url?: string; assetPath?: string }) => Promise<{ ok: boolean; error?: string }>
       revealNoteLocation?: (payload: ElectronNoteRevealPayload) => Promise<{ ok: boolean; error?: string }>
+      revealVaultItemLocation?: (payload: ElectronVaultItemRevealPayload) => Promise<{ ok: boolean; error?: string }>
       readAsset?: (payload: { url?: string; assetPath?: string }) => Promise<ReadAssetResult>
       getEditorSpellcheckContext?: (payload: { x: number; y: number }) => Promise<EditorSpellcheckContext | null>
       replaceMisspelling?: (payload: { word: string }) => Promise<{ ok: boolean; error?: string }>
@@ -312,24 +333,17 @@ declare global {
       onAppStateUpdated?: (handler: (payload: { serializedState: string; revision: number }) => void) => () => void
       getStorageProfileStatus?: () => Promise<StorageProfileStatus>
       getUserSettingsLocationStatus?: () => Promise<UserSettingsLocationStatus>
-      chooseNotebookLocation?: () => Promise<
+      chooseVaultLocation?: () => Promise<
         | { canceled: true }
         | { ok: true; locationPath: string }
         | { ok: false; error: string }
       >
-      createNotebook?: (payload: { name: string; locationPath: string; serializedState: string }) => Promise<StorageProfileActionResult>
-      resetLocalNotebookToBlank?: () => Promise<
-        { ok: true; status: StorageProfileStatus } | { ok: false; error?: string; status: StorageProfileStatus }
-      >
-      renameNotebook?: (payload: { name: string }) => Promise<StorageProfileActionResult>
-      openNotebook?: () => Promise<StorageProfileActionResult>
-      switchNotebook?: (payload: NotebookSelectorPayload) => Promise<StorageProfileActionResult>
-      forgetNotebook?: (payload: NotebookSelectorPayload) => Promise<StorageProfileActionResult>
-      deleteNotebook?: (payload?: NotebookDeletePayload) => Promise<StorageProfileActionResult>
-      attachNotebookSyncTarget?: (payload?: NotebookSyncTargetPayload) => Promise<StorageProfileActionResult>
-      detachNotebookSyncTarget?: (payload?: NotebookSelectorPayload) => Promise<StorageProfileActionResult>
-      reconnectNotebookSyncTarget?: (payload?: NotebookSyncTargetPayload) => Promise<StorageProfileActionResult>
-      chooseStorageFolder?: () => Promise<StorageProfileActionResult>
+      createVault?: (payload: { name: string; locationPath: string }) => Promise<StorageProfileActionResult>
+      renameVault?: (payload: VaultRenamePayload) => Promise<StorageProfileActionResult>
+      openVault?: () => Promise<StorageProfileActionResult>
+      switchVault?: (payload: VaultSelectorPayload) => Promise<StorageProfileActionResult>
+      forgetVault?: (payload: VaultSelectorPayload) => Promise<StorageProfileActionResult>
+      deleteVault?: (payload?: VaultDeletePayload) => Promise<StorageProfileActionResult>
       moveStorageProfile?: () => Promise<StorageProfileActionResult>
       chooseUserSettingsFolder?: () => Promise<
         | { canceled: true; status: UserSettingsLocationStatus }
@@ -347,19 +361,21 @@ declare global {
       >
       revealUserSettingsFolder?: () => Promise<{ ok: true } | { ok: false; error: string }>
       revealStorageProfile?: () => Promise<{ ok: true } | { ok: false; error: string }>
-      revealRecoveredNotebookLocation?: (payload?: { messageId?: string; signature?: string }) => Promise<
+      revealRecoveredVaultLocation?: (payload?: { messageId?: string; signature?: string }) => Promise<
         { ok: true } | { ok: false; error: string }
       >
       retryStorageProfile?: () => Promise<
         { ok: true; status: StorageProfileStatus; warning?: string } | { ok: false; error?: string; status: StorageProfileStatus }
       >
+      onOpenVaultManager?: (handler: () => void) => () => void
+      onAppZoomChanged?: (handler: (payload: AppZoomChangedPayload) => void) => () => void
       onStorageProfileStatusUpdated?: (handler: (payload: StorageProfileStatus) => void) => () => void
       onUserSettingsLocationStatusUpdated?: (handler: (payload: UserSettingsLocationStatus) => void) => () => void
-      exportNotebookFolder?: (payload: { serializedState: string }) => Promise<ExportNotebookFolderResult>
-      openNotebookImportSource?: () => Promise<OpenNotebookImportSourceResult>
-      readFolderImportAsset?: (payload: { sourceId: string; relativePath: string }) => Promise<ReadFolderImportAssetResult>
+      exportVaultFolder?: (payload: { serializedState: string }) => Promise<ExportVaultFolderResult>
+      openVaultImportSource?: () => Promise<OpenVaultImportSourceResult>
+      readFolderImportAsset?: (payload: { sourceId: string; assetRootId?: string; relativePath: string }) => Promise<ReadFolderImportAssetResult>
       openUserSettingsFile?: () => Promise<OpenUserSettingsFileResult>
-      openUserSettingsFromNotebookFolder?: () => Promise<OpenUserSettingsFileResult>
+      openUserSettingsFromVaultFolder?: () => Promise<OpenUserSettingsFileResult>
       saveUserSettingsFile?: (payload: { defaultPath: string; contents: string }) => Promise<{
         canceled: boolean
         filePath?: string
@@ -397,8 +413,8 @@ declare global {
       readDiagnosticLogEntries?: (payload: { dayKey: string }) => Promise<DiagnosticLogEntriesResult>
       openDiagnosticsFolder?: () => Promise<OpenDiagnosticsFolderResult>
     }
-    __tabsGetLatestAppState?: () => string
-    __tabsGetAppStateRevision?: () => number
-    __tabsHandleMultilineShortcut?: (direction: 'up' | 'down') => boolean
+    __aislenoteGetLatestAppState?: () => string
+    __aislenoteGetAppStateRevision?: () => number
+    __aislenoteHandleMultilineShortcut?: (direction: 'up' | 'down') => boolean
   }
 }

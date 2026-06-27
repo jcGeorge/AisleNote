@@ -1,11 +1,11 @@
 .app-toast-layer {
   position: fixed;
-  left: 1rem;
+  right: 1rem;
   bottom: 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: flex-start;
   pointer-events: auto;
   z-index: 10000;
@@ -69,6 +69,13 @@
   border-left-color: var(--toast-error);
 }
 
+.app-storage-alert-layer {
+  right: auto;
+  left: 50%;
+  align-items: center;
+  transform: translateX(-50%);
+}
+
 .app-storage-alert-detail {
   margin-top: 0.45rem !important;
   color: color-mix(in srgb, var(--toast-text) 72%, transparent);
@@ -90,6 +97,10 @@
 }
 
 .app-tip-dismiss {
+  --app-close-button-size: 1.55rem;
+  --app-close-icon-size: 1rem;
+  --app-close-button-hover-bg: color-mix(in srgb, var(--toast-text) 10%, transparent);
+  --app-close-button-hover-text: inherit;
   position: absolute;
   top: 0.38rem;
   right: 0.42rem;

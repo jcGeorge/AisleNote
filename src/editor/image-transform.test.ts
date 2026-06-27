@@ -92,14 +92,14 @@ describe('image transform helpers', () => {
     const sourceUrl = withImageResizeMetadata('data:image/png;base64,abc', { v: 1, w: 96 })
     const nextUrl = withImageTransformDisplayWidth('data:image/png;base64,def', sourceUrl, 240, 320, 180, 'rotate-cw')
 
-    expect(nextUrl).toContain('data:image/png;base64,def#tabs-image=')
+    expect(nextUrl).toContain('data:image/png;base64,def#aislenote-image=')
     expect(getImageTransformDisplayWidth(nextUrl, 240)).toBe(54)
   })
 
   it('writes transformed asset display width without transform metadata', () => {
-    const sourceUrl = withImageResizeMetadata('tabs-asset:///assets/source.png', { v: 1, w: 96 })
+    const sourceUrl = withImageResizeMetadata('aislenote-asset:///assets/source.png', { v: 1, w: 96 })
     const nextUrl = withImageTransformAssetDisplayWidth(
-      'tabs-asset:///assets/transformed.png',
+      'aislenote-asset:///assets/transformed.png',
       sourceUrl,
       240,
       320,
@@ -107,12 +107,12 @@ describe('image transform helpers', () => {
       'rotate-cw',
     )
 
-    expect(stripImageResizeMetadataFromUrl(nextUrl)).toBe('tabs-asset:///assets/transformed.png')
+    expect(stripImageResizeMetadataFromUrl(nextUrl)).toBe('aislenote-asset:///assets/transformed.png')
     expect(getImageResizeMetadata(nextUrl)).toEqual({ v: 1, w: 54 })
   })
 
   it('preserves legacy transform metadata while resizing', () => {
-    const sourceUrl = withImageResizeMetadata('tabs-asset:///assets/source.png', {
+    const sourceUrl = withImageResizeMetadata('aislenote-asset:///assets/source.png', {
       v: 1,
       w: 96,
       r: 90,
@@ -121,18 +121,18 @@ describe('image transform helpers', () => {
     })
     const nextUrl = withImageDisplayWidthPreservingTransformMetadata(sourceUrl, 144)
 
-    expect(stripImageResizeMetadataFromUrl(nextUrl)).toBe('tabs-asset:///assets/source.png')
+    expect(stripImageResizeMetadataFromUrl(nextUrl)).toBe('aislenote-asset:///assets/source.png')
     expect(getImageResizeMetadata(nextUrl)).toEqual({ v: 1, w: 144, r: 90, fh: true, fv: true })
   })
 
   it('stores rotate and flip operations as metadata without changing the image source', () => {
-    const sourceUrl = withImageResizeMetadata('tabs-asset:///assets/source.png', { v: 1, w: 96 })
+    const sourceUrl = withImageResizeMetadata('aislenote-asset:///assets/source.png', { v: 1, w: 96 })
     const rotatedUrl = withImageTransformDisplayWidth(sourceUrl, sourceUrl, 96, 320, 180, 'rotate-cw')
     const flippedUrl = withImageTransformDisplayWidth(rotatedUrl, rotatedUrl, 54, 180, 180, 'flip-horizontal')
 
-    expect(stripImageResizeMetadataFromUrl(rotatedUrl)).toBe('tabs-asset:///assets/source.png')
+    expect(stripImageResizeMetadataFromUrl(rotatedUrl)).toBe('aislenote-asset:///assets/source.png')
     expect(getImageResizeMetadata(rotatedUrl)).toMatchObject({ v: 1, w: 54, r: 90 })
-    expect(stripImageResizeMetadataFromUrl(flippedUrl)).toBe('tabs-asset:///assets/source.png')
+    expect(stripImageResizeMetadataFromUrl(flippedUrl)).toBe('aislenote-asset:///assets/source.png')
     expect(getImageResizeMetadata(flippedUrl)).toMatchObject({ v: 1, fh: true, r: 90 })
   })
 })

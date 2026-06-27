@@ -1,7 +1,9 @@
+import * as React from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { RENDERED_MARKDOWN_SURFACE_CLASS } from '../../editor/rendered-markdown-surface'
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
+import { normalizeEscapedMarkdownLinks } from '../../markdown/markdown-utils'
 import {
   MarkdownPreviewHeading1,
   MarkdownPreviewHeading2,
@@ -13,6 +15,8 @@ import {
   MarkdownPreviewListItem,
   MarkdownPreviewParagraph,
 } from '../notes/markdown-preview-components'
+
+void React
 
 type TrashMarkdownPreviewProps = {
   markdown: string
@@ -31,8 +35,8 @@ const trashMarkdownPreviewComponents = {
 }
 
 const transformTrashPreviewUrl = (url: string, key: string) => {
-  if (key === 'href' && /^tabs-asset:/i.test(url)) return url
-  if (key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^tabs-asset:/i.test(url))) {
+  if (key === 'href' && /^aislenote-asset:/i.test(url)) return url
+  if (key === 'src' && (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^aislenote-asset:/i.test(url))) {
     return resolveAssetDisplayUrl(url)
   }
   return defaultUrlTransform(url)
@@ -50,7 +54,7 @@ export function TrashMarkdownPreview({ markdown }: TrashMarkdownPreviewProps) {
           components={trashMarkdownPreviewComponents}
           urlTransform={transformTrashPreviewUrl}
         >
-          {markdown}
+          {normalizeEscapedMarkdownLinks(markdown)}
         </ReactMarkdown>
       </div>
     </section>

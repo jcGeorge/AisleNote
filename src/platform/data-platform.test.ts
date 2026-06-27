@@ -11,7 +11,7 @@ describe('data platform capabilities', () => {
     expect(getDataPlatformCapabilities({ hasElectron: true, isNativeCapacitor: true })).toBe(
       DESKTOP_DATA_CAPABILITIES,
     )
-    expect(DESKTOP_DATA_CAPABILITIES.notebookFolders).toBe(true)
+    expect(DESKTOP_DATA_CAPABILITIES.vaultFolders).toBe(true)
     expect(DESKTOP_DATA_CAPABILITIES.settingsFolders).toBe(true)
     expect(DESKTOP_DATA_CAPABILITIES.liveFilesystemReload).toBe(true)
   })
@@ -20,9 +20,9 @@ describe('data platform capabilities', () => {
     const capabilities = getDataPlatformCapabilities({ hasElectron: false, isNativeCapacitor: true })
 
     expect(capabilities).toBe(MOBILE_DATA_CAPABILITIES)
-    expect(capabilities.appPrivateNotebook).toBe(true)
+    expect(capabilities.appPrivateVault).toBe(true)
     expect(capabilities.userSettingsFiles).toBe(true)
-    expect(capabilities.notebookFolders).toBe(false)
+    expect(capabilities.vaultFolders).toBe(false)
     expect(capabilities.settingsFolders).toBe(false)
     expect(capabilities.liveFilesystemReload).toBe(false)
   })
@@ -31,7 +31,7 @@ describe('data platform capabilities', () => {
     const capabilities = getDataPlatformCapabilities({ hasElectron: false, isNativeCapacitor: false })
 
     expect(capabilities).toBe(BROWSER_DATA_CAPABILITIES)
-    expect(capabilities.notebookFolders).toBe(false)
+    expect(capabilities.vaultFolders).toBe(false)
     expect(capabilities.settingsFolders).toBe(false)
   })
 })

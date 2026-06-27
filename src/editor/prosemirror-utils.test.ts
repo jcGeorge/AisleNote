@@ -23,6 +23,7 @@ import {
   insertParagraphAfterInternalNoteLink,
   isProseMirrorDocMeaningful,
   markWysiwygLoadedUndoBoundary,
+  placeEditorCaretAtClientPoint,
   restoreEditorCursorSelection,
   runWysiwygHistory,
   shouldBlockWysiwygUndo,
@@ -234,7 +235,10 @@ describe('ProseMirror meaningful content detection', () => {
 })
 
 describe('note mention query detection', () => {
-  function viewForText(text: string) {
+  function viewForText(text: string, options: { codeBlock?: boolean; codeMark?: boolean } = {}) {
+    const codeMark = options.codeMark
+      ? [{ type: { name: 'code', spec: { code: true } } }]
+      : []
     return {
       state: {
         selection: {
@@ -244,8 +248,11 @@ describe('note mention query detection', () => {
             parentOffset: text.length,
             parent: {
               isTextblock: true,
+              type: options.codeBlock ? { name: 'codeBlock', spec: { code: true } } : { name: 'paragraph', spec: {} },
               textBetween: () => text,
+              childBefore: () => ({ node: { marks: codeMark } }),
             },
+            marks: () => codeMark,
           },
         },
       },
@@ -271,6 +278,11 @@ describe('note mention query detection', () => {
   it('does not detect a mention query when the first character after @ is a space', () => {
     expect(getNoteMentionQueryAtSelection(viewForText('see @ '))).toBeNull()
     expect(getNoteMentionQueryAtSelection(viewForText('see @ parent'))).toBeNull()
+  })
+
+  it('does not detect mention queries in code contexts', () => {
+    expect(getNoteMentionQueryAtSelection(viewForText('see @parent', { codeBlock: true }))).toBeNull()
+    expect(getNoteMentionQueryAtSelection(viewForText('see @parent', { codeMark: true }))).toBeNull()
   })
 })
 
@@ -314,12 +326,21 @@ describe('tag autocomplete query detection', () => {
       to: 16,
       query: 'nested/tag',
     })
+    expect(getTagAutocompleteQueryAtSelection(viewForText('see #4word'))).toEqual({
+      from: 5,
+      to: 11,
+      query: '4word',
+    })
   })
 
   it('rejects non-tag contexts', () => {
     expect(getTagAutocompleteQueryAtSelection(viewForText('C#'))).toBeNull()
     expect(getTagAutocompleteQueryAtSelection(viewForText('https://example.com/#anchor'))).toBeNull()
     expect(getTagAutocompleteQueryAtSelection(viewForText('see #bad?'))).toBeNull()
+    expect(getTagAutocompleteQueryAtSelection(viewForText('#1'))).toBeNull()
+    expect(getTagAutocompleteQueryAtSelection(viewForText('#1.2'))).toBeNull()
+    expect(getTagAutocompleteQueryAtSelection(viewForText('#2024'))).toBeNull()
+    expect(getTagAutocompleteQueryAtSelection(viewForText('#4-5'))).toBeNull()
     expect(getTagAutocompleteQueryAtSelection(viewForText('#asdf', { empty: false }))).toBeNull()
   })
 
@@ -372,6 +393,58 @@ describe('cursor selection restore safety', () => {
       anchor: 5,
       head: 5,
     })).toBe(false)
+  })
+})
+
+describe('client point cursor placement', () => {
+  it('places the caret at the ProseMirror position resolved from click coordinates', () => {
+    const doc = schema.nodes.doc.create(null, [schema.nodes.paragraph.create(null, [schema.text('abcdef')])])
+    let state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 1),
+    })
+    const view = {
+      get state() {
+        return state
+      },
+      posAtCoords: vi.fn(() => ({ pos: 4 })),
+      dispatch: vi.fn((transaction) => {
+        state = state.apply(transaction)
+      }),
+    }
+    const focus = vi.fn()
+
+    expect(placeEditorCaretAtClientPoint({ wwEditor: { view }, focus } as unknown as Editor, {
+      clientX: 12,
+      clientY: 24,
+    })).toBe(true)
+
+    expect(view.posAtCoords).toHaveBeenCalledWith({ left: 12, top: 24 })
+    expect(state.selection.from).toBe(4)
+    expect(state.selection.to).toBe(4)
+    expect(focus).toHaveBeenCalled()
+  })
+
+  it('does not focus when click coordinates cannot be resolved', () => {
+    const doc = schema.nodes.doc.create(null, [schema.nodes.paragraph.create(null, [schema.text('abcdef')])])
+    const state = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 1),
+    })
+    const view = {
+      state,
+      posAtCoords: vi.fn(() => null),
+      dispatch: vi.fn(),
+    }
+    const focus = vi.fn()
+
+    expect(placeEditorCaretAtClientPoint({ wwEditor: { view }, focus } as unknown as Editor, {
+      clientX: 12,
+      clientY: 24,
+    })).toBe(false)
+
+    expect(view.dispatch).not.toHaveBeenCalled()
+    expect(focus).not.toHaveBeenCalled()
   })
 })
 
@@ -523,7 +596,7 @@ describe('internal note link hit detection', () => {
   }
 
   const resolvedReference = {
-    target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+    target: { noteId: 'note-linked' },
     heading: undefined,
     label: 'Linked',
   }

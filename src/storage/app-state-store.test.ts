@@ -8,7 +8,30 @@ afterEach(() => {
 
 describe('app state storage keys', () => {
   it('uses the current renderer cache key', () => {
-    expect(APP_STATE_STORAGE_KEY).toBe('tabs:app-state-cache:v1')
+    expect(APP_STATE_STORAGE_KEY).toBe('aislenote:app-state-cache')
+  })
+})
+
+describe('browser app state store', () => {
+  it('uses only the local renderer cache even when IndexedDB is available', () => {
+    const cache = new Map<string, string>()
+    vi.stubGlobal('window', { indexedDB: {} })
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn((key: string) => cache.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        cache.set(key, value)
+      }),
+      removeItem: vi.fn((key: string) => {
+        cache.delete(key)
+      }),
+    })
+
+    const store = createAppStateStore()
+
+    expect(store.hydrate).toBeUndefined()
+    store.save('{"theme":"light"}')
+    expect(store.load()).toBe('{"theme":"light"}')
+    expect(localStorage.setItem).toHaveBeenCalledWith(APP_STATE_STORAGE_KEY, '{"theme":"light"}')
   })
 })
 
@@ -70,6 +93,7 @@ describe('app persistence service', () => {
 describe('Electron app state store', () => {
   it('blocks saves after a failed structured load result', () => {
     const saveAppState = vi.fn()
+    const appendDiagnosticLogEntry = vi.fn(async () => ({ ok: true }))
     vi.stubGlobal('window', {
       electronAPI: {
         loadAppStateResult: () => ({
@@ -80,24 +104,34 @@ describe('Electron app state store', () => {
           revision: 0,
         }),
         saveAppState,
+        appendDiagnosticLogEntry,
+        listDiagnosticLogDays: vi.fn(),
+        readDiagnosticLogEntries: vi.fn(),
       },
     })
 
     const store = createAppStateStore()
 
     expect(store.load()).toBeNull()
-    store.save('{}')
+    store.save('{}', { trigger: 'blocked-test', pendingEditorCount: 3 })
     expect(saveAppState).not.toHaveBeenCalled()
+    expect(appendDiagnosticLogEntry).toHaveBeenCalledWith(expect.objectContaining({
+      area: 'storage',
+      event: 'app-state-save-blocked-load-failure',
+      details: expect.objectContaining({
+        trigger: 'blocked-test',
+        pendingEditorCount: 3,
+      }),
+    }))
   })
 
   it('unblocks saves after a storage profile switch reports ready', () => {
     let statusHandler:
       | ((status: {
-          status: 'ready' | 'error'
+          status: 'ready' | 'error' | 'setup-required'
           profileRootPath: string
-          notebookPath: string
-          notebookName: string
-          isDefault: boolean
+          vaultPath: string
+          vaultName: string
           hasProfile: boolean
           canWrite: boolean
           revision?: number
@@ -133,10 +167,9 @@ describe('Electron app state store', () => {
 
     statusHandler?.({
       status: 'ready',
-      profileRootPath: '/tmp/tabs',
-      notebookPath: '/tmp/tabs',
-      notebookName: 'tabs',
-      isDefault: false,
+      profileRootPath: '/tmp/aislenote',
+      vaultPath: '/tmp/aislenote',
+      vaultName: 'aislenote',
       hasProfile: false,
       canWrite: true,
       revision: 0,
@@ -155,7 +188,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),
@@ -169,7 +202,7 @@ describe('Electron app state store', () => {
 
     const store = createAppStateStore()
 
-    expect(store.load()).toBe('{"theme":"dawn"}')
+    expect(store.load()).toBe('{"theme":"cheese"}')
     store.save('{"theme":"light"}')
     expect(saveAppState).toHaveBeenCalledWith({
       serializedState: '{"theme":"light"}',
@@ -189,7 +222,7 @@ describe('Electron app state store', () => {
         }),
         saveAppState: saveAppState.mockReturnValue({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           revision: 1,
         }),
       },
@@ -198,9 +231,9 @@ describe('Electron app state store', () => {
     const store = createAppStateStore()
 
     expect(store.load()).toBeNull()
-    store.save('{"theme":"dawn"}')
+    store.save('{"theme":"cheese"}')
     expect(saveAppState).toHaveBeenCalledWith({
-      serializedState: '{"theme":"dawn"}',
+      serializedState: '{"theme":"cheese"}',
       baseRevision: 0,
     })
   })
@@ -217,7 +250,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),
@@ -228,7 +261,7 @@ describe('Electron app state store', () => {
 
     const store = createAppStateStore()
 
-    expect(store.load()).toBe('{"theme":"dawn"}')
+    expect(store.load()).toBe('{"theme":"cheese"}')
     store.save('{"theme":"light"}')
     store.save('{"theme":"dark"}')
     await store.flush?.()
@@ -264,7 +297,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),
@@ -275,7 +308,7 @@ describe('Electron app state store', () => {
 
     const store = createAppStateStore()
 
-    expect(store.load()).toBe('{"theme":"dawn"}')
+    expect(store.load()).toBe('{"theme":"cheese"}')
     store.save('{"theme":"light"}')
     await Promise.resolve()
     await Promise.resolve()
@@ -298,7 +331,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),
@@ -309,9 +342,9 @@ describe('Electron app state store', () => {
 
     const store = createAppStateStore()
 
-    expect(store.load()).toBe('{"theme":"dawn"}')
-    store.save('{"theme":"dawn"}')
-    store.save('{"theme":"dawn"}', { preferSync: true })
+    expect(store.load()).toBe('{"theme":"cheese"}')
+    store.save('{"theme":"cheese"}')
+    store.save('{"theme":"cheese"}', { preferSync: true })
     await store.flush?.()
 
     expect(saveAppState).not.toHaveBeenCalled()
@@ -328,7 +361,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),
@@ -338,7 +371,7 @@ describe('Electron app state store', () => {
 
     const store = createAppStateStore()
 
-    expect(store.load()).toBe('{"theme":"dawn"}')
+    expect(store.load()).toBe('{"theme":"cheese"}')
     store.save('{"theme":"light"}', { preferSync: true })
 
     expect(saveAppState).toHaveBeenCalledWith({
@@ -399,7 +432,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),
@@ -412,7 +445,7 @@ describe('Electron app state store', () => {
 
     const store = createAppStateStore()
 
-    expect(store.load()).toBe('{"theme":"dawn"}')
+    expect(store.load()).toBe('{"theme":"cheese"}')
     store.save('{"theme":"light"}', {
       preferSync: true,
       trigger: 'test-trigger',
@@ -455,7 +488,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),
@@ -468,7 +501,7 @@ describe('Electron app state store', () => {
 
     const store = createAppStateStore()
 
-    expect(store.load()).toBe('{"theme":"dawn"}')
+    expect(store.load()).toBe('{"theme":"cheese"}')
     store.save('{"theme":"light"}', { preferSync: true, trigger: 'fast-save' })
     await Promise.resolve()
 
@@ -495,7 +528,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),
@@ -506,7 +539,7 @@ describe('Electron app state store', () => {
 
     const store = createAppStateStore()
 
-    expect(store.load()).toBe('{"theme":"dawn"}')
+    expect(store.load()).toBe('{"theme":"cheese"}')
     store.save('{"theme":"stale"}')
     await Promise.resolve()
     await Promise.resolve()
@@ -519,7 +552,7 @@ describe('Electron app state store', () => {
       serializedState: '{"theme":"fresh"}',
       baseRevision: 1,
     })
-    expect(window.__tabsGetAppStateRevision?.()).toBe(7)
+    expect(window.__aislenoteGetAppStateRevision?.()).toBe(7)
   })
 
   it('subscribes to accepted app-state updates from other windows', () => {
@@ -529,7 +562,7 @@ describe('Electron app state store', () => {
       electronAPI: {
         loadAppStateResult: () => ({
           ok: true,
-          serializedState: '{"theme":"dawn"}',
+          serializedState: '{"theme":"cheese"}',
           source: 'hybrid',
           revision: 1,
         }),

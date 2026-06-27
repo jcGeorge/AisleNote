@@ -6,6 +6,8 @@ export const EDITOR_BLANK_LINE_PLACEHOLDER = '\u200b'
 
 const INDENT_PREFIX_PATTERN = /^(?:\u2060\u2003\u2003|\u2003\u2003|\u00A0{1,4}| {1,4}|\t)/
 const EXPORT_TAB_SPACES = '    '
+const TAB_BLOCK_OPEN_LINE_PATTERN = /^\s*<div\s+tab-block=(["'])([1-9]\d*)\1\s*>\s*$/i
+const TAB_BLOCK_CLOSE_LINE_PATTERN = /^\s*<\/div>\s*$/i
 
 export function getIndentPrefixLength(text: string): number {
   const match = text.match(INDENT_PREFIX_PATTERN)
@@ -221,27 +223,164 @@ export function repairBrokenMarkdownTables(markdown: string): string {
   return repairedLines.join('\n')
 }
 
-function stripBlockIndentTokensFromQuotedLines(markdown: string): string {
-  return String(markdown ?? '')
-    .split('\n')
-    .map((line) => {
-      const match = line.match(/^((?:\s*>[ \t]?)+)(.*)$/)
-      if (!match) return line
-      let content = match[2]
-      while (content.startsWith(BLOCK_INDENT_TOKEN)) {
-        content = content.slice(BLOCK_INDENT_TOKEN.length)
-      }
-      return `${match[1]}${content}`
+function readTabBlockOpenLevel(line: string): number | null {
+  const match = line.match(TAB_BLOCK_OPEN_LINE_PATTERN)
+  if (!match) return null
+  const level = Number(match[2])
+  return Number.isSafeInteger(level) && level > 0 ? level : null
+}
+
+function isTabBlockCloseLine(line: string): boolean {
+  return TAB_BLOCK_CLOSE_LINE_PATTERN.test(line)
+}
+
+function isBlankMarkdownLine(line: string): boolean {
+  return line.replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '').trim().length === 0
+}
+
+export function decodeBlockIndentHtmlForInternalMarkdown(markdown: string): string {
+  const lines = String(markdown ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+  const outputLines: string[] = []
+  let activeFence: string | null = null
+  let index = 0
+
+  while (index < lines.length) {
+    const line = lines[index]
+    const fenceBeforeLine = activeFence
+    const nextFence = isFenceBoundary(line, activeFence)
+    const isFenceLine = nextFence !== activeFence
+
+    if (fenceBeforeLine || isFenceLine) {
+      activeFence = nextFence
+      outputLines.push(line)
+      index += 1
+      continue
+    }
+
+    const level = readTabBlockOpenLevel(line)
+    if (level === null) {
+      outputLines.push(line)
+      index += 1
+      continue
+    }
+
+    let closeIndex = index + 1
+    while (closeIndex < lines.length && !isTabBlockCloseLine(lines[closeIndex])) {
+      closeIndex += 1
+    }
+
+    if (closeIndex >= lines.length) {
+      outputLines.push(line)
+      index += 1
+      continue
+    }
+
+    const blockPrefix = BLOCK_INDENT_TOKEN.repeat(level)
+    const contentLines = lines.slice(index + 1, closeIndex)
+    if (contentLines.length > 0 && isBlankMarkdownLine(contentLines[0])) contentLines.shift()
+    if (contentLines.length > 0 && isBlankMarkdownLine(contentLines[contentLines.length - 1])) contentLines.pop()
+
+    contentLines.forEach((contentLine) => {
+      outputLines.push(isBlankMarkdownLine(contentLine) ? '' : `${blockPrefix}${contentLine}`)
     })
-    .join('\n')
+    index = closeIndex + 1
+  }
+
+  return outputLines.join('\n')
+}
+
+function readBlockIndentedLineLevel(line: string): number {
+  if (isBlankMarkdownLine(line)) return 0
+  return countBlockIndentLevels(line)
+}
+
+function encodeBlockIndentRun(lines: string[], startIndex: number): { lines: string[]; nextIndex: number } {
+  const level = readBlockIndentedLineLevel(lines[startIndex])
+  const tokenLength = level * BLOCK_INDENT_TOKEN.length
+  const contentLines = [lines[startIndex].slice(tokenLength)]
+  let index = startIndex + 1
+
+  while (index < lines.length) {
+    const blankStart = index
+    while (index < lines.length && isBlankMarkdownLine(lines[index])) {
+      index += 1
+    }
+
+    if (index >= lines.length || readBlockIndentedLineLevel(lines[index]) !== level) {
+      index = blankStart
+      break
+    }
+
+    for (let blankIndex = blankStart; blankIndex < index; blankIndex += 1) {
+      contentLines.push('')
+    }
+    contentLines.push(lines[index].slice(tokenLength))
+    index += 1
+  }
+
+  return {
+    lines: [
+      `<div tab-block="${level}">`,
+      '',
+      ...contentLines,
+      '',
+      '</div>',
+    ],
+    nextIndex: index,
+  }
+}
+
+export function encodeBlockIndentTokensForPersistence(markdown: string): string {
+  const lines = String(markdown ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+  const outputLines: string[] = []
+  let activeFence: string | null = null
+  let index = 0
+
+  while (index < lines.length) {
+    const line = lines[index]
+    const fenceBeforeLine = activeFence
+    const nextFence = isFenceBoundary(line, activeFence)
+    const isFenceLine = nextFence !== activeFence
+
+    if (fenceBeforeLine || isFenceLine) {
+      activeFence = nextFence
+      outputLines.push(line)
+      index += 1
+      continue
+    }
+
+    if (readBlockIndentedLineLevel(line) > 0) {
+      const encoded = encodeBlockIndentRun(lines, index)
+      outputLines.push(...encoded.lines)
+      index = encoded.nextIndex
+      continue
+    }
+
+    outputLines.push(line)
+    index += 1
+  }
+
+  return outputLines.join('\n')
 }
 
 export function normalizeMarkdownForPersistence(markdown: string): string {
-  const blankNormalized = normalizeBlankLineRuns(markdown)
+  const internalBlockIndents = decodeBlockIndentHtmlForInternalMarkdown(markdown)
+  const escapedLinksNormalized = normalizeEscapedMarkdownLinks(internalBlockIndents)
+  const annotationMarkersNormalized = normalizeEscapedAnnotationLineMarkers(escapedLinksNormalized)
+  const blankNormalized = normalizeBlankLineRuns(annotationMarkersNormalized)
   const repaired = repairBrokenMarkdownTables(repairBrokenDataImageMarkdown(blankNormalized))
   const highlighted = normalizeHighlightMarkdownForPersistence(repaired)
-  return normalizeBlankLineRuns(
-    stripBlockIndentTokensFromQuotedLines(highlighted).replace(/(?<!\u2060)\u2003\u2003/g, INDENT_TOKEN),
+  const normalizedInternalIndents = normalizeBlankLineRuns(
+    highlighted.replace(/(?<!\u2060)\u2003\u2003/g, INDENT_TOKEN),
+  )
+  return encodeBlockIndentTokensForPersistence(normalizedInternalIndents)
+}
+
+export function normalizeEscapedAnnotationLineMarkers(markdown: string): string {
+  return transformOutsideFencedCode(String(markdown ?? ''), (line) =>
+    transformOutsideInlineCode(line, (segment) =>
+      segment.replace(/^([ \t\u00a0]*)\\-\\-(?=$|[ \t\u00a0])/, '$1--'),
+    ),
   )
 }
 
@@ -273,7 +412,7 @@ function trimSyntacticHighlightPadding(value: string): string {
   return value.slice(1, -1)
 }
 
-function transformOutsideInlineCode(line: string, transformText: (text: string) => string): string {
+export function transformOutsideInlineCode(line: string, transformText: (text: string) => string): string {
   let result = ''
   let plain = ''
   let index = 0
@@ -324,7 +463,7 @@ function transformOutsideInlineCode(line: string, transformText: (text: string) 
   return result
 }
 
-function transformOutsideFencedCode(markdown: string, transformLine: (line: string) => string): string {
+export function transformOutsideFencedCode(markdown: string, transformLine: (line: string) => string): string {
   let activeFence: string | null = null
   return String(markdown ?? '')
     .replace(/\r\n/g, '\n')
@@ -340,10 +479,35 @@ function transformOutsideFencedCode(markdown: string, transformLine: (line: stri
     .join('\n')
 }
 
-function convertHighlightMarkersToHtml(segment: string): string {
+const ESCAPED_MARKDOWN_LINK_RE = /(\\?!)?\\\[((?:\\.|[^\\\]\n])*)\\\]\\\(((?:\\.|[^\\)\n])*)\\\)/g
+
+function unescapeMarkdownLinkPart(value: string): string {
+  return String(value ?? '').replace(/\\([^\w\s])/g, '$1')
+}
+
+export function normalizeEscapedMarkdownLinks(markdown: string): string {
+  return transformOutsideFencedCode(String(markdown ?? ''), (line) =>
+    transformOutsideInlineCode(line, (segment) =>
+      segment.replace(
+        ESCAPED_MARKDOWN_LINK_RE,
+        (_source, embedMarker: string, label: string, destination: string) =>
+          `${embedMarker ? '!' : ''}[${unescapeMarkdownLinkPart(label)}](${unescapeMarkdownLinkPart(destination)})`,
+      ),
+    ),
+  )
+}
+
+export type HighlightDisplayOptions = {
+  preserveLinkedHighlights?: boolean
+}
+
+const MARKDOWN_LINK_TOKEN_RE = /\[((?:\\.|[^\]\\])*)\]\((<[^>\n]*>|[^)\n]+)\)/
+
+function convertHighlightMarkersToHtml(segment: string, options: HighlightDisplayOptions = {}): string {
   return segment.replace(/(^|[^=])==([^\n]*?\S[^\n]*?)==(?=$|[^=])/g, (match, prefix: string, rawText: string) => {
     const text = trimSyntacticHighlightPadding(rawText)
     if (text.trim().length === 0) return match
+    if (options.preserveLinkedHighlights && MARKDOWN_LINK_TOKEN_RE.test(text)) return match
     return `${prefix}<mark>${escapeHtmlText(text)}</mark>`
   })
 }
@@ -357,9 +521,12 @@ function convertHighlightHtmlToMarkers(segment: string): string {
   })
 }
 
-export function prepareMarkdownHighlightsForDisplay(markdown: string): string {
+export function prepareMarkdownHighlightsForDisplay(
+  markdown: string,
+  options: HighlightDisplayOptions = {},
+): string {
   return transformOutsideFencedCode(String(markdown ?? ''), (line) =>
-    transformOutsideInlineCode(line, convertHighlightMarkersToHtml),
+    transformOutsideInlineCode(line, (segment) => convertHighlightMarkersToHtml(segment, options)),
   )
 }
 
@@ -373,8 +540,8 @@ function stripStandaloneBlankLinePlaceholders(markdown: string): string {
   return normalizeBlankLineRuns(markdown)
 }
 
-export function convertInternalTabsForExport(markdown: string): string {
-  return stripBlockIndentTokensFromQuotedLines(stripStandaloneBlankLinePlaceholders(markdown))
+export function convertInternalAisleNoteForExport(markdown: string): string {
+  return stripStandaloneBlankLinePlaceholders(decodeBlockIndentHtmlForInternalMarkdown(markdown))
     .replaceAll(BLOCK_INDENT_TOKEN, EXPORT_TAB_SPACES)
     .replace(/\u2060\u2003\u2003/g, EXPORT_TAB_SPACES)
     .replace(/\u2003\u2003/g, EXPORT_TAB_SPACES)
@@ -392,6 +559,7 @@ export type BlankParagraphDisplayPlan = {
 
 export type BlankParagraphDisplayOptions = {
   splitPlainParagraphLines?: boolean
+  preserveBlankParagraphPlaceholders?: boolean
 }
 
 type MarkdownLineBlockKind = 'atomic' | 'list' | 'paragraph'
@@ -418,10 +586,18 @@ function normalizeBlankLineRuns(markdown: string): string {
   let blankRun: string[] = []
   let activeFence: string | null = null
 
-  const flushBlankRun = () => {
+  const flushBlankRun = (hasFollowingContent = false) => {
     if (blankRun.length === 0) return
     const artifactCount = blankRun.filter(isBlankLineArtifactLine).length
-    const blankLineCount = artifactCount > 0 ? artifactCount : blankRun.length
+    const plainBlankCount = blankRun.length - artifactCount
+    const hasPreviousContent = outputLines.length > 0
+    const baselineSeparatorCount = artifactCount > 0
+      ? Math.max(0, artifactCount - 1 + (hasPreviousContent ? 1 : 0) + (hasFollowingContent ? 1 : 0))
+      : 0
+    const extraPlainBlankCount = artifactCount > 0
+      ? Math.max(0, plainBlankCount - baselineSeparatorCount)
+      : 0
+    const blankLineCount = artifactCount > 0 ? artifactCount + extraPlainBlankCount : blankRun.length
     for (let index = 0; index < blankLineCount; index += 1) {
       outputLines.push('')
     }
@@ -434,7 +610,7 @@ function normalizeBlankLineRuns(markdown: string): string {
     .split('\n')
     .forEach((line) => {
       if (activeFence) {
-        flushBlankRun()
+        flushBlankRun(true)
         outputLines.push(line)
         activeFence = isFenceBoundary(line, activeFence)
         return
@@ -442,7 +618,7 @@ function normalizeBlankLineRuns(markdown: string): string {
 
       const nextFence = isFenceBoundary(line, null)
       if (nextFence) {
-        flushBlankRun()
+        flushBlankRun(true)
         outputLines.push(line)
         activeFence = nextFence
         return
@@ -453,12 +629,35 @@ function normalizeBlankLineRuns(markdown: string): string {
         return
       }
 
-      flushBlankRun()
-      outputLines.push(line)
+      flushBlankRun(true)
+      outputLines.push(line.replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, ''))
     })
 
   flushBlankRun()
   return outputLines.join('\n')
+}
+
+function serializePlaceholderMarkdownBlocksForEditorDisplay(
+  blockKinds: Array<'blank' | 'content'>,
+  contentChunks: MarkdownBlockChunk[],
+): string {
+  const lines: string[] = []
+  let contentIndex = 0
+
+  blockKinds.forEach((kind, index) => {
+    if (index > 0) lines.push('')
+    if (kind === 'blank') {
+      lines.push(EDITOR_BLANK_LINE_PLACEHOLDER)
+      return
+    }
+
+    const chunk = contentChunks[contentIndex]
+    contentIndex += 1
+    if (!chunk) return
+    lines.push(...chunk.lines)
+  })
+
+  return lines.join('\n')
 }
 
 function isFenceBoundary(line: string, activeFence: string | null): string | null {
@@ -636,7 +835,10 @@ export function isBlankParagraphNode(node: any): boolean {
   if (typeof node.childCount !== 'number' || typeof node.child !== 'function') return true
   for (let index = 0; index < node.childCount; index += 1) {
     const child = node.child(index)
-    if (!child?.isText) return false
+    if (!child?.isText) {
+      if (child?.type?.name === 'hardBreak') continue
+      return false
+    }
     const childText = String(child.text ?? child.textContent ?? '')
       .replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '')
       .trim()
@@ -661,7 +863,9 @@ export function prepareBlankParagraphsForEditorDisplay(
   })
 
   return {
-    markdown: contentChunks.map((chunk) => chunk.lines.join('\n')).join('\n\n'),
+    markdown: options.preserveBlankParagraphPlaceholders === true
+      ? serializePlaceholderMarkdownBlocksForEditorDisplay(blockKinds, contentChunks)
+      : contentChunks.map((chunk) => chunk.lines.join('\n')).join('\n\n'),
     blockKinds,
   }
 }
@@ -694,24 +898,40 @@ function hasExplicitBlankLineArtifact(markdown: string): boolean {
     .some(isBlankLineArtifactLine)
 }
 
-function stripTableAdjacentBlankBlockKinds(
-  blockKinds: Array<'blank' | 'content'>,
-  contentChunks: MarkdownBlockChunk[],
-): Array<'blank' | 'content'> {
-  let contentIndex = 0
-  return blockKinds.filter((kind) => {
-    if (kind === 'content') {
-      contentIndex += 1
-      return true
-    }
+function countLeadingBlankBlockKinds(blockKinds: Array<'blank' | 'content'>): number {
+  let count = 0
+  while (blockKinds[count] === 'blank') count += 1
+  return count
+}
 
-    const previousContent = contentChunks[contentIndex - 1]
-    const nextContent = contentChunks[contentIndex]
-    return !(
-      (previousContent && isMarkdownTableChunk(previousContent)) ||
-      (nextContent && isMarkdownTableChunk(nextContent))
-    )
-  })
+function countTrailingBlankBlockKinds(blockKinds: Array<'blank' | 'content'>): number {
+  let count = 0
+  let index = blockKinds.length - 1
+  while (blockKinds[index] === 'blank') {
+    count += 1
+    index -= 1
+  }
+  return count
+}
+
+function applyBoundaryBlankBlockCounts(markdown: string, blockKinds: Array<'blank' | 'content'>): string {
+  const leadingBlankCount = countLeadingBlankBlockKinds(blockKinds)
+  const trailingBlankCount = countTrailingBlankBlockKinds(blockKinds)
+  if (leadingBlankCount === 0 && trailingBlankCount === 0) return normalizeBlankLineRuns(markdown)
+
+  const lines = normalizeBlankLineRuns(markdown).split('\n')
+  while (lines.length > 0 && isStandaloneBlankLineRunLine(lines[0])) {
+    lines.shift()
+  }
+  while (lines.length > 0 && isStandaloneBlankLineRunLine(lines[lines.length - 1])) {
+    lines.pop()
+  }
+
+  return [
+    ...Array.from({ length: leadingBlankCount }, () => ''),
+    ...lines,
+    ...Array.from({ length: trailingBlankCount }, () => ''),
+  ].join('\n')
 }
 
 export function preserveBlankParagraphsFromWysiwyg(editor: Editor | null, markdown: string): string {
@@ -741,8 +961,8 @@ export function preserveBlankParagraphsFromWysiwyg(editor: Editor | null, markdo
       tableContentChunks = mergePlainParagraphChunksToCount(tableContentChunks, contentBlockCount)
     }
     return contentBlockCount === tableContentChunks.length
-      ? serializeCleanMarkdownBlocks(stripTableAdjacentBlankBlockKinds(blockKinds, tableContentChunks), tableContentChunks)
-      : normalizedMarkdown
+      ? serializeCleanMarkdownBlocks(blockKinds, tableContentChunks)
+      : applyBoundaryBlankBlockCounts(normalizedMarkdown, blockKinds)
   }
 
   if (contentBlockCount > contentChunks.length && (hasBlankBlocks || hasBlankChunks)) {
@@ -755,7 +975,7 @@ export function preserveBlankParagraphsFromWysiwyg(editor: Editor | null, markdo
     if (!hasBlankBlocks && !hasBlankChunks) return normalizeBlankLineRuns(markdown)
     return contentBlockCount === 0
       ? serializeCleanMarkdownBlocks(blockKinds, [])
-      : normalizeBlankLineRuns(markdown)
+      : applyBoundaryBlankBlockCounts(markdown, blockKinds)
   }
 
   if (!hasBlankBlocks && !hasBlankChunks && contentChunks.length <= 1) return normalizeBlankLineRuns(markdown)

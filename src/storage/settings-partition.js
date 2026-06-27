@@ -1,5 +1,4 @@
 import {
-  DEFAULT_DOMAIN_ID,
   collectReferencedNoteBodyIdsFromAppState,
   ensureArray,
   getNoteBodiesFromAppState,
@@ -17,38 +16,38 @@ export const USER_SETTINGS_DIR = 'settings'
 export const USER_SETTINGS_FILE = 'app-settings.json'
 export const USER_SETTINGS_FILE_PATH = `${USER_SETTINGS_DIR}/${USER_SETTINGS_FILE}`
 export const ROOT_SPLIT_FILES = Object.freeze({
-  workspaceIndex: 'workspace-index.json',
+  vaultIndex: 'vault-index.json',
   navigationState: 'navigation-state.json',
   frontmatterSettings: 'frontmatter-settings.json',
   editorState: 'editor-state.json',
   messages: 'messages.json',
-  deletedWorkspace: 'deleted-workspace.json',
+  trashIndex: 'trash-index.json',
   noteRegistry: 'note-registry.json',
 })
 
 export const REQUIRED_ROOT_SPLIT_FILE_KEYS = Object.freeze([
-  'workspaceIndex',
+  'vaultIndex',
   'navigationState',
   'frontmatterSettings',
-  'deletedWorkspace',
+  'trashIndex',
   'noteRegistry',
 ])
 
 const DEFAULT_COMMAND_SHORTCUTS = {
+  openSettings: 'Mod+,',
   toggleNotesTrash: 'Mod+T',
-  toggleNotesScratchpad: 'Mod+/',
+  toggleNotesScratchpad: 'Mod+S',
   toggleNotesFilter: '',
-  openDomains: 'Mod+D',
-  openSpaces: 'Mod+S',
-  newTab: 'Mod+Shift+N',
-  newSubTab: 'Mod+N',
+  newNote: 'Mod+N',
+  newFolder: 'Mod+Shift+N',
+  closeCurrentNote: 'Mod+W',
+  cyclePinnedNoteTabNext: 'Ctrl+Tab',
+  cyclePinnedNoteTabPrev: 'Ctrl+Shift+Tab',
+  reopenClosedNoteTab: 'Mod+Shift+T',
   formatStrikethrough: '',
-  cycleParentTabNext: '',
-  cycleParentTabPrev: '',
-  cycleSubTabNext: 'Ctrl+Tab',
-  cycleSubTabPrev: 'Ctrl+Shift+Tab',
-  cycleAislePrev: 'Alt+[',
-  cycleAisleNext: 'Alt+]',
+  formatHighlight: 'Mod+Shift+H',
+  cycleAislePrev: 'Mod+Alt+ArrowLeft',
+  cycleAisleNext: 'Mod+Alt+ArrowRight',
 }
 
 const DEFAULT_NEWLINE_SHORTCUT_SETTINGS = {
@@ -83,6 +82,7 @@ const NEWLINE_OPERATION_IDS = new Set([
   'blockQuote',
   'blockIndent',
   'strikethrough',
+  'tableOfContents',
   'operationsMenu',
 ])
 
@@ -99,14 +99,11 @@ const SHORTCUT_MENU_ELIGIBLE_OPERATION_IDS = new Set([
   'blockQuote',
   'blockIndent',
   'strikethrough',
+  'tableOfContents',
 ])
 
 const DEFAULT_SYNCED_UI_SETTINGS = {
   ...DEFAULT_SIMPLE_SYNCED_UI_SETTINGS,
-  alwaysShowSpaces: false,
-  alwaysShowDomains: false,
-  showRegularNoteAisleAddButtons: false,
-  showRegularNoteAisleDeleteButton: false,
   noteFilter: {
     active: false,
     kind: 'tags',
@@ -130,10 +127,8 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
   settingsSection: 'hotkeys',
   dataSettingsSection: 'transfer',
   visualsSettingsSection: 'theming',
-  tabButtonScale: 1,
   noteFontScale: 1,
-  toolbarButtonScale: 1,
-  scratchpadAisleLimit: 16,
+  toolbarButtonScale: 1.2,
   noteCursorLocations: {},
   headingCollapseState: {},
   aisleWidths: {},
@@ -143,16 +138,27 @@ const DEFAULT_SYNCED_UI_SETTINGS = {
 
 const MIN_AISLE_WIDTH_PX = 160
 const MAX_AISLE_WIDTH_PX = 1200
-const MIN_SCRATCHPAD_AISLE_LIMIT = 8
-const MAX_SCRATCHPAD_AISLE_LIMIT = 40
-const THEME_PALETTE_IDS = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
+const THEME_PALETTE_IDS = ['dark', 'light', 'cheese', 'custom1', 'custom2', 'custom3']
 const CUSTOM_THEME_IDS = ['custom1', 'custom2', 'custom3']
+const CUSTOM_THEME_PALETTE_SLOTS = [
+  'canvas',
+  'page',
+  'panel',
+  'raised',
+  'button',
+  'text',
+  'mutedText',
+  'border',
+  'primary',
+  'danger',
+  'warning',
+  'success',
+  'tagText',
+  'tagBg',
+  'sidebar',
+]
 const DATA_SETTINGS_SECTIONS = ['transfer', 'storage', 'trash']
-const CURRENT_APP_SETTING_THEME_IDS = ['dark', 'light', 'dawn', 'custom1', 'custom2', 'custom3']
-
-function optionalBoolean(value, fallback) {
-  return typeof value === 'boolean' ? value : fallback
-}
+const CURRENT_APP_SETTING_THEME_IDS = ['dark', 'light', 'cheese', 'custom1', 'custom2', 'custom3']
 
 function optionalString(value, fallback) {
   return typeof value === 'string' ? value : fallback
@@ -203,10 +209,28 @@ function normalizeShortcutValue(raw, fallback) {
   return trimmed.length > 0 ? trimmed : fallback
 }
 
+const LEGACY_AISLE_SHORTCUTS = {
+  cycleAislePrev: new Set(['alt+[', 'mod+ctrl+arrowleft']),
+  cycleAisleNext: new Set(['alt+]', 'mod+ctrl+arrowright']),
+}
+
+function normalizeShortcutSignature(value) {
+  return value
+    .split('+')
+    .map((token) => token.trim().toLowerCase())
+    .filter(Boolean)
+    .join('+')
+}
+
+function normalizeCommandShortcutValue(raw, fallback, shortcutId) {
+  const shortcut = normalizeShortcutValue(raw, fallback)
+  const shortcutSignature = normalizeShortcutSignature(shortcut)
+  return shortcutSignature === normalizeShortcutSignature(fallback) || LEGACY_AISLE_SHORTCUTS[shortcutId]?.has(shortcutSignature)
+    ? fallback
+    : shortcut
+}
+
 function getRawShortcutValue(rawShortcuts, shortcutId) {
-  if (shortcutId === 'toggleNotesTrash') {
-    return rawShortcuts.toggleNotesTrash ?? rawShortcuts.toggleTabsTarget
-  }
   return rawShortcuts[shortcutId]
 }
 
@@ -257,7 +281,7 @@ function normalizeShortcutSettings(raw) {
   const shortcuts = Object.fromEntries(
     Object.entries(DEFAULT_COMMAND_SHORTCUTS).map(([key, value]) => [
       key,
-      normalizeShortcutValue(getRawShortcutValue(rawShortcuts, key), value),
+      normalizeCommandShortcutValue(getRawShortcutValue(rawShortcuts, key), value, key),
     ]),
   )
 
@@ -265,12 +289,6 @@ function normalizeShortcutSettings(raw) {
     shortcuts,
     newlineShortcuts: normalizeNewlineShortcutSettings(source.newlineShortcuts),
   }
-}
-
-function optionalScratchpadAisleLimit(value, fallback) {
-  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10)
-  if (!Number.isFinite(parsed)) return fallback
-  return Math.min(MAX_SCRATCHPAD_AISLE_LIMIT, Math.max(MIN_SCRATCHPAD_AISLE_LIMIT, Math.floor(parsed)))
 }
 
 function isPortableSettingsRecord(value) {
@@ -305,60 +323,19 @@ function normalizeAisleWidths(raw) {
   return normalized
 }
 
-function buildNoteCursorLocationKey(domainId, spaceId, tabId, subTabId = null) {
-  return [domainId, spaceId, tabId, subTabId ?? '__home__'].join('::')
-}
-
-function getProjectedDomainsForStorage(appState) {
-  const domains = ensureArray(appState?.domains).filter(isRecord)
-  const spaces = ensureArray(appState?.spaces).filter(isRecord)
-
-  if (domains.length === 0) {
-    return spaces.length > 0
-      ? [
-          {
-            id: DEFAULT_DOMAIN_ID,
-            spaces,
-          },
-        ]
-      : []
-  }
-
-  if (spaces.length === 0) return domains
-
-  const activeDomainId = typeof appState?.activeDomainId === 'string' ? appState.activeDomainId : ''
-  const activeDomain = domains.find((domain) => domain.id === activeDomainId) ?? domains[0]
-  const projectedDomain = {
-    ...activeDomain,
-    spaces,
-  }
-  return domains.map((domain) => (domain === activeDomain ? projectedDomain : domain))
+function walkVaultItems(items, visitor) {
+  ensureArray(items)
+    .filter(isRecord)
+    .forEach((item) => {
+      visitor(item)
+      if (item.type === 'folder') walkVaultItems(item.children, visitor)
+    })
 }
 
 export function buildLiveNoteCursorLocationKeys(appState) {
   const keys = new Set()
-  getProjectedDomainsForStorage(appState).forEach((domain) => {
-    const domainId = typeof domain.id === 'string' && domain.id ? domain.id : DEFAULT_DOMAIN_ID
-    ensureArray(domain.spaces)
-      .filter(isRecord)
-      .forEach((space) => {
-        const spaceId = typeof space.id === 'string' ? space.id : ''
-        if (!spaceId) return
-        const data = isRecord(space.data) ? space.data : {}
-        ensureArray(data.tabs)
-          .filter(isRecord)
-          .forEach((tab) => {
-            const tabId = typeof tab.id === 'string' ? tab.id : ''
-            if (!tabId) return
-            keys.add(buildNoteCursorLocationKey(domainId, spaceId, tabId))
-            ensureArray(tab.subTabs)
-      .filter(isRecord)
-      .forEach((subTab) => {
-        const subTabId = typeof subTab.id === 'string' ? subTab.id : ''
-        if (subTabId) keys.add(buildNoteCursorLocationKey(domainId, spaceId, tabId, subTabId))
-      })
-          })
-      })
+  walkVaultItems(isRecord(appState?.vault) ? appState.vault.items : [], (item) => {
+    if (item.type === 'note' && typeof item.id === 'string' && item.id) keys.add(item.id)
   })
   if (isRecord(appState?.scratchpad) && typeof appState.scratchpad.noteBodyId === 'string') {
     keys.add('scratchpad')
@@ -403,35 +380,10 @@ function addAisleWidthLocation(result, locationKey, body) {
 function buildLiveAisleWidthLocationMap(appState) {
   const result = new Map()
   const bodiesById = getNoteBodyMap(appState)
-  getProjectedDomainsForStorage(appState).forEach((domain) => {
-    const domainId = typeof domain.id === 'string' && domain.id ? domain.id : DEFAULT_DOMAIN_ID
-    ensureArray(domain.spaces)
-      .filter(isRecord)
-      .forEach((space) => {
-        const spaceId = typeof space.id === 'string' ? space.id : ''
-        if (!spaceId) return
-        const data = isRecord(space.data) ? space.data : {}
-        ensureArray(data.tabs)
-          .filter(isRecord)
-          .forEach((tab) => {
-            const tabId = typeof tab.id === 'string' ? tab.id : ''
-            if (!tabId) return
-            const tabBodyId = typeof tab.noteBodyId === 'string' ? tab.noteBodyId : ''
-            addAisleWidthLocation(result, buildNoteCursorLocationKey(domainId, spaceId, tabId), bodiesById.get(tabBodyId))
-            ensureArray(tab.subTabs)
-              .filter(isRecord)
-              .forEach((subTab) => {
-                const subTabId = typeof subTab.id === 'string' ? subTab.id : ''
-                if (!subTabId) return
-                const subTabBodyId = typeof subTab.noteBodyId === 'string' ? subTab.noteBodyId : ''
-                addAisleWidthLocation(
-                  result,
-                  buildNoteCursorLocationKey(domainId, spaceId, tabId, subTabId),
-                  bodiesById.get(subTabBodyId),
-                )
-              })
-          })
-      })
+  walkVaultItems(isRecord(appState?.vault) ? appState.vault.items : [], (item) => {
+    if (item.type !== 'note' || typeof item.id !== 'string' || !item.id) return
+    const noteBodyId = typeof item.noteBodyId === 'string' ? item.noteBodyId : ''
+    addAisleWidthLocation(result, item.id, bodiesById.get(noteBodyId))
   })
   if (isRecord(appState?.scratchpad) && typeof appState.scratchpad.noteBodyId === 'string') {
     addAisleWidthLocation(result, 'scratchpad', bodiesById.get(appState.scratchpad.noteBodyId))
@@ -530,7 +482,12 @@ function normalizeThemePalettes(value) {
   if (!isRecord(value)) return DEFAULT_SYNCED_UI_SETTINGS.themePalettes
   const themePalettes = {}
   THEME_PALETTE_IDS.forEach((theme) => {
-    if (isRecord(value[theme])) themePalettes[theme] = value[theme]
+    if (!isRecord(value[theme])) return
+    const palette = {}
+    CUSTOM_THEME_PALETTE_SLOTS.forEach((slot) => {
+      if (Object.prototype.hasOwnProperty.call(value[theme], slot)) palette[slot] = value[theme][slot]
+    })
+    themePalettes[theme] = palette
   })
   return themePalettes
 }
@@ -538,36 +495,15 @@ function normalizeThemePalettes(value) {
 export function extractSyncedUiSettings(rawUi) {
   const ui = isRecord(rawUi) ? rawUi : {}
   const registeredUi = normalizeRegisteredSyncedUiSettings(ui)
-  const alwaysShowSpaces = optionalBoolean(ui.alwaysShowSpaces, DEFAULT_SYNCED_UI_SETTINGS.alwaysShowSpaces)
-  const alwaysShowDomains =
-    alwaysShowSpaces && typeof ui.alwaysShowDomains === 'boolean'
-      ? ui.alwaysShowDomains
-      : DEFAULT_SYNCED_UI_SETTINGS.alwaysShowDomains
-  const showRegularNoteAisleAddButtons = optionalBoolean(
-    ui.showRegularNoteAisleAddButtons,
-    DEFAULT_SYNCED_UI_SETTINGS.showRegularNoteAisleAddButtons,
-  )
-  const showRegularNoteAisleDeleteButton = optionalBoolean(
-    ui.showRegularNoteAisleDeleteButton,
-    DEFAULT_SYNCED_UI_SETTINGS.showRegularNoteAisleDeleteButton,
-  )
   const themePalettes = normalizeThemePalettes(ui.themePalettes)
 
   return {
     ...registeredUi,
-    alwaysShowSpaces,
-    alwaysShowDomains,
-    showRegularNoteAisleAddButtons,
-    showRegularNoteAisleDeleteButton,
     noteFilter: normalizeNoteFilterSettings(ui.noteFilter),
     dataSettingsSection: optionalDataSettingsSection(ui.dataSettingsSection, DEFAULT_SYNCED_UI_SETTINGS.dataSettingsSection),
     selectedCustomTheme: normalizeSelectedCustomTheme(ui.selectedCustomTheme),
     themePalettes,
     toolbarLayouts: optionalArray(ui.toolbarLayouts, DEFAULT_SYNCED_UI_SETTINGS.toolbarLayouts),
-    scratchpadAisleLimit: optionalScratchpadAisleLimit(
-      ui.scratchpadAisleLimit,
-      DEFAULT_SYNCED_UI_SETTINGS.scratchpadAisleLimit,
-    ),
     disabledTipIds: optionalArray(ui.disabledTipIds, DEFAULT_SYNCED_UI_SETTINGS.disabledTipIds),
   }
 }
@@ -588,10 +524,6 @@ export function extractAppearanceSettings(appState) {
     theme: normalizeStorageTheme(appState?.theme),
     selectedCustomTheme: syncedUi.selectedCustomTheme,
     themePalettes: syncedUi.themePalettes,
-    tabButtonScale:
-      typeof ui.tabButtonScale === 'number'
-        ? ui.tabButtonScale
-        : DEFAULT_SYNCED_UI_SETTINGS.tabButtonScale,
     noteFontScale:
       typeof ui.noteFontScale === 'number'
         ? ui.noteFontScale
@@ -600,10 +532,6 @@ export function extractAppearanceSettings(appState) {
       typeof ui.toolbarButtonScale === 'number'
         ? ui.toolbarButtonScale
         : DEFAULT_SYNCED_UI_SETTINGS.toolbarButtonScale,
-    scratchpadAisleLimit: optionalScratchpadAisleLimit(
-      ui.scratchpadAisleLimit,
-      DEFAULT_SYNCED_UI_SETTINGS.scratchpadAisleLimit,
-    ),
   }
 }
 
@@ -620,10 +548,6 @@ export function extractUiPreferences(appState) {
   const syncedUi = extractSyncedUiSettings(ui)
   return {
     ...pickRegisteredSyncedUiSettings(syncedUi),
-    alwaysShowSpaces: syncedUi.alwaysShowSpaces,
-    alwaysShowDomains: syncedUi.alwaysShowDomains,
-    showRegularNoteAisleAddButtons: syncedUi.showRegularNoteAisleAddButtons,
-    showRegularNoteAisleDeleteButton: syncedUi.showRegularNoteAisleDeleteButton,
     noteFilter: syncedUi.noteFilter,
     dataSettingsSection: syncedUi.dataSettingsSection,
     settingsSection: optionalString(ui.settingsSection, DEFAULT_SYNCED_UI_SETTINGS.settingsSection),
@@ -723,6 +647,7 @@ export function applyPortableAppSettings(appState, rawSettings) {
     theme: syncedSettings.theme,
     hotkeys: syncedSettings.hotkeys,
     ui: {
+      ...currentUi,
       ...syncedSettings.ui,
       noteCursorLocations: isRecord(currentUi.noteCursorLocations)
         ? currentUi.noteCursorLocations
@@ -759,10 +684,6 @@ export function buildSyncedSettingsFromSplitFiles(parts) {
       ...appSettings,
       ...uiPreferences,
     }),
-    tabButtonScale:
-      typeof appSettings.tabButtonScale === 'number'
-        ? appSettings.tabButtonScale
-        : DEFAULT_SYNCED_UI_SETTINGS.tabButtonScale,
     noteFontScale:
       typeof appSettings.noteFontScale === 'number'
         ? appSettings.noteFontScale

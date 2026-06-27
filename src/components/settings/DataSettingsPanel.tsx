@@ -24,21 +24,18 @@ type DataSettingsPanelProps = {
   onAutoRemoveDaysChange: (value: string, commit?: boolean) => void
   onSyncedUiBooleanSettingChange: (key: SyncedUiBooleanSettingKey, enabled: boolean) => void
   onExportUserSettings: () => void
-  onImportNotebook: () => void
+  onImportVault: () => void
   onImportUserSettings: () => void
-  onImportUserSettingsFromNotebookFolder: () => void
+  onImportUserSettingsFromVaultFolder: () => void
   onRevealUserSettingsFolder: () => void
   onResetUserSettingsFolder: () => void
   onResetUserSettingsToDefaults: () => void
-  onCreateNotebook: () => void
-  onRenameNotebook: () => void
-  onOpenNotebook: () => void
-  onSwitchNotebook: (selector: { notebookId?: string; notebookPath?: string }) => void
-  onForgetNotebook: (selector: { notebookId?: string; notebookPath?: string }) => void
-  onDeleteNotebook: () => void
-  onAttachNotebookSyncTarget: () => void
-  onDetachNotebookSyncTarget: () => void
-  onReconnectNotebookSyncTarget: () => void
+  onCreateVault: () => void
+  onRenameVault: () => void
+  onOpenVault: () => void
+  onSwitchVault: (selector: { vaultId?: string; vaultPath?: string }) => void
+  onForgetVault: (selector: { vaultId?: string; vaultPath?: string }) => void
+  onDeleteVault: () => void
   onMoveStorageProfile: () => void
   onRevealStorageProfile: () => void
   onRetryStorageProfile: () => void
@@ -49,9 +46,9 @@ function TransferDataSection({
   exportStatus,
   importStatus,
   onExportUserSettings,
-  onImportNotebook,
+  onImportVault,
   onImportUserSettings,
-  onImportUserSettingsFromNotebookFolder,
+  onImportUserSettingsFromVaultFolder,
   userSettingsLocationStatus,
   onRevealUserSettingsFolder,
   onResetUserSettingsFolder,
@@ -62,9 +59,9 @@ function TransferDataSection({
   | 'importStatus'
   | 'dataCapabilities'
   | 'onExportUserSettings'
-  | 'onImportNotebook'
+  | 'onImportVault'
   | 'onImportUserSettings'
-  | 'onImportUserSettingsFromNotebookFolder'
+  | 'onImportUserSettingsFromVaultFolder'
   | 'userSettingsLocationStatus'
   | 'onRevealUserSettingsFolder'
   | 'onResetUserSettingsFolder'
@@ -74,14 +71,14 @@ function TransferDataSection({
 
   return (
     <>
-      <p>notebook import:</p>
+      <p>vault import:</p>
       <div className="settings-page-actions">
-        <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportNotebook}>
-          import notebook/markdown
+        <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportVault}>
+          import
         </button>
       </div>
       <p className="settings-help">
-        Import appends Tabs notebooks and Markdown folders or ZIPs into isolated domains; user settings stay separate.
+        Imports add a new folder to the current vault. AisleNote vault files, Markdown folders, and ZIP files import without replacing existing notes.
       </p>
       <p>app settings transfer:</p>
       <div className="settings-page-actions">
@@ -91,9 +88,9 @@ function TransferDataSection({
         <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportUserSettings}>
           import user settings
         </button>
-        {dataCapabilities.notebookFolders && (
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportUserSettingsFromNotebookFolder}>
-            import from notebook folder
+        {dataCapabilities.vaultFolders && (
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onImportUserSettingsFromVaultFolder}>
+            import from vault folder
           </button>
         )}
       </div>
@@ -138,15 +135,12 @@ function TransferDataSection({
 function StorageDataSection({
   dataCapabilities,
   storageProfileStatus,
-  onCreateNotebook,
-  onRenameNotebook,
-  onOpenNotebook,
-  onSwitchNotebook,
-  onForgetNotebook,
-  onDeleteNotebook,
-  onAttachNotebookSyncTarget,
-  onDetachNotebookSyncTarget,
-  onReconnectNotebookSyncTarget,
+  onCreateVault,
+  onRenameVault,
+  onOpenVault,
+  onSwitchVault,
+  onForgetVault,
+  onDeleteVault,
   onMoveStorageProfile,
   onRevealStorageProfile,
   onRetryStorageProfile,
@@ -154,55 +148,49 @@ function StorageDataSection({
   DataSettingsPanelProps,
   | 'dataCapabilities'
   | 'storageProfileStatus'
-  | 'onCreateNotebook'
-  | 'onRenameNotebook'
-  | 'onOpenNotebook'
-  | 'onSwitchNotebook'
-  | 'onForgetNotebook'
-  | 'onDeleteNotebook'
-  | 'onAttachNotebookSyncTarget'
-  | 'onDetachNotebookSyncTarget'
-  | 'onReconnectNotebookSyncTarget'
+  | 'onCreateVault'
+  | 'onRenameVault'
+  | 'onOpenVault'
+  | 'onSwitchVault'
+  | 'onForgetVault'
+  | 'onDeleteVault'
   | 'onMoveStorageProfile'
   | 'onRevealStorageProfile'
   | 'onRetryStorageProfile'
 >) {
   const storageHealth =
-    storageProfileStatus?.health ?? (storageProfileStatus?.status === 'error' ? 'error' : 'healthy')
+    storageProfileStatus?.health ?? (storageProfileStatus?.status === 'ready' ? 'healthy' : 'error')
   const storageIssues = storageProfileStatus?.issues ?? []
-  const knownNotebooks = storageProfileStatus?.knownNotebooks ?? []
-  const activeNotebookPath = storageProfileStatus?.notebookPath ?? storageProfileStatus?.profileRootPath ?? ''
-  const activeNotebookKey = storageProfileStatus?.activeNotebookId ?? activeNotebookPath
-  const activeLocalMirrorPath = storageProfileStatus?.localMirrorPath ?? storageProfileStatus?.profileRootPath ?? ''
-  const activeSyncTargetPath = storageProfileStatus?.syncTargetPath ?? ''
+  const knownVaults = storageProfileStatus?.knownVaults ?? []
+  const activeVaultPath = storageProfileStatus?.vaultPath ?? storageProfileStatus?.profileRootPath ?? ''
+  const activeVaultKey = storageProfileStatus?.activeVaultId ?? activeVaultPath
   const showRetry = Boolean(storageProfileStatus && (storageProfileStatus.status === 'error' || storageHealth !== 'healthy'))
-  const showSyncTargetControls = Boolean(storageProfileStatus?.activeNotebookId)
   const storageProfileCardClassName = [
     'storage-profile-card',
     storageHealth === 'error' ? 'is-error' : '',
     storageHealth === 'warning' ? 'is-warning' : '',
   ].filter(Boolean).join(' ')
 
-  if (!dataCapabilities.notebookFolders) {
+  if (!dataCapabilities.vaultFolders) {
     return (
       <>
-        <p>{dataCapabilities.runtime === 'mobile' ? 'local app notebook:' : 'local browser notebook:'}</p>
+        <p>{dataCapabilities.runtime === 'mobile' ? 'local app data:' : 'local browser cache:'}</p>
         <p className="settings-help">
           {dataCapabilities.runtime === 'mobile'
-            ? 'Mobile and tablet store notebook content inside this app.'
-            : 'Browser stores notebook content in local browser storage.'}
+            ? 'Mobile and tablet vault storage is not part of this desktop release target.'
+            : 'Browser builds use local cache persistence only; desktop vault folders are unsupported.'}
         </p>
         <div className="storage-profile-card">
           <div className="storage-profile-row">
             <span className="settings-hotkey-label">storage</span>
-            <span>{dataCapabilities.runtime === 'mobile' ? 'app-private local' : 'browser local'}</span>
+            <span>{dataCapabilities.runtime === 'mobile' ? 'app cache' : 'browser cache'}</span>
           </div>
           <div className="storage-profile-row">
             <span className="settings-hotkey-label">folder controls</span>
             <span>desktop only</span>
           </div>
           <p className="settings-help">
-            Live notebook folders, live settings folders, and folder switching are desktop features.
+            Live vault folders, live settings folders, and folder switching are desktop features.
           </p>
         </div>
       </>
@@ -211,50 +199,65 @@ function StorageDataSection({
 
   return (
     <>
-      <p>notebook:</p>
-      <p className="settings-help">The notebook folder is the named folder that contains this notebook's manifest, notes, and assets.</p>
+      <p>vault:</p>
+      <p className="settings-help">
+        The vault is this folder on disk. To use iCloud, Dropbox, OneDrive, or another sync service, store the vault folder in that synced location.
+      </p>
       <div className={storageProfileCardClassName}>
         <div className="storage-profile-row">
-          <label className="settings-hotkey-label" htmlFor="settings-notebook-select">current notebook</label>
+          <label className="settings-hotkey-label" htmlFor="settings-vault-select">Current vault</label>
           <select
-            id="settings-notebook-select"
+            id="settings-vault-select"
             className="settings-select-input"
-            value={activeNotebookKey}
+            value={activeVaultKey}
             onChange={(event) => {
-              if (event.target.value && event.target.value !== activeNotebookKey) {
-                const selected = knownNotebooks.find((notebook) =>
-                  (notebook.notebookId ?? notebook.notebookPath) === event.target.value
+              if (event.target.value && event.target.value !== activeVaultKey) {
+                const selected = knownVaults.find((vault) =>
+                  (vault.vaultId ?? vault.vaultPath) === event.target.value
                 )
-                onSwitchNotebook({
-                  notebookId: selected?.notebookId ?? undefined,
-                  notebookPath: selected?.notebookPath ?? event.target.value,
+                onSwitchVault({
+                  vaultId: selected?.vaultId ?? undefined,
+                  vaultPath: selected?.vaultPath ?? event.target.value,
                 })
               }
             }}
           >
-            {(knownNotebooks.length > 0
-              ? knownNotebooks
+            {(knownVaults.length > 0
+              ? knownVaults
               : [{
-                  notebookPath: activeNotebookPath,
-                  notebookName: storageProfileStatus?.notebookName ?? 'desktop notebook unavailable',
-                  notebookId: storageProfileStatus?.activeNotebookId,
-                  syncStatus: storageProfileStatus?.syncStatus,
-                  available: Boolean(activeNotebookPath),
+                  vaultPath: activeVaultPath,
+                  vaultName: storageProfileStatus?.vaultName ?? 'desktop vault unavailable',
+                  vaultId: storageProfileStatus?.activeVaultId,
+                  available: Boolean(activeVaultPath),
                 }]
-            ).map((notebook) => (
+            ).map((vault) => (
               <option
-                key={notebook.notebookId ?? notebook.notebookPath}
-                value={notebook.notebookId ?? notebook.notebookPath}
-                disabled={!notebook.available}
+                key={vault.vaultId ?? vault.vaultPath}
+                value={vault.vaultId ?? vault.vaultPath}
+                disabled={!vault.available}
               >
-                {notebook.notebookName}{notebook.available ? '' : ' (local missing)'}{notebook.syncStatus === 'offline' ? ' (offline)' : ''}
+                {vault.vaultName}{vault.available ? '' : ' (folder missing)'}
               </option>
             ))}
           </select>
         </div>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">folder</span>
+          <code className="storage-profile-path">
+            {activeVaultPath || 'desktop vault folder unavailable'}
+          </code>
+        </div>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">status</span>
+          <span>{storageProfileStatus?.status ?? 'local cache'}</span>
+        </div>
+        <div className="storage-profile-row">
+          <span className="settings-hotkey-label">writable</span>
+          <span>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'local cache'}</span>
+        </div>
         {storageProfileStatus?.error && <p className="settings-help storage-profile-error">{storageProfileStatus.error}</p>}
         {storageIssues.length > 0 && (
-          <div className="storage-profile-issues" aria-label="notebook folder health issues">
+          <div className="storage-profile-issues" aria-label="vault folder health issues">
             {storageIssues.map((issue, index) => (
               <p
                 key={`${issue.code}-${issue.path ?? index}`}
@@ -267,34 +270,24 @@ function StorageDataSection({
           </div>
         )}
         <div className="settings-page-actions">
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={onCreateNotebook}>
-            new notebook
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onCreateVault}>
+            new vault
           </button>
-          <button type="button" className="btn btn-sm settings-action-btn" onClick={onOpenNotebook}>
-            open notebook...
+          <button type="button" className="btn btn-sm settings-action-btn" onClick={onOpenVault}>
+            open vault...
           </button>
         </div>
         <details>
-          <summary>notebook details</summary>
+          <summary>vault details</summary>
           <div className="storage-profile-row">
-            <span className="settings-hotkey-label">local mirror</span>
+            <span className="settings-hotkey-label">folder</span>
             <code className="storage-profile-path">
-              {activeLocalMirrorPath || 'desktop notebook mirror unavailable'}
+              {activeVaultPath || 'desktop vault folder unavailable'}
             </code>
-          </div>
-          <div className="storage-profile-row">
-            <span className="settings-hotkey-label">sync folder</span>
-            <code className="storage-profile-path">
-              {activeSyncTargetPath || 'not attached'}
-            </code>
-          </div>
-          <div className="storage-profile-row">
-            <span className="settings-hotkey-label">sync</span>
-            <span>{storageProfileStatus?.syncStatus ?? 'local-only'}</span>
           </div>
           <div className="storage-profile-row">
             <span className="settings-hotkey-label">status</span>
-            <span>{storageProfileStatus ? (storageProfileStatus.status === 'ready' ? 'ready' : 'error') : 'browser local'}</span>
+            <span>{storageProfileStatus?.status ?? 'local cache'}</span>
           </div>
           <div className="storage-profile-row">
             <span className="settings-hotkey-label">health</span>
@@ -306,37 +299,21 @@ function StorageDataSection({
           </div>
           <div className="storage-profile-row">
             <span className="settings-hotkey-label">writable</span>
-            <span>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'browser local'}</span>
+            <span>{storageProfileStatus ? (storageProfileStatus.canWrite ? 'yes' : 'paused') : 'local cache'}</span>
           </div>
           <div className="settings-page-actions">
-            <button type="button" className="btn btn-sm settings-action-btn" onClick={onRenameNotebook}>
+            <button type="button" className="btn btn-sm settings-action-btn" onClick={onRenameVault}>
               rename
             </button>
             <button type="button" className="btn btn-sm settings-action-btn" onClick={onMoveStorageProfile}>
               move folder
             </button>
-            {showSyncTargetControls && (
-              activeSyncTargetPath ? (
-                <>
-                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onReconnectNotebookSyncTarget}>
-                    reconnect
-                  </button>
-                  <button type="button" className="btn btn-sm settings-action-btn" onClick={onDetachNotebookSyncTarget}>
-                    detach sync
-                  </button>
-                </>
-              ) : (
-                <button type="button" className="btn btn-sm settings-action-btn" onClick={onAttachNotebookSyncTarget}>
-                  attach sync folder
-                </button>
-              )
-            )}
             <button type="button" className="btn btn-sm settings-action-btn" onClick={onRevealStorageProfile}>
-              open notebook folder
+              open vault folder
             </button>
-            {storageProfileStatus?.activeNotebookId && (
-              <button type="button" className="btn btn-sm settings-action-btn" onClick={onDeleteNotebook}>
-                delete notebook
+            {storageProfileStatus?.activeVaultId && (
+              <button type="button" className="btn btn-sm settings-action-btn" onClick={onDeleteVault}>
+                delete vault
               </button>
             )}
             {showRetry && (
@@ -349,21 +326,21 @@ function StorageDataSection({
               </button>
             )}
           </div>
-          {knownNotebooks.length > 0 && (
-            <div className="storage-profile-issues" aria-label="remembered notebooks">
-              {knownNotebooks.map((notebook) => (
-                <div key={notebook.notebookId ?? notebook.notebookPath} className="storage-profile-row">
+          {knownVaults.length > 0 && (
+            <div className="storage-profile-issues" aria-label="remembered vaults">
+              {knownVaults.map((vault) => (
+                <div key={vault.vaultId ?? vault.vaultPath} className="storage-profile-row">
                   <span className="settings-hotkey-label">
-                    {notebook.notebookName}{notebook.isActive ? ' (current)' : notebook.available ? '' : ' (local missing)'}{notebook.syncStatus === 'offline' ? ' (offline)' : ''}
+                    {vault.vaultName}{vault.isActive ? ' (current)' : vault.available ? '' : ' (folder missing)'}
                   </span>
-                  <code className="storage-profile-path">{notebook.notebookPath}</code>
-                  {!notebook.isActive && !notebook.isDefault && (
+                  <code className="storage-profile-path">{vault.vaultPath}</code>
+                  {!vault.isActive && (
                     <button
                       type="button"
                       className="btn btn-sm settings-action-btn"
-                      onClick={() => onForgetNotebook({
-                        notebookId: notebook.notebookId ?? undefined,
-                        notebookPath: notebook.notebookPath,
+                      onClick={() => onForgetVault({
+                        vaultId: vault.vaultId ?? undefined,
+                        vaultPath: vault.vaultPath,
                       })}
                     >
                       remove from list

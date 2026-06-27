@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { computeStorageContentFingerprint, createStorageProfileWatcher } from './storage-watcher.mjs'
 
 function withTempProfile(run) {
-  const profileRoot = mkdtempSync(path.join(os.tmpdir(), 'tabs-storage-watcher-'))
+  const profileRoot = mkdtempSync(path.join(os.tmpdir(), 'aislenote-storage-watcher-'))
   mkdirSync(profileRoot, { recursive: true })
   try {
     return run(profileRoot)
@@ -118,6 +118,71 @@ describe('storage profile watcher', () => {
         vi.advanceTimersByTime(20)
 
         expect(onExternalChange).toHaveBeenCalledTimes(1)
+      } finally {
+        watcher.close()
+      }
+    }))
+
+  it('reports changes from any watched profile root', () =>
+    withTempProfile((profileRoot) => {
+      vi.useFakeTimers()
+      vi.setSystemTime(1_000)
+      const mirrorRoot = path.join(profileRoot, 'mirror')
+      const syncRoot = path.join(profileRoot, 'sync')
+      mkdirSync(mirrorRoot, { recursive: true })
+      mkdirSync(syncRoot, { recursive: true })
+      const onExternalChange = vi.fn()
+      const watcher = createStorageProfileWatcher({
+        getProfileRootPath: () => mirrorRoot,
+        getProfileRootPaths: () => [mirrorRoot, syncRoot],
+        onExternalChange,
+        intervalMs: 60_000,
+        debounceMs: 20,
+        appWriteQuietMs: 500,
+      })
+      try {
+        writeFileSync(path.join(mirrorRoot, 'manifest.json'), '{"schemaVersion":2}', 'utf8')
+        watcher.scan()
+        vi.advanceTimersByTime(20)
+
+        expect(onExternalChange).toHaveBeenCalledTimes(1)
+
+        writeFileSync(path.join(syncRoot, 'manifest.json'), '{"schemaVersion":2}', 'utf8')
+        watcher.scan()
+        vi.advanceTimersByTime(20)
+
+        expect(onExternalChange).toHaveBeenCalledTimes(2)
+      } finally {
+        watcher.close()
+      }
+    }))
+
+  it('suppresses app-owned writes across every watched profile root', () =>
+    withTempProfile((profileRoot) => {
+      vi.useFakeTimers()
+      vi.setSystemTime(1_000)
+      const mirrorRoot = path.join(profileRoot, 'mirror')
+      const syncRoot = path.join(profileRoot, 'sync')
+      mkdirSync(mirrorRoot, { recursive: true })
+      mkdirSync(syncRoot, { recursive: true })
+      const onExternalChange = vi.fn()
+      const watcher = createStorageProfileWatcher({
+        getProfileRootPath: () => mirrorRoot,
+        getProfileRootPaths: () => [mirrorRoot, syncRoot],
+        onExternalChange,
+        intervalMs: 60_000,
+        debounceMs: 20,
+        appWriteQuietMs: 500,
+      })
+      try {
+        watcher.markAppWrite()
+        writeFileSync(path.join(mirrorRoot, 'manifest.json'), '{"schemaVersion":2}', 'utf8')
+        writeFileSync(path.join(syncRoot, 'manifest.json'), '{"schemaVersion":2}', 'utf8')
+        watcher.markAppWrite()
+        watcher.scan()
+        vi.advanceTimersByTime(600)
+
+        expect(onExternalChange).not.toHaveBeenCalled()
       } finally {
         watcher.close()
       }

@@ -10,8 +10,11 @@ import {
   type CropRatioPresetId,
 } from './crop-ratios'
 import {
+  releaseImageDisplayLayoutReservation,
+  reserveImageDisplayLayout,
   syncImageDisplayMetadata,
   syncImageDisplayMetadataInRoot,
+  type ImageDisplayLayoutReservation,
 } from './image-dom-metadata'
 import { getImageToolPlacement, isUsableImageToolPlacementRect } from './image-tool-placement'
 import {
@@ -157,6 +160,34 @@ export function useImageTools({
 
   const syncEditorImageDisplayMetadata = () => {
     syncImageDisplayMetadataInRoot(editorEventRootRef.current)
+  }
+
+  const releaseReservedImageDisplayLayoutWhenReady = (image: HTMLImageElement) => {
+    let timeoutId = 0
+    let released = false
+
+    const release = () => {
+      if (released) return
+      released = true
+      image.removeEventListener('load', releaseOnAnimationFrame)
+      image.removeEventListener('error', releaseOnAnimationFrame)
+      if (timeoutId) window.clearTimeout(timeoutId)
+      if (image.isConnected) {
+        releaseImageDisplayLayoutReservation(image)
+      }
+    }
+    const releaseOnAnimationFrame = () => {
+      window.requestAnimationFrame(release)
+    }
+
+    if (image.complete && image.naturalWidth > 0) {
+      releaseOnAnimationFrame()
+      return
+    }
+
+    image.addEventListener('load', releaseOnAnimationFrame, { once: true })
+    image.addEventListener('error', releaseOnAnimationFrame, { once: true })
+    timeoutId = window.setTimeout(release, 1000)
   }
 
   const updateImageTools = (updater: ImageToolsState | ((previous: ImageToolsState) => ImageToolsState)) => {
@@ -380,6 +411,7 @@ export function useImageTools({
 
     const runSyncAndScheduleFollowUp = () => {
       syncEditorImageDisplayMetadata()
+      closeIfSelectedImageMissing()
       scheduleSync()
     }
 
@@ -492,6 +524,29 @@ export function useImageTools({
     })
     return true
   }
+
+  useEffect(() => {
+    let frameId = 0
+
+    const scheduleViewportRefresh = () => {
+      if (!hasActiveState() || frameId) return
+      frameId = window.requestAnimationFrame(() => {
+        frameId = 0
+        if (hasActiveState()) {
+          refreshPosition({ closeOnMissing: false })
+        }
+      })
+    }
+
+    const listenerOptions: AddEventListenerOptions = { capture: true, passive: true }
+    document.addEventListener('scroll', scheduleViewportRefresh, listenerOptions)
+    window.addEventListener('resize', scheduleViewportRefresh, listenerOptions)
+    return () => {
+      if (frameId) window.cancelAnimationFrame(frameId)
+      document.removeEventListener('scroll', scheduleViewportRefresh, listenerOptions)
+      window.removeEventListener('resize', scheduleViewportRefresh, listenerOptions)
+    }
+  }, [])
 
   const select = (image: HTMLImageElement) => {
     if (isInsideReadonlyNotePreview(image)) {
@@ -678,6 +733,7 @@ export function useImageTools({
       menuMode?: ImageToolsState['menuMode']
       position?: number | null
       scrollSnapshot?: ReturnType<typeof captureScrollSnapshot>
+      reservedDisplayBox?: ImageDisplayLayoutReservation
     } = {},
   ) => {
     let attempts = 0
@@ -697,6 +753,10 @@ export function useImageTools({
 
       const renderedImage = rebindActiveImage(sourceUrl, fallback, altText, options.position)
       if (renderedImage) {
+        if (options.reservedDisplayBox) {
+          reserveImageDisplayLayout(renderedImage, options.reservedDisplayBox)
+          releaseReservedImageDisplayLayoutWhenReady(renderedImage)
+        }
         syncImageDisplayMetadata(renderedImage)
       }
       updateImageTools((previous) =>
@@ -736,7 +796,11 @@ export function useImageTools({
   const updateEditorImageNode = (
     image: HTMLImageElement,
     attrs: { imageUrl?: string; altText?: string | null },
-    options: { preserveScroll?: boolean; scrollSnapshot?: ReturnType<typeof captureScrollSnapshot> } = {},
+    options: {
+      preserveScroll?: boolean
+      scrollSnapshot?: ReturnType<typeof captureScrollSnapshot>
+      reservedDisplayBox?: ImageDisplayLayoutReservation
+    } = {},
   ) => {
     const scrollSnapshot =
       options.preserveScroll === false ? null : (options.scrollSnapshot ?? captureScrollSnapshot(image))
@@ -765,6 +829,9 @@ export function useImageTools({
       getRenderedImageAtPosition(view, hit.pos) ??
       (attrs.imageUrl ? findRenderedImageBySource(attrs.imageUrl, attrs.altText) : null)
     if (renderedImage) {
+      if (options.reservedDisplayBox) {
+        reserveImageDisplayLayout(renderedImage, options.reservedDisplayBox)
+      }
       activeImageRef.current = renderedImage
       activeImageLookupRef.current = {
         sourceUrl: attrs.imageUrl ?? (renderedImage.getAttribute('src') ?? renderedImage.src),
@@ -821,9 +888,17 @@ export function useImageTools({
         imageRebindTokenRef.current = rebindToken
         imageRebindInProgressRef.current = true
         const displayWidth = Math.max(8, Math.round(rect.width))
+        const resizeCommitLayout: ImageDisplayLayoutReservation = {
+          width: displayWidth,
+          height: Math.max(1, Math.round(rect.height)),
+        }
         const sourceUrl = image.getAttribute('src') ?? image.src
         const nextImageUrl = withImageDisplayWidthPreservingTransformMetadata(sourceUrl, displayWidth)
-        const updateResult = updateEditorImageNode(image, { imageUrl: nextImageUrl, altText: image.alt || null }, { scrollSnapshot })
+        reserveImageDisplayLayout(image, resizeCommitLayout)
+        const updateResult = updateEditorImageNode(image, { imageUrl: nextImageUrl, altText: image.alt || null }, {
+          scrollSnapshot,
+          reservedDisplayBox: resizeCommitLayout,
+        })
         const selectedImage =
           updateResult.image ??
           rebindActiveImage(nextImageUrl, image, image.alt || null, updateResult.position) ??
@@ -832,6 +907,8 @@ export function useImageTools({
           image.src = nextImageUrl
           commitCurrentEditorContent()
         }
+        reserveImageDisplayLayout(selectedImage, resizeCommitLayout)
+        releaseReservedImageDisplayLayoutWhenReady(selectedImage)
         activeImageRef.current = selectedImage
         activeImageLookupRef.current = {
           sourceUrl: nextImageUrl,
@@ -845,6 +922,7 @@ export function useImageTools({
         scheduleImageRebindAndRefresh(nextImageUrl, selectedImage, selectedImage.alt || null, rebindToken, {
           position: updateResult.position,
           scrollSnapshot,
+          reservedDisplayBox: resizeCommitLayout,
         })
       } catch {
         imageRebindInProgressRef.current = false

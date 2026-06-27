@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, RefObject } from 'react'
+import * as React from 'react'
 import { TOOLBAR_TOOL_LABELS } from '../../editor/toolbar-layouts'
 import type { ToolbarToolId } from '../../types/app'
 import { ToolbarToolIcon } from './ToolbarToolIcon'
@@ -23,14 +23,14 @@ function getToolbarToolClassName(toolId: ToolbarToolId): string {
 
 export type ToolbarToolVisualProps = {
   toolId: ToolbarToolId
-  buttonRef?: RefObject<HTMLButtonElement | null>
+  buttonRef?: React.RefObject<HTMLButtonElement | null>
   tooltipsDisabled?: boolean
   active?: boolean
   shortcutFeedback?: boolean
   iconOnlyTextTools?: boolean
   preventMouseDownDefault?: boolean
   onPress?: () => void
-  buttonProps?: ButtonHTMLAttributes<HTMLButtonElement>
+  buttonProps?: React.ButtonHTMLAttributes<HTMLButtonElement>
 }
 
 export function ToolbarToolVisual({

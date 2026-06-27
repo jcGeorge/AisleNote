@@ -1,3 +1,4 @@
+import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -9,12 +10,7 @@ import {
 const recoveryDetails: NoteWorkspaceRecoveryDetails = {
   noteBodyId: 'note-body-1',
   activeAisleId: 'aisle-1',
-  location: {
-    domainId: 'domain-1',
-    spaceId: 'space-1',
-    tabId: 'tab-1',
-    subTabId: null,
-  },
+  location: { noteId: 'note-1' },
   scratchpadActive: false,
 }
 

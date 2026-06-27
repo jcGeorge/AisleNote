@@ -5,57 +5,10 @@ export type ImageNodeHit = {
   pos: number
 }
 
-export type ImageBlankClickPoint = {
-  left: number
-  top: number
-}
-
 function getClampedDocPosition(view: any, position: number): number {
   const docSize = view?.state?.doc?.content?.size
   const max = typeof docSize === 'number' ? docSize : position
   return Math.max(0, Math.min(max, position))
-}
-
-function isBlankSentinelText(text: string): boolean {
-  return String(text ?? '').replace(/\u200b/g, '').trim().length === 0
-}
-
-function isImageElement(element: Element): element is HTMLImageElement {
-  if (typeof element.matches === 'function') return element.matches('img')
-  return String((element as { tagName?: string }).tagName ?? '').toLowerCase() === 'img'
-}
-
-function isImageOnlyParagraphForHit(view: any, hit: ImageNodeHit): boolean {
-  try {
-    const parent = view.state.doc.resolve(hit.pos).parent
-    if (parent?.type?.name !== 'paragraph' || typeof parent.child !== 'function') return false
-    const childCount = Number(parent.childCount ?? 0)
-    if (childCount <= 0) return false
-
-    let hasImage = false
-    for (let index = 0; index < childCount; index += 1) {
-      const child = parent.child(index)
-      const typeName = child?.type?.name
-      if (typeName === 'image') {
-        hasImage = true
-        continue
-      }
-      if ((child?.isText || typeName === 'text') && isBlankSentinelText(child.text ?? child.textContent ?? '')) {
-        continue
-      }
-      return false
-    }
-    return hasImage
-  } catch {
-    return false
-  }
-}
-
-function isImageRelatedBlankTarget(view: any, target: Element | null, image: HTMLImageElement): boolean {
-  if (!target) return false
-  if (target === view?.dom) return true
-  const paragraph = typeof image.closest === 'function' ? image.closest('p') : null
-  return Boolean(paragraph && (target === paragraph || paragraph.contains?.(target)))
 }
 
 export function findImageNodeHitForElement(view: any, image: HTMLImageElement): ImageNodeHit | null {
@@ -129,30 +82,4 @@ export function placeCaretAfterImageElement(
     view.focus?.()
   }
   return hit
-}
-
-export function findImageElementForSameLineBlankClick(
-  view: any,
-  target: Element | null,
-  point: ImageBlankClickPoint,
-  edgePadding = 2,
-): HTMLImageElement | null {
-  if (!view?.dom || typeof view.dom.querySelectorAll !== 'function') return null
-  if (!Number.isFinite(point.left) || !Number.isFinite(point.top)) return null
-
-  const candidates = (Array.from(view.dom.querySelectorAll('img')) as Element[])
-    .filter(isImageElement)
-    .map((image) => {
-      if (!isImageRelatedBlankTarget(view, target, image)) return null
-      if (typeof image.getBoundingClientRect !== 'function') return null
-      const rect = image.getBoundingClientRect()
-      if (point.top < rect.top || point.top > rect.bottom || point.left <= rect.right + edgePadding) return null
-      const hit = findImageNodeHitForElement(view, image)
-      if (!hit || !isImageOnlyParagraphForHit(view, hit)) return null
-      return { image, distance: point.left - rect.right }
-    })
-    .filter((candidate): candidate is { image: HTMLImageElement; distance: number } => Boolean(candidate))
-    .sort((left, right) => left.distance - right.distance)
-
-  return candidates[0]?.image ?? null
 }

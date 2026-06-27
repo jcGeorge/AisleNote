@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import type { NoteFilterKind, NoteFilterTagSortMode } from '../../types/app'
 import type { NoteFilterOption } from '../../filters/note-filter'
+
+void React
 
 type NoteFilterControlProps = {
   open: boolean
@@ -177,7 +179,7 @@ export function NoteFilterControl({
                   aria-checked={selected}
                   className={[
                     'tag-filter-tag-btn note-filter-option-btn',
-                    kind === 'tags' ? 'tabs-tag-token' : '',
+                    kind === 'tags' ? 'aislenote-tag-token' : '',
                     kind === 'media' ? 'note-filter-media-option-btn' : '',
                     option.mediaKind === 'image' ? 'is-media-image' : '',
                     selected ? 'is-selected' : '',

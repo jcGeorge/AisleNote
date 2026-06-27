@@ -1,8 +1,10 @@
-import type { MouseEvent, PointerEvent, ReactNode } from 'react'
+import React, { type MouseEvent, type PointerEvent, type ReactNode } from 'react'
 import type { ImageTransformOperation } from '../../editor/image-transform'
 import type { GeneralIconId } from '../../icons/app-icons'
 import { AppIcon } from '../icons/AppIcon'
 import { ResizeCornerIcon } from './ResizeCornerIcon'
+
+void React
 
 export type MediaToolsState = {
   visible: boolean

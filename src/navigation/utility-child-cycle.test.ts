@@ -53,7 +53,7 @@ describe('utility child cycling', () => {
         aboutSection: 'home',
         direction: -1,
       }),
-    ).toEqual({ viewMode: 'messages', section: 'editor-dev' })
+    ).toEqual({ viewMode: 'messages', section: 'diagnostics' })
 
     expect(
       getNextUtilityChildSelection({
@@ -63,7 +63,7 @@ describe('utility child cycling', () => {
         aboutSection: 'home',
         direction: 1,
       }),
-    ).toEqual({ viewMode: 'messages', section: 'editor-dev' })
+    ).toEqual({ viewMode: 'messages', section: 'inbox' })
   })
 
   it('cycles about sections and ignores non-utility views', () => {

@@ -7,57 +7,6 @@
     --editor-toolbar-min-height: calc(var(--editor-toolbar-button-size) + 6px);
   }
 
-  .tabbar,
-  .subtabbar {
-    padding: 0.26rem 0.4rem;
-  }
-
-  .tabbar-row {
-    gap: 0.35rem;
-  }
-
-  .tabbar-scroll {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    align-items: center;
-    align-content: center;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-  }
-
-  .compact-scope-scroll {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    align-items: center;
-    align-content: center;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-  }
-
-  .tabbar-primary {
-    min-width: 0;
-  }
-
-  .tab-btn,
-  .compact-scope-btn,
-  .add-tab-btn,
-  .topbar-action-btn,
-  .menu-btn {
-    min-height: var(--tab-control-height);
-  }
-
-  .tab-btn,
-  .compact-scope-btn {
-    max-width: min(calc(220px * var(--tab-button-scale)), 68vw);
-  }
-
-  .tabbar-controls,
-  .topbar-actions {
-    gap: 0.25rem;
-  }
-
   .toastui-editor-toolbar {
     min-height: var(--editor-toolbar-min-height) !important;
     padding: 0.2rem 0.28rem !important;
@@ -113,6 +62,7 @@
   .settings-slider-wrap,
   .theme-switch,
   .theme-selection-controls,
+  .settings-theme-copy-row,
   .settings-segmented-control,
   .visuals-theme-layout,
   .custom-theme-editor,
@@ -129,6 +79,28 @@
     grid-template-columns: 1fr;
   }
 
+  .visuals-preview-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--app-border);
+  }
+
+  .visuals-preview-aisles {
+    grid-template-columns: 1fr;
+  }
+
+  .visuals-preview-control-aisle {
+    border-right: 0;
+    border-bottom: 1px solid var(--editor-border);
+  }
+
+  .visuals-preview-note-header {
+    display: grid;
+  }
+
+  .visuals-preview-note-stats {
+    justify-content: flex-start;
+  }
+
   .settings-slider-wrap {
     gap: 0.5rem;
   }
@@ -143,22 +115,6 @@
 }
 
 @media (max-width: 520px) {
-  .tabbar-row {
-    align-items: flex-start;
-  }
-
-  .tabbar-controls {
-    align-self: flex-start;
-  }
-
-  .topbar-action-visible-label {
-    padding-inline: 0.35rem;
-  }
-
-  .menu-dropdown {
-    right: -0.1rem;
-  }
-
   .note-shared-toolbar {
     --editor-toolbar-spacer-width: 0.8rem;
     overflow-x: auto;
@@ -186,6 +142,13 @@
     align-content: flex-start !important;
   }
 
+  .visuals-preview-toolbar.note-shared-toolbar .app-shared-editor-toolbar {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex-wrap: wrap !important;
+    align-content: flex-start !important;
+  }
+
   .toast-editor-host,
   .note-aisle-scroll,
   .note-aisle-pane,
@@ -206,6 +169,13 @@
 
   .note-aisle-scroll {
     overflow-x: hidden !important;
+  }
+
+  .note-aisles-shell.is-split .note-aisle-scroll {
+    padding-inline-start: 0 !important;
+    padding-inline-end: 0 !important;
+    scroll-padding-inline-start: 0 !important;
+    scroll-padding-inline-end: 0 !important;
   }
 
   .note-aisle-resize-btn {
@@ -238,6 +208,14 @@
     grid-template-columns: 1fr;
   }
 
+  .settings-theme-copy-row {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-theme-copy-button.vault-settings-action {
+    width: 100%;
+  }
+
   .custom-theme-select {
     width: 100%;
   }
@@ -259,17 +237,28 @@
     grid-template-columns: 1fr;
   }
 
+  .custom-theme-group {
+    grid-template-columns: 1fr;
+  }
+
   .custom-theme-slot {
-    grid-template-columns: minmax(6.5rem, 1fr) 2.35rem minmax(5.25rem, 0.55fr);
+    grid-template-columns: minmax(6.5rem, 1fr) var(--custom-theme-color-size, 2.4rem) minmax(5.25rem, 0.55fr);
+  }
+
+  .custom-theme-group > .custom-theme-slot:nth-child(odd) {
+    grid-template-columns: minmax(6.5rem, 1fr) var(--custom-theme-color-size, 2.4rem) minmax(5.25rem, 0.55fr);
   }
 
   .custom-theme-color-picker {
     display: contents;
   }
 
+  .custom-theme-color-input {
+    grid-column: 2;
+  }
+
   .custom-theme-swatch-button {
     grid-column: 2;
-    min-height: 2.4rem;
   }
 
   .custom-theme-hex-input {
@@ -287,6 +276,10 @@
 
   .custom-color-picker-square {
     min-height: 9rem;
+  }
+
+  .frontmatter-template-settings-layout {
+    grid-template-columns: 1fr;
   }
 
   .frontmatter-template-field-row {

@@ -1,3 +1,4 @@
+import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { NoteFilterControl } from './NoteFilterControl'
@@ -38,7 +39,7 @@ describe('NoteFilterControl', () => {
     expect(html).toContain('#Alpha')
     expect(html).toContain('#beta')
     expect(html).toContain('aria-checked="true"')
-    expect(html).toContain('note-filter-option-btn tabs-tag-token is-selected')
+    expect(html).toContain('note-filter-option-btn aislenote-tag-token is-selected')
   })
 
   it('uses synced and frontmatter button labels', () => {
@@ -85,21 +86,21 @@ describe('NoteFilterControl', () => {
         kind="media"
         options={[
           {
-            key: 'media:image:tabs-asset:///assets/photo.png',
+            key: 'media:image:aislenote-asset:///assets/photo.png',
             label: 'Hero',
             count: 2,
             type: 'media-image',
             mediaKind: 'image',
-            source: 'tabs-asset:///assets/photo.png',
-            previewUrl: 'tabs-asset:///assets/photo.png',
+            source: 'aislenote-asset:///assets/photo.png',
+            previewUrl: 'aislenote-asset:///assets/photo.png',
           },
           {
-            key: 'media:audio:tabs-asset:///assets/song.mp3',
+            key: 'media:audio:aislenote-asset:///assets/song.mp3',
             label: 'Theme Song',
             count: 1,
             type: 'media-audio',
             mediaKind: 'audio',
-            source: 'tabs-asset:///assets/song.mp3',
+            source: 'aislenote-asset:///assets/song.mp3',
           },
           {
             key: 'media:video:https://cdn.example.com/clip.mp4',
@@ -110,7 +111,7 @@ describe('NoteFilterControl', () => {
             source: 'https://cdn.example.com/clip.mp4',
           },
         ]}
-        selectedKeys={['media:image:tabs-asset:///assets/photo.png']}
+        selectedKeys={['media:image:aislenote-asset:///assets/photo.png']}
         sortMode="az"
         onToggleOpen={noop}
         onClose={noop}
@@ -123,7 +124,7 @@ describe('NoteFilterControl', () => {
 
     expect(html).toContain('media filter')
     expect(html).toContain('note-filter-media-grid')
-    expect(html).toContain('<img src="tabs-asset:///assets/photo.png"')
+    expect(html).toContain('<img src="aislenote-asset:///assets/photo.png"')
     expect(html).toContain('Hero')
     expect(html).toContain('2 matches')
     expect(html).toContain('audio')

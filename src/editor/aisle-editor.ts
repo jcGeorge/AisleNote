@@ -4,9 +4,7 @@ export type AisleEditorMeta = {
   editor: Editor
   root: HTMLElement
   noteBodyId: string
-  spaceId: string
-  tabId: string
-  subTabId: string | null
+  noteId: string
   aisleId: string
   aisleBodyId: string
   pluginKey: unknown

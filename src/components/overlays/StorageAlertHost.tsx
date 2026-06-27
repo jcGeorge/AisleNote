@@ -1,3 +1,6 @@
+import React from 'react'
+import { AppIcon } from '../icons/AppIcon'
+
 export type StorageAlert = {
   signature: string
   label: string
@@ -32,12 +35,12 @@ export function StorageAlertHost({ alerts, onDismissAlert, onAlertAction }: Stor
           ) : null}
           <button
             type="button"
-            className="app-tip-dismiss"
+            className="app-tip-dismiss app-close-button"
             aria-label={`Close ${alert.label}`}
             data-app-tooltip={`Close ${alert.label}`}
             onClick={() => onDismissAlert(alert.signature)}
           >
-            ×
+            <AppIcon iconId="x" className="app-close-button-icon" />
           </button>
         </section>
       ))}

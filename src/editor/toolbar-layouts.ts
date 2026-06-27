@@ -1,9 +1,11 @@
 import type { ToolbarLayout, ToolbarLayoutItem, ToolbarToolId } from '../types/app'
-import { createId } from '../state/workspace'
+import { createRandomId } from '../state/navigation-ids'
 
 export type { ToolbarLayout, ToolbarLayoutItem, ToolbarToolId } from '../types/app'
 
 export const DEFAULT_TOOLBAR_LAYOUT_ID = 'default'
+
+const createId = createRandomId
 
 export type ToolbarLayoutRenderSegment =
   | { type: 'group'; id: string; items: ToolbarLayoutItem[] }
@@ -43,7 +45,7 @@ export const TOOLBAR_TOOL_LABELS: Record<ToolbarToolId, string> = {
   frontmatter: 'Frontmatter',
   tableOfContents: 'Table of contents',
   aisles: 'Aisles',
-  findReplace: 'Find & replace',
+  findReplace: 'Search notes',
   undo: 'Undo',
   redo: 'Redo',
   heading: 'Headings',

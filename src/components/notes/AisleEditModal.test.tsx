@@ -1,15 +1,17 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { BLOCK_INDENT_TOKEN } from '../../markdown/markdown-utils'
-import { MAX_NOTE_AISLES } from '../../state/workspace'
+import { MAX_NOTE_AISLES } from '../../editor/aisle-edit-draft'
 import type { ResolvedNoteAisle } from '../../types/app'
 import { AisleEditModal } from './AisleEditModal'
 
 const aisle = (id: string, markdown = id): ResolvedNoteAisle => ({ id, aisleBodyId: id, markdown })
 const componentDir = dirname(fileURLToPath(import.meta.url))
+const editorShellCss = readFileSync(join(componentDir, '../../styles/editor-shell.css'), 'utf8')
 
 function renderModal(
   aisles: ResolvedNoteAisle[],
@@ -28,7 +30,7 @@ function renderModal(
       frontmatterAisleIds={options.frontmatterAisleIds}
       initialStagedDecoupleAisleIds={options.initialStagedDecoupleAisleIds}
       initialStagedRemoveFrontmatterAisleIds={options.initialStagedRemoveFrontmatterAisleIds}
-      getNotePreviewLabel={() => 'Domain / Space / Parent / Child'}
+      getNotePreviewLabel={() => 'Vault / Folder / Note'}
       onCancel={() => undefined}
       onApply={() => undefined}
       onWarn={() => undefined}
@@ -109,7 +111,8 @@ describe('AisleEditModal', () => {
     expect(html).toContain('<img')
     expect(html).toContain('alt="Diagram"')
     expect(html).toContain('draggable="false"')
-    expect(html).toContain('class="aisle-edit-delete-icon"')
+    expect(html).toContain('data-app-icon="trash"')
+    expect(html).toContain('app-icon-trash')
     expect(html).not.toContain('>up</button>')
     expect(html).not.toContain('>down</button>')
   })
@@ -137,21 +140,35 @@ describe('AisleEditModal', () => {
   it('renders block indents in previews without exposing the storage marker', () => {
     const html = renderModal([aisle('a', `${BLOCK_INDENT_TOKEN.repeat(2)}indented`)])
 
-    expect(html).toContain('style="--tabs-block-indent-level:2"')
-    expect(html).toContain('class="tabs-rendered-markdown-paragraph tabs-block-indent"')
+    expect(html).toContain('style="--aislenote-block-indent-level:2"')
+    expect(html).toContain('class="aislenote-rendered-markdown-paragraph aislenote-block-indent"')
     expect(html).toContain('indented')
     expect(html).not.toContain(BLOCK_INDENT_TOKEN)
   })
 
-  it('renders note preview tokens as compact placeholders instead of raw storage tokens', () => {
+  it('renders tab-block storage wrappers as block indents without exposing wrapper tags', () => {
+    const html = renderModal([aisle('a', [
+      '<div tab-block="2">',
+      '',
+      'indented',
+      '',
+      '</div>',
+    ].join('\n'))])
+
+    expect(html).toContain('style="--aislenote-block-indent-level:2"')
+    expect(html).toContain('class="aislenote-rendered-markdown-paragraph aislenote-block-indent"')
+    expect(html).toContain('indented')
+    expect(html).not.toContain('tab-block')
+    expect(html).not.toContain('&lt;div')
+  })
+
+  it('renders note preview markdown without custom vault preview state in the edit modal', () => {
     const token = '![Child note](<Child note--123abc>)'
     const html = renderModal([aisle('a', `${token}\n\nregular text`)])
 
-    expect(html).toContain('aisle-edit-context-preview')
-    expect(html).toContain('note preview')
     expect(html).toContain('Child note')
     expect(html).toContain('regular text')
-    expect(html).not.toContain('![Child note](&lt;Child note--123abc&gt;)')
+    expect(html).not.toContain('aisle-edit-context-preview')
   })
 
   it('renders linked aisles with top-right staging buttons instead of bottom status controls', () => {
@@ -195,6 +212,20 @@ describe('AisleEditModal', () => {
     expect(html).not.toContain('will de-couple')
     expect(html).not.toContain('>undo</button>')
     expect(html).not.toContain('>de-couple</button>')
+  })
+
+  it('keeps staged removal action buttons on unfocused control tokens', () => {
+    const stagedRule = editorShellCss.slice(
+      editorShellCss.indexOf('.aisle-edit-card-action-btn.is-staged-removal {'),
+      editorShellCss.indexOf('.aisle-edit-card-controls {'),
+    )
+
+    expect(stagedRule).toContain('border-color: var(--rail-control-border);')
+    expect(stagedRule).toContain('background: var(--rail-control-bg);')
+    expect(stagedRule).toContain('color: var(--rail-control-text);')
+    expect(stagedRule).toContain('border-color: var(--rail-control-hover-border);')
+    expect(stagedRule).toContain('background: var(--rail-control-hover-bg);')
+    expect(stagedRule).toContain('color: var(--rail-control-hover-text);')
   })
 
   it('shows staged frontmatter removal and combined caution tape labels', () => {

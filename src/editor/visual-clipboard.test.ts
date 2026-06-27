@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   insertClipboardDataIntoView,
   serializeProseMirrorSelectionForClipboard,
-  TABS_MARKDOWN_CLIPBOARD_MIME,
+  AISLENOTE_MARKDOWN_CLIPBOARD_MIME,
   writeEditorClipboardData,
 } from './visual-clipboard'
 
@@ -94,13 +94,13 @@ describe('visual clipboard helpers', () => {
       markdown: '[label](<note--abc123>)',
     })).toBe(true)
     expect(store.get('text/plain')).toBe('label')
-    expect(store.get(TABS_MARKDOWN_CLIPBOARD_MIME)).toBe('[label](<note--abc123>)')
+    expect(store.get(AISLENOTE_MARKDOWN_CLIPBOARD_MIME)).toBe('[label](<note--abc123>)')
   })
 
   it('pastes app-private markdown links as link marks instead of literal markdown text', () => {
     const view = createView([paragraph('')])
     const data = {
-      getData: (type: string) => type === TABS_MARKDOWN_CLIPBOARD_MIME ? '[linked](<note--abc123>)' : '',
+      getData: (type: string) => type === AISLENOTE_MARKDOWN_CLIPBOARD_MIME ? '[linked](<note--abc123>)' : '',
     }
 
     expect(insertClipboardDataIntoView(view, data)).toBe(true)

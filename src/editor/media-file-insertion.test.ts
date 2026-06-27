@@ -94,10 +94,10 @@ describe('media file insertion helpers', () => {
   })
 
   it('imports media files as markdown links', async () => {
-    const importBlobAsAssetUrl = vi.fn(async (_blob: Blob, fileName?: string) => `tabs-asset:///assets/${fileName}`)
+    const importBlobAsAssetUrl = vi.fn(async (_blob: Blob, fileName?: string) => `aislenote-asset:///assets/${fileName}`)
 
     await expect(importMediaFilesAsMarkdown([file('song.mp3', 'audio/mpeg')], importBlobAsAssetUrl)).resolves.toBe(
-      '[song.mp3](tabs-asset:///assets/song.mp3)',
+      '[song.mp3](aislenote-asset:///assets/song.mp3)',
     )
     expect(importBlobAsAssetUrl).toHaveBeenCalledWith(expect.any(Blob), 'song.mp3')
   })
@@ -113,15 +113,15 @@ describe('media file insertion helpers', () => {
   })
 
   it('escapes markdown link labels', () => {
-    expect(buildMediaMarkdownLink('song [demo].mp3', 'tabs-asset:///assets/song.mp3')).toBe(
-      '[song [demo\\].mp3](tabs-asset:///assets/song.mp3)',
+    expect(buildMediaMarkdownLink('song [demo].mp3', 'aislenote-asset:///assets/song.mp3')).toBe(
+      '[song [demo\\].mp3](aislenote-asset:///assets/song.mp3)',
     )
   })
 
   it('inserts media as a real ProseMirror link mark instead of literal markdown text', () => {
     const view = createView()
     const inserted = insertAssetLinksIntoWysiwygView(view, [
-      { label: 'Miki Matsubara - 真夜中のドア [demo].mp3', url: 'tabs-asset:///assets/song.mp3' },
+      { label: 'Miki Matsubara - 真夜中のドア [demo].mp3', url: 'aislenote-asset:///assets/song.mp3' },
     ])
 
     expect(inserted).toBe(true)
@@ -130,7 +130,7 @@ describe('media file insertion helpers', () => {
 
     const paragraph = view.state.doc.firstChild
     const textNode = paragraph?.firstChild
-    expect(textNode?.marks[0]?.attrs).toEqual({ linkUrl: 'tabs-asset:///assets/song.mp3' })
+    expect(textNode?.marks[0]?.attrs).toEqual({ linkUrl: 'aislenote-asset:///assets/song.mp3' })
   })
 
   it('uses drop coordinates when inserting media links', () => {
@@ -138,7 +138,7 @@ describe('media file insertion helpers', () => {
 
     insertAssetLinksIntoWysiwygView(
       view,
-      [{ label: 'song.mp3', url: 'tabs-asset:///assets/song.mp3' }],
+      [{ label: 'song.mp3', url: 'aislenote-asset:///assets/song.mp3' }],
       { left: 10, top: 20 },
     )
 

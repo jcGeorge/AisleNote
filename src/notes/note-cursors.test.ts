@@ -9,7 +9,7 @@ import type { NoteCursorLocation } from '../types/app'
 describe('note cursor locations', () => {
   it('normalizes valid cursor locations and drops malformed selections', () => {
     const normalized = normalizeNoteCursorLocations({
-      'domain::space::tab::__home__': {
+      'note-main': {
         activeAisleId: 'aisle-1',
         aisles: {
           'aisle-1': {
@@ -29,7 +29,7 @@ describe('note cursor locations', () => {
       },
     })
 
-    expect(normalized['domain::space::tab::__home__']).toEqual({
+    expect(normalized['note-main']).toEqual({
       activeAisleId: 'aisle-1',
       aisles: {
         'aisle-1': {

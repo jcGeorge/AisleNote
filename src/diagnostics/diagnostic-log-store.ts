@@ -7,8 +7,8 @@ import {
   orderDiagnosticDaysForDisplay,
 } from './diagnostic-log'
 
-const DIAGNOSTIC_LOG_DAYS_STORAGE_KEY = 'tabs:diagnostic-log:v1:days'
-const DIAGNOSTIC_LOG_DAY_STORAGE_PREFIX = 'tabs:diagnostic-log:v1:day:'
+const DIAGNOSTIC_LOG_DAYS_STORAGE_KEY = 'aislenote:diagnostic-log:v1:days'
+const DIAGNOSTIC_LOG_DAY_STORAGE_PREFIX = 'aislenote:diagnostic-log:v1:day:'
 
 type DiagnosticLogChangeListener = (entry: DiagnosticLogEntry) => void
 

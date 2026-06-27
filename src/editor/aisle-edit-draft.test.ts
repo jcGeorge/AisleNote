@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   EMPTY_AISLE_PREVIEW_TEXT,
   MAX_AISLE_WARNING_MESSAGE,
+  MAX_NOTE_AISLES,
   addAisleToDraft,
   addAisleToDraftOrWarn,
   canAddAisleToDraft,
@@ -12,14 +13,14 @@ import {
   getClearAisleContentsDraftAction,
   findRightmostEmptyAisleIndex,
   getAislesForNewAisle,
+  getAislePreviewMarkdown,
   getAislePreviewText,
   isEmptyAisleMarkdown,
   moveAisleInDraft,
   reorderAisleDraft,
   reorderAisleDraftByInsertion,
 } from './aisle-edit-draft'
-import { EDITOR_BLANK_LINE_PLACEHOLDER } from '../markdown/markdown-utils'
-import { MAX_NOTE_AISLES } from '../state/workspace'
+import { BLOCK_INDENT_TOKEN, EDITOR_BLANK_LINE_PLACEHOLDER } from '../markdown/markdown-utils'
 import type { ResolvedNoteAisle } from '../types/app'
 
 const aisle = (id: string, markdown = id): ResolvedNoteAisle => ({ id, aisleBodyId: id, markdown })
@@ -61,8 +62,45 @@ describe('aisle edit draft helpers', () => {
     expect(isEmptyAisleMarkdown('---\ntitle: note\n---')).toBe(false)
     expect(isEmptyAisleMarkdown('#tag')).toBe(false)
     expect(isEmptyAisleMarkdown('[link](https://example.com)')).toBe(false)
-    expect(isEmptyAisleMarkdown('![image](tabs-asset:image)')).toBe(false)
+    expect(isEmptyAisleMarkdown('![image](aislenote-asset:image)')).toBe(false)
     expect(isEmptyAisleMarkdown('-')).toBe(false)
+  })
+
+  it('prepares app shortcut markdown without injecting preview-only blank lines', () => {
+    expect(getAislePreviewMarkdown([
+      '# Shortcut menu',
+      "> totally doesn't work",
+      '* how something is that?',
+      '- at least dashes work',
+      String.raw`\-\- And this bad boy`,
+      '1. and this one.',
+      '^--\u00a0Man that is inconsistent.',
+      '* [x] Hmm',
+      "* [ ] That's not great",
+    ].join('\n'))).toBe([
+      '# Shortcut menu',
+      "> totally doesn't work",
+      '* how something is that?',
+      '- at least dashes work',
+      '-- And this bad boy',
+      '1. and this one.',
+      '^--\u00a0Man that is inconsistent.',
+      '* [x] Hmm',
+      "* [ ] That's not great",
+    ].join('\n'))
+  })
+
+  it('decodes tab-block wrappers for markdown and text previews', () => {
+    const markdown = [
+      '<div tab-block="2">',
+      '',
+      'indented',
+      '',
+      '</div>',
+    ].join('\n')
+
+    expect(getAislePreviewMarkdown(markdown)).toBe(`${BLOCK_INDENT_TOKEN.repeat(2)}indented`)
+    expect(getAislePreviewText(markdown)).toBe('indented')
   })
 
   it('finds and reclaims the rightmost empty aisle before adding at the limit', () => {

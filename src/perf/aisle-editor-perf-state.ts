@@ -39,9 +39,9 @@ export type AisleEditorPerfState = {
 }
 
 type AisleEditorPerfWindow = {
-  __tabsAisleEditorPerfState?: AisleEditorPerfState
-  __tabsResetEditorPerfState?: () => AisleEditorPerfState | null
-  __tabsLogEditorPerfState?: () => AisleEditorPerfState | null
+  __aislenoteAisleEditorPerfState?: AisleEditorPerfState
+  __aislenoteResetEditorPerfState?: () => AisleEditorPerfState | null
+  __aislenoteLogEditorPerfState?: () => AisleEditorPerfState | null
 }
 
 const createAisleEditorPerfState = (): AisleEditorPerfState => ({
@@ -100,10 +100,10 @@ const getAisleEditorPerfState = (createIfMissing = false): AisleEditorPerfState 
   if (!import.meta.env?.DEV) return null
   const container = getPerfWindow()
   if (!container) return null
-  if (!container.__tabsAisleEditorPerfState && createIfMissing) {
-    container.__tabsAisleEditorPerfState = createAisleEditorPerfState()
+  if (!container.__aislenoteAisleEditorPerfState && createIfMissing) {
+    container.__aislenoteAisleEditorPerfState = createAisleEditorPerfState()
   }
-  return container.__tabsAisleEditorPerfState ?? null
+  return container.__aislenoteAisleEditorPerfState ?? null
 }
 
 export const withAisleEditorPerfState = (updater: (state: AisleEditorPerfState) => void) => {
@@ -128,22 +128,22 @@ export const resetAisleEditorPerfState = (): AisleEditorPerfState | null => {
   if (!import.meta.env?.DEV) return null
   const container = getPerfWindow()
   if (!container) return null
-  container.__tabsAisleEditorPerfState = createAisleEditorPerfState()
-  return container.__tabsAisleEditorPerfState
+  container.__aislenoteAisleEditorPerfState = createAisleEditorPerfState()
+  return container.__aislenoteAisleEditorPerfState
 }
 
 export const installAisleEditorPerfStateWindowHelpers = () => {
   if (!import.meta.env?.DEV) return
   const container = getPerfWindow()
   if (!container) return
-  if (!container.__tabsAisleEditorPerfState) {
-    container.__tabsAisleEditorPerfState = createAisleEditorPerfState()
+  if (!container.__aislenoteAisleEditorPerfState) {
+    container.__aislenoteAisleEditorPerfState = createAisleEditorPerfState()
   }
-  if (!container.__tabsResetEditorPerfState) {
-    container.__tabsResetEditorPerfState = () => resetAisleEditorPerfState()
+  if (!container.__aislenoteResetEditorPerfState) {
+    container.__aislenoteResetEditorPerfState = () => resetAisleEditorPerfState()
   }
-  if (!container.__tabsLogEditorPerfState) {
-    container.__tabsLogEditorPerfState = () => {
+  if (!container.__aislenoteLogEditorPerfState) {
+    container.__aislenoteLogEditorPerfState = () => {
       const state = getAisleEditorPerfState(false)
       if (!state) return null
       const snapshot = {

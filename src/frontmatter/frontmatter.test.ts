@@ -5,9 +5,11 @@ import {
   extractMarkdownFrontmatter,
   getFrontmatterDatetimePickerValue,
   getFrontmatterDraftValueForType,
+  normalizeFrontmatterFixedListOptions,
   parseFrontmatterYaml,
   prependMarkdownFrontmatter,
   normalizeFrontmatterSettings,
+  resolveFrontmatterFixedListValues,
   stringifyFrontmatterYaml,
 } from './frontmatter'
 import type { FrontmatterTemplate } from '../types/app'
@@ -20,12 +22,9 @@ const context = {
   noteTitle: 'Roadmap',
   isLinked: true,
   tags: ['Planning', 'Client/Acme'],
-  tabId: 'tab-1',
-  subTabId: null,
-  spaceId: 'space-1',
-  spaceName: 'Product',
-  domainId: 'domain-1',
-  domainName: 'Tabs',
+  noteId: 'note-1',
+  folderName: 'Product',
+  folderPath: 'Vault / Product',
 }
 
 const template: FrontmatterTemplate = {
@@ -135,6 +134,71 @@ describe('frontmatter templates', () => {
       'none',
       'tags',
     ])
+  })
+
+  it('normalizes fixed list options and drops invalid defaults', () => {
+    const normalized = normalizeFrontmatterSettings({
+      templates: [
+        {
+          id: 'fixed-template',
+          name: 'Fixed',
+          fields: [
+            {
+              id: 'status',
+              key: 'status',
+              type: 'fixedList',
+              defaultValue: 'archived',
+              computed: 'tags',
+              options: ['draft', 'published', 'draft', ' '],
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(normalizeFrontmatterFixedListOptions('draft, published\ndraft')).toEqual(['draft', 'published'])
+    expect(normalized.templates[0]?.fields[0]).toMatchObject({
+      type: 'fixedList',
+      defaultValue: '',
+      computed: 'none',
+      options: ['draft', 'published'],
+    })
+  })
+
+  it('resolves fixed list values as ordered allowed selections', () => {
+    const options = ['draft', 'published', 'archived']
+
+    expect(resolveFrontmatterFixedListValues(options, 'published')).toEqual(['published'])
+    expect(resolveFrontmatterFixedListValues(options, ['archived', 'draft', 'draft'])).toEqual(['draft', 'archived'])
+    expect(resolveFrontmatterFixedListValues(options, 'archived, missing, draft')).toEqual(['draft', 'archived'])
+    expect(resolveFrontmatterFixedListValues(options, 'missing', 'published')).toEqual(['published'])
+    expect(resolveFrontmatterFixedListValues(options, [])).toEqual([])
+  })
+
+  it('applies fixed list templates as allowed value arrays', () => {
+    const fixedTemplate: FrontmatterTemplate = {
+      id: 'fixed-template',
+      name: 'Fixed',
+      fields: [
+        {
+          id: 'status',
+          key: 'status',
+          type: 'fixedList',
+          defaultValue: 'draft',
+          computed: 'none',
+          options: ['draft', 'published'],
+        },
+      ],
+    }
+
+    expect(applyFrontmatterTemplate(null, fixedTemplate, context)).toEqual({ status: ['draft'] })
+    expect(applyFrontmatterTemplate({ status: 'published' }, fixedTemplate, context)).toEqual({ status: ['published'] })
+    expect(applyFrontmatterTemplate({ status: ['published', 'draft'] }, fixedTemplate, context)).toEqual({
+      status: ['draft', 'published'],
+    })
+    expect(applyFrontmatterTemplate({ status: 'archived' }, fixedTemplate, context)).toEqual({ status: ['draft'] })
+    expect(applyFrontmatterTemplate({ status: [] }, fixedTemplate, context)).toEqual({ status: [] })
+    expect(coerceFrontmatterFieldValue('fixedList', 'published')).toEqual(['published'])
   })
 
   it('applies computed tags to list fields', () => {

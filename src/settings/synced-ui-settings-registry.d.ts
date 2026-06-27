@@ -10,7 +10,6 @@ export type SimpleSyncedUiSettingKey =
   | 'findReplaceScope'
   | 'removeNoteReferencesOnTrash'
   | 'noteMentionCopyRequiresConfirmation'
-  | 'deleteActiveAisleShortcutEnabled'
   | 'scratchpadNewAisleSide'
   | 'tabRenameEnterBehavior'
   | 'decoupledItemsKeepData'
@@ -18,6 +17,7 @@ export type SimpleSyncedUiSettingKey =
   | 'tableAddTargetMode'
   | 'tableDeleteTargetMode'
   | 'tableOfContentsScope'
+  | 'tabColorIndicatorPlacement'
   | 'toolbarEditorShowNames'
 
 export type SyncedUiBooleanSettingKey =
@@ -26,7 +26,6 @@ export type SyncedUiBooleanSettingKey =
   | 'findRegex'
   | 'removeNoteReferencesOnTrash'
   | 'noteMentionCopyRequiresConfirmation'
-  | 'deleteActiveAisleShortcutEnabled'
   | 'decoupledItemsKeepData'
   | 'trashDeleteForRealRequiresConfirmation'
   | 'toolbarEditorShowNames'
@@ -76,7 +75,6 @@ export function normalizeRegisteredSyncedUiSetting(
 ): NonNullable<AppState['ui']['findReplaceScope']>
 export function normalizeRegisteredSyncedUiSetting(key: 'removeNoteReferencesOnTrash', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(key: 'noteMentionCopyRequiresConfirmation', value: unknown): boolean
-export function normalizeRegisteredSyncedUiSetting(key: 'deleteActiveAisleShortcutEnabled', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(
   key: 'scratchpadNewAisleSide',
   value: unknown,
@@ -102,6 +100,10 @@ export function normalizeRegisteredSyncedUiSetting(
   key: 'tableOfContentsScope',
   value: unknown,
 ): NonNullable<AppState['ui']['tableOfContentsScope']>
+export function normalizeRegisteredSyncedUiSetting(
+  key: 'tabColorIndicatorPlacement',
+  value: unknown,
+): NonNullable<AppState['ui']['tabColorIndicatorPlacement']>
 export function normalizeRegisteredSyncedUiSetting(key: 'toolbarEditorShowNames', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(key: SimpleSyncedUiSettingKey, value: unknown): unknown
 

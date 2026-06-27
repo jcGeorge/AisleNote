@@ -1,4 +1,4 @@
-export const EDITOR_ABLATION_LOCAL_STORAGE_KEY = 'tabs.editorAblationMode'
+export const EDITOR_ABLATION_LOCAL_STORAGE_KEY = 'aislenote.editorAblationMode'
 
 export const EDITOR_ABLATION_MODES = [
   'off',

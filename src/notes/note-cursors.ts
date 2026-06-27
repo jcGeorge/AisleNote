@@ -3,7 +3,7 @@ import type { NoteCursorEndpoint, NoteCursorLocation, NoteCursorSelection, NoteL
 export const MAX_NOTE_CURSOR_LOCATIONS = 500
 
 export function buildNoteCursorLocationKey(location: NoteLocation): string {
-  return [location.domainId, location.spaceId, location.tabId, location.subTabId ?? '__home__'].join('::')
+  return location.noteId
 }
 
 function normalizeTimestamp(value: unknown): number {

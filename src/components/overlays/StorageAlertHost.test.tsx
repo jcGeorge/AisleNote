@@ -1,3 +1,4 @@
+import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { StorageAlertHost } from './StorageAlertHost'
@@ -37,9 +38,9 @@ describe('StorageAlertHost', () => {
         alerts={[
           {
             signature: 'recovery-1',
-            label: 'local notebook started',
-            message: 'Tabs started a local notebook because the connected notebook could not be loaded.',
-            actionLabel: 'open previous notebook folder',
+            label: 'vault recovered',
+            message: 'AisleNote reset the vault because the folder could not be loaded.',
+            actionLabel: 'open previous vault folder',
           },
         ]}
         onDismissAlert={vi.fn()}
@@ -47,8 +48,8 @@ describe('StorageAlertHost', () => {
       />,
     )
 
-    expect(html).toContain('local notebook started')
-    expect(html).toContain('open previous notebook folder')
+    expect(html).toContain('vault recovered')
+    expect(html).toContain('open previous vault folder')
     expect(html).not.toContain('app-storage-alert-detail')
     expect(html).not.toContain('The previous folder was left untouched')
   })

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import * as React from 'react'
 import type {
   DiagnosticLogDisplayLimit,
   DiagnosticLogEntry,
@@ -41,7 +41,7 @@ type MessagesViewProps = {
   onDiagnosticCaptureEnabledChange?: (enabled: boolean) => void
   onOpenDiagnosticsFolder?: () => void
   onDismissMessage: (messageId: string) => void
-  onOpenRecoveredNotebookLocation: (message: AppMessage) => void
+  onOpenRecoveredVaultLocation?: (message: AppMessage) => void
   onOpenLocation: (location: NoteLocation) => void
 }
 
@@ -98,11 +98,11 @@ function filterActionableDiagnosticEntries(entries: DiagnosticLogEntry[]) {
 }
 
 function getRecoveryFolderActionLabel(message: AppMessage) {
-  const localNotebookWasTheFailedFolder =
+  const localVaultWasTheFailedFolder =
     message.recoveryMode === 'reset-default' &&
-    (message.activeNotebookPath === undefined ||
-      (message.failedNotebookPath !== undefined && message.failedNotebookPath === message.activeNotebookPath))
-  return localNotebookWasTheFailedFolder ? 'open local notebook folder' : 'open previous notebook folder'
+    (message.activeVaultPath === undefined ||
+      (message.failedVaultPath !== undefined && message.failedVaultPath === message.activeVaultPath))
+  return localVaultWasTheFailedFolder ? 'open vault folder' : 'open previous vault folder'
 }
 
 const EDITOR_ABLATION_MODE_DESCRIPTIONS: Record<EditorAblationMode, string> = {
@@ -117,8 +117,8 @@ const EDITOR_ABLATION_MODE_DESCRIPTIONS: Record<EditorAblationMode, string> = {
 
 function EditorDevMessagesSection() {
   const editorAblationEnabled = isEditorAblationEnabled()
-  const [mode, setMode] = useState<EditorAblationMode>(() => readEditorAblationMode())
-  const [status, setStatus] = useState('')
+  const [mode, setMode] = React.useState<EditorAblationMode>(() => readEditorAblationMode())
+  const [status, setStatus] = React.useState('')
 
   if (!editorAblationEnabled) {
     return (
@@ -154,7 +154,7 @@ function EditorDevMessagesSection() {
           <div>
             <h3>editor diagnostics</h3>
             <p>
-              These modes isolate the production editor path without changing notebook files. Select a mode, reload,
+              These modes isolate the production editor path without changing vault files. Select a mode, reload,
               then reproduce the slow aisle.
             </p>
           </div>
@@ -206,7 +206,7 @@ export function MessagesView({
   onDiagnosticCaptureEnabledChange = () => undefined,
   onOpenDiagnosticsFolder,
   onDismissMessage,
-  onOpenRecoveredNotebookLocation,
+  onOpenRecoveredVaultLocation,
   onOpenLocation,
 }: MessagesViewProps) {
   const visibleMessages = messages.filter((message) => message.status !== 'dismissed')
@@ -421,10 +421,10 @@ export function MessagesView({
                     <code>{message.anchorPath}</code>
                   </p>
                 ) : null}
-                {message.failedNotebookPath ? (
+                {message.failedVaultPath ? (
                   <p className="message-path">
-                    <span>failed notebook folder</span>
-                    <code>{message.failedNotebookPath}</code>
+                    <span>failed vault folder</span>
+                    <code>{message.failedVaultPath}</code>
                   </p>
                 ) : null}
                 {(message.decoupledPaths ?? []).length > 0 ? (
@@ -443,14 +443,15 @@ export function MessagesView({
                     ))}
                   </div>
                 ) : null}
-                {message.type === 'storage-notebook-recovered' &&
-                message.failedNotebookPath &&
-                message.failedNotebookAvailable !== false ? (
+                {onOpenRecoveredVaultLocation &&
+                message.type === 'storage-vault-recovered' &&
+                message.failedVaultPath &&
+                message.failedVaultAvailable !== false ? (
                   <div className="message-actions">
                     <button
                       type="button"
                       className="btn btn-sm settings-action-btn"
-                      onClick={() => onOpenRecoveredNotebookLocation(message)}
+                      onClick={() => onOpenRecoveredVaultLocation(message)}
                     >
                       {getRecoveryFolderActionLabel(message)}
                     </button>

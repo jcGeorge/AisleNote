@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import type { ReactNode } from 'react'
+import * as React from 'react'
 import type { ToolbarToolId } from '../../types/app'
 import type { GeneralIconId } from '../../icons/app-icons'
 import { AppIcon } from '../icons/AppIcon'
@@ -8,7 +8,7 @@ export type ToolbarIconDefinition =
   | {
       type: 'svg'
       viewBox?: string
-      content: ReactNode
+      content: React.ReactNode
     }
   | {
       type: 'appIcon'
@@ -17,7 +17,7 @@ export type ToolbarIconDefinition =
   | {
       type: 'text'
       className?: string
-      content: ReactNode
+      content: React.ReactNode
     }
 
 const PRIMARY_STROKE_CLASS = 'toolbar-tool-icon-primary-stroke'
@@ -40,7 +40,7 @@ function primaryStroke(className?: string): string {
   return joinClassNames(PRIMARY_STROKE_CLASS, className)
 }
 
-function svgIcon(content: ReactNode, viewBox?: string): ToolbarIconDefinition {
+function svgIcon(content: React.ReactNode, viewBox?: string): ToolbarIconDefinition {
   return { type: 'svg', viewBox, content }
 }
 
@@ -48,7 +48,7 @@ function appIcon(iconId: GeneralIconId): ToolbarIconDefinition {
   return { type: 'appIcon', iconId }
 }
 
-function textIcon(content: ReactNode, className?: string): ToolbarIconDefinition {
+function textIcon(content: React.ReactNode, className?: string): ToolbarIconDefinition {
   return { type: 'text', className, content }
 }
 

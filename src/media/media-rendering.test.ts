@@ -7,57 +7,43 @@ import {
 } from './media-rendering'
 import type { MediaTransformMetadata } from './media-metadata'
 
-type LegacyMediaMetadata = MediaTransformMetadata & {
-  crop?: { x: number; y: number; w: number; h: number }
-  ratio?: string
-}
-
 describe('media rendering metadata', () => {
-  it('marks players with simple transform metadata classes and ignores legacy crop metadata', () => {
-    const legacyMetadata: LegacyMediaMetadata = {
+  it('marks players with simple transform metadata classes', () => {
+    const metadata: MediaTransformMetadata = {
       v: 1,
       w: 480,
       r: 90,
-      crop: { x: 0.1, y: 0.2, w: 0.5, h: 0.4 },
     }
-    const className = getMediaPlayerClassName('video', legacyMetadata)
+    const className = getMediaPlayerClassName('video', metadata)
 
     expect(className).toContain('has-media-width')
     expect(className).toContain('has-media-transform')
-    expect(className).not.toContain('has-media-crop')
   })
 
   it('computes viewport aspect ratios from natural video ratio and rotation only', () => {
-    const legacyCropMetadata: LegacyMediaMetadata = {
+    const metadata: MediaTransformMetadata = {
       v: 1,
-      crop: { x: 0.1, y: 0.2, w: 0.5, h: 0.5 },
     }
-    const legacyRotatedCropMetadata: LegacyMediaMetadata = {
+    const rotatedMetadata: MediaTransformMetadata = {
       v: 1,
       r: 90,
-      crop: { x: 0.1, y: 0.2, w: 0.5, h: 0.5 },
     }
 
     expect(
       getMediaViewportAspectRatio(
-        legacyCropMetadata,
+        metadata,
         16 / 9,
       ),
     ).toBeCloseTo(16 / 9)
     expect(
       getMediaViewportAspectRatio(
-        legacyRotatedCropMetadata,
+        rotatedMetadata,
         16 / 9,
       ),
     ).toBeCloseTo(9 / 16)
   })
 
-  it('creates transform styles for video display and ignores legacy crop styles', () => {
-    const legacyCropMetadata: LegacyMediaMetadata = {
-      v: 1,
-      crop: { x: 0.25, y: 0.1, w: 0.5, h: 0.25 },
-    }
-
+  it('creates transform styles for video display', () => {
     expect(getMediaFrameStyle({ v: 1, r: 180, fh: true })).toEqual({
       transform: 'rotate(180deg) scaleX(-1)',
       transformOrigin: 'center center',
@@ -69,6 +55,6 @@ describe('media rendering metadata', () => {
       left: '50%',
       transform: 'translate(-50%, -50%) rotate(90deg)',
     })
-    expect(getMediaVideoStyle(legacyCropMetadata)).toEqual({})
+    expect(getMediaVideoStyle({ v: 1 })).toEqual({})
   })
 })

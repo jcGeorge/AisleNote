@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   ANNOTATION_LINE_CLASS_NAME,
@@ -18,7 +19,14 @@ import {
 } from './annotation-line'
 import { isHorizontalRuleMarkerLine } from '../markdown/markdown-utils'
 
+const editorContentCss = readFileSync(new URL('../styles/editor-content.css', import.meta.url), 'utf8')
+
 describe('annotation line detection', () => {
+  it('keeps annotation line paragraph text on the normal editor text color', () => {
+    expect(editorContentCss).toContain('color: var(--editor-text) !important;')
+    expect(editorContentCss).not.toContain('color: var(--editor-annotation-text) !important;')
+  })
+
   it('matches double dash annotation paragraphs', () => {
     expect(parseAnnotationLine('-- text')).toMatchObject({
       indent: '',

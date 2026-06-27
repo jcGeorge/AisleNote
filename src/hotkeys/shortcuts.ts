@@ -1,20 +1,20 @@
 import type { AppState, NewlineOperationId, NewlineShortcutId, ShortcutId } from '../types/app'
 
 export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
+  openSettings: 'Mod+,',
   toggleNotesTrash: 'Mod+T',
-  toggleNotesScratchpad: 'Mod+/',
+  toggleNotesScratchpad: 'Mod+S',
   toggleNotesFilter: '',
-  openDomains: 'Mod+D',
-  openSpaces: 'Mod+S',
-  newTab: 'Mod+Shift+N',
-  newSubTab: 'Mod+N',
+  newNote: 'Mod+N',
+  newFolder: 'Mod+Shift+N',
+  closeCurrentNote: 'Mod+W',
+  cyclePinnedNoteTabNext: 'Ctrl+Tab',
+  cyclePinnedNoteTabPrev: 'Ctrl+Shift+Tab',
+  reopenClosedNoteTab: 'Mod+Shift+T',
   formatStrikethrough: '',
-  cycleParentTabNext: '',
-  cycleParentTabPrev: '',
-  cycleSubTabNext: 'Ctrl+Tab',
-  cycleSubTabPrev: 'Ctrl+Shift+Tab',
-  cycleAislePrev: 'Alt+[',
-  cycleAisleNext: 'Alt+]',
+  formatHighlight: 'Mod+Shift+H',
+  cycleAislePrev: 'Mod+Alt+ArrowLeft',
+  cycleAisleNext: 'Mod+Alt+ArrowRight',
 }
 
 export const NEWLINE_OPERATIONS: Array<{ id: NewlineOperationId; label: string }> = [
@@ -31,6 +31,7 @@ export const NEWLINE_OPERATIONS: Array<{ id: NewlineOperationId; label: string }
   { id: 'blockQuote', label: 'block quote' },
   { id: 'blockIndent', label: 'block indent' },
   { id: 'strikethrough', label: 'strikethrough' },
+  { id: 'tableOfContents', label: 'table of contents' },
   { id: 'operationsMenu', label: 'shortcut menu' },
 ]
 
@@ -55,6 +56,7 @@ export const SHORTCUT_MENU_ELIGIBLE_OPERATIONS: NewlineOperationId[] = [
   'blockQuote',
   'blockIndent',
   'strikethrough',
+  'tableOfContents',
 ]
 
 const DEFAULT_SHORTCUT_MENU_OPERATIONS: NewlineOperationId[] = [
@@ -79,6 +81,18 @@ export const DEFAULT_NEWLINE_SHORTCUT_SETTINGS: AppState['hotkeys']['newlineShor
 
 const NEWLINE_OPERATION_IDS = new Set<NewlineOperationId>(NEWLINE_OPERATIONS.map((operation) => operation.id))
 const SHORTCUT_MENU_ELIGIBLE_OPERATION_IDS = new Set<NewlineOperationId>(SHORTCUT_MENU_ELIGIBLE_OPERATIONS)
+const LEGACY_AISLE_SHORTCUTS: Partial<Record<ShortcutId, Set<string>>> = {
+  cycleAislePrev: new Set(['alt+[', 'mod+ctrl+arrowleft']),
+  cycleAisleNext: new Set(['alt+]', 'mod+ctrl+arrowright']),
+}
+
+function normalizeShortcutSignature(value: string): string {
+  return value
+    .split('+')
+    .map((token) => token.trim().toLowerCase())
+    .filter((token) => token.length > 0)
+    .join('+')
+}
 
 function normalizeShortcutValue(raw: unknown, fallback: string): string {
   if (typeof raw !== 'string') return fallback
@@ -86,10 +100,15 @@ function normalizeShortcutValue(raw: unknown, fallback: string): string {
   return trimmed.length > 0 ? trimmed : fallback
 }
 
+function normalizeCommandShortcutValue(raw: unknown, fallback: string, shortcutId: ShortcutId): string {
+  const shortcut = normalizeShortcutValue(raw, fallback)
+  const shortcutSignature = normalizeShortcutSignature(shortcut)
+  return shortcutSignature === normalizeShortcutSignature(fallback) || LEGACY_AISLE_SHORTCUTS[shortcutId]?.has(shortcutSignature)
+    ? fallback
+    : shortcut
+}
+
 function getRawShortcutValue(rawShortcuts: Record<string, unknown>, shortcutId: ShortcutId): unknown {
-  if (shortcutId === 'toggleNotesTrash') {
-    return rawShortcuts.toggleNotesTrash ?? rawShortcuts.toggleTabsTarget
-  }
   return rawShortcuts[shortcutId]
 }
 
@@ -104,7 +123,7 @@ export function normalizeHotkeySettings(raw: unknown): AppState['hotkeys'] {
 
   const shortcuts = Object.entries(DEFAULT_SHORTCUTS).reduce<Record<ShortcutId, string>>((acc, [key, value]) => {
     const shortcutKey = key as ShortcutId
-    acc[shortcutKey] = normalizeShortcutValue(getRawShortcutValue(rawShortcuts, shortcutKey), value)
+    acc[shortcutKey] = normalizeCommandShortcutValue(getRawShortcutValue(rawShortcuts, shortcutKey), value, shortcutKey)
     return acc
   }, {} as Record<ShortcutId, string>)
 
@@ -169,6 +188,8 @@ function getEventKeyToken(event: KeyboardEvent): string | null {
   if (event.code === 'Backquote') return 'Backquote'
   if (event.code === 'BracketLeft') return '['
   if (event.code === 'BracketRight') return ']'
+  if (event.key === 'ArrowLeft' || event.code === 'ArrowLeft') return 'ArrowLeft'
+  if (event.key === 'ArrowRight' || event.code === 'ArrowRight') return 'ArrowRight'
   if (event.key === 'Tab') return 'Tab'
   if (event.key.length === 1) return event.key.toUpperCase()
   return null

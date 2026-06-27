@@ -3,6 +3,9 @@ export type HorizontalPaneScrollGeometry = {
   viewportWidth: number
   paneLeft: number
   paneRight: number
+  scrollWidth?: number
+  alignmentMargin?: number
+  alignWhenVisible?: boolean
 }
 
 const DEFAULT_SCROLLBAR_MIN_THUMB_WIDTH = 48
@@ -53,6 +56,34 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
+function getMaxScrollLeft(scrollWidth: number | undefined, viewportWidth: number) {
+  return typeof scrollWidth === 'number' && Number.isFinite(scrollWidth)
+    ? Math.max(0, scrollWidth - viewportWidth)
+    : Number.POSITIVE_INFINITY
+}
+
+function parseCssLength(value: string) {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function getScrollNodeInlineStartAlignmentMargin(scrollNode: HTMLElement) {
+  const view = scrollNode.ownerDocument?.defaultView
+  if (!view?.getComputedStyle) return 0
+  const style = view.getComputedStyle(scrollNode)
+  const scrollPadding =
+    parseCssLength(style.getPropertyValue('scroll-padding-inline-start')) ??
+    parseCssLength(style.getPropertyValue('scroll-padding-left'))
+  if (scrollPadding !== null) return Math.max(0, scrollPadding)
+
+  return Math.max(
+    0,
+    parseCssLength(style.getPropertyValue('padding-inline-start')) ??
+      parseCssLength(style.getPropertyValue('padding-left')) ??
+      0,
+  )
+}
+
 export function getHorizontalDragAutoScrollDelta({
   pointerX,
   containerLeft,
@@ -91,17 +122,41 @@ export function getScrollLeftToRevealHorizontalPane({
   viewportWidth,
   paneLeft,
   paneRight,
+  scrollWidth,
+  alignmentMargin = 0,
+  alignWhenVisible = false,
 }: HorizontalPaneScrollGeometry) {
   if (viewportWidth <= 0) return Math.max(0, currentScrollLeft)
 
-  const visibleLeft = currentScrollLeft
-  const visibleRight = currentScrollLeft + viewportWidth
-  if (paneLeft >= visibleLeft && paneRight <= visibleRight) return Math.max(0, currentScrollLeft)
-  if (paneLeft < visibleLeft) return Math.max(0, paneLeft)
+  const safeCurrentScrollLeft = Math.max(0, currentScrollLeft)
+  const maxScrollLeft = getMaxScrollLeft(scrollWidth, viewportWidth)
+  const toScrollLeft = (value: number) => clamp(value, 0, maxScrollLeft)
+  const safeAlignmentMargin = Math.max(0, alignmentMargin)
+  const visibleLeft = safeCurrentScrollLeft
+  const visibleRight = safeCurrentScrollLeft + viewportWidth
+  const paddedPaneLeft = paneLeft - safeAlignmentMargin
+  const paddedPaneRight = paneRight + safeAlignmentMargin
 
   const paneWidth = Math.max(0, paneRight - paneLeft)
-  const nextScrollLeft = paneWidth > viewportWidth ? paneLeft : paneRight - viewportWidth
-  return Math.max(0, nextScrollLeft)
+  if (paneWidth + safeAlignmentMargin * 2 > viewportWidth) {
+    if (paneLeft < visibleLeft || paneRight > visibleRight) return toScrollLeft(paneLeft - safeAlignmentMargin)
+    return toScrollLeft(safeCurrentScrollLeft)
+  }
+
+  if (paddedPaneLeft < visibleLeft) return toScrollLeft(paddedPaneLeft)
+  if (paddedPaneRight > visibleRight) return toScrollLeft(paddedPaneRight - viewportWidth)
+
+  if (alignWhenVisible && safeAlignmentMargin > 0) {
+    const paneCenter = paneLeft + paneWidth / 2
+    const viewportCenter = visibleLeft + viewportWidth / 2
+    return toScrollLeft(
+      paneCenter <= viewportCenter
+        ? paddedPaneLeft
+        : paddedPaneRight - viewportWidth,
+    )
+  }
+
+  return toScrollLeft(safeCurrentScrollLeft)
 }
 
 export function getAisleHorizontalScrollbarGeometry({
@@ -170,10 +225,17 @@ export function getScrollLeftForAisleHorizontalScrollbarPointer({
   })
 }
 
-export function scrollAislePaneIntoHorizontalView(scrollNode: HTMLElement, aisleId: string) {
-  const pane = Array.from(scrollNode.querySelectorAll<HTMLElement>('[data-aisle-id]')).find(
-    (candidate) => candidate.dataset.aisleId === aisleId,
-  )
+export function scrollAislePaneIntoHorizontalView(
+  scrollNode: HTMLElement,
+  aisleId: string,
+  options: { alignmentMargin?: number; alignWhenVisible?: boolean } = {},
+) {
+  let pane: HTMLElement | null = null
+  for (const candidate of scrollNode.querySelectorAll<HTMLElement>('[data-aisle-id]')) {
+    if (candidate.dataset.aisleId !== aisleId) continue
+    pane = candidate
+    break
+  }
   if (!pane) return false
 
   const scrollRect = scrollNode.getBoundingClientRect()
@@ -185,11 +247,15 @@ export function scrollAislePaneIntoHorizontalView(scrollNode: HTMLElement, aisle
   }
 
   const paneLeft = scrollNode.scrollLeft + paneRect.left - scrollRect.left
+  const alignmentMargin = options.alignmentMargin ?? getScrollNodeInlineStartAlignmentMargin(scrollNode)
   const nextScrollLeft = getScrollLeftToRevealHorizontalPane({
     currentScrollLeft: scrollNode.scrollLeft,
     viewportWidth: scrollNode.clientWidth,
+    scrollWidth: scrollNode.scrollWidth,
     paneLeft,
     paneRight: paneLeft + paneWidth,
+    alignmentMargin,
+    alignWhenVisible: options.alignWhenVisible ?? alignmentMargin > 0,
   })
 
   if (Math.abs(nextScrollLeft - scrollNode.scrollLeft) > 0.5) {

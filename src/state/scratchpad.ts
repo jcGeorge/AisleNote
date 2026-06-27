@@ -1,25 +1,16 @@
 import { normalizeMarkdownForPersistence } from '../markdown/markdown-utils'
 import { extractMarkdownTags } from '../tags/tags.js'
 import {
-  getAisleBodyId,
   resolveNoteBody,
   syncNoteBodyAislesInState,
   syncNoteBodyAisleStructureInState,
 } from '../notes/aisle-body-state'
+import { getAisleBodyId } from '../notes/note-markdown'
 import type { AppState, NoteAisle, NoteAisleBody, NoteBody, ResolvedNoteAisle, ScratchpadState } from '../types/app'
-import { createId, createNoteBodyContent, createTimestamp } from './workspace'
+import { createId, createNoteBodyContent, createTimestamp } from '../notes/note-content'
 
 export const SCRATCHPAD_CURSOR_LOCATION_KEY = 'scratchpad'
-export const SCRATCHPAD_CONTENT_TARGET_ID = '__tabs_scratchpad__'
-export const DEFAULT_SCRATCHPAD_AISLE_LIMIT = 16
-export const MIN_SCRATCHPAD_AISLE_LIMIT = 8
-export const MAX_SCRATCHPAD_AISLE_LIMIT = 40
-
-export function clampScratchpadAisleLimit(value: unknown): number {
-  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10)
-  if (!Number.isFinite(parsed)) return DEFAULT_SCRATCHPAD_AISLE_LIMIT
-  return Math.min(MAX_SCRATCHPAD_AISLE_LIMIT, Math.max(MIN_SCRATCHPAD_AISLE_LIMIT, Math.floor(parsed)))
-}
+export const SCRATCHPAD_CONTENT_TARGET_ID = '__aislenote_scratchpad__'
 
 export function createScratchpadState(noteBodyId = createId()): ScratchpadState {
   return { noteBodyId }

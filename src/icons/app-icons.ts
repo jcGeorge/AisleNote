@@ -8,14 +8,30 @@ export const GENERAL_ICON_IDS = [
   'flipY',
   'minimize',
   'maximize',
+  'settings',
+  'filePlus',
+  'folderPlus',
+  'ellipsisVertical',
+  'search',
   'filter',
+  'replace',
+  'replaceAll',
+  'x',
+  'minus',
   'plus',
+  'trash',
+  'lock',
+  'gripVertical',
+  'folder',
+  'folderOpen',
   'cornerRightDown',
   'cornerRightUp',
   'cornerLeftDown',
   'cornerLeftUp',
   'arrowLeft',
   'arrowRight',
+  'arrowLeftFromLine',
+  'arrowRightFromLine',
 ] as const
 
 export type GeneralIconId = (typeof GENERAL_ICON_IDS)[number]
@@ -89,6 +105,40 @@ export const APP_ICON_DEFINITIONS = {
   maximize: {
     shapes: [{ tag: 'path', d: 'm6 9 6 6 6-6' }],
   },
+  settings: {
+    shapes: [
+      { tag: 'path', d: 'M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915' },
+      { tag: 'circle', cx: '12', cy: '12', r: '3' },
+    ],
+  },
+  filePlus: {
+    shapes: [
+      { tag: 'path', d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z' },
+      { tag: 'path', d: 'M14 2v5a1 1 0 0 0 1 1h5' },
+      { tag: 'path', d: 'M9 15h6' },
+      { tag: 'path', d: 'M12 18v-6' },
+    ],
+  },
+  folderPlus: {
+    shapes: [
+      { tag: 'path', d: 'M12 10v6' },
+      { tag: 'path', d: 'M9 13h6' },
+      { tag: 'path', d: 'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z' },
+    ],
+  },
+  ellipsisVertical: {
+    shapes: [
+      { tag: 'circle', cx: '12', cy: '12', r: '1' },
+      { tag: 'circle', cx: '12', cy: '5', r: '1' },
+      { tag: 'circle', cx: '12', cy: '19', r: '1' },
+    ],
+  },
+  search: {
+    shapes: [
+      { tag: 'path', d: 'm21 21-4.34-4.34' },
+      { tag: 'circle', cx: '11', cy: '11', r: '8' },
+    ],
+  },
   filter: {
     shapes: [
       { tag: 'path', d: 'm3 16 4 4 4-4' },
@@ -98,11 +148,74 @@ export const APP_ICON_DEFINITIONS = {
       { tag: 'path', d: 'M11 12h4' },
     ],
   },
+  replace: {
+    shapes: [
+      { tag: 'path', d: 'M14 4a1 1 0 0 1 1-1' },
+      { tag: 'path', d: 'M15 10a1 1 0 0 1-1-1' },
+      { tag: 'path', d: 'M21 4a1 1 0 0 0-1-1' },
+      { tag: 'path', d: 'M21 9a1 1 0 0 1-1 1' },
+      { tag: 'path', d: 'm3 7 3 3 3-3' },
+      { tag: 'path', d: 'M6 10V5a2 2 0 0 1 2-2h2' },
+      { tag: 'rect', x: '3', y: '14', width: '7', height: '7', rx: '1' },
+    ],
+  },
+  replaceAll: {
+    shapes: [
+      { tag: 'path', d: 'M14 14a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1' },
+      { tag: 'path', d: 'M14 4a1 1 0 0 1 1-1' },
+      { tag: 'path', d: 'M15 10a1 1 0 0 1-1-1' },
+      { tag: 'path', d: 'M19 14a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1' },
+      { tag: 'path', d: 'M21 4a1 1 0 0 0-1-1' },
+      { tag: 'path', d: 'M21 9a1 1 0 0 1-1 1' },
+      { tag: 'path', d: 'm3 7 3 3 3-3' },
+      { tag: 'path', d: 'M6 10V5a2 2 0 0 1 2-2h2' },
+      { tag: 'rect', x: '3', y: '14', width: '7', height: '7', rx: '1' },
+    ],
+  },
+  x: {
+    shapes: [
+      { tag: 'path', d: 'M18 6 6 18' },
+      { tag: 'path', d: 'm6 6 12 12' },
+    ],
+  },
+  minus: {
+    shapes: [{ tag: 'path', d: 'M5 12h14' }],
+  },
   plus: {
     shapes: [
       { tag: 'path', d: 'M5 12h14' },
       { tag: 'path', d: 'M12 5v14' },
     ],
+  },
+  trash: {
+    shapes: [
+      { tag: 'path', d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6' },
+      { tag: 'path', d: 'M3 6h18' },
+      { tag: 'path', d: 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' },
+    ],
+  },
+  lock: {
+    shapes: [
+      { tag: 'circle', cx: '12', cy: '16', r: '1' },
+      { tag: 'rect', x: '3', y: '10', width: '18', height: '12', rx: '2' },
+      { tag: 'path', d: 'M7 10V7a5 5 0 0 1 10 0v3' },
+    ],
+  },
+  gripVertical: {
+    shapes: [
+      { tag: 'circle', cx: '9', cy: '5', r: '1' },
+      { tag: 'circle', cx: '15', cy: '5', r: '1' },
+      { tag: 'circle', cx: '9', cy: '12', r: '1' },
+      { tag: 'circle', cx: '15', cy: '12', r: '1' },
+      { tag: 'circle', cx: '9', cy: '19', r: '1' },
+      { tag: 'circle', cx: '15', cy: '19', r: '1' },
+    ],
+  },
+  folder: {
+    shapes: [{ tag: 'path', d: 'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z' }],
+  },
+  folderOpen: {
+    shapes: [{ tag: 'path', d: 'm6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2' }],
   },
   cornerRightDown: {
     shapes: [
@@ -138,6 +251,20 @@ export const APP_ICON_DEFINITIONS = {
     shapes: [
       { tag: 'path', d: 'M18 8L22 12L18 16' },
       { tag: 'path', d: 'M2 12H22' },
+    ],
+  },
+  arrowLeftFromLine: {
+    shapes: [
+      { tag: 'path', d: 'm9 6-6 6 6 6' },
+      { tag: 'path', d: 'M3 12h14' },
+      { tag: 'path', d: 'M21 19V5' },
+    ],
+  },
+  arrowRightFromLine: {
+    shapes: [
+      { tag: 'path', d: 'M3 5v14' },
+      { tag: 'path', d: 'M21 12H7' },
+      { tag: 'path', d: 'm15 18 6-6-6-6' },
     ],
   },
 } satisfies Record<GeneralIconId, AppIconDefinition>

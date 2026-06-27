@@ -17,14 +17,14 @@ export type MediaKeyboardActionInput = {
 }
 
 export const MEDIA_SEEK_STEP_SECONDS = 10
-export const MEDIA_PLAYER_CLASS_NAME = 'tabs-media-player'
+export const MEDIA_PLAYER_CLASS_NAME = 'aislenote-media-player'
 export const MEDIA_PLAYER_SELECTOR = `.${MEDIA_PLAYER_CLASS_NAME}`
 export const MEDIA_PLAYBACK_ERROR_TEXT = 'Could not play media.'
 export const MEDIA_LOAD_ERROR_TEXT = 'Could not load media.'
 
 const AUDIO_EXTENSIONS = new Set(['aac', 'flac', 'm4a', 'mp3', 'oga', 'ogg', 'opus', 'wav', 'weba'])
 const VIDEO_EXTENSIONS = new Set(['m4v', 'mov', 'mp4', 'ogv', 'webm'])
-const MEDIA_URL_HINT_RE = /(?:^data:(?:audio|video)\/|^tabs-asset:|#tabs-media=|\.(?:aac|flac|m4a|mp3|oga|ogg|opus|wav|weba|m4v|mov|mp4|ogv|webm)(?:[?#]|$))/i
+const MEDIA_URL_HINT_RE = /(?:^data:(?:audio|video)\/|^aislenote-asset:|#aislenote-media=|\.(?:aac|flac|m4a|mp3|oga|ogg|opus|wav|weba|m4v|mov|mp4|ogv|webm)(?:[?#]|$))/i
 
 export function getMediaKindFromMimeType(mimeType: string): MediaKind | null {
   const normalized = mimeType.trim().toLowerCase()
@@ -42,7 +42,7 @@ export function getMediaKindFromFile(file: MediaFileLike): MediaKind | null {
 export function isPotentialMediaUrl(url: string): boolean {
   const source = String(url ?? '').trim()
   if (!source) return false
-  if (/^tabs-asset:/i.test(source)) return true
+  if (/^aislenote-asset:/i.test(source)) return true
   return MEDIA_URL_HINT_RE.test(source)
 }
 
@@ -53,7 +53,7 @@ function getExtensionFromUrl(value: string): string {
   if (source.startsWith('data:')) return ''
 
   try {
-    const parsed = new URL(source, 'https://tabs.local')
+    const parsed = new URL(source, 'https://aislenote.local')
     const segment = decodeURIComponent(parsed.pathname.split('/').pop() ?? '')
     return segment.match(/\.([a-zA-Z0-9]+)$/)?.[1]?.toLowerCase() ?? ''
   } catch {

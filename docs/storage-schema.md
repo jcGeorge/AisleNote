@@ -1,59 +1,40 @@
 # Storage Schema
 
-This document describes the current schema 1 on-disk storage format for the app.
+This document describes the current desktop on-disk vault format.
 
-The current notebook source of truth is the named notebook folder itself. It contains a tiny root manifest, root-level notebook registries, domain manifests, space manifests, Markdown note files, and asset files. In Electron, active user settings live outside the selected notebook folder at `<electron-user-data>/settings/app-settings.json` and are transferred only through explicit user-settings import/export. A future `topics/` layer may be introduced later, but it is not part of the active schema 1 layout.
+The vault source of truth is the named vault folder. It contains a root manifest, visible Markdown note files, imported/editor assets, and `.aislenote/` metadata files that preserve app structure and editor state. Electron user settings live outside the selected vault folder at `<electron-user-data>/settings/app-settings.json` and move only through explicit user-settings import/export.
 
 The design goals are:
 
-- keep note bodies in Markdown files
-- keep app structure and metadata in manifest JSON files
-- use stable IDs as the source of truth
+- keep note body content in Markdown files where possible
+- keep app structure and metadata in JSON files
+- use stable IDs as durable identity
 - allow duplicate visible names without collisions
-- work well with desktop filesystem sync and browser virtual-file storage
-- degrade safely when non-root branches are missing or corrupt
+- work with desktop filesystem sync
+- degrade safely when optional metadata is missing
 
 ## Root Layout
 
 ```text
-<notebook-folder>/
+<vault-folder>/
   manifest.json
-  workspace-index.json
-  navigation-state.json
-  frontmatter-settings.json
-  editor-state.json
-  messages.json
-  deleted-workspace.json
-  note-registry.json
-  domains/
-    <domain-title>--<id-hash>/
-      manifest.json
-      <space-title>--<id-hash>/
-        manifest.json
-        <parent-tab-title>--<id-hash>/
-          home.md
-          home/
-            aisle 1--<id-hash>.md
-            aisle 2--<id-hash>.md
-          <sub-tab-title>--<id-hash>.md
-          <sub-tab-title>--<id-hash>/
-            aisle 1--<id-hash>.md
-            aisle 2--<id-hash>.md
-        trash/
-          manifest.json
-          <deleted-title>--<id-hash>/
-            home.md
-            <nested-sub-tab-title>--<id-hash>.md
-          <deleted-sub-tab-title>--<id-hash>.md
-    ...
-  _internal/
-    orphan-bodies/
-      <orphan-title>--<id-hash>.md
-      <orphan-title>--<id-hash>/
-        aisle 1--<id-hash>.md
-        aisle 2--<id-hash>.md
+  <root-note-title>--<id-hash>.md
+  <folder-title>--<id-hash>/
+    <note-title>--<id-hash>.md
+    <multi-aisle-note-title>--<id-hash>/
+      aisle 1--<id-hash>.md
+      aisle 2--<id-hash>.md
   assets/
     asset-<content-hash>.<ext>
+  .aislenote/
+    vault-index.json
+    navigation-state.json
+    note-registry.json
+    trash-index.json
+    frontmatter-settings.json
+    editor-state.json
+    messages.json
+    sync-state.json
 
 <electron-user-data>/
   settings/
@@ -62,52 +43,41 @@ The design goals are:
 
 Readable path segments include a title plus an ID-derived hash. Stable IDs remain the durable identity; path names are for human readability and collision avoidance.
 
-For notes, a single aisle is stored as one Markdown file. A note folder is used only when that note currently has multiple aisles.
-
 ## Core Rules
 
 ### IDs
 
 Every durable object gets a stable opaque ID:
 
-- domain
-- space
-- parent tab
-- sub-tab
+- folder
+- note
 - note body
 - aisle
-- trash item
+- aisle body
+- deleted item
 - asset
 
-Visible titles are not required to be unique.
-
-Examples that are allowed:
-
-- two parent tabs named `Notes`
-- two sub-tabs named `Ideas` under the same parent
-- a parent tab and a sub-tab with the same title
+Visible titles are not required to be unique. Two notes can share the same title, and a folder and note can also share a title. The storage path hash disambiguates them.
 
 ### Names vs IDs
 
 - IDs are used for identity and references.
 - Titles are UI metadata and human-readable path hints.
-- Renaming a domain, space, tab, or sub-tab may change the generated readable path on the next save, but identity is still preserved by IDs.
+- Renaming a folder or note may change the generated readable path on the next save, but identity is still preserved by IDs.
 
 ### Note Bodies
 
 Note contents are stored in `.md` files.
 
-- parent tab home note with one aisle: `<space>/<parent-tab>/home.md`
-- parent tab home note with multiple aisles: `<space>/<parent-tab>/home/aisle N--<id-hash>.md`
-- sub-tab note with one aisle: `<space>/<parent-tab>/<sub-tab>--<id-hash>.md`
-- sub-tab note with multiple aisles: `<space>/<parent-tab>/<sub-tab>--<id-hash>/aisle N--<id-hash>.md`
-- unlinked note bodies use the same single-file or multi-aisle-folder rule under `_internal/orphan-bodies/`
+- A note with one aisle is stored as `<note-title>--<id-hash>.md`.
+- A note with multiple aisles is stored as a folder containing `aisle N--<id-hash>.md` files.
+- The folder tree in `.aislenote/vault-index.json` records the logical vault hierarchy and the visible file paths.
+- Shared aisle bodies can have multiple visible Markdown mirrors. On load, the newest changed mirror wins and is written back to every mirror on the next save.
+- Aisle bodies without a visible Markdown mirror, such as deleted or scratchpad-only content, are preserved in `.aislenote/note-registry.json`.
 
-User frontmatter values live inside the aisle Markdown file as a top YAML block. `note-registry.json` keeps note-body IDs, aisle slots, shared aisle-body IDs, file references, optional content hashes, derived tag caches, and internal `frontmatterMeta`, keyed by shared `aisleBodyId`. Unlinked preservation records are marked with `storageStatus: "unlinked"` and keep their Markdown under `_internal/orphan-bodies/`.
+User frontmatter values live inside the aisle Markdown file as a top YAML block. `note-registry.json` keeps note-body IDs, aisle slots, shared aisle-body IDs, content hashes, derived tag caches, and internal `frontmatterMeta`, keyed by `aisleBodyId`.
 
-Tags are authored as visible Obsidian-style hashtags in aisle Markdown, such as `#tag`, `#multi-word`, and `#nested/tag`. The app derives aisle tags from visible Markdown text and note tags from the union of that note's aisle tags. Hashtags inside inline code and fenced code blocks are ignored. If valid YAML frontmatter already contains `tags`, the loader migrates those tags into a visible hashtag line in the Markdown body and then treats YAML `tags` as a computed projection of the visible tags. Ordinary notes with only inline hashtags do not get forced YAML frontmatter.
-
-Linked note and aisle mirrors can produce more than one visible Markdown file for the same `aisleBodyId`. On load, schema 1 readers use stored `contentHash` values to detect closed-app edits to any mirror. If one unique changed content exists, that file becomes the shared body. If multiple unique changed contents exist, the newest locally modified content stays linked and the other changed mirrors are de-coupled into independent notes or aisles. `messages.json` stores durable user-facing records for those automatic de-couplings.
+Tags are authored as visible Obsidian-style hashtags in aisle Markdown, such as `#tag`, `#multi-word`, and `#nested/tag`. The app derives aisle tags from visible Markdown text and note tags from the union of that note's aisle tags. Hashtags inside inline code and fenced code blocks are ignored. If valid YAML frontmatter already contains `tags`, the loader imports those tags into a visible hashtag line in the Markdown body and then treats YAML `tags` as a computed projection of the visible tags.
 
 Example aisle file:
 
@@ -116,6 +86,7 @@ Example aisle file:
 status: ready
 created: 2024-01-01
 ---
+
 Markdown body text.
 ```
 
@@ -123,36 +94,23 @@ Markdown body text.
 
 Images and similar binary files are stored under `assets/`.
 
-Markdown references assets with relative paths. Runtime/editor layers may inline those files temporarily for rendering or editing, but saves write assets back out as normal files.
+Markdown references assets with `aislenote-asset:///assets/...` URLs inside the app. Runtime/editor layers may inline those files temporarily for rendering or editing, but saves keep the asset files on disk.
 
-Active asset cleanup uses the same save pass that writes Markdown. Each save rebuilds the expected file list from live notes, aisle bodies, unlinked note bodies, and trash/deleted content, then prunes files in the notebook root that are not in that expected set. Image resize changes only the persisted image metadata fragment and does not create a new image file. Image crop and transform operations can create immediate preview assets, but any unreferenced intermediate assets in the active `assets/` folder are removed by the next save/prune pass.
+Active asset cleanup uses the save pass that writes Markdown. Each save rebuilds the expected file list from live notes, aisle bodies, and preserved content, then prunes generated Markdown files that are no longer expected. The `assets/` folder is preserved by that Markdown prune pass.
 
-Video resize, rotate, flip, and crop operations are metadata-only. They keep the original asset file and store display metadata in a `#tabs-media=...` URL fragment on the Markdown link. Crop rectangles use normalized source coordinates, so no resized or transcoded video copy is created by default.
+Video resize, rotate, flip, and crop operations are metadata-only. They keep the original asset file and store display metadata in a `#aislenote-media=...` URL fragment on the Markdown link. Crop rectangles use normalized source coordinates, so no resized or transcoded video copy is created by default.
 
 Example:
 
 ```md
-![diagram](../../../../assets/asset-0123456789abcdef.png)
+![diagram](aislenote-asset:///assets/asset-0123456789abcdef.png)
 ```
 
 ### Trash
 
 Trash is modeled explicitly, not as a boolean field on active notes.
 
-Each space has a trash manifest:
-
-```text
-domains/<domain>/<space>/trash/manifest.json
-```
-
-The trash manifest tracks:
-
-- what was deleted
-- original parent/sub-tab IDs
-- deletion timestamp
-- Markdown file paths for deleted note content
-- nested sub-tabs for deleted parent tabs
-- source parent tab title for loose deleted sub-tabs
+`.aislenote/trash-index.json` tracks deleted vault items, their original parent folder/index, and deletion timestamps. Deleted note bodies and aisle bodies remain available through `.aislenote/note-registry.json`.
 
 ## Manifest Responsibilities
 
@@ -162,152 +120,110 @@ The trash manifest tracks:
 
 Stores:
 
-- `schemaVersion: 1`
-- `files`: a map of root split-file roles to sibling JSON file names
+- `schemaVersion: 2`
+- `vaultId`
+- `createdBy: "aislenote"`
+- `files`: paths to the `.aislenote/` split files
+- optional sync metadata
 
 Does not store:
 
-- app settings
-- deleted workspace data
+- user settings
+- deleted item content
 - note-body or aisle-body registries
 - Markdown body text
 - user frontmatter values
 - binary asset contents
-- full domain/space tab trees
+- the full vault tree
 
 Example:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "vaultId": "vault-id",
+  "createdBy": "aislenote",
   "files": {
-    "workspaceIndex": "workspace-index.json",
-    "navigationState": "navigation-state.json",
-    "frontmatterSettings": "frontmatter-settings.json",
-    "editorState": "editor-state.json",
-    "messages": "messages.json",
-    "deletedWorkspace": "deleted-workspace.json",
-    "noteRegistry": "note-registry.json"
-  }
+    "vaultIndex": ".aislenote/vault-index.json",
+    "navigationState": ".aislenote/navigation-state.json",
+    "noteRegistry": ".aislenote/note-registry.json",
+    "trashIndex": ".aislenote/trash-index.json",
+    "frontmatterSettings": ".aislenote/frontmatter-settings.json",
+    "editorState": ".aislenote/editor-state.json",
+    "messages": ".aislenote/messages.json",
+    "syncState": ".aislenote/sync-state.json"
+  },
+  "syncMetadata": null
 }
 ```
 
-### Root Split Files
+### Split Files
 
-All root split files live directly under the notebook root, beside `manifest.json`.
+All split files live under `.aislenote/`.
 
-- `workspace-index.json`: domain order, domain titles, and domain paths.
-- `navigation-state.json`: `activeDomainId` and optional `lastOpened`.
+- `vault-index.json`: active note ID, vault folder/note tree, generated file paths, and vault settings.
+- `navigation-state.json`: active note ID and view mode.
+- `note-registry.json`: note body records and aisle body records, including content hashes, frontmatter metadata, tags, inline preserved Markdown, and mirror paths.
+- `trash-index.json`: deleted vault items and restore metadata.
 - `frontmatter-settings.json`: frontmatter templates, selected settings template, and last applied template.
-- `editor-state.json`: note cursor locations, heading collapse state, and per-location aisle widths.
-- `deleted-workspace.json`: deleted domains and deleted spaces.
-- `note-registry.json`: note body records and shared aisle body records, including unlinked preservation records marked with `storageStatus: "unlinked"`.
+- `editor-state.json`: vault-local editor/view state, including scratchpad reference, sidebar state, collapsed folders, toast history, cursor locations, heading collapse state, and aisle widths. Portable user preferences such as theme, hotkeys, toolbar layouts, custom themes, and settings tabs live in app settings instead.
+- `messages.json`: persisted app messages.
+- `sync-state.json`: sync metadata.
 
-Portable user preferences live in `<electron-user-data>/settings/app-settings.json`, not in the selected notebook folder. Missing required split files block load. Missing optional `editor-state.json` falls back to defaults.
+Portable user preferences live in `<electron-user-data>/settings/app-settings.json`, not in the selected vault folder. Active vault loads overlay those app settings onto vault data; vault import and inspection paths can opt out of that overlay. Missing optional split files fall back to defaults where the loader has a defined fallback.
 
-### Domain Manifest
+## Import Behavior
 
-`domains/<domain-title>--<id-hash>/manifest.json`
+Vault imports replace the current vault folder contents. Supported import sources are:
 
-Stores:
+- AisleNote vault folders
+- AisleNote vault ZIPs
+- Markdown folders
+- Markdown ZIPs
 
-- domain ID
-- domain title
-- space ordering and space paths
-- active/default space
-
-### Space Manifest
-
-`domains/<domain-title>--<id-hash>/<space-title>--<id-hash>/manifest.json`
-
-Stores:
-
-- space ID
-- space title
-- per-space settings
-- parent tab ordering
-- parent tab titles, IDs, note-body IDs, and home note paths
-- sub-tab ordering
-- sub-tab titles, IDs, note-body IDs, and file paths
-- active parent tab
-- active sub-tab per parent tab
-- trash manifest path
-
-Does not store Markdown body text or asset binary contents.
-
-### Trash Manifest
-
-`domains/<domain>/<space>/trash/manifest.json`
-
-Stores:
-
-- trash item ID
-- deleted item type (`parent-tab` or `subtab`)
-- original parent/sub-tab IDs
-- deletion timestamp
-- Markdown file path
-- nested deleted sub-tabs for deleted parent tabs
-- `activeSubTabId` for deleted parent tabs
-- `parentTabTitle` for loose deleted sub-tabs
+Markdown import maps every Markdown file to one note and every containing directory to a vault folder. Root Markdown files become root notes. Frontmatter, visible tags, resolvable Obsidian links, and local assets are converted into the app's vault model where possible.
 
 ## Recommended Field Strategy
 
 Use these principles consistently:
 
 - `id`: stable opaque identifier
-- `title`: human-facing label stored in manifests
-- `path`: relative readable storage path
+- `title`: human-facing label stored in metadata
+- `path`: relative readable storage path for folders or multi-aisle notes
 - `file`: relative path to a Markdown file
 - `deletedAt`: Unix epoch milliseconds
-- `createdAt` / `updatedAt`: ISO strings on note bodies where available
+- `createdAt` / `updatedAt`: ISO strings where available
 - `schemaVersion`: integer storage format gate
-- `editor-state.json.noteCursorLocations`: optional map keyed by domain/space/parent/sub-tab location
-- `editor-state.json.aisleWidths`: optional map keyed by the same location keys, with fixed aisle widths by aisle ID
+- `editor-state.json.noteCursorLocations`: optional map keyed by note ID
+- `editor-state.json.aisleWidths`: optional map keyed by note ID, with fixed aisle widths by aisle ID
 
 ## Validation And Health
 
 Current health behavior:
 
-- The root manifest `schemaVersion` is the format gate. Schema 1 is the current write format.
-- Missing, corrupt, or unsupported root manifests are load-blocking to avoid silently overwriting real data.
-- Missing required schema 1 root split files are load-blocking. Missing optional editor split files fall back to defaults.
-- Missing Markdown files load as empty note content and create a warning.
-- Missing or corrupt trash manifests load as empty trash for that space and create a warning.
-- Missing or corrupt space manifests skip only that space where another readable space remains.
-- Missing or corrupt domain manifests skip only that domain where another readable domain remains.
-- If no readable domains remain, loading fails and writes are paused.
+- The root manifest `schemaVersion` is the format gate. Schema 2 is the current desktop write format.
+- Unsupported root manifest versions are load-blocking to avoid silently overwriting real data.
+- Missing or corrupt required metadata blocks loading.
+- Missing optional metadata falls back to defaults where supported.
+- Missing visible Markdown mirrors fall back to preserved registry Markdown when possible.
 - Cloud-provider conflict folders are load-blocking until resolved.
-- Saves write through atomic replacement where possible and pause when load-blocking errors are detected.
+- Saves write through replacement where possible and pause when load-blocking errors are detected.
 
 Storage health UI should surface:
 
-- current notebook folder path
+- current vault folder path
 - schema version
 - writable/paused state
-- notebook folder health (`healthy`, `warning`, or `error`)
+- vault folder health (`healthy`, `warning`, or `error`)
 - issue codes/messages/paths
 - reveal folder and retry reload actions
 
-## Browser Adapter
+## Browser Builds
 
-Browser builds persist the same logical notebook tree in IndexedDB as virtual files. Browser and mobile runtimes may keep an app-private virtual `notes/` prefix internally because it is not a user-visible filesystem notebook folder.
+Browser builds are not a supported durable vault format for the current desktop release target. Non-Electron runtimes may keep a local renderer app-state cache so development and previews can boot, but that cache is not the schema described here and must not be treated as a portable vault.
 
-Browser storage should remain logically compatible with the Electron filesystem adapter for:
-
-- domains and spaces
-- parent tabs and sub-tabs
-- trash
-- multiple aisles
-- assets
-- frontmatter, including null date/datetime values
-- unlinked note bodies
+If browser or PWA persistence becomes a product target later, it should be implemented deliberately against the current schema version instead of reviving the removed schema 1 virtual-vault adapter.
 
 ## Legacy Storage
 
-Pre-production notebook folders are not loaded or migrated. Electron expects `manifest.json` at the notebook root. Old parent folders that only contain a `notes/` child are not searched for notebook data; selecting the `notes/` child directly may still load if it contains `manifest.json`. Unsupported schema versions are not silently migrated or overwritten.
-
-## Future Topic Layer
-
-The top-level `topics/` directory is reserved for a future migration only.
-
-If the product later introduces concepts like topics, worlds, or sectors, the migration should be explicit and test-backed. Until then, the current schema 1 `domains/` layout is canonical.
+Pre-production vault folders are not loaded or migrated. Electron expects `manifest.json` at the vault root for an existing vault folder. Unsupported schema versions are not silently migrated or overwritten.

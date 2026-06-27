@@ -16,7 +16,7 @@ import {
 } from './user-settings-location.mjs'
 
 function withTempDir(run) {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'tabs-settings-location-'))
+  const root = mkdtempSync(path.join(os.tmpdir(), 'aislenote-settings-location-'))
   try {
     return run(root)
   } finally {
@@ -24,7 +24,7 @@ function withTempDir(run) {
   }
 }
 
-function serializedAppState(theme = 'dawn') {
+function serializedAppState(theme = 'cheese') {
   return JSON.stringify({
     theme,
     hotkeys: { shortcuts: {} },
@@ -33,7 +33,12 @@ function serializedAppState(theme = 'dawn') {
       dataSettingsSection: 'settings',
       toolbarLayouts: [],
     },
-    domains: [],
+    vault: {
+      activeNoteId: 'note-1',
+      items: [{ type: 'note', id: 'note-1', title: 'Note', noteBodyId: 'body-1' }],
+      deletedItems: [],
+      settings: { autoRemoveDeletedDays: 30 },
+    },
     noteBodies: [],
   })
 }
@@ -59,7 +64,7 @@ describe('user settings location storage', () => {
           source: 'local-cache',
         },
       })
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dawn')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dark')
     }))
 
   it('loads valid cloud settings into the local cache', () =>
@@ -91,7 +96,7 @@ describe('user settings location storage', () => {
       const missingRoot = path.join(root, 'missing-cloud-settings')
       const invalidRoot = path.join(root, 'invalid-cloud-settings')
       mkdirSync(path.join(invalidRoot, 'settings'), { recursive: true })
-      writeFileSync(path.join(invalidRoot, 'settings', 'app-settings.json'), '{"theme":"dawn"}\n', 'utf8')
+      writeFileSync(path.join(invalidRoot, 'settings', 'app-settings.json'), '{"theme":"cheese"}\n', 'utf8')
       writeUserSettingsLocationConfig(userDataPath, missingRoot)
 
       const missingRefresh = refreshLocalUserSettingsFromLocation(userDataPath, resolveUserSettingsLocation(userDataPath))
@@ -118,7 +123,7 @@ describe('user settings location storage', () => {
         isDefault: true,
       })
       expect(existsSync(path.join(userDataPath, USER_SETTINGS_LOCATION_CONFIG_FILE))).toBe(false)
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dawn')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dark')
 
       expect(refreshLocalUserSettingsFromLocation(userDataPath, createUserSettingsLocation(userDataPath, invalidRoot)))
         .toMatchObject({
@@ -172,8 +177,8 @@ describe('user settings location storage', () => {
           syncStatus: 'synced',
         },
       })
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('dawn')
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dawn')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('dark')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dark')
     }))
 
   it('recreates a missing cloud settings file from current settings', () =>
@@ -230,8 +235,8 @@ describe('user settings location storage', () => {
           syncStatus: 'synced',
         },
       })
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dawn')
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('dawn')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dark')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(settingsRootPath), 'utf8')).theme).toBe('dark')
     }))
 
   it('detaches a deleted settings root during reset to defaults', () =>
@@ -257,7 +262,7 @@ describe('user settings location storage', () => {
           source: 'local-cache',
         },
       })
-      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dawn')
+      expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('dark')
       expect(existsSync(settingsRootPath)).toBe(false)
       expect(existsSync(path.join(userDataPath, USER_SETTINGS_LOCATION_CONFIG_FILE))).toBe(false)
     }))
@@ -288,15 +293,15 @@ describe('user settings location storage', () => {
       expect(JSON.parse(readFileSync(getUserSettingsFilePath(userDataPath), 'utf8')).theme).toBe('custom1')
     }))
 
-  it('rejects notebook folders as live settings folders', () =>
+  it('rejects vault folders as live settings folders', () =>
     withTempDir((root) => {
-      const activeNotebook = path.join(root, 'notebook')
-      const otherNotebook = path.join(root, 'other-notebook')
-      mkdirSync(otherNotebook, { recursive: true })
-      writeFileSync(path.join(otherNotebook, 'manifest.json'), '{"schemaVersion":1}', 'utf8')
+      const activeVault = path.join(root, 'vault')
+      const otherVault = path.join(root, 'other-vault')
+      mkdirSync(otherVault, { recursive: true })
+      writeFileSync(path.join(otherVault, 'manifest.json'), '{"schemaVersion":1}', 'utf8')
 
-      expect(validateUserSettingsFolderCandidate(activeNotebook, activeNotebook)).toMatchObject({ ok: false })
-      expect(validateUserSettingsFolderCandidate(otherNotebook, activeNotebook)).toMatchObject({ ok: false })
-      expect(validateUserSettingsFolderCandidate(path.join(root, 'settings-only'), activeNotebook)).toEqual({ ok: true })
+      expect(validateUserSettingsFolderCandidate(activeVault, activeVault)).toMatchObject({ ok: false })
+      expect(validateUserSettingsFolderCandidate(otherVault, activeVault)).toMatchObject({ ok: false })
+      expect(validateUserSettingsFolderCandidate(path.join(root, 'settings-only'), activeVault)).toEqual({ ok: true })
     }))
 })

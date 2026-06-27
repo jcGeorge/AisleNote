@@ -4,21 +4,23 @@ import { history, undo } from 'prosemirror-history'
 import { describe, expect, it } from 'vitest'
 import {
   applyTableControlOperationToView,
+  applyTableRangeReorderOperationToView,
   applyTableReorderOperationToView,
   createTableNodeFromSelection,
+  getAdjustedRangeMoveIndex,
   getActiveTableContext,
   getActiveTableRange,
   getTableColumnReorderMarkerStyle,
   getTableControlsOverlayPlacement,
   getTableRowReorderMarkerStyle,
   getTableReorderDragDecision,
-  isBlankTableSideSelectionTarget,
+  getTableSelectionCellClassNames,
   isEditorRootFocused,
-  isPointInTableAfterSelectionZone,
-  isPointInTableRightSelectionZone,
+  isTableRangeMoveNoop,
   isSelectedTableNode,
   moveTableCellSelectionByTab,
   moveSelectedTableBoundaryCaret,
+  normalizeTableSelectionRange,
   placeCaretOutsideTableAtCoords,
   placeTableCaretAtCoords,
   replaceSelectedTextWithTable,
@@ -26,6 +28,7 @@ import {
   selectTableNodeAtPosition,
   type TableControlOperation,
   type TableReorderAxis,
+  type TableSelectionRange,
 } from './table-editing'
 import type { TableControlTargetMode } from '../types/app'
 
@@ -287,6 +290,27 @@ function applyReorder(
   return view.state.doc
 }
 
+function applyRangeReorder(
+  axis: TableReorderAxis,
+  sourceStart: number,
+  sourceEnd: number,
+  insertIndex: number,
+  rowIndex: number,
+  columnIndex: number,
+  doc = buildDoc({
+    header: ['H1', 'H2', 'H3', 'H4'],
+    body: [
+      ['A1', 'A2', 'A3', 'A4'],
+      ['B1', 'B2', 'B3', 'B4'],
+      ['C1', 'C2', 'C3', 'C4'],
+    ],
+  }),
+) {
+  const view = createView(doc, rowIndex, columnIndex)
+  expect(applyTableRangeReorderOperationToView(view, axis, sourceStart, sourceEnd, insertIndex)).toBe(true)
+  return view.state.doc
+}
+
 describe('table editing controls', () => {
   it('detects the active table cell context', () => {
     const view = createView(buildDoc(), 2, 1)
@@ -485,6 +509,88 @@ describe('table editing controls', () => {
     expect(getTableReorderDragDecision(22, 14)).toEqual({ shouldSuppressSelection: false, axis: null })
   })
 
+  it('normalizes table cell, row, and column selections to rectangular ranges', () => {
+    const cellSelection: TableSelectionRange = {
+      tableStart: 0,
+      mode: 'cells',
+      anchorRow: 2,
+      anchorColumn: 1,
+      headRow: 0,
+      headColumn: 3,
+    }
+    const rowSelection: TableSelectionRange = {
+      tableStart: 0,
+      mode: 'rows',
+      anchorRow: 3,
+      anchorColumn: 2,
+      headRow: 1,
+      headColumn: 0,
+    }
+    const columnSelection: TableSelectionRange = {
+      tableStart: 0,
+      mode: 'columns',
+      anchorRow: 3,
+      anchorColumn: 2,
+      headRow: 1,
+      headColumn: 0,
+    }
+
+    expect(normalizeTableSelectionRange(cellSelection, 4, 4)).toMatchObject({
+      mode: 'cells',
+      rowStart: 0,
+      rowEnd: 2,
+      columnStart: 1,
+      columnEnd: 3,
+    })
+    expect(normalizeTableSelectionRange(rowSelection, 4, 4)).toMatchObject({
+      mode: 'rows',
+      rowStart: 1,
+      rowEnd: 3,
+      columnStart: 0,
+      columnEnd: 3,
+    })
+    expect(normalizeTableSelectionRange(columnSelection, 4, 4)).toMatchObject({
+      mode: 'columns',
+      rowStart: 0,
+      rowEnd: 3,
+      columnStart: 0,
+      columnEnd: 2,
+    })
+  })
+
+  it('computes selected table cell boundary classes', () => {
+    const selection: TableSelectionRange = {
+      tableStart: 0,
+      mode: 'cells',
+      anchorRow: 1,
+      anchorColumn: 1,
+      headRow: 2,
+      headColumn: 2,
+    }
+
+    expect(getTableSelectionCellClassNames(selection, 0, 0, 4, 4)).toEqual([])
+    expect(getTableSelectionCellClassNames(selection, 1, 1, 4, 4)).toEqual([
+      'table-selected-cell',
+      'table-selected-cells-cell',
+      'table-selected-cell-top',
+      'table-selected-cell-left',
+    ])
+    expect(getTableSelectionCellClassNames(selection, 2, 2, 4, 4)).toEqual([
+      'table-selected-cell',
+      'table-selected-cells-cell',
+      'table-selected-cell-bottom',
+      'table-selected-cell-right',
+    ])
+  })
+
+  it('adjusts range move indexes and detects no-op range drops', () => {
+    expect(getAdjustedRangeMoveIndex(1, 2, 4)).toBe(2)
+    expect(getAdjustedRangeMoveIndex(2, 3, 0)).toBe(0)
+    expect(isTableRangeMoveNoop(1, 2, 1)).toBe(true)
+    expect(isTableRangeMoveNoop(1, 2, 3)).toBe(true)
+    expect(isTableRangeMoveNoop(1, 2, 4)).toBe(false)
+  })
+
   it('extends and nudges table row reorder markers away from the table edge', () => {
     expect(getTableRowReorderMarkerStyle({ top: 80, left: 120, width: 220, height: 72 }, 96)).toEqual({
       width: '230px',
@@ -518,25 +624,6 @@ describe('table editing controls', () => {
     expect(placeTableCaretAtCoords(view, { left: 120, top: 80 })).toBe(false)
   })
 
-  it('detects right-side table clicks inside the table vertical band', () => {
-    const tableRect = { top: 80, left: 120, width: 220, height: 72 }
-
-    expect(isPointInTableRightSelectionZone(tableRect, { left: 344, top: 96 })).toBe(true)
-    expect(isPointInTableRightSelectionZone(tableRect, { left: 340, top: 96 })).toBe(false)
-    expect(isPointInTableRightSelectionZone(tableRect, { left: 344, top: 70 })).toBe(false)
-    expect(isPointInTableRightSelectionZone(tableRect, { left: 344, top: 153 })).toBe(false)
-  })
-
-  it('detects bottom-line table clicks across the table width', () => {
-    const tableRect = { top: 80, left: 120, width: 220, height: 72 }
-
-    expect(isPointInTableAfterSelectionZone(tableRect, { left: 180, top: 152 })).toBe(true)
-    expect(isPointInTableAfterSelectionZone(tableRect, { left: 180, top: 158 })).toBe(true)
-    expect(isPointInTableAfterSelectionZone(tableRect, { left: 180, top: 144 })).toBe(false)
-    expect(isPointInTableAfterSelectionZone(tableRect, { left: 100, top: 152 })).toBe(false)
-    expect(isPointInTableAfterSelectionZone(tableRect, { left: 360, top: 152 })).toBe(false)
-  })
-
   it('requires browser focus inside the editor root before showing table controls', () => {
     const activeElement = { id: 'cell' }
     const root = {
@@ -549,27 +636,7 @@ describe('table editing controls', () => {
     expect(isEditorRootFocused(null, activeElement)).toBe(false)
   })
 
-  it('limits table side selection to non-interactive editor targets', () => {
-    const editorSurface = {} as Element
-    const paragraphTarget = {
-      closest: () => null,
-    } as unknown as Element
-    const imageTarget = {
-      closest: (selector: string) => (selector.includes('img') ? imageTarget : null),
-    } as unknown as Element
-    const view = {
-      dom: {
-        contains: (target: Element) => target === paragraphTarget || target === imageTarget,
-      },
-    }
-
-    expect(isBlankTableSideSelectionTarget({ dom: editorSurface }, editorSurface)).toBe(true)
-    expect(isBlankTableSideSelectionTarget(view, paragraphTarget)).toBe(true)
-    expect(isBlankTableSideSelectionTarget(view, imageTarget)).toBe(false)
-    expect(isBlankTableSideSelectionTarget(view, null)).toBe(false)
-  })
-
-  it('selects the whole table node for right-side table clicks', () => {
+  it('selects the whole table node for explicit table actions', () => {
     const view = createView(buildDoc(), 1, 0)
 
     expect(selectTableNodeAtPosition(view, 0)).toBe(true)
@@ -942,6 +1009,15 @@ describe('table editing controls', () => {
     expect(getCellText(table, 2, 0)).toBe('A1')
   })
 
+  it('reorders contiguous row ranges', () => {
+    const table = getTable(applyRangeReorder('row', 1, 2, 4, 1, 0))
+
+    expect(getCellText(table, 0, 0)).toBe('H1')
+    expect(getCellText(table, 1, 0)).toBe('C1')
+    expect(getCellText(table, 2, 0)).toBe('A1')
+    expect(getCellText(table, 3, 0)).toBe('B1')
+  })
+
   it('reorders the header into the body and promotes the first body row', () => {
     const table = getTable(applyReorder('row', 0, 3, 0, 0))
 
@@ -950,10 +1026,34 @@ describe('table editing controls', () => {
     expect(getCellText(table, 2, 0)).toBe('H1')
   })
 
+  it('reorders a row range containing the header and preserves header/body roles by visual position', () => {
+    const table = getTable(applyRangeReorder('row', 0, 1, 4, 0, 0))
+
+    expect(getCellText(table, 0, 0)).toBe('B1')
+    expect(getCellText(table, 1, 0)).toBe('C1')
+    expect(getCellText(table, 2, 0)).toBe('H1')
+    expect(getCellText(table, 3, 0)).toBe('A1')
+    expect(table.child(0).child(0).child(0).type.name).toBe('tableHeadCell')
+    expect(table.child(1).child(1).child(0).type.name).toBe('tableBodyCell')
+  })
+
   it('treats same-position row reorders as no-ops', () => {
     const view = createView(buildDoc(), 1, 0)
 
     expect(applyTableReorderOperationToView(view, 'row', 1, 2)).toBe(false)
+  })
+
+  it('treats row range drops inside the selected range as no-ops', () => {
+    const view = createView(buildDoc({
+      header: ['H1', 'H2', 'H3', 'H4'],
+      body: [
+        ['A1', 'A2', 'A3', 'A4'],
+        ['B1', 'B2', 'B3', 'B4'],
+        ['C1', 'C2', 'C3', 'C4'],
+      ],
+    }), 1, 0)
+
+    expect(applyTableRangeReorderOperationToView(view, 'row', 1, 2, 2)).toBe(false)
   })
 
   it('reorders columns across header and body rows', () => {
@@ -965,10 +1065,33 @@ describe('table editing controls', () => {
     expect(getCellText(table, 1, 2)).toBe('A1')
   })
 
+  it('reorders contiguous column ranges across header and body rows', () => {
+    const table = getTable(applyRangeReorder('column', 1, 2, 4, 1, 1))
+
+    expect(getCellText(table, 0, 0)).toBe('H1')
+    expect(getCellText(table, 0, 1)).toBe('H4')
+    expect(getCellText(table, 0, 2)).toBe('H2')
+    expect(getCellText(table, 0, 3)).toBe('H3')
+    expect(getCellText(table, 1, 2)).toBe('A2')
+    expect(getCellText(table, 1, 3)).toBe('A3')
+  })
+
   it('treats same-position column reorders as no-ops', () => {
     const view = createView(buildDoc(), 1, 1)
 
     expect(applyTableReorderOperationToView(view, 'column', 1, 2)).toBe(false)
+  })
+
+  it('treats column range drops inside the selected range as no-ops', () => {
+    const view = createView(buildDoc({
+      header: ['H1', 'H2', 'H3', 'H4'],
+      body: [
+        ['A1', 'A2', 'A3', 'A4'],
+        ['B1', 'B2', 'B3', 'B4'],
+      ],
+    }), 1, 1)
+
+    expect(applyTableRangeReorderOperationToView(view, 'column', 1, 2, 3)).toBe(false)
   })
 
   it('records table changes in ProseMirror history', () => {

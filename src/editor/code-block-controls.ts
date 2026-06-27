@@ -1,4 +1,4 @@
-export const CODE_BLOCK_CONTROLS_ATTR = 'data-tabs-code-block-controls'
+export const CODE_BLOCK_CONTROLS_ATTR = 'data-aislenote-code-block-controls'
 export const CODE_BLOCK_WRAPPER_SELECTOR = '.toastui-editor-ww-code-block'
 
 type ToastTone = 'success' | 'warning' | 'error'
@@ -229,7 +229,7 @@ async function copyCodeBlockText(text: string, pushToast?: CodeBlockControlsOpti
 function createControlButton(kind: 'copy' | 'trash') {
   const button = document.createElement('button')
   button.type = 'button'
-  button.className = `tabs-code-block-control-btn tabs-code-block-${kind}-btn`
+  button.className = `aislenote-code-block-control-btn aislenote-code-block-${kind}-btn`
   button.setAttribute('aria-label', kind === 'copy' ? 'Copy code block' : 'Delete code block')
   button.title = kind === 'copy' ? 'Copy code' : 'Delete code block'
   button.appendChild(createIcon(kind))
@@ -246,7 +246,7 @@ function createControlsElement(
   TextSelection: TextSelectionConstructor,
 ) {
   const controls = document.createElement('span')
-  controls.className = 'tabs-code-block-controls'
+  controls.className = 'aislenote-code-block-controls'
   controls.setAttribute(CODE_BLOCK_CONTROLS_ATTR, 'true')
   controls.setAttribute('contenteditable', 'false')
   controls.addEventListener('pointerdown', stopControlEvent)
@@ -288,14 +288,14 @@ function createCodeBlockControlDecorations(
       Decoration.node(
         position,
         to,
-        { class: 'tabs-code-block-has-controls' },
-        { key: `tabs-code-block-node-controls-${position}-${to}` },
+        { class: 'aislenote-code-block-has-controls' },
+        { key: `aislenote-code-block-node-controls-${position}-${to}` },
       ),
       Decoration.widget(
         position + 1,
         (view) => createControlsElement(view, position, options, TextSelection),
         {
-          key: `tabs-code-block-controls-${position}-${to}`,
+          key: `aislenote-code-block-controls-${position}-${to}`,
           side: -1,
           ignoreSelection: true,
           stopEvent: (event: Event) =>

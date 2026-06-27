@@ -1,38 +1,35 @@
-import {
-  getAislePreviewMarkdown,
-} from '../../editor/aisle-edit-draft'
+import type { AppState } from '../../types/app'
+import { normalizeEscapedMarkdownLinks } from '../../markdown/markdown-utils'
 import {
   NOTE_PREVIEW_REFERENCE_RE,
-  getPreviewReferenceTokenLengthAt,
-  parseMarkdownNoteReferenceToken,
+  resolveMarkdownNoteReferenceToken,
+  type NotePreviewReferencePayload,
 } from '../../notes/note-references'
 
 export type AislePreviewSegment =
   | { type: 'markdown'; markdown: string }
-  | { type: 'context-preview'; label: string }
+  | { type: 'note-preview'; token: string; payload: NotePreviewReferencePayload; label: string }
 
-export function getAislePreviewSegments(markdown: string): AislePreviewSegment[] {
-  const previewMarkdown = getAislePreviewMarkdown(markdown)
+export function getAislePreviewSegments(markdown: string, appState?: AppState | null): AislePreviewSegment[] {
+  const source = normalizeEscapedMarkdownLinks(markdown)
+  if (!source.trim()) return []
+  if (!appState) return [{ type: 'markdown', markdown: source }]
+
   const segments: AislePreviewSegment[] = []
-  let lastIndex = 0
-  NOTE_PREVIEW_REFERENCE_RE.lastIndex = 0
-
-  for (const match of previewMarkdown.matchAll(NOTE_PREVIEW_REFERENCE_RE)) {
-    const parsed = getPreviewReferenceTokenLengthAt(match[0], 0) === match[0].length
-      ? parseMarkdownNoteReferenceToken(match[0])
-      : null
-    if (!parsed?.embed) continue
-    const start = match.index ?? 0
-    const before = previewMarkdown.slice(lastIndex, start)
-    if (before.trim()) segments.push({ type: 'markdown', markdown: before })
-
-    const fallbackLabel = parsed.label
-    segments.push({ type: 'context-preview', label: fallbackLabel || 'note preview' })
-    lastIndex = start + match[0].length
+  let cursor = 0
+  const referenceRe = new RegExp(NOTE_PREVIEW_REFERENCE_RE.source, 'g')
+  for (const match of source.matchAll(referenceRe)) {
+    const token = match[0]
+    const from = match.index ?? 0
+    if (!token.startsWith('!')) continue
+    const reference = resolveMarkdownNoteReferenceToken(appState, token)
+    if (!reference?.parsed.embed) continue
+    const markdownBefore = source.slice(cursor, from)
+    if (markdownBefore.trim()) segments.push({ type: 'markdown', markdown: markdownBefore })
+    segments.push({ type: 'note-preview', token, payload: reference.payload, label: reference.label })
+    cursor = from + token.length
   }
-
-  NOTE_PREVIEW_REFERENCE_RE.lastIndex = 0
-  const after = previewMarkdown.slice(lastIndex)
-  if (after.trim()) segments.push({ type: 'markdown', markdown: after })
-  return segments
+  const markdownAfter = source.slice(cursor)
+  if (markdownAfter.trim()) segments.push({ type: 'markdown', markdown: markdownAfter })
+  return segments.length > 0 ? segments : [{ type: 'markdown', markdown: source }]
 }

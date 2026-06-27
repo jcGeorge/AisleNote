@@ -4,6 +4,7 @@ import {
   DEFAULT_NEWLINE_SHORTCUT_SETTINGS,
   NEWLINE_OPERATION_LABELS,
   SHORTCUT_MENU_ELIGIBLE_OPERATIONS,
+  buildShortcutFromKeyboardEvent,
   eventMatchesShortcut,
   formatShortcutLabel,
   getNewlineShortcutIdForEvent,
@@ -76,6 +77,26 @@ describe('newline shortcut settings', () => {
     expect(DEFAULT_SHORTCUTS.formatStrikethrough).toBe('')
   })
 
+  it('defaults highlight formatting to a platform modifier shortcut', () => {
+    expect(DEFAULT_SHORTCUTS.formatHighlight).toBe('Mod+Shift+H')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.formatHighlight, true)).toBe('cmd+shift+h')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.formatHighlight, false)).toBe('ctrl+shift+h')
+    expect(
+      eventMatchesShortcut(
+        { key: 'H', code: 'KeyH', ctrlKey: false, metaKey: true, altKey: false, shiftKey: true } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.formatHighlight,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      eventMatchesShortcut(
+        { key: 'H', code: 'KeyH', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.formatHighlight,
+        false,
+      ),
+    ).toBe(true)
+  })
+
   it('keeps block quote and block indent as separate newline operations', () => {
     expect(NEWLINE_OPERATION_LABELS.blockQuote).toBe('block quote')
     expect(NEWLINE_OPERATION_LABELS.blockIndent).toBe('block indent')
@@ -88,6 +109,12 @@ describe('newline shortcut settings', () => {
 
   it('labels the operations menu shortcut as shortcut menu', () => {
     expect(NEWLINE_OPERATION_LABELS.operationsMenu).toBe('shortcut menu')
+  })
+
+  it('makes table of contents available for shortcut menu configuration without selecting it by default', () => {
+    expect(NEWLINE_OPERATION_LABELS.tableOfContents).toBe('table of contents')
+    expect(SHORTCUT_MENU_ELIGIBLE_OPERATIONS).toContain('tableOfContents')
+    expect(DEFAULT_NEWLINE_SHORTCUT_SETTINGS.menuOperations).not.toContain('tableOfContents')
   })
 
   it('normalizes persisted dash-list shortcuts and dedupes menu entries', () => {
@@ -105,7 +132,7 @@ describe('newline shortcut settings', () => {
     expect(normalized.shortcuts.toggleNotesTrash).toBe(DEFAULT_SHORTCUTS.toggleNotesTrash)
     expect(normalized.shortcuts.toggleNotesScratchpad).toBe(DEFAULT_SHORTCUTS.toggleNotesScratchpad)
     expect(normalized.shortcuts.toggleNotesFilter).toBe(DEFAULT_SHORTCUTS.toggleNotesFilter)
-    expect(normalized.shortcuts.openSpaces).toBe(DEFAULT_SHORTCUTS.openSpaces)
+    expect(normalized.shortcuts.openSettings).toBe(DEFAULT_SHORTCUTS.openSettings)
     expect(normalized.newlineShortcuts.shortcuts.controlEnter).toBe('dashList')
     expect(normalized.newlineShortcuts.shortcuts.shiftEnter).toBe('dashList')
     expect(normalized.newlineShortcuts.menuOperations).toEqual(['dashList', 'bulletList', 'strikethrough'])
@@ -128,31 +155,96 @@ describe('newline shortcut settings', () => {
     expect(normalized.newlineShortcuts.menuOperations).toEqual(['task', 'aisleRight', 'aisleLeft', 'strikethrough'])
   })
 
-  it('migrates the legacy toggle tabs shortcut key to toggle notes/trash', () => {
-    const normalized = normalizeHotkeySettings({
-      shortcuts: {
-        toggleTabsTarget: 'Ctrl+Alt+T',
-      },
-    })
-
-    expect(normalized.shortcuts.toggleNotesTrash).toBe('Ctrl+Alt+T')
-    expect(normalized.shortcuts).not.toHaveProperty('toggleTabsTarget')
-  })
-
-  it('defaults notes/scratchpad to mod slash and matches slash key events', () => {
-    expect(DEFAULT_SHORTCUTS.toggleNotesScratchpad).toBe('Mod+/')
-    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.toggleNotesScratchpad, true)).toBe('cmd+/')
+  it('defaults notes/scratchpad to mod s and matches s key events', () => {
+    expect(DEFAULT_SHORTCUTS.toggleNotesScratchpad).toBe('Mod+S')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.toggleNotesScratchpad, true)).toBe('cmd+s')
     expect(
       eventMatchesShortcut(
-        { key: '/', code: 'Slash', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent,
+        { key: 's', code: 'KeyS', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent,
         DEFAULT_SHORTCUTS.toggleNotesScratchpad,
         true,
       ),
     ).toBe(true)
     expect(
       eventMatchesShortcut(
-        { key: '/', code: 'Slash', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
+        { key: 's', code: 'KeyS', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
         DEFAULT_SHORTCUTS.toggleNotesScratchpad,
+        false,
+      ),
+    ).toBe(true)
+  })
+
+  it('defaults open settings to mod comma and matches comma key events', () => {
+    expect(DEFAULT_SHORTCUTS.openSettings).toBe('Mod+,')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.openSettings, true)).toBe('cmd+,')
+    expect(
+      eventMatchesShortcut(
+        { key: ',', code: 'Comma', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.openSettings,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      eventMatchesShortcut(
+        { key: ',', code: 'Comma', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.openSettings,
+        false,
+      ),
+    ).toBe(true)
+  })
+
+  it('defaults close current note to mod w and matches platform key events', () => {
+    expect(DEFAULT_SHORTCUTS.closeCurrentNote).toBe('Mod+W')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.closeCurrentNote, true)).toBe('cmd+w')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.closeCurrentNote, false)).toBe('ctrl+w')
+    expect(
+      eventMatchesShortcut(
+        { key: 'w', code: 'KeyW', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.closeCurrentNote,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      eventMatchesShortcut(
+        { key: 'w', code: 'KeyW', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.closeCurrentNote,
+        false,
+      ),
+    ).toBe(true)
+  })
+
+  it('defaults pinned tab navigation and closed-tab restore shortcuts', () => {
+    expect(DEFAULT_SHORTCUTS.cyclePinnedNoteTabNext).toBe('Ctrl+Tab')
+    expect(DEFAULT_SHORTCUTS.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')
+    expect(DEFAULT_SHORTCUTS.reopenClosedNoteTab).toBe('Mod+Shift+T')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cyclePinnedNoteTabNext, true)).toBe('ctrl+tab')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cyclePinnedNoteTabPrev, true)).toBe('ctrl+shift+tab')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.reopenClosedNoteTab, true)).toBe('cmd+shift+t')
+    expect(
+      eventMatchesShortcut(
+        { key: 'Tab', code: 'Tab', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.cyclePinnedNoteTabNext,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      eventMatchesShortcut(
+        { key: 'Tab', code: 'Tab', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.cyclePinnedNoteTabPrev,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      eventMatchesShortcut(
+        { key: 'T', code: 'KeyT', ctrlKey: false, metaKey: true, altKey: false, shiftKey: true } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.reopenClosedNoteTab,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      eventMatchesShortcut(
+        { key: 'T', code: 'KeyT', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.reopenClosedNoteTab,
         false,
       ),
     ).toBe(true)
@@ -186,53 +278,91 @@ describe('newline shortcut settings', () => {
     expect(normalized.newlineShortcuts.menuOperations).toEqual(['blockQuote', 'blockIndent', 'strikethrough'])
   })
 
-  it('keeps parent-tab cycle shortcuts assignable but unbound by default', () => {
-    expect(DEFAULT_SHORTCUTS.cycleParentTabNext).toBe('')
-    expect(DEFAULT_SHORTCUTS.cycleParentTabPrev).toBe('')
-    expect(
-      eventMatchesShortcut(
-        { key: 'Tab', code: 'Tab', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
-        DEFAULT_SHORTCUTS.cycleParentTabNext,
-        false,
-      ),
-    ).toBe(false)
+  it('normalizes persisted table of contents menu entries and shortcuts', () => {
+    const normalized = normalizeHotkeySettings({
+      newlineShortcuts: {
+        shortcuts: {
+          controlEnter: 'tableOfContents',
+          shiftEnter: 'task',
+          commandEnter: 'operationsMenu',
+        },
+        menuOperations: ['tableOfContents', 'tableOfContents', 'blockQuote'],
+      },
+    })
+
+    expect(normalized.newlineShortcuts.shortcuts.controlEnter).toBe('tableOfContents')
+    expect(normalized.newlineShortcuts.menuOperations).toEqual(['tableOfContents', 'blockQuote', 'strikethrough'])
   })
 
-  it('defaults aisle cycle shortcuts to alt brackets and recognizes physical bracket keys', () => {
-    expect(DEFAULT_SHORTCUTS.cycleAislePrev).toBe('Alt+[')
-    expect(DEFAULT_SHORTCUTS.cycleAisleNext).toBe('Alt+]')
-    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cycleAislePrev, true)).toBe('option+[')
-    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cycleAisleNext, true)).toBe('option+]')
-    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cycleAislePrev, false)).toBe('alt+[')
-    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cycleAisleNext, false)).toBe('alt+]')
+  it('defaults aisle cycle shortcuts to command-option arrows and records arrow keys', () => {
+    expect(DEFAULT_SHORTCUTS.cycleAislePrev).toBe('Mod+Alt+ArrowLeft')
+    expect(DEFAULT_SHORTCUTS.cycleAisleNext).toBe('Mod+Alt+ArrowRight')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cycleAislePrev, true)).toBe('cmd+option+arrowleft')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.cycleAisleNext, true)).toBe('cmd+option+arrowright')
     expect(
       eventMatchesShortcut(
-        { key: '“', code: 'BracketLeft', ctrlKey: false, metaKey: false, altKey: true, shiftKey: false } as KeyboardEvent,
+        { key: 'ArrowLeft', code: 'ArrowLeft', ctrlKey: false, metaKey: true, altKey: true, shiftKey: false } as KeyboardEvent,
         DEFAULT_SHORTCUTS.cycleAislePrev,
         true,
       ),
     ).toBe(true)
     expect(
       eventMatchesShortcut(
-        { key: ']', code: 'BracketRight', ctrlKey: false, metaKey: false, altKey: true, shiftKey: false } as KeyboardEvent,
+        { key: 'ArrowRight', code: 'ArrowRight', ctrlKey: false, metaKey: true, altKey: true, shiftKey: false } as KeyboardEvent,
         DEFAULT_SHORTCUTS.cycleAisleNext,
-        false,
+        true,
       ),
     ).toBe(true)
+    expect(
+      buildShortcutFromKeyboardEvent(
+        { key: 'ArrowLeft', code: 'ArrowLeft', ctrlKey: false, metaKey: true, altKey: true, shiftKey: false } as KeyboardEvent,
+        true,
+      ),
+    ).toBe('Mod+Alt+ArrowLeft')
+    expect(
+      buildShortcutFromKeyboardEvent(
+        { key: 'ArrowRight', code: 'ArrowRight', ctrlKey: false, metaKey: true, altKey: true, shiftKey: false } as KeyboardEvent,
+        true,
+      ),
+    ).toBe('Mod+Alt+ArrowRight')
   })
 
-  it('normalizes missing parent-tab cycle shortcuts to empty strings', () => {
+  it('normalizes aisle cycle shortcuts and removed shortcut payloads', () => {
     const normalized = normalizeHotkeySettings({
       shortcuts: {
-        cycleSubTabNext: 'Ctrl+Tab',
+        removedShortcut: 'Ctrl+Tab',
       },
     })
 
-    expect(normalized.shortcuts.cycleParentTabNext).toBe('')
-    expect(normalized.shortcuts.cycleParentTabPrev).toBe('')
-    expect(normalized.shortcuts.cycleAislePrev).toBe('Alt+[')
-    expect(normalized.shortcuts.cycleAisleNext).toBe('Alt+]')
+    expect(normalized.shortcuts).not.toHaveProperty('removedShortcut')
+    expect(normalized.shortcuts.cycleAislePrev).toBe('Mod+Alt+ArrowLeft')
+    expect(normalized.shortcuts.cycleAisleNext).toBe('Mod+Alt+ArrowRight')
     expect(normalized.shortcuts.formatStrikethrough).toBe('')
+    expect(normalized.shortcuts.formatHighlight).toBe('Mod+Shift+H')
     expect(normalized.shortcuts.toggleNotesFilter).toBe('')
+    expect(normalized.shortcuts.closeCurrentNote).toBe('Mod+W')
+    expect(normalized.shortcuts.cyclePinnedNoteTabNext).toBe('Ctrl+Tab')
+    expect(normalized.shortcuts.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')
+    expect(normalized.shortcuts.reopenClosedNoteTab).toBe('Mod+Shift+T')
+  })
+
+  it('migrates legacy default aisle shortcuts and command-control arrows without overwriting custom shortcuts', () => {
+    const migrated = normalizeHotkeySettings({
+      shortcuts: {
+        cycleAislePrev: 'Alt+[',
+        cycleAisleNext: 'mod+ctrl+arrowright',
+      },
+    })
+    const custom = normalizeHotkeySettings({
+      shortcuts: {
+        cycleAislePrev: 'Ctrl+Shift+P',
+        cycleAisleNext: 'Meta+Shift+N',
+      },
+    })
+
+    expect(migrated.shortcuts.cycleAislePrev).toBe('Mod+Alt+ArrowLeft')
+    expect(migrated.shortcuts.cycleAisleNext).toBe('Mod+Alt+ArrowRight')
+    expect(custom.shortcuts.cycleAislePrev).toBe('Ctrl+Shift+P')
+    expect(custom.shortcuts.cycleAisleNext).toBe('Meta+Shift+N')
   })
 })

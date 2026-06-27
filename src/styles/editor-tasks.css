@@ -54,6 +54,50 @@
   box-shadow: inset 0 0 0 2px var(--task-reorder-marker);
 }
 
+.toastui-editor-contents th.table-selected-cell,
+.toastui-editor-contents td.table-selected-cell,
+.toastui-editor .ProseMirror th.table-selected-cell,
+.toastui-editor .ProseMirror td.table-selected-cell {
+  --table-selected-cell-top: transparent;
+  --table-selected-cell-bottom: transparent;
+  --table-selected-cell-left: transparent;
+  --table-selected-cell-right: transparent;
+  background: var(--editor-table-selection-layer-bg) !important;
+  box-shadow:
+    inset 0 2px 0 var(--table-selected-cell-top),
+    inset 0 -2px 0 var(--table-selected-cell-bottom),
+    inset 2px 0 0 var(--table-selected-cell-left),
+    inset -2px 0 0 var(--table-selected-cell-right);
+}
+
+.toastui-editor-contents th.table-selected-cell-top,
+.toastui-editor-contents td.table-selected-cell-top,
+.toastui-editor .ProseMirror th.table-selected-cell-top,
+.toastui-editor .ProseMirror td.table-selected-cell-top {
+  --table-selected-cell-top: var(--editor-table-selection-layer-border);
+}
+
+.toastui-editor-contents th.table-selected-cell-bottom,
+.toastui-editor-contents td.table-selected-cell-bottom,
+.toastui-editor .ProseMirror th.table-selected-cell-bottom,
+.toastui-editor .ProseMirror td.table-selected-cell-bottom {
+  --table-selected-cell-bottom: var(--editor-table-selection-layer-border);
+}
+
+.toastui-editor-contents th.table-selected-cell-left,
+.toastui-editor-contents td.table-selected-cell-left,
+.toastui-editor .ProseMirror th.table-selected-cell-left,
+.toastui-editor .ProseMirror td.table-selected-cell-left {
+  --table-selected-cell-left: var(--editor-table-selection-layer-border);
+}
+
+.toastui-editor-contents th.table-selected-cell-right,
+.toastui-editor-contents td.table-selected-cell-right,
+.toastui-editor .ProseMirror th.table-selected-cell-right,
+.toastui-editor .ProseMirror td.table-selected-cell-right {
+  --table-selected-cell-right: var(--editor-table-selection-layer-border);
+}
+
 .toastui-editor-contents th.table-reorder-source-cell,
 .toastui-editor-contents td.table-reorder-source-cell,
 .toastui-editor .ProseMirror th.table-reorder-source-cell,

@@ -47,6 +47,31 @@ export function computeStorageSignature(profileRootPath) {
   return listFileSignatures(rootPath).sort().join('|')
 }
 
+function normalizeWatchedRootPath(value) {
+  if (typeof value !== 'string' || !value.trim()) return ''
+  return getHybridStorageRoot(value)
+}
+
+function getWatchedRootPaths(getProfileRootPath, getProfileRootPaths) {
+  const roots = typeof getProfileRootPaths === 'function'
+    ? getProfileRootPaths()
+    : [getProfileRootPath?.()]
+  const seen = new Set()
+  return (Array.isArray(roots) ? roots : [roots])
+    .map(normalizeWatchedRootPath)
+    .filter((rootPath) => {
+      if (!rootPath || seen.has(rootPath)) return false
+      seen.add(rootPath)
+      return true
+    })
+}
+
+function computeWatchedStorageSignature(getProfileRootPath, getProfileRootPaths) {
+  return getWatchedRootPaths(getProfileRootPath, getProfileRootPaths)
+    .map((rootPath) => `${rootPath}:${computeStorageSignature(rootPath)}`)
+    .join('||')
+}
+
 function listFileContents(rootPath, currentPath = rootPath, entries = []) {
   let directoryEntries
   try {
@@ -87,12 +112,13 @@ export function computeStorageContentSnapshot(profileRootPath) {
 
 export function createStorageProfileWatcher({
   getProfileRootPath,
+  getProfileRootPaths,
   onExternalChange,
   intervalMs = 1500,
   debounceMs = 400,
   appWriteQuietMs = 2500,
 }) {
-  let lastSignature = computeStorageSignature(getProfileRootPath())
+  let lastSignature = computeWatchedStorageSignature(getProfileRootPath, getProfileRootPaths)
   let debounceTimer = null
   let quietTimer = null
   let appWriteQuietUntil = 0
@@ -123,11 +149,11 @@ export function createStorageProfileWatcher({
     clearDebounce()
     clearQuietTimer()
     appWriteQuietUntil = Date.now() + appWriteQuietMs
-    lastSignature = computeStorageSignature(getProfileRootPath())
+    lastSignature = computeWatchedStorageSignature(getProfileRootPath, getProfileRootPaths)
   }
 
   const scan = () => {
-    const nextSignature = computeStorageSignature(getProfileRootPath())
+    const nextSignature = computeWatchedStorageSignature(getProfileRootPath, getProfileRootPaths)
     if (nextSignature === lastSignature) return
     clearDebounce()
     if (Date.now() < appWriteQuietUntil) {
@@ -141,7 +167,7 @@ export function createStorageProfileWatcher({
         scheduleQuietRescan()
         return
       }
-      lastSignature = computeStorageSignature(getProfileRootPath())
+      lastSignature = computeWatchedStorageSignature(getProfileRootPath, getProfileRootPaths)
       onExternalChange()
     }, debounceMs)
     debounceTimer.unref?.()

@@ -1,6 +1,6 @@
-import { getAisleBodyId, getAisleMarkdown } from './aisle-body-state'
+import { getAisleBodyId, getAisleMarkdown } from './note-markdown'
 import { buildNoteLocationKey, listSearchableNoteLocations } from './note-locations'
-import { createId, createTimestamp } from '../state/workspace'
+import { createId, createTimestamp } from './note-content'
 import type { AppState, FrontmatterMeta, NoteAisleBody, ResolvedNoteAisle } from '../types/app'
 export { getLinkedAisleIdsForNoteBody } from './link-status'
 
@@ -96,9 +96,9 @@ export function listLinkedAisleSlotsForAisleBody(state: AppState, aisleBodyId: s
         aisleId: aisle.id,
         aisleBodyId,
         locationKey: buildNoteLocationKey(location),
-        domainName: location.domainName,
-        spaceName: location.spaceName,
-        parentName: location.parentName,
+        domainName: '',
+        spaceName: location.folderName,
+        parentName: location.folderPath,
         noteName: location.noteName,
         label: aisleLabel ? `${location.label} / ${aisleLabel}` : location.label,
         aisleIndex: index,

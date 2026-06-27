@@ -1,6 +1,6 @@
 import type { AppState, NoteBody, NoteAisle } from '../types/app'
 import { listNoteLocationsForBody, listSearchableNoteLocations } from './note-locations'
-import { getAisleBodyId } from './aisle-body-state'
+import { getAisleBodyId } from './note-markdown'
 
 export type AisleLinkScope = 'slot' | 'cross-note'
 

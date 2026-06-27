@@ -20,12 +20,12 @@ const TASK_REORDER_MARKER_EXTRA_WIDTH_PX = 34
 const TASK_REORDER_GHOST_CURSOR_X_PERCENT = 25
 export const TASK_REORDER_SELECTION_SUPPRESSION_CLASS = 'task-reorder-selection-suppressed'
 
-type TaskListItemHit = {
+export type TaskListItemHit = {
   node: any
   offset: number
 }
 
-type TaskReorderDropTarget = {
+export type TaskReorderDropTarget = {
   listElement: HTMLElement
   element: HTMLElement
   insertIndex: number
@@ -397,12 +397,12 @@ function getTaskCheckboxHit(view: any, event: globalThis.MouseEvent): TaskListIt
   return hit
 }
 
-function uncheckCompletedTaskListItem(view: any, hit: TaskListItemHit) {
+export function uncheckCompletedTaskListItem(view: any, hit: TaskListItemHit) {
   const attrs = hit.node.attrs ?? {}
   view.dispatch(view.state.tr.setNodeMarkup(hit.offset, null, { ...attrs, checked: false }).scrollIntoView())
 }
 
-function deleteTaskListItem(view: any, hit: TaskListItemHit) {
+export function deleteTaskListItem(view: any, hit: TaskListItemHit) {
   const { state } = view
   const { doc, schema } = state
   const itemStart = hit.offset
@@ -432,14 +432,14 @@ function deleteTaskListItem(view: any, hit: TaskListItemHit) {
 export function installCompletedTaskCheckboxBehavior(
   root: HTMLElement,
   getEditor: () => Editor | null,
-  onQuickDelete: (beforeMarkdown: string) => void,
+  onQuickDelete?: (beforeMarkdown: string) => void,
   onTaskStateCommit?: (editor: Editor) => void,
 ) {
   type PendingTaskAction = {
     editor: Editor
     view: any
     hit: TaskListItemHit
-    beforeMarkdown: string
+    beforeMarkdown?: string
     startX: number
     startY: number
     held: boolean
@@ -488,7 +488,7 @@ export function installCompletedTaskCheckboxBehavior(
     clearPending()
     if (action.held) return
 
-    onQuickDelete(action.beforeMarkdown)
+    if (onQuickDelete) onQuickDelete(action.beforeMarkdown ?? getEditorMarkdownForPersistence(action.editor))
     deleteTaskListItem(action.view, action.hit)
     scheduleCommit(action.editor)
   }
@@ -514,7 +514,7 @@ export function installCompletedTaskCheckboxBehavior(
       editor,
       view,
       hit,
-      beforeMarkdown: getEditorMarkdownForPersistence(editor),
+      beforeMarkdown: onQuickDelete ? getEditorMarkdownForPersistence(editor) : undefined,
       startX: event.clientX,
       startY: event.clientY,
       held: false,
@@ -558,7 +558,7 @@ export function installCompletedTaskCheckboxBehavior(
   }
 }
 
-function getListItemParagraphElement(listItemElement: HTMLElement): HTMLElement | null {
+export function getListItemParagraphElement(listItemElement: HTMLElement): HTMLElement | null {
   const paragraph = listItemElement.querySelector('p')
   return paragraph instanceof HTMLElement ? paragraph : null
 }
@@ -611,7 +611,7 @@ function isMouseUpInsideTaskElement(listItemElement: HTMLElement, event: globalT
   return Boolean(target && listItemElement.contains(target))
 }
 
-function placeTaskCaretAtParagraphEnd(view: any, editor: Editor, listItemElement: HTMLElement) {
+export function placeTaskCaretAtParagraphEnd(view: any, editor: Editor, listItemElement: HTMLElement) {
   const paragraph = getListItemParagraphElement(listItemElement)
   if (!paragraph || !view.dom.contains(paragraph)) return
 
@@ -630,7 +630,7 @@ function placeTaskCaretAtParagraphEnd(view: any, editor: Editor, listItemElement
   }
 }
 
-function getRenderedListKind(listElement: HTMLElement): ReorderListKind | null {
+export function getRenderedListKind(listElement: HTMLElement): ReorderListKind | null {
   const tagName = listElement.tagName.toLowerCase()
   if (tagName === 'ol') return 'numbered'
   if (tagName !== 'ul') return null
@@ -660,20 +660,20 @@ function getInheritedRenderedListKind(listElement: HTMLElement): ReorderListKind
   return ownKind
 }
 
-function getRenderedListItemKind(listItemElement: HTMLElement): ReorderListKind | null {
+export function getRenderedListItemKind(listItemElement: HTMLElement): ReorderListKind | null {
   if (listItemElement.matches('li.task-list-item[data-task]')) return 'task'
   const listElement = listItemElement.parentElement
   if (!(listElement instanceof HTMLElement)) return null
   return getInheritedRenderedListKind(listElement)
 }
 
-function isRenderedListElement(element: Element | null): element is HTMLElement {
+export function isRenderedListElement(element: Element | null): element is HTMLElement {
   if (!(element instanceof HTMLElement)) return false
   const tagName = element.tagName.toLowerCase()
   return tagName === 'ul' || tagName === 'ol'
 }
 
-function getTopReorderListElement(listElement: HTMLElement, root: HTMLElement): HTMLElement {
+export function getTopReorderListElement(listElement: HTMLElement, root: HTMLElement): HTMLElement {
   let topList = listElement
   let current: HTMLElement | null = listElement
   while (current) {
@@ -714,7 +714,7 @@ function getListTextDragElement(
   return { element: listItemElement, kind }
 }
 
-function clearTaskReorderClasses(root: HTMLElement) {
+export function clearTaskReorderClasses(root: HTMLElement) {
   root
     .querySelectorAll<HTMLElement>('.task-reorder-source, .task-reorder-target')
     .forEach((element) => {
@@ -722,7 +722,7 @@ function clearTaskReorderClasses(root: HTMLElement) {
     })
 }
 
-function getDirectReorderListItems(listElement: HTMLElement, kind: ReorderListKind): HTMLElement[] {
+export function getDirectReorderListItems(listElement: HTMLElement, kind: ReorderListKind): HTMLElement[] {
   return Array.from(listElement.children).filter(
     (child): child is HTMLElement =>
       child instanceof HTMLElement &&
@@ -742,7 +742,7 @@ function isCompatibleReorderListElement(
   return getDirectReorderListItems(listElement, kind).length > 0
 }
 
-function getPointerCompatibleListElement(
+export function getPointerCompatibleListElement(
   clusterElement: HTMLElement,
   sourceElement: HTMLElement,
   kind: ReorderListKind,
@@ -771,7 +771,7 @@ function getPointerCompatibleListElement(
   return null
 }
 
-function getNearestCompatibleListElement(
+export function getNearestCompatibleListElement(
   clusterElement: HTMLElement,
   sourceElement: HTMLElement,
   kind: ReorderListKind,
@@ -810,7 +810,7 @@ function getTaskSlotMarkerY(listItems: HTMLElement[], insertIndex: number): numb
   return nextRect.top - TASK_REORDER_MARKER_GAP_OFFSET_PX
 }
 
-function getTaskDropTargetFromList(
+export function getTaskDropTargetFromList(
   sourceIndex: number,
   listElement: HTMLElement,
   kind: ReorderListKind,
@@ -852,7 +852,7 @@ function getTaskDropTargetFromList(
   }
 }
 
-function getTaskDragPreviewText(element: HTMLElement, kind: ReorderListKind): string {
+export function getTaskDragPreviewText(element: HTMLElement, kind: ReorderListKind): string {
   const paragraph = element.querySelector<HTMLElement>('p')
   const text = (paragraph?.innerText ?? element.innerText).replace(/\s+/g, ' ').trim()
   if (!text) return kind === 'numbered' ? 'numbered item' : `${kind} item`
@@ -861,7 +861,7 @@ function getTaskDragPreviewText(element: HTMLElement, kind: ReorderListKind): st
     : text
 }
 
-function createTaskReorderGhost(root: HTMLElement, text: string): HTMLElement {
+export function createTaskReorderGhost(root: HTMLElement, text: string): HTMLElement {
   const ghost = document.createElement('div')
   ghost.className = 'task-reorder-ghost'
   ghost.textContent = text
@@ -869,14 +869,14 @@ function createTaskReorderGhost(root: HTMLElement, text: string): HTMLElement {
   return ghost
 }
 
-function createTaskReorderMarker(root: HTMLElement): HTMLElement {
+export function createTaskReorderMarker(root: HTMLElement): HTMLElement {
   const marker = document.createElement('div')
   marker.className = 'task-reorder-marker'
   root.appendChild(marker)
   return marker
 }
 
-function positionTaskReorderGhost(ghost: HTMLElement, event: globalThis.MouseEvent) {
+export function positionTaskReorderGhost(ghost: HTMLElement, event: globalThis.MouseEvent) {
   ghost.style.transform = `translate(${event.clientX}px, ${event.clientY}px) translate(-${TASK_REORDER_GHOST_CURSOR_X_PERCENT}%, -50%)`
 }
 
@@ -899,7 +899,7 @@ export function getTaskReorderMarkerPlacement(
   }
 }
 
-function positionTaskReorderMarker(
+export function positionTaskReorderMarker(
   marker: HTMLElement,
   targetElement: HTMLElement,
   markerY: number,
@@ -913,7 +913,7 @@ function positionTaskReorderMarker(
   marker.classList.add('is-visible')
 }
 
-function hideTaskReorderMarker(marker: HTMLElement | null) {
+export function hideTaskReorderMarker(marker: HTMLElement | null) {
   if (!marker) return
   marker.classList.remove('is-visible')
 }

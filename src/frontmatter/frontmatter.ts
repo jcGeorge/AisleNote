@@ -14,14 +14,10 @@ export type FrontmatterTemplateContext = {
   noteCreatedAt: string
   noteUpdatedAt: string
   noteTitle: string
+  folderName: string
+  folderPath: string
   isLinked: boolean
   tags: string[]
-  tabId: string
-  subTabId: string | null
-  spaceId: string
-  spaceName: string
-  domainId: string
-  domainName: string
 }
 
 export type ParseFrontmatterYamlResult =
@@ -42,11 +38,11 @@ export type MarkdownFrontmatterSplit = {
 }
 
 export function getFrontmatterFieldTypes(): FrontmatterFieldType[] {
-  return ['text', 'number', 'boolean', 'date', 'datetime', 'list']
+  return ['text', 'number', 'boolean', 'date', 'datetime', 'list', 'fixedList']
 }
 
 export function getFrontmatterComputedValues(): FrontmatterComputedValue[] {
-  return ['none', 'createdAt', 'updatedAt', 'noteTitle', 'spaceName', 'domainName', 'isLinked', 'tags']
+  return ['none', 'createdAt', 'updatedAt', 'noteTitle', 'folderName', 'folderPath', 'isLinked', 'tags']
 }
 
 export const FRONTMATTER_FIELD_TYPES: FrontmatterFieldType[] = getFrontmatterFieldTypes()
@@ -58,7 +54,7 @@ export function isFrontmatterComputedValueCompatibleWithFieldType(
 ) {
   if (computed === 'none') return true
   if (computed === 'createdAt' || computed === 'updatedAt') return type === 'date' || type === 'datetime'
-  if (computed === 'noteTitle' || computed === 'spaceName' || computed === 'domainName') return type === 'text'
+  if (computed === 'noteTitle' || computed === 'folderName' || computed === 'folderPath') return type === 'text'
   if (computed === 'isLinked') return type === 'boolean'
   if (computed === 'tags') return type === 'list'
   return false
@@ -348,25 +344,77 @@ function parseList(value: unknown): string[] {
     .filter(Boolean)
 }
 
+export function normalizeFrontmatterFixedListOptions(value: unknown): string[] {
+  const rawOptions = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/\r?\n|,/)
+      : []
+  const seen = new Set<string>()
+  const options: string[] = []
+  for (const rawOption of rawOptions) {
+    const option = coerceFrontmatterString(rawOption).trim()
+    if (!option || seen.has(option)) continue
+    seen.add(option)
+    options.push(option)
+  }
+  return options
+}
+
+export function resolveFrontmatterFixedListValue(
+  options: readonly string[] | undefined,
+  value: unknown,
+  fallback?: unknown,
+): string {
+  return resolveFrontmatterFixedListValues(options, value, fallback)[0] ?? ''
+}
+
+function hasExplicitFixedListValue(value: unknown): boolean {
+  if (Array.isArray(value)) return true
+  return value != null && coerceFrontmatterString(value).trim() !== ''
+}
+
+export function resolveFrontmatterFixedListValues(
+  options: readonly string[] | undefined,
+  value: unknown,
+  fallback?: unknown,
+): string[] {
+  const normalizedOptions = normalizeFrontmatterFixedListOptions(options)
+  if (normalizedOptions.length === 0) return []
+
+  const selectedValues = new Set(normalizeFrontmatterFixedListOptions(value))
+  const selectedOptions = normalizedOptions.filter((option) => selectedValues.has(option))
+  if (selectedOptions.length > 0) return selectedOptions
+
+  const shouldUseFallback =
+    fallback !== undefined &&
+    (!hasExplicitFixedListValue(value) || selectedValues.size > 0)
+  if (!shouldUseFallback) return []
+
+  const fallbackValues = new Set(normalizeFrontmatterFixedListOptions(fallback))
+  return normalizedOptions.filter((option) => fallbackValues.has(option))
+}
+
 function isCompatibleValue(type: FrontmatterFieldType, value: unknown): boolean {
   if (value == null || value === '') return false
   if (type === 'text' || type === 'date' || type === 'datetime') return typeof value === 'string' || value instanceof Date
   if (type === 'number') return typeof value === 'number' && Number.isFinite(value)
   if (type === 'boolean') return typeof value === 'boolean'
   if (type === 'list') return Array.isArray(value)
+  if (type === 'fixedList') return typeof value === 'string' || Array.isArray(value)
   return false
 }
 
 export function isFrontmatterReferenceComputedValue(computed: FrontmatterComputedValue) {
-  return computed === 'noteTitle' || computed === 'spaceName' || computed === 'domainName'
+  return computed === 'noteTitle'
 }
 
 function getComputedValue(computed: FrontmatterComputedValue, context: FrontmatterTemplateContext): unknown {
   if (computed === 'createdAt') return context.noteCreatedAt
   if (computed === 'updatedAt') return context.noteUpdatedAt
   if (computed === 'noteTitle') return { id: context.noteBodyId, title: context.noteTitle }
-  if (computed === 'spaceName') return { id: context.spaceId, name: context.spaceName }
-  if (computed === 'domainName') return { id: context.domainId, name: context.domainName }
+  if (computed === 'folderName') return context.folderName
+  if (computed === 'folderPath') return context.folderPath
   if (computed === 'isLinked') return context.isLinked
   if (computed === 'tags') return context.tags
   return undefined
@@ -400,6 +448,7 @@ export function coerceFrontmatterFieldValue(type: FrontmatterFieldType, value: u
     return Number.isNaN(date.getTime()) ? coerceFrontmatterString(value) : date.toISOString()
   }
   if (type === 'list') return parseList(value)
+  if (type === 'fixedList') return normalizeFrontmatterFixedListOptions(value)
   return value
 }
 
@@ -417,6 +466,9 @@ function resolveFieldValue(
   const computedValue = getComputedValue(field.computed, context)
   if (computedValue !== undefined) {
     return isFrontmatterReferenceComputedValue(field.computed) ? computedValue : coerceFrontmatterFieldValue(field.type, computedValue)
+  }
+  if (field.type === 'fixedList') {
+    return resolveFrontmatterFixedListValues(field.options, currentValue, field.defaultValue)
   }
   if (isCompatibleValue(field.type, currentValue)) return coerceFrontmatterFieldValue(field.type, currentValue)
   return coerceFrontmatterFieldValue(field.type, field.defaultValue)
@@ -458,12 +510,22 @@ function normalizeField(raw: unknown, index: number): FrontmatterTemplateField |
     ? (raw.computed as FrontmatterComputedValue)
     : 'none'
   const normalizedComputed = isFrontmatterComputedValueCompatibleWithFieldType(computed, type) ? computed : 'none'
+  const rawDefaultValue = typeof raw.defaultValue === 'string' ? raw.defaultValue : coerceFrontmatterString(raw.defaultValue)
+  const rawFixedListOptions = normalizeFrontmatterFixedListOptions(raw.options)
+  const fixedListOptions = type === 'fixedList'
+    ? rawFixedListOptions.length > 0
+      ? rawFixedListOptions
+      : normalizeFrontmatterFixedListOptions(rawDefaultValue)
+    : undefined
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : stableId('fm-field', key, index),
     key,
     type,
-    defaultValue: typeof raw.defaultValue === 'string' ? raw.defaultValue : coerceFrontmatterString(raw.defaultValue),
+    defaultValue: type === 'fixedList'
+      ? resolveFrontmatterFixedListValues(fixedListOptions, rawDefaultValue).join(', ')
+      : rawDefaultValue,
     computed: normalizedComputed,
+    ...(type === 'fixedList' ? { options: fixedListOptions ?? [] } : {}),
   }
 }
 

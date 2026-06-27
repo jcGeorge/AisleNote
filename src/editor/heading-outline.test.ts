@@ -91,6 +91,29 @@ describe('heading outline helpers', () => {
     ])
   })
 
+  it('does not collapse a following higher-level heading when collapsing a child heading', () => {
+    const blocks = getHeadingCollapseBlocksFromDoc(
+      'aisle-a',
+      docForBlocks([
+        { type: 'heading', text: 'Top', level: 1, size: 5 },
+        { type: 'paragraph', text: 'top body', size: 10 },
+        { type: 'heading', text: 'Child', level: 2, size: 7 },
+        { type: 'paragraph', text: 'child body', size: 12 },
+        { type: 'heading', text: 'Next top', level: 1, size: 10 },
+        { type: 'paragraph', text: 'outside', size: 9 },
+      ]),
+    )
+    const childHeadingKey = blocks[2].heading?.key ?? ''
+
+    const sections = getHeadingCollapseSections(blocks, new Set([childHeadingKey]))
+
+    expect(sections).toHaveLength(1)
+    expect(sections[0].hiddenRanges).toEqual([
+      { from: 22, to: 34 },
+    ])
+    expect(sections[0].boundaryHeading?.text).toBe('Next top')
+  })
+
   it('keeps blank paragraphs before the next heading outside collapsed ranges', () => {
     const blocks = getHeadingCollapseBlocksFromDoc(
       'aisle-a',

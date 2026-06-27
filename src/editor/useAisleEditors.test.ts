@@ -12,18 +12,24 @@ import {
   shouldUseFastSameAisleActivation,
 } from './aisle-activation'
 
-const useAisleEditorsSource = readFileSync(fileURLToPath(new URL('./useAisleEditors.ts', import.meta.url)), 'utf8')
+const useAisleEditorsSource = readFileSync(
+  fileURLToPath(new URL('./useVaultAisleEditors.ts', import.meta.url)),
+  'utf8',
+)
 
 describe('aisle editor activation', () => {
   it('uses Toast snapshots for mounted aisle content', () => {
-    expect(useAisleEditorsSource).toContain('const getSnapshotMarkdownForMeta = (meta: AisleEditorMeta): string')
-    expect(useAisleEditorsSource).toContain('return getSnapshotEditorMarkdown(meta.editor, cachedMarkdown ?? \'\', getNormalizedEditorMarkdown)')
+    expect(useAisleEditorsSource).toContain('const getMountedEditorMarkdownSnapshots = useCallback')
+    expect(useAisleEditorsSource).toContain('const snapshotMarkdown = getMarkdownSnapshotForMeta(meta)')
+    expect(useAisleEditorsSource).toContain('const collapsedSnapshots = collapseVaultEditorMarkdownSnapshots(snapshots)')
+    expect(useAisleEditorsSource).toContain("recordVaultEditorTiming('vault-mounted-snapshot-collection'")
   })
 
   it('records link-heavy editor hot-path diagnostics without changing renderer behavior', () => {
     expect(useAisleEditorsSource).toContain("recordDiagnosticEvent('editor', event")
-    expect(useAisleEditorsSource).toContain("recordHotPathDiagnostic('change-hot-path'")
-    expect(useAisleEditorsSource).toContain("recordHotPathDiagnostic('linked-aisle-sync'")
+    expect(useAisleEditorsSource).toContain("recordDiagnosticEvent('editor', 'vault-change-hot-path'")
+    expect(useAisleEditorsSource).toContain("recordVaultEditorTiming('vault-pending-commit-flush'")
+    expect(useAisleEditorsSource).toContain("recordVaultEditorTiming('vault-editor-mount'")
   })
 
   it('uses the fast path only when the current mounted aisle is already active', () => {
@@ -92,10 +98,11 @@ describe('aisle editor activation', () => {
     ).toBe(false)
   })
 
-  it('guards image tool missing checks behind active image tool state during typing', () => {
-    expect(useAisleEditorsSource).toContain('hasActiveImageToolsStateRef.current()')
-    expect(useAisleEditorsSource).toContain('skippedImageToolsMissingCheckCount')
-    expect(useAisleEditorsSource).toContain('skippedActiveEditorActivationCount')
+  it('keeps active editor activation focused on the requested mounted aisle', () => {
+    expect(useAisleEditorsSource).toContain('const activateAisleEditor = useCallback')
+    expect(useAisleEditorsSource).toContain('if (!setActiveEditor(aisleId)) return false')
+    expect(useAisleEditorsSource).toContain('focusEditorWithoutScrolling(editor ?? null)')
+    expect(useAisleEditorsSource).toContain('placeEditorCaretAtClientPoint(editor ?? null, options.focusAtClientPoint)')
   })
 
   it('clears pending cursor restore only for pointer activation', () => {

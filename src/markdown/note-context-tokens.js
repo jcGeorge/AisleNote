@@ -18,39 +18,17 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : []
 }
 
-function getDomainsWithActiveProjection(appState) {
-  const domains = ensureArray(appState?.domains)
-  const activeDomainId = typeof appState?.activeDomainId === 'string' ? appState.activeDomainId : ''
-  return domains.map((domain) => {
-    if (domain?.id !== activeDomainId) return domain
-    return {
-      ...domain,
-      activeSpaceId: typeof appState?.activeSpaceId === 'string' ? appState.activeSpaceId : domain?.activeSpaceId,
-      spaces: ensureArray(appState?.spaces).length > 0 ? appState.spaces : ensureArray(domain?.spaces),
-    }
-  })
-}
-
 function normalizeLocation(target) {
-  if (
-    !target ||
-    typeof target.domainId !== 'string' ||
-    typeof target.spaceId !== 'string' ||
-    typeof target.tabId !== 'string' ||
-    (typeof target.subTabId !== 'string' && target.subTabId !== null)
-  ) {
+  if (!target || typeof target.noteId !== 'string') {
     return null
   }
   return {
-    domainId: target.domainId,
-    spaceId: target.spaceId,
-    tabId: target.tabId,
-    subTabId: target.subTabId,
+    noteId: target.noteId,
   }
 }
 
 function buildLocationKey(location) {
-  return [location.domainId, location.spaceId, location.tabId, location.subTabId ?? '__home__'].join('::')
+  return location.noteId
 }
 
 function getAisleMarkdown(aisle, noteAisleBodies) {
@@ -262,40 +240,54 @@ function resolveIndexedHandle(indexes, handle) {
   return shortId ? indexes.byShortId.get(shortId) ?? null : null
 }
 
-function getNoteTitle(tab, subTab) {
-  return subTab?.title ?? tab?.title ?? 'note'
+function walkVaultNotes(items, visitor, path = []) {
+  for (const item of ensureArray(items)) {
+    if (!item?.id) continue
+    const nextPath = [...path, item]
+    if (item.type === 'note') {
+      visitor(item, nextPath)
+      continue
+    }
+    if (item.type === 'folder') {
+      walkVaultNotes(item.children, visitor, nextPath)
+    }
+  }
 }
 
-function getNoteDisplayName(tab, subTab) {
-  return subTab?.title ?? tab?.title ?? 'note'
+function getNoteTitle(note) {
+  return note?.title ?? 'note'
+}
+
+function getNoteDisplayName(note) {
+  return note?.title ?? 'note'
 }
 
 function createNoteEntry({
   appState,
-  domain,
-  space,
-  tab,
-  subTab,
+  note,
+  path,
   noteAllocator,
 }) {
-  const locationId = subTab?.id ?? tab?.id
-  const noteBodyId = subTab?.noteBodyId ?? tab?.noteBodyId ?? ''
+  const locationId = note?.id
+  const noteBodyId = note?.noteBodyId ?? ''
   if (!locationId || !noteBodyId) return null
 
   const target = {
-    domainId: domain.id,
-    spaceId: space.id,
-    tabId: tab.id,
-    subTabId: subTab?.id ?? null,
+    noteId: note.id,
   }
-  const title = getNoteTitle(tab, subTab)
-  const displayName = getNoteDisplayName(tab, subTab)
+  const title = getNoteTitle(note)
+  const displayName = getNoteDisplayName(note)
   const handle = buildWikiHandle(displayName, locationId, 'note', noteAllocator)
   const noteBody = getNoteBody(appState, noteBodyId)
   const suffixAllocator = createStoragePathAllocator()
   const suffixEntries = []
   const aisleEntries = []
   const headingEntries = []
+  const folderPath = ensureArray(path)
+    .slice(0, -1)
+    .map((segment) => segment?.title)
+    .filter(Boolean)
+    .join('/')
 
   ensureArray(noteBody?.aisles).forEach((aisle, index) => {
     if (!aisle?.id) return
@@ -340,10 +332,9 @@ function createNoteEntry({
     noteBodyId,
     title,
     displayName,
-    domainName: domain?.name ?? domain?.title ?? 'domain',
-    spaceName: space?.name ?? space?.title ?? 'space',
-    parentName: tab?.title ?? 'parent',
-    noteName: subTab?.title ?? tab?.title ?? 'note',
+    folderName: folderPath.split('/').filter(Boolean).at(-1) ?? '',
+    folderPath,
+    noteName: note?.title ?? 'note',
     suffixIndexes,
     suffixByAisleId,
     suffixByHeadingKey,
@@ -354,25 +345,27 @@ export function buildWikiReferenceIndex(appState) {
   const noteAllocator = createStoragePathAllocator()
   const notes = []
 
-  for (const domain of getDomainsWithActiveProjection(appState)) {
-    if (!domain?.id) continue
-    for (const space of ensureArray(domain?.spaces)) {
-      if (!space?.id) continue
-      for (const tab of ensureArray(space?.data?.tabs)) {
-        if (!tab?.id) continue
-        const homeEntry = createNoteEntry({ appState, domain, space, tab, subTab: null, noteAllocator })
-        if (homeEntry) notes.push(homeEntry)
-        for (const subTab of ensureArray(tab?.subTabs)) {
-          const subTabEntry = createNoteEntry({ appState, domain, space, tab, subTab, noteAllocator })
-          if (subTabEntry) notes.push(subTabEntry)
-        }
-      }
-    }
-  }
+  walkVaultNotes(appState?.vault?.items, (note, path) => {
+    const entry = createNoteEntry({ appState, note, path, noteAllocator })
+    if (entry) notes.push(entry)
+  })
 
   const noteIndexes = buildHandleIndexes(notes)
   const noteByLocationKey = new Map(notes.map((entry) => [entry.locationKey, entry]))
   return { notes, noteIndexes, noteByLocationKey }
+}
+
+const wikiReferenceIndexCache = new WeakMap()
+
+export function getCachedWikiReferenceIndex(appState) {
+  if (!appState || (typeof appState !== 'object' && typeof appState !== 'function')) {
+    return buildWikiReferenceIndex(appState)
+  }
+  const cached = wikiReferenceIndexCache.get(appState)
+  if (cached) return cached
+  const index = buildWikiReferenceIndex(appState)
+  wikiReferenceIndexCache.set(appState, index)
+  return index
 }
 
 export function parseWikiReferenceToken(token) {
@@ -432,7 +425,7 @@ export function getWikiReferenceDisplayText(token) {
 export function resolveWikiReferenceToken(appState, token) {
   const parsed = parseWikiReferenceToken(token)
   if (!parsed) return null
-  const index = buildWikiReferenceIndex(appState)
+  const index = getCachedWikiReferenceIndex(appState)
   const note = resolveIndexedHandle(index.noteIndexes, parsed.noteHandle)
   if (!note) return null
 
@@ -476,7 +469,7 @@ export function resolveWikiReferenceToken(appState, token) {
 export function resolveMarkdownNoteReferenceToken(appState, token) {
   const parsed = parseMarkdownNoteReferenceToken(token)
   if (!parsed) return null
-  const index = buildWikiReferenceIndex(appState)
+  const index = getCachedWikiReferenceIndex(appState)
   const note = resolveIndexedHandle(index.noteIndexes, parsed.noteHandle)
   if (!note) return null
 
@@ -593,7 +586,7 @@ export function buildMarkdownNoteReferenceToken({ embed = false, target, label =
 export function getCanonicalWikiTargetForPayload(appState, payload) {
   const target = normalizeLocation(payload?.target ?? payload)
   if (!target) return null
-  const index = buildWikiReferenceIndex(appState)
+  const index = getCachedWikiReferenceIndex(appState)
   const note = index.noteByLocationKey.get(buildLocationKey(target))
   if (!note) return null
   if (payload?.previewStart === 'last-position' || payload?.startAt === 'last-position') {

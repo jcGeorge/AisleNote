@@ -1,7 +1,7 @@
 import type { ToolbarToolId } from '../../types/app'
 
-export const TOOLBAR_DRAG_MIME = 'application/x-tabs-toolbar'
-const TOOLBAR_DRAG_TEXT_PREFIX = 'tabs-toolbar:'
+export const TOOLBAR_DRAG_MIME = 'application/x-aislenote-toolbar'
+const TOOLBAR_DRAG_TEXT_PREFIX = 'aislenote-toolbar:'
 
 export type ToolbarDragPayload =
   | { source: 'layout'; itemId: string }

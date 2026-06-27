@@ -6,25 +6,29 @@ import {
 import type { ResolvedMarkdownNoteReference } from '../notes/note-references'
 
 function markdownReference(token: string, embed = false): ResolvedMarkdownNoteReference {
+  const isPreviewTarget = token.includes('Preview--def456')
+  const label = isPreviewTarget ? 'Preview' : 'Linked'
+  const destination = isPreviewTarget ? 'Preview--def456' : 'Linked--abc123'
+  const noteId = isPreviewTarget ? 'note-preview' : 'note-linked'
   return {
     token,
     parsed: {
       token,
       embed,
-      label: 'Linked',
-      destination: 'Linked--abc123',
-      target: 'Linked--abc123',
-      noteHandle: 'Linked--abc123',
+      label,
+      destination,
+      target: destination,
+      noteHandle: destination,
       suffixHandle: '',
     },
     payload: {
-      id: `${embed ? 'markdown-preview' : 'markdown-link'}:Linked--abc123`,
-      target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
+      id: `${embed ? 'markdown-preview' : 'markdown-link'}:${destination}`,
+      target: { noteId },
     },
-    target: { domainId: 'domain', spaceId: 'space', tabId: 'tab', subTabId: null },
-    label: 'Linked',
-    canonicalTarget: 'Linked--abc123',
-    canonicalToken: `${embed ? '!' : ''}[Linked](Linked--abc123)`,
+    target: { noteId },
+    label,
+    canonicalTarget: destination,
+    canonicalToken: `${embed ? '!' : ''}[${label}](${destination})`,
   }
 }
 
@@ -47,17 +51,21 @@ function docWithTextNodes(nodes: Array<{ text: string; pos: number; href?: strin
 
 describe('table of contents link collection', () => {
   it('collects note links, url links, and note previews from markdown', () => {
-    const resolve = vi.fn((token: string) => token.includes('Linked--abc123') ? markdownReference(token, token.startsWith('!')) : null)
+    const resolve = vi.fn((token: string) =>
+      token.includes('Linked--abc123') || token.includes('Preview--def456')
+        ? markdownReference(token, token.startsWith('!'))
+        : null,
+    )
     const links = getTableOfContentsLinksFromMarkdown(
       'aisle-a',
-      '[Linked](Linked--abc123) and [site](https://example.com/path) and ![Linked](Linked--abc123)',
+      '[Linked](Linked--abc123) and [site](https://example.com/path) and ![Preview](Preview--def456)',
       resolve,
     )
 
-    expect(links.map((link) => [link.kind, link.label, link.href ?? link.target?.tabId])).toEqual([
-      ['note-link', 'Linked', 'tab'],
+    expect(links.map((link) => [link.kind, link.label, link.href ?? link.target?.noteId])).toEqual([
+      ['note-link', 'Linked', 'note-linked'],
       ['url-link', 'site', 'https://example.com/path'],
-      ['note-preview', 'Linked', 'tab'],
+      ['note-preview', 'Preview', 'note-preview'],
     ])
     expect(links.map((link) => link.key)).toEqual([
       'aisle-a|link|0',
@@ -67,7 +75,11 @@ describe('table of contents link collection', () => {
   })
 
   it('ignores headings-looking links inside fenced markdown code', () => {
-    const resolve = vi.fn((token: string) => token.includes('Linked--abc123') ? markdownReference(token, token.startsWith('!')) : null)
+    const resolve = vi.fn((token: string) =>
+      token.includes('Linked--abc123') || token.includes('Preview--def456')
+        ? markdownReference(token, token.startsWith('!'))
+        : null,
+    )
     const links = getTableOfContentsLinksFromMarkdown(
       'aisle-a',
       '```\n[Linked](Linked--abc123)\n[site](https://example.com)\n```\n\n<https://open.example>',
@@ -80,13 +92,17 @@ describe('table of contents link collection', () => {
   })
 
   it('collects markdown note source and external link marks from ProseMirror docs', () => {
-    const resolve = vi.fn((token: string) => token.includes('Linked--abc123') ? markdownReference(token, token.startsWith('!')) : null)
+    const resolve = vi.fn((token: string) =>
+      token.includes('Linked--abc123') || token.includes('Preview--def456')
+        ? markdownReference(token, token.startsWith('!'))
+        : null,
+    )
     const links = getTableOfContentsLinksFromDoc(
       'aisle-a',
       docWithTextNodes([
         { text: 'Linked', pos: 1, href: 'Linked--abc123' },
         { text: 'visible', pos: 25, href: 'https://example.com' },
-        { text: '![Linked](Linked--abc123)', pos: 40 },
+        { text: '![Preview](Preview--def456)', pos: 40 },
       ]),
       resolve,
     )
@@ -94,7 +110,25 @@ describe('table of contents link collection', () => {
     expect(links.map((link) => [link.kind, link.from, link.to])).toEqual([
       ['note-link', 1, 7],
       ['url-link', 25, 32],
-      ['note-preview', 40, 65],
+      ['note-preview', 40, 67],
+    ])
+  })
+
+  it('prunes duplicate destinations while preserving first appearance order', () => {
+    const resolve = vi.fn((token: string) => token.includes('Linked--abc123') ? markdownReference(token, token.startsWith('!')) : null)
+    const links = getTableOfContentsLinksFromMarkdown(
+      'aisle-a',
+      '[Linked](Linked--abc123) and ![Linked again](Linked--abc123) and [first](https://example.com) and <https://example.com/>',
+      resolve,
+    )
+
+    expect(links.map((link) => [link.kind, link.label, link.href ?? link.target?.noteId])).toEqual([
+      ['note-link', 'Linked', 'note-linked'],
+      ['url-link', 'first', 'https://example.com/'],
+    ])
+    expect(links.map((link) => link.key)).toEqual([
+      'aisle-a|link|0',
+      'aisle-a|link|1',
     ])
   })
 

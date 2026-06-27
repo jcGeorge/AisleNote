@@ -1,4 +1,6 @@
 import type { AppState, NoteBody } from '../types/app'
+import { listVaultNotes } from '../state/vault'
+import { buildNoteLocationKey } from './note-locations'
 
 export type AisleWidthsByLocation = Record<string, Record<string, number>>
 
@@ -70,24 +72,8 @@ export function buildLiveAisleWidthLocationMap(appState: AppState): Map<string, 
   const result = new Map<string, Set<string>>()
   const bodiesById = getBodyById(appState)
 
-  appState.domains.forEach((domain) => {
-    const spaces = domain.id === appState.activeDomainId ? appState.spaces : domain.spaces
-    spaces.forEach((space) => {
-      space.data.tabs.forEach((tab) => {
-        addLocationAisleIds(
-          result,
-          [domain.id, space.id, tab.id, '__home__'].join('::'),
-          bodiesById.get(tab.noteBodyId),
-        )
-        tab.subTabs.forEach((subTab) => {
-          addLocationAisleIds(
-            result,
-            [domain.id, space.id, tab.id, subTab.id].join('::'),
-            bodiesById.get(subTab.noteBodyId),
-          )
-        })
-      })
-    })
+  listVaultNotes(appState.vault.items).forEach(({ note }) => {
+    addLocationAisleIds(result, buildNoteLocationKey({ noteId: note.id }), bodiesById.get(note.noteBodyId))
   })
 
   const scratchpadBodyId = appState.scratchpad?.noteBodyId

@@ -56,8 +56,8 @@ describe('media utils', () => {
   })
 
   it('detects media urls with app-owned transform metadata fragments', () => {
-    expect(getMediaKindFromUrl('tabs-asset:///assets/clip.webm#tabs-media=width=320,ratio=shorts')).toBe('video')
-    expect(getMediaKindFromUrl('tabs-asset:///assets/song.mp3#tabs-media=width=320')).toBe('audio')
+    expect(getMediaKindFromUrl('aislenote-asset:///assets/clip.webm#aislenote-media=width=320,rotate=90')).toBe('video')
+    expect(getMediaKindFromUrl('aislenote-asset:///assets/song.mp3#aislenote-media=width=320')).toBe('audio')
   })
 
   it('detects media file kinds from mime type before file extension fallback', () => {

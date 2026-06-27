@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeImage, protocol, shell } from 'electron'
+import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeImage, protocol, screen, shell } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerClipboardIpc } from './ipc-clipboard.mjs'
@@ -10,6 +10,7 @@ import { registerDiagnosticIpc } from './ipc-diagnostics.mjs'
 import { configureEditorSpellcheckerForWindow, createEditorContextMenuIpc } from './editor-context-menu.mjs'
 import { finishCloseAfterFlush } from './quit-flow.mjs'
 import { createNoopUpdateService } from './update-service.mjs'
+import { loadWindowState, saveWindowState, watchWindowState } from './window-state.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -17,6 +18,9 @@ const gotSingleInstanceLock = app.requestSingleInstanceLock()
 let quitRequested = false
 let storageSession = null
 let editorContextMenuIpc = null
+const APP_ZOOM_LEVEL_STEP = 0.5
+const APP_ZOOM_MIN_LEVEL = -6
+const APP_ZOOM_MAX_LEVEL = 6
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -46,6 +50,43 @@ function openAppWindow() {
   return true
 }
 
+function focusWindow(window) {
+  if (!window || window.isDestroyed()) return false
+  if (window.isMinimized()) {
+    window.restore()
+  }
+  window.show()
+  window.focus()
+  return true
+}
+
+function sendOpenVaultManagerToWindow(window) {
+  if (!window || window.isDestroyed()) return
+  const sendNavigationEvent = () => {
+    if (!window.isDestroyed()) {
+      window.webContents.send('open-vault-manager')
+    }
+  }
+  if (window.webContents.isLoadingMainFrame()) {
+    window.webContents.once('did-finish-load', () => setTimeout(sendNavigationEvent, 100))
+    return
+  }
+  sendNavigationEvent()
+}
+
+function openVaultManager() {
+  const existingWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+  if (existingWindow && !existingWindow.isDestroyed()) {
+    focusWindow(existingWindow)
+    sendOpenVaultManagerToWindow(existingWindow)
+    return
+  }
+  if (!storageSession) return
+  const window = createWindow(storageSession)
+  focusWindow(window)
+  sendOpenVaultManagerToWindow(window)
+}
+
 function isExternalWebUrl(value) {
   try {
     const url = new URL(value)
@@ -57,7 +98,7 @@ function isExternalWebUrl(value) {
 
 function sendMultilineShortcutToWindow(window, direction) {
   if (!window || window.isDestroyed()) return
-  void window.webContents.executeJavaScript(`window.__tabsHandleMultilineShortcut?.(${JSON.stringify(direction)})`, true)
+  void window.webContents.executeJavaScript(`window.__aislenoteHandleMultilineShortcut?.(${JSON.stringify(direction)})`, true)
 }
 
 function withTimeout(promise, timeoutMs) {
@@ -74,6 +115,43 @@ function sendMultilineShortcut(direction) {
   sendMultilineShortcutToWindow(BrowserWindow.getFocusedWindow(), direction)
 }
 
+function clampAppZoomLevel(zoomLevel) {
+  if (!Number.isFinite(zoomLevel)) return 0
+  return Math.min(APP_ZOOM_MAX_LEVEL, Math.max(APP_ZOOM_MIN_LEVEL, zoomLevel))
+}
+
+function getAppZoomPayload(webContents) {
+  const zoomLevel = webContents.getZoomLevel()
+  const zoomFactor = webContents.getZoomFactor()
+  return {
+    zoomLevel,
+    zoomFactor,
+    percent: Math.round(zoomFactor * 100),
+  }
+}
+
+function sendAppZoomChanged(window) {
+  if (!window || window.isDestroyed()) return
+  window.webContents.send('app-zoom-changed', getAppZoomPayload(window.webContents))
+}
+
+function applyAppZoom(window, action) {
+  if (!window || window.isDestroyed()) return
+  const webContents = window.webContents
+  if (action === 'reset') {
+    webContents.setZoomLevel(0)
+    sendAppZoomChanged(window)
+    return
+  }
+  const direction = action === 'in' ? 1 : -1
+  webContents.setZoomLevel(clampAppZoomLevel(webContents.getZoomLevel() + direction * APP_ZOOM_LEVEL_STEP))
+  sendAppZoomChanged(window)
+}
+
+function zoomFocusedWindow(action) {
+  applyAppZoom(BrowserWindow.getFocusedWindow(), action)
+}
+
 async function confirmAndResetUserSettings(window = BrowserWindow.getFocusedWindow()) {
   if (!storageSession?.resetUserSettingsToDefaults) return
   const confirmation = await dialog.showMessageBox(window ?? undefined, {
@@ -82,7 +160,7 @@ async function confirmAndResetUserSettings(window = BrowserWindow.getFocusedWind
     cancelId: 1,
     defaultId: 1,
     message: 'Reset user settings to defaults?',
-    detail: 'This resets theme, hotkeys, shortcuts, toolbar layouts, and app preferences. Notebook content is not changed.',
+    detail: 'This resets theme, hotkeys, shortcuts, toolbar layouts, and app preferences. Vault content is not changed.',
   })
   if (confirmation.response !== 0) return
   const result = await storageSession.resetUserSettingsToDefaults()
@@ -91,25 +169,7 @@ async function confirmAndResetUserSettings(window = BrowserWindow.getFocusedWind
   }
 }
 
-async function confirmAndResetLocalNotebook(window = BrowserWindow.getFocusedWindow()) {
-  if (!storageSession?.resetLocalNotebookToBlank) return
-  const confirmation = await dialog.showMessageBox(window ?? undefined, {
-    type: 'warning',
-    buttons: ['Reset local notebook', 'Cancel'],
-    cancelId: 1,
-    defaultId: 1,
-    message: 'Reset local notebook to blank?',
-    detail:
-      'This deletes the local notebook stored on this device and switches Tabs back to a blank local notebook. Connected notebook folders are not modified.',
-  })
-  if (confirmation.response !== 0) return
-  const result = await storageSession.resetLocalNotebookToBlank()
-  if (!result?.ok) {
-    dialog.showErrorBox('Local notebook reset failed', result?.error ?? 'Local notebook could not be reset.')
-  }
-}
-
-function installApplicationMenu({ onNewWindow, onResetUserSettings, onResetLocalNotebook }) {
+function installApplicationMenu({ onNewWindow, onOpenVault, onResetUserSettings }) {
   const isMac = process.platform === 'darwin'
   if (!isMac) {
     Menu.setApplicationMenu(null)
@@ -133,15 +193,15 @@ function installApplicationMenu({ onNewWindow, onResetUserSettings, onResetLocal
           accelerator: 'CommandOrControl+N',
           click: onNewWindow,
         },
+        {
+          label: 'Open Vault',
+          click: onOpenVault,
+        },
         { type: 'separator' },
         {
           label: 'Reset User Settings to Defaults',
           accelerator: 'CommandOrControl+Alt+Shift+R',
           click: onResetUserSettings,
-        },
-        {
-          label: 'Reset Local Notebook to Blank',
-          click: onResetLocalNotebook,
         },
       ],
     },
@@ -150,7 +210,7 @@ function installApplicationMenu({ onNewWindow, onResetUserSettings, onResetLocal
       submenu: [
         {
           label: 'Add Cursor Above',
-          accelerator: isMac ? 'Command+Alt+Up' : 'Alt+Shift+Up',
+          accelerator: isMac ? 'Command+Alt+Up' : 'Control+Alt+Up',
           visible: false,
           acceleratorWorksWhenHidden: true,
           registerAccelerator: true,
@@ -158,7 +218,7 @@ function installApplicationMenu({ onNewWindow, onResetUserSettings, onResetLocal
         },
         {
           label: 'Add Cursor Below',
-          accelerator: isMac ? 'Command+Alt+Down' : 'Alt+Shift+Down',
+          accelerator: isMac ? 'Command+Alt+Down' : 'Control+Alt+Down',
           visible: false,
           acceleratorWorksWhenHidden: true,
           registerAccelerator: true,
@@ -175,7 +235,27 @@ function installApplicationMenu({ onNewWindow, onResetUserSettings, onResetLocal
     },
     {
       label: 'View',
-      submenu: [{ role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }],
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        {
+          label: 'Actual Size',
+          accelerator: 'CommandOrControl+0',
+          click: () => zoomFocusedWindow('reset'),
+        },
+        {
+          label: 'Zoom In',
+          accelerator: 'CommandOrControl+Plus',
+          click: () => zoomFocusedWindow('in'),
+        },
+        {
+          label: 'Zoom Out',
+          accelerator: 'CommandOrControl+-',
+          click: () => zoomFocusedWindow('out'),
+        },
+      ],
     },
     {
       label: 'Window',
@@ -216,7 +296,7 @@ function getMultilineShortcutDirection(input) {
     return isUp ? 'up' : 'down'
   }
 
-  if (!input.alt || !input.shift || input.meta || input.control) return null
+  if (!input.control || !input.alt || input.meta || input.shift) return null
   return isUp ? 'up' : 'down'
 }
 
@@ -229,13 +309,39 @@ function isResetUserSettingsShortcut(input) {
   return process.platform === 'darwin' ? Boolean(input.meta && !input.control) : Boolean(input.control && !input.meta)
 }
 
+function getZoomShortcutAction(input) {
+  if (input.type !== 'keyDown') return null
+  const key = typeof input.key === 'string' ? input.key.toLowerCase() : ''
+  const code = typeof input.code === 'string' ? input.code.toLowerCase() : ''
+  const hasModifier = process.platform === 'darwin' ? input.meta && !input.control : input.control && !input.meta
+  if (!hasModifier || input.alt) return null
+  if (key === '+' || key === '=' || code === 'equal' || code === 'numpadadd') return 'in'
+  if (key === '-' || key === '_' || code === 'minus' || code === 'numpadsubtract') return 'out'
+  if (key === '0' || key === ')' || code === 'digit0' || code === 'numpad0') return 'reset'
+  return null
+}
+
+function getWindowIconPath() {
+  if (process.platform === 'darwin') return undefined
+  return path.join(app.getAppPath(), 'build', 'icon.png')
+}
+
 function createWindow(storageSession) {
-  const window = new BrowserWindow({
+  const userDataPath = app.getPath('userData')
+  const defaultWindowBounds = {
     width: 1200,
     height: 800,
     minWidth: 900,
     minHeight: 640,
+  }
+  const restoredWindowState = loadWindowState(userDataPath, screen, defaultWindowBounds)
+  const windowIconPath = getWindowIconPath()
+  const window = new BrowserWindow({
+    ...restoredWindowState.bounds,
+    minWidth: defaultWindowBounds.minWidth,
+    minHeight: defaultWindowBounds.minHeight,
     backgroundColor: '#0b1220',
+    ...(windowIconPath ? { icon: windowIconPath } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -243,10 +349,22 @@ function createWindow(storageSession) {
       spellcheck: true,
     },
   })
+  watchWindowState(userDataPath, window)
+  if (restoredWindowState.isMaximized) {
+    window.maximize()
+  }
   let allowImmediateClose = false
   let closeFlushInProgress = false
 
   window.webContents.on('before-input-event', (event, input) => {
+    if (process.platform !== 'darwin') {
+      const zoomAction = getZoomShortcutAction(input)
+      if (zoomAction) {
+        event.preventDefault()
+        applyAppZoom(window, zoomAction)
+        return
+      }
+    }
     if (isResetUserSettingsShortcut(input)) {
       event.preventDefault()
       void confirmAndResetUserSettings(window)
@@ -271,6 +389,7 @@ function createWindow(storageSession) {
   window.on('close', (event) => {
     if (allowImmediateClose || window.isDestroyed()) return
 
+    saveWindowState(userDataPath, window)
     event.preventDefault()
     if (closeFlushInProgress) return
     closeFlushInProgress = true
@@ -280,8 +399,8 @@ function createWindow(storageSession) {
         const rendererState = await withTimeout(
           window.webContents.executeJavaScript(
             `(() => {
-              const serializedState = window.__tabsGetLatestAppState?.() ?? null
-              const baseRevision = window.__tabsGetAppStateRevision?.() ?? null
+              const serializedState = window.__aislenoteGetLatestAppState?.() ?? null
+              const baseRevision = window.__aislenoteGetAppStateRevision?.() ?? null
               return { serializedState, baseRevision }
             })()`,
             true,
@@ -335,8 +454,8 @@ if (!gotSingleInstanceLock) {
     registerImageAssetProtocol({ protocol, storageSession })
     installApplicationMenu({
       onNewWindow: openAppWindow,
+      onOpenVault: openVaultManager,
       onResetUserSettings: () => confirmAndResetUserSettings(),
-      onResetLocalNotebook: () => confirmAndResetLocalNotebook(),
     })
     registerFileIpc({ ipcMain, dialog, storageSession })
     registerClipboardIpc({ ipcMain, clipboard, nativeImage })

@@ -1125,10 +1125,13 @@ export function buildMultiLineRemoveBlockIndentOperationPlan(
   view: any,
   multiLineEdit: MultiLineEditState,
 ): MultiLineOperationPlan | null {
-  const context = getMultiLineFormatContext(view, multiLineEdit)
+  const context = getBlockFormatContexts(view, multiLineEdit)
   if (!context) return null
 
-  const targets = getBlockIndentTargets(context.blockRanges, context.selectedIndices, true)
+  const targetIndices = context.contexts
+    .filter((row) => row.kind !== 'blockQuoteChild')
+    .map((row) => row.blockIndex)
+  const targets = getBlockIndentTargets(context.blockRanges, targetIndices, true)
   if (targets.length === 0) return null
 
   const transaction = applyBlockIndentTargets(view, targets, true)
@@ -1171,10 +1174,13 @@ export function buildSelectionBlockIndentOperationPlan(view: any): SelectionOper
 }
 
 export function buildSelectionRemoveBlockIndentOperationPlan(view: any): SelectionOperationPlan | null {
-  const context = getSelectionFormatContext(view)
+  const context = getBlockFormatContextsForSelection(view)
   if (!context) return null
 
-  const targets = getBlockIndentTargets(context.blockRanges, context.selectedIndices, true)
+  const targetIndices = context.contexts
+    .filter((row) => row.kind !== 'blockQuoteChild')
+    .map((row) => row.blockIndex)
+  const targets = getBlockIndentTargets(context.blockRanges, targetIndices, true)
   if (targets.length === 0) return null
 
   return {

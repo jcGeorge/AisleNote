@@ -1,14 +1,13 @@
 export const SYNCED_UI_SIMPLE_SETTING_DEFINITIONS = Object.freeze([
-  { key: 'lastLinkInsertMode', kind: 'enum', defaultValue: 'note', values: ['note', 'url'] },
-  { key: 'lastNoteCopyMode', kind: 'enum', defaultValue: 'independent', values: ['independent', 'linked'] },
+  { key: 'lastLinkInsertMode', kind: 'enum', defaultValue: 'note-link', values: ['url', 'note-link', 'note-preview'] },
+  { key: 'lastNoteCopyMode', kind: 'enum', defaultValue: 'independent', values: ['independent', 'synced'] },
   { key: 'findCaseSensitive', kind: 'boolean', defaultValue: false },
   { key: 'findWholeWord', kind: 'boolean', defaultValue: false },
   { key: 'findRegex', kind: 'boolean', defaultValue: false },
   { key: 'findReplaceMode', kind: 'enum', defaultValue: 'find', values: ['find', 'replace'] },
-  { key: 'findReplaceScope', kind: 'enum', defaultValue: 'note', values: ['note', 'parent', 'space', 'domain', 'notebook'] },
+  { key: 'findReplaceScope', kind: 'enum', defaultValue: 'note', values: ['note', 'folder', 'vault'] },
   { key: 'removeNoteReferencesOnTrash', kind: 'boolean', defaultValue: true },
   { key: 'noteMentionCopyRequiresConfirmation', kind: 'boolean', defaultValue: true },
-  { key: 'deleteActiveAisleShortcutEnabled', kind: 'boolean', defaultValue: false },
   { key: 'scratchpadNewAisleSide', kind: 'enum', defaultValue: 'left', values: ['left', 'right'] },
   {
     key: 'tabRenameEnterBehavior',
@@ -21,6 +20,7 @@ export const SYNCED_UI_SIMPLE_SETTING_DEFINITIONS = Object.freeze([
   { key: 'tableAddTargetMode', kind: 'enum', defaultValue: 'bottom-right', values: ['bottom-right', 'active-cell'] },
   { key: 'tableDeleteTargetMode', kind: 'enum', defaultValue: 'bottom-right', values: ['bottom-right', 'active-cell'] },
   { key: 'tableOfContentsScope', kind: 'enum', defaultValue: 'all-aisles', values: ['all-aisles', 'focused-aisle'] },
+  { key: 'tabColorIndicatorPlacement', kind: 'enum', defaultValue: 'bottom', values: ['bottom', 'top'] },
   { key: 'toolbarEditorShowNames', kind: 'boolean', defaultValue: false },
 ])
 
@@ -49,11 +49,6 @@ export const MISC_SYNCED_UI_BOOLEAN_SETTINGS = Object.freeze([
     label: '@ menu requires confirmation for replacing aisle with synced or independent copy',
     ariaLabel: '@ menu requires confirmation for replacing aisle with synced or independent copy',
   },
-  {
-    key: 'deleteActiveAisleShortcutEnabled',
-    label: 'primary+w deletes active aisle',
-    ariaLabel: 'primary+w deletes active aisle',
-  },
 ])
 
 function isRecord(value) {
@@ -63,10 +58,16 @@ function isRecord(value) {
 export function normalizeRegisteredSyncedUiSetting(key, value) {
   const definition = SIMPLE_SETTING_BY_KEY.get(key)
   if (!definition) return undefined
+  const normalizedValue =
+    key === 'lastLinkInsertMode' && value === 'note'
+      ? 'note-link'
+      : key === 'lastNoteCopyMode' && value === 'linked'
+        ? 'synced'
+        : value
   if (definition.kind === 'boolean') {
-    return typeof value === 'boolean' ? value : definition.defaultValue
+    return typeof normalizedValue === 'boolean' ? normalizedValue : definition.defaultValue
   }
-  return definition.values.includes(value) ? value : definition.defaultValue
+  return definition.values.includes(normalizedValue) ? normalizedValue : definition.defaultValue
 }
 
 export function normalizeRegisteredSyncedUiSettings(rawUi) {

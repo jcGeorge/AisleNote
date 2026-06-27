@@ -1,3 +1,4 @@
+import * as React from 'react'
 import {
   useCallback,
   useEffect,
@@ -30,6 +31,7 @@ import {
   resolveMediaDisplayUrl,
   type MediaKind,
 } from './media-utils'
+
 import {
   MEDIA_DEFAULT_PLAYBACK_SPEED,
   MEDIA_DEFAULT_VOLUME_PERCENT,
@@ -53,6 +55,8 @@ import {
 } from './media-context-menu'
 import { AppIcon } from '../components/icons/AppIcon'
 
+void React
+
 type MediaPlayerProps = {
   src: string
   kind?: MediaKind | null
@@ -61,11 +65,11 @@ type MediaPlayerProps = {
 
 function MediaControlIcon({ name }: { name: MediaControlIconName }) {
   const spec = MEDIA_CONTROL_ICON_SPECS[name]
-  if (spec.appIconId) return <AppIcon iconId={spec.appIconId} className={`tabs-media-icon ${spec.className}`} />
+  if (spec.appIconId) return <AppIcon iconId={spec.appIconId} className={`aislenote-media-icon ${spec.className}`} />
 
   return (
     <svg
-      className={spec.svgClassName ?? `tabs-media-icon ${spec.className}`}
+      className={spec.svgClassName ?? `aislenote-media-icon ${spec.className}`}
       viewBox={spec.viewBox ?? MEDIA_CONTROL_ICON_VIEW_BOX}
       aria-hidden="true"
       focusable="false"
@@ -73,7 +77,7 @@ function MediaControlIcon({ name }: { name: MediaControlIconName }) {
       {spec.paths.map((path, index) => (
         <path
           key={`${name}-${index}`}
-          className={path.className ?? (path.fill ? 'tabs-media-icon-fill' : undefined)}
+          className={path.className ?? (path.fill ? 'aislenote-media-icon-fill' : undefined)}
           d={path.d}
         />
       ))}
@@ -293,11 +297,11 @@ export function MediaPlayer({ src, kind: providedKind, label = '' }: MediaPlayer
     >
       {kind === 'video' ? (
         <span
-          className="tabs-media-viewport"
+          className="aislenote-media-viewport"
           style={getMediaViewportStyle(transformMetadata, naturalAspectRatio) as CSSProperties}
         >
           <span
-            className="tabs-media-frame"
+            className="aislenote-media-frame"
             style={getMediaFrameStyle(transformMetadata, naturalAspectRatio) as CSSProperties}
           >
             <video
@@ -305,7 +309,7 @@ export function MediaPlayer({ src, kind: providedKind, label = '' }: MediaPlayer
               ref={(node) => {
                 mediaRef.current = node
               }}
-              className="tabs-media-video"
+              className="aislenote-media-video"
               style={getMediaVideoStyle(transformMetadata) as CSSProperties}
               playsInline
               draggable={false}
@@ -318,14 +322,14 @@ export function MediaPlayer({ src, kind: providedKind, label = '' }: MediaPlayer
           ref={(node) => {
             mediaRef.current = node
           }}
-          className="tabs-media-native"
+          className="aislenote-media-native"
         />
       )}
-      <span className="tabs-media-controls">
-        <span className="tabs-media-title">{title}</span>
+      <span className="aislenote-media-controls">
+        <span className="aislenote-media-title">{title}</span>
         <button
           type="button"
-          className="tabs-media-btn tabs-media-play-btn"
+          className="aislenote-media-btn aislenote-media-play-btn"
           aria-label={playing ? 'Pause' : 'Play'}
           onClick={togglePlayback}
         >
@@ -333,18 +337,18 @@ export function MediaPlayer({ src, kind: providedKind, label = '' }: MediaPlayer
         </button>
         <button
           type="button"
-          className="tabs-media-btn tabs-media-loop-btn"
+          className="aislenote-media-btn aislenote-media-loop-btn"
           aria-label={loop ? 'Loop on' : 'Loop off'}
           aria-pressed={loop}
           onClick={toggleLoop}
         >
           <MediaControlIcon name="loop" />
         </button>
-        <span className="tabs-media-speed-wrap">
+        <span className="aislenote-media-speed-wrap">
           <button
             ref={speedButtonRef}
             type="button"
-            className="tabs-media-btn tabs-media-speed-btn"
+            className="aislenote-media-btn aislenote-media-speed-btn"
             aria-label={`Playback speed ${formatMediaSpeedLabel(playbackSpeed)}`}
             aria-haspopup="listbox"
             onClick={() => {
@@ -356,7 +360,7 @@ export function MediaPlayer({ src, kind: providedKind, label = '' }: MediaPlayer
           </button>
           <span
             ref={speedMenuRef}
-            className="tabs-media-speed-menu"
+            className="aislenote-media-speed-menu"
             role="listbox"
             popover="manual"
             hidden={!speedMenuOpen}
@@ -365,7 +369,7 @@ export function MediaPlayer({ src, kind: providedKind, label = '' }: MediaPlayer
               <button
                 key={speed}
                 type="button"
-                className="tabs-media-speed-option"
+                className="aislenote-media-speed-option"
                 role="option"
                 aria-selected={speed === playbackSpeed}
                 onClick={() => selectPlaybackSpeed(speed)}
@@ -375,11 +379,11 @@ export function MediaPlayer({ src, kind: providedKind, label = '' }: MediaPlayer
             ))}
           </span>
         </span>
-        <span className="tabs-media-volume-wrap">
+        <span className="aislenote-media-volume-wrap">
           <button
             ref={volumeButtonRef}
             type="button"
-            className="tabs-media-btn tabs-media-volume-btn"
+            className="aislenote-media-btn aislenote-media-volume-btn"
             aria-label={`Volume ${volumePercent}%`}
             aria-haspopup="true"
             onClick={() => {
@@ -391,13 +395,13 @@ export function MediaPlayer({ src, kind: providedKind, label = '' }: MediaPlayer
           </button>
           <span
             ref={volumePopupRef}
-            className="tabs-media-volume-popup"
+            className="aislenote-media-volume-popup"
             popover="manual"
             hidden={!volumePopupOpen}
           >
             <input
               type="range"
-              className="tabs-media-volume-slider"
+              className="aislenote-media-volume-slider"
               min={0}
               max={150}
               step={1}
@@ -407,10 +411,10 @@ export function MediaPlayer({ src, kind: providedKind, label = '' }: MediaPlayer
             />
           </span>
         </span>
-        <span className="tabs-media-time tabs-media-time-current">{formatMediaTime(currentTime)}</span>
+        <span className="aislenote-media-time aislenote-media-time-current">{formatMediaTime(currentTime)}</span>
         <input
           type="range"
-          className="tabs-media-slider"
+          className="aislenote-media-slider"
           min={0}
           max={duration || 0}
           step={0.01}
@@ -424,10 +428,10 @@ export function MediaPlayer({ src, kind: providedKind, label = '' }: MediaPlayer
             setCurrentTime(media.currentTime)
           }}
         />
-        <span className="tabs-media-time tabs-media-time-duration">{formatMediaTime(duration)}</span>
+        <span className="aislenote-media-time aislenote-media-time-duration">{formatMediaTime(duration)}</span>
         <button
           type="button"
-          className="tabs-media-btn tabs-media-back-btn editor-history-toolbar-btn editor-history-toolbar-btn-undo"
+          className="aislenote-media-btn aislenote-media-back-btn editor-history-toolbar-btn editor-history-toolbar-btn-undo"
           aria-label={`Back ${MEDIA_SEEK_STEP_SECONDS} seconds`}
           onClick={() => seekBy(-MEDIA_SEEK_STEP_SECONDS)}
         >
@@ -435,14 +439,14 @@ export function MediaPlayer({ src, kind: providedKind, label = '' }: MediaPlayer
         </button>
         <button
           type="button"
-          className="tabs-media-btn tabs-media-forward-btn editor-history-toolbar-btn editor-history-toolbar-btn-redo"
+          className="aislenote-media-btn aislenote-media-forward-btn editor-history-toolbar-btn editor-history-toolbar-btn-redo"
           aria-label={`Forward ${MEDIA_SEEK_STEP_SECONDS} seconds`}
           onClick={() => seekBy(MEDIA_SEEK_STEP_SECONDS)}
         >
           <MediaControlIcon name="redo" />
         </button>
         {playbackError ? (
-          <span className="tabs-media-error" role="status">
+          <span className="aislenote-media-error" role="status">
             {playbackError}
           </span>
         ) : null}

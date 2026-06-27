@@ -4,10 +4,10 @@ export type DataRuntimeKind = 'desktop' | 'mobile' | 'browser'
 
 export type DataPlatformCapabilities = {
   runtime: DataRuntimeKind
-  notebookFolders: boolean
+  vaultFolders: boolean
   settingsFolders: boolean
   liveFilesystemReload: boolean
-  appPrivateNotebook: boolean
+  appPrivateVault: boolean
   userSettingsFiles: boolean
 }
 
@@ -18,28 +18,28 @@ export type DataPlatformEnvironment = {
 
 export const DESKTOP_DATA_CAPABILITIES: DataPlatformCapabilities = {
   runtime: 'desktop',
-  notebookFolders: true,
+  vaultFolders: true,
   settingsFolders: true,
   liveFilesystemReload: true,
-  appPrivateNotebook: false,
+  appPrivateVault: false,
   userSettingsFiles: true,
 }
 
 export const MOBILE_DATA_CAPABILITIES: DataPlatformCapabilities = {
   runtime: 'mobile',
-  notebookFolders: false,
+  vaultFolders: false,
   settingsFolders: false,
   liveFilesystemReload: false,
-  appPrivateNotebook: true,
+  appPrivateVault: true,
   userSettingsFiles: true,
 }
 
 export const BROWSER_DATA_CAPABILITIES: DataPlatformCapabilities = {
   runtime: 'browser',
-  notebookFolders: false,
+  vaultFolders: false,
   settingsFolders: false,
   liveFilesystemReload: false,
-  appPrivateNotebook: false,
+  appPrivateVault: false,
   userSettingsFiles: true,
 }
 

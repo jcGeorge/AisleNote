@@ -9,10 +9,11 @@ import {
 
 function currentSettingsJson() {
   return stringifyPortableAppSettings({
-    theme: 'dawn',
+    theme: 'cheese',
     hotkeys: {
       shortcuts: {
-        newTab: 'Ctrl+Alt+N',
+        openSettings: 'Ctrl+,',
+        newNote: 'Ctrl+Alt+N',
       },
     },
     ui: {
@@ -28,13 +29,20 @@ function currentSettingsJson() {
 describe('portable app settings parsing', () => {
   it('builds a current default app-settings shape', () => {
     expect(createDefaultPortableAppSettings()).toMatchObject({
-      theme: 'dawn',
+      theme: 'dark',
       hotkeys: {
         shortcuts: {
+          openSettings: 'Mod+,',
           toggleNotesTrash: 'Mod+T',
-          toggleNotesScratchpad: 'Mod+/',
+          toggleNotesScratchpad: 'Mod+S',
           toggleNotesFilter: '',
-          newTab: 'Mod+Shift+N',
+          newNote: 'Mod+N',
+          newFolder: 'Mod+Shift+N',
+          closeCurrentNote: 'Mod+W',
+          cyclePinnedNoteTabNext: 'Ctrl+Tab',
+          cyclePinnedNoteTabPrev: 'Ctrl+Shift+Tab',
+          reopenClosedNoteTab: 'Mod+Shift+T',
+          formatHighlight: 'Mod+Shift+H',
         },
         newlineShortcuts: {
           shortcuts: {
@@ -43,12 +51,11 @@ describe('portable app settings parsing', () => {
           },
         },
       },
-        ui: {
-          settingsSection: 'hotkeys',
-          dataSettingsSection: 'transfer',
-          showRegularNoteAisleAddButtons: false,
-          showRegularNoteAisleDeleteButton: false,
-          tabRenameEnterBehavior: 'goes-to-note',
+      ui: {
+        settingsSection: 'hotkeys',
+        dataSettingsSection: 'transfer',
+        tabRenameEnterBehavior: 'goes-to-note',
+        tabColorIndicatorPlacement: 'bottom',
         noteFilter: {
           active: false,
           kind: 'tags',
@@ -56,7 +63,6 @@ describe('portable app settings parsing', () => {
         toolbarLayouts: [],
       },
     })
-    expect(createDefaultPortableAppSettings().ui).not.toHaveProperty('toggleTabsTarget')
   })
 
   it('accepts current exported app-settings json for explicit imports', () => {
@@ -65,16 +71,18 @@ describe('portable app settings parsing', () => {
     expect(result).toMatchObject({
       ok: true,
       settings: {
-        theme: 'dawn',
+        theme: 'cheese',
         hotkeys: {
           shortcuts: {
-            newTab: 'Ctrl+Alt+N',
+            openSettings: 'Ctrl+,',
+            newNote: 'Ctrl+Alt+N',
           },
         },
         ui: {
           settingsSection: 'data',
           dataSettingsSection: 'storage',
           tabRenameEnterBehavior: 'goes-to-note',
+          tabColorIndicatorPlacement: 'bottom',
           noteFilter: {
             active: false,
             kind: 'tags',
@@ -86,7 +94,7 @@ describe('portable app settings parsing', () => {
 
   it('round-trips portable note filter settings', () => {
     const settings = parsePortableAppSettingsJson(JSON.stringify({
-      theme: 'dawn',
+      theme: 'cheese',
       hotkeys: {},
       ui: {
         noteFilter: {
@@ -95,7 +103,7 @@ describe('portable app settings parsing', () => {
           tags: { selectedKeys: ['tag'], sortMode: 'occurrences' },
           synced: { selectedKeys: ['synced-note:body-1'] },
           frontmatter: { selectedKeys: ['fm-property:status'] },
-          media: { selectedKeys: ['media:image:tabs-asset:///assets/photo.png'] },
+          media: { selectedKeys: ['media:image:aislenote-asset:///assets/photo.png'] },
         },
       },
     }))
@@ -110,11 +118,56 @@ describe('portable app settings parsing', () => {
             tags: { selectedKeys: ['tag'], sortMode: 'occurrences' },
             synced: { selectedKeys: ['synced-note:body-1'] },
             frontmatter: { selectedKeys: ['fm-property:status'] },
-            media: { selectedKeys: ['media:image:tabs-asset:///assets/photo.png'] },
+            media: { selectedKeys: ['media:image:aislenote-asset:///assets/photo.png'] },
           },
         },
       },
     })
+  })
+
+  it('drops removed theme palette slots from portable settings', () => {
+    const settings = parsePortableAppSettingsJson(JSON.stringify({
+      theme: 'cheese',
+      hotkeys: {},
+      ui: {
+        themePalettes: {
+          custom1: {
+            panel: '#010203',
+            raised: '#040506',
+            button: '#070809',
+            primary: '#123456',
+            surface: '#111111',
+            surfaceRaised: '#222222',
+            secondary: '#112233',
+            tooltipPrimary: '#ccddee',
+            tooltipSecondary: '#667788',
+            sidebarAccent: '#abcdef',
+          },
+        },
+      },
+    }))
+
+    expect(settings).toMatchObject({
+      ok: true,
+      settings: {
+        themePalettes: {
+          custom1: {
+            panel: '#010203',
+            raised: '#040506',
+            button: '#070809',
+            primary: '#123456',
+          },
+        },
+      },
+    })
+    if (settings.ok) {
+      expect(settings.settings.themePalettes.custom1).not.toHaveProperty('surface')
+      expect(settings.settings.themePalettes.custom1).not.toHaveProperty('surfaceRaised')
+      expect(settings.settings.themePalettes.custom1).not.toHaveProperty('secondary')
+      expect(settings.settings.themePalettes.custom1).not.toHaveProperty('tooltipPrimary')
+      expect(settings.settings.themePalettes.custom1).not.toHaveProperty('tooltipSecondary')
+      expect(settings.settings.themePalettes.custom1).not.toHaveProperty('sidebarAccent')
+    }
   })
 
   it('rejects files that do not match the current app-settings structure', () => {
@@ -122,9 +175,9 @@ describe('portable app settings parsing', () => {
       '',
       '[]',
       JSON.stringify({ foo: 'bar' }),
-      JSON.stringify({ theme: 'dawn', hotkeys: {}, settings: {} }),
+      JSON.stringify({ theme: 'cheese', hotkeys: {}, settings: {} }),
       JSON.stringify({
-        type: 'tabs.app-settings',
+        type: 'aislenote.app-settings',
         settings: JSON.parse(currentSettingsJson()),
       }),
     ]
@@ -141,14 +194,14 @@ describe('portable app settings parsing', () => {
     expect(parsePortableAppSettingsJson(JSON.stringify({ foo: 'bar' }))).toMatchObject({
       ok: true,
       settings: {
-        theme: 'dawn',
+        theme: 'dark',
       },
     })
   })
 
   it('fills missing command shortcuts when only newline shortcuts are present', () => {
     const settings = parsePortableAppSettingsJson(JSON.stringify({
-      theme: 'dawn',
+      theme: 'cheese',
       hotkeys: {
         newlineShortcuts: {
           shortcuts: {
@@ -166,10 +219,17 @@ describe('portable app settings parsing', () => {
       settings: {
         hotkeys: {
           shortcuts: {
+            openSettings: 'Mod+,',
             toggleNotesTrash: 'Mod+T',
-            toggleNotesScratchpad: 'Mod+/',
+            toggleNotesScratchpad: 'Mod+S',
             toggleNotesFilter: '',
-            newTab: 'Mod+Shift+N',
+            newNote: 'Mod+N',
+            newFolder: 'Mod+Shift+N',
+            closeCurrentNote: 'Mod+W',
+            cyclePinnedNoteTabNext: 'Ctrl+Tab',
+            cyclePinnedNoteTabPrev: 'Ctrl+Shift+Tab',
+            reopenClosedNoteTab: 'Mod+Shift+T',
+            formatHighlight: 'Mod+Shift+H',
           },
           newlineShortcuts: {
             shortcuts: {
@@ -183,38 +243,10 @@ describe('portable app settings parsing', () => {
     })
   })
 
-  it('migrates legacy toggle tabs shortcut settings to notes/trash', () => {
-    const settings = parsePortableAppSettingsJson(JSON.stringify({
-      theme: 'dawn',
-      hotkeys: {
-        shortcuts: {
-          toggleTabsTarget: 'Ctrl+Alt+T',
-        },
-      },
-      ui: {
-        toggleTabsTarget: 'messages',
-      },
-    }))
-
-    expect(settings).toMatchObject({
-      ok: true,
-      settings: {
-        hotkeys: {
-          shortcuts: {
-            toggleNotesTrash: 'Ctrl+Alt+T',
-          },
-        },
-      },
-    })
-    if (!settings.ok || !settings.settings) throw new Error(settings.error)
-    expect(settings.settings.hotkeys.shortcuts).not.toHaveProperty('toggleTabsTarget')
-    expect(settings.settings.ui).not.toHaveProperty('toggleTabsTarget')
-  })
-
   it('normalizes split-file hotkeys before hydrating app state', () => {
     const syncedSettings = buildSyncedSettingsFromSplitFiles({
       appSettings: {
-        theme: 'dawn',
+        theme: 'cheese',
         hotkeys: {
           newlineShortcuts: {
             menuOperations: ['blockQuote'],
@@ -227,9 +259,58 @@ describe('portable app settings parsing', () => {
     })
 
     expect(syncedSettings.hotkeys.shortcuts.toggleNotesTrash).toBe('Mod+T')
-    expect(syncedSettings.hotkeys.shortcuts.toggleNotesScratchpad).toBe('Mod+/')
+    expect(syncedSettings.hotkeys.shortcuts.openSettings).toBe('Mod+,')
+    expect(syncedSettings.hotkeys.shortcuts.toggleNotesScratchpad).toBe('Mod+S')
     expect(syncedSettings.hotkeys.shortcuts.toggleNotesFilter).toBe('')
-    expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Alt+]')
+    expect(syncedSettings.hotkeys.shortcuts.newNote).toBe('Mod+N')
+    expect(syncedSettings.hotkeys.shortcuts.newFolder).toBe('Mod+Shift+N')
+    expect(syncedSettings.hotkeys.shortcuts.closeCurrentNote).toBe('Mod+W')
+    expect(syncedSettings.hotkeys.shortcuts.cyclePinnedNoteTabNext).toBe('Ctrl+Tab')
+    expect(syncedSettings.hotkeys.shortcuts.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')
+    expect(syncedSettings.hotkeys.shortcuts.reopenClosedNoteTab).toBe('Mod+Shift+T')
+    expect(syncedSettings.hotkeys.shortcuts.formatHighlight).toBe('Mod+Shift+H')
+    expect(syncedSettings.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Alt+ArrowLeft')
+    expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Alt+ArrowRight')
     expect(syncedSettings.hotkeys.newlineShortcuts.menuOperations).toEqual(['blockQuote', 'strikethrough'])
+  })
+
+  it('migrates split-file legacy aisle default shortcuts', () => {
+    const syncedSettings = buildSyncedSettingsFromSplitFiles({
+      appSettings: {
+        hotkeys: {
+          shortcuts: {
+            cycleAislePrev: 'Alt+[',
+            cycleAisleNext: 'mod+ctrl+arrowright',
+            closeCurrentNote: 'Ctrl+Alt+W',
+          },
+        },
+      },
+    })
+
+    expect(syncedSettings.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Alt+ArrowLeft')
+    expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Alt+ArrowRight')
+    expect(syncedSettings.hotkeys.shortcuts.closeCurrentNote).toBe('Ctrl+Alt+W')
+  })
+
+  it('keeps table of contents in split-file newline shortcut settings', () => {
+    const syncedSettings = buildSyncedSettingsFromSplitFiles({
+      appSettings: {
+        hotkeys: {
+          newlineShortcuts: {
+            shortcuts: {
+              controlEnter: 'tableOfContents',
+            },
+            menuOperations: ['tableOfContents', 'tableOfContents', 'blockQuote'],
+          },
+        },
+      },
+    })
+
+    expect(syncedSettings.hotkeys.newlineShortcuts.shortcuts.controlEnter).toBe('tableOfContents')
+    expect(syncedSettings.hotkeys.newlineShortcuts.menuOperations).toEqual([
+      'tableOfContents',
+      'blockQuote',
+      'strikethrough',
+    ])
   })
 })

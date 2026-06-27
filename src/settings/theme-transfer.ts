@@ -1,5 +1,6 @@
 import type { CustomThemePalette, CustomThemePaletteSlot } from '../types/app'
-import { CUSTOM_THEME_PALETTE_SLOTS, normalizeHexColor } from './defaults'
+import { CUSTOM_THEME_PALETTE_SLOTS } from '../theme/vault-themes'
+import { normalizeHexColor } from './defaults'
 
 export type ThemeSettingsImportResult =
   | { ok: true; palette: CustomThemePalette; importedSlots: CustomThemePaletteSlot[] }

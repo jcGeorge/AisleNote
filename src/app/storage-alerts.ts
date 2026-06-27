@@ -2,7 +2,7 @@ import type { StorageAlert } from '../components/overlays/StorageAlertHost'
 import type { AppMessage, ViewMode } from '../types/app'
 
 export const DUPLICATE_AUTO_DECOUPLED_MESSAGE_TYPE = 'duplicate-auto-decoupled'
-export const STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE = 'storage-notebook-recovered'
+export const STORAGE_VAULT_RECOVERED_MESSAGE_TYPE = 'storage-vault-recovered'
 
 export function shouldShowTipOverlays(viewMode: ViewMode) {
   return viewMode === 'main' || viewMode === 'trash'
@@ -26,19 +26,19 @@ export function buildStorageAlerts(messages: AppMessage[], dismissedStorageAlert
         actionLabel: 'open settings --> messages --> inbox',
       }]
     }
-    if (message.type === STORAGE_NOTEBOOK_RECOVERED_MESSAGE_TYPE) {
-      const localNotebookWasTheFailedFolder =
+    if (message.type === STORAGE_VAULT_RECOVERED_MESSAGE_TYPE) {
+      const localVaultWasTheFailedFolder =
         message.recoveryMode === 'reset-default' &&
-        (message.activeNotebookPath === undefined ||
-          (message.failedNotebookPath !== undefined && message.failedNotebookPath === message.activeNotebookPath))
+        (message.activeVaultPath === undefined ||
+          (message.failedVaultPath !== undefined && message.failedVaultPath === message.activeVaultPath))
       return [{
         signature,
-        label: 'local notebook started',
-        message: 'Tabs started a local notebook because the connected notebook could not be loaded.',
-        actionLabel: message.failedNotebookPath && message.failedNotebookAvailable !== false
-          ? localNotebookWasTheFailedFolder
-            ? 'open local notebook folder'
-            : 'open previous notebook folder'
+        label: 'vault recovered',
+        message: 'AisleNote reset the vault because the folder could not be loaded.',
+        actionLabel: message.failedVaultPath && message.failedVaultAvailable !== false
+          ? localVaultWasTheFailedFolder
+            ? 'open vault folder'
+            : 'open previous vault folder'
           : undefined,
       }]
     }

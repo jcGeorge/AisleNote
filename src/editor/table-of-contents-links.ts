@@ -34,6 +34,23 @@ function buildLinkKey(aisleId: string, index: number) {
   return `${encodeURIComponent(aisleId)}|link|${index}`
 }
 
+function getLinkDestinationKey(item: PendingTableOfContentsLinkItem): string {
+  if (item.href) return `href:${item.href}`
+  if (item.target?.noteId) return `note:${item.target.noteId}`
+  return ''
+}
+
+function pruneDuplicateLinkItems(items: PendingTableOfContentsLinkItem[]): PendingTableOfContentsLinkItem[] {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    const key = getLinkDestinationKey(item)
+    if (!key) return true
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 function normalizeLinkLabel(value: string, fallback: string) {
   return value
     .replace(/!\[|\[|\]/g, '')
@@ -43,8 +60,8 @@ function normalizeLinkLabel(value: string, fallback: string) {
 }
 
 function finalizeLinkItems(aisleId: string, items: PendingTableOfContentsLinkItem[]): TableOfContentsLinkItem[] {
-  return [...items]
-    .sort((left, right) => left.order - right.order)
+  const orderedItems = pruneDuplicateLinkItems([...items].sort((left, right) => left.order - right.order))
+  return orderedItems
     .map((item, index) => ({
       aisleId: item.aisleId,
       key: buildLinkKey(aisleId, index),

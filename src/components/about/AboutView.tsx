@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import * as React from 'react'
 import type { AboutSection } from '../../types/app'
 
 export type RuntimeInfo = {
@@ -17,11 +17,11 @@ export function AboutViewContent({
 }) {
   if (section === 'tooltip-sources') {
     return (
-      <section className="utility-page-wrap about-view" aria-label="About Tabs">
+      <section className="utility-page-wrap about-view" aria-label="About AisleNote">
         <div className="utility-page-card about-view-card">
           <h2>tooltip sources</h2>
           <p>
-            Tabs uses Lucide icons for toolbar, navigation, and app controls. Lucide is an open-source icon set used
+            AisleNote uses Lucide icons for toolbar, navigation, and app controls. Lucide is an open-source icon set used
             throughout the interface for clear, consistent visual labels.
           </p>
         </div>
@@ -30,11 +30,11 @@ export function AboutViewContent({
   }
 
   return (
-    <section className="utility-page-wrap about-view" aria-label="About Tabs">
+    <section className="utility-page-wrap about-view" aria-label="About AisleNote">
       <div className="utility-page-card about-view-card">
-        <h2>Tabs</h2>
+        <h2>AisleNote</h2>
         <p>
-          Tabs is a local-first notebook for organizing notes across domains, spaces, parents, subtabs, and aisles.
+          AisleNote is a local-first vault for organizing notes in folders, with aisle-based editing inside each note.
         </p>
         <p>
           Toolbar and app icons include icons from Lucide.dev.
@@ -55,10 +55,10 @@ export function AboutViewContent({
 }
 
 export function AboutView({ section = 'home' }: { section?: AboutSection }) {
-  const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | null>(null)
-  const [runtimeUnavailable, setRuntimeUnavailable] = useState(false)
+  const [runtimeInfo, setRuntimeInfo] = React.useState<RuntimeInfo | null>(null)
+  const [runtimeUnavailable, setRuntimeUnavailable] = React.useState(false)
 
-  useEffect(() => {
+  React.useEffect(() => {
     let canceled = false
     const getRuntimeInfo = window.electronAPI?.getRuntimeInfo
     if (!getRuntimeInfo) {

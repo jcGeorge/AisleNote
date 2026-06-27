@@ -1,5 +1,5 @@
-export const IMAGE_ASSET_URL_SCHEME = 'tabs-asset:'
-export const IMAGE_ASSET_URL_PREFIX = 'tabs-asset:///'
+export const IMAGE_ASSET_URL_SCHEME = 'aislenote-asset:'
+export const IMAGE_ASSET_URL_PREFIX = 'aislenote-asset:///'
 export const IMAGE_MARKDOWN_PATTERN = /!\[((?:\\.|[^\]\\])*)\]\(([^)]+)\)/g
 export const MARKDOWN_LINK_PATTERN = /(!?)\[((?:\\.|[^\]\\])*)\]\(([^)]+)\)/g
 

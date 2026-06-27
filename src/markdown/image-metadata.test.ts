@@ -15,11 +15,11 @@ describe('image resize metadata', () => {
       r: 90,
       fh: true,
       fv: true,
-    })).toBe('#tabs-image=width=480,rotate=90,flip-horizontal,flip-vertical')
+    })).toBe('#aislenote-image=width=480,rotate=90,flip-horizontal,flip-vertical')
   })
 
   it('parses readable resize metadata fragments', () => {
-    expect(parseImageResizeMetadataFragment('#tabs-image=width=320,rotate=270,flip-vertical')).toEqual({
+    expect(parseImageResizeMetadataFragment('#aislenote-image=width=320,rotate=270,flip-vertical')).toEqual({
       v: 1,
       w: 320,
       r: 270,
@@ -28,22 +28,22 @@ describe('image resize metadata', () => {
   })
 
   it('does not parse old encoded resize metadata fragments', () => {
-    expect(parseImageResizeMetadataFragment('#tabs-image=eyJ2IjoxLCJ3Ijo0ODB9')).toBeNull()
+    expect(parseImageResizeMetadataFragment('#aislenote-image=eyJ2IjoxLCJ3Ijo0ODB9')).toBeNull()
   })
 
   it('normalizes valid readable fragments and preserves invalid fragments', () => {
-    expect(normalizeImageResizeMetadataFragment('#tabs-image=rotate=90,width=240')).toBe('#tabs-image=width=240,rotate=90')
-    expect(normalizeImageResizeMetadataFragment('#tabs-image=not-readable')).toBe('#tabs-image=not-readable')
+    expect(normalizeImageResizeMetadataFragment('#aislenote-image=rotate=90,width=240')).toBe('#aislenote-image=width=240,rotate=90')
+    expect(normalizeImageResizeMetadataFragment('#aislenote-image=not-readable')).toBe('#aislenote-image=not-readable')
   })
 
   it('keeps readable metadata attached to image urls', () => {
-    const url = withImageResizeMetadata('tabs-asset:///assets/example.png', { v: 1, w: 144, fh: true })
+    const url = withImageResizeMetadata('aislenote-asset:///assets/example.png', { v: 1, w: 144, fh: true })
 
-    expect(url).toBe('tabs-asset:///assets/example.png#tabs-image=width=144,flip-horizontal')
+    expect(url).toBe('aislenote-asset:///assets/example.png#aislenote-image=width=144,flip-horizontal')
     expect(splitImageResizeMetadataFromUrl(url)).toMatchObject({
-      imageUrl: 'tabs-asset:///assets/example.png',
+      imageUrl: 'aislenote-asset:///assets/example.png',
       metadata: { v: 1, w: 144, fh: true },
-      metadataFragment: '#tabs-image=width=144,flip-horizontal',
+      metadataFragment: '#aislenote-image=width=144,flip-horizontal',
     })
   })
 })

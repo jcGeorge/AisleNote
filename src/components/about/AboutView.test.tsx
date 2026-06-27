@@ -1,3 +1,4 @@
+import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { AboutViewContent } from './AboutView'
@@ -8,8 +9,9 @@ describe('AboutView', () => {
       <AboutViewContent runtimeInfo={{ version: '1.2.3', platform: 'darwin' }} />,
     )
 
-    expect(html).toContain('Tabs')
-    expect(html).toContain('local-first notebook')
+    expect(html).toContain('AisleNote')
+    expect(html).toContain('local-first vault')
+    expect(html).toContain('folders')
     expect(html).toContain('Lucide.dev')
     expect(html).toContain('1.2.3')
     expect(html).toContain('darwin')

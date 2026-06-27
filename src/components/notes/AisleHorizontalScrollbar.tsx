@@ -1,3 +1,4 @@
+import * as React from 'react'
 import {
   useCallback,
   useEffect,
@@ -21,6 +22,8 @@ const HIDDEN_AISLE_SCROLLBAR_GEOMETRY: AisleHorizontalScrollbarGeometry = {
   maxThumbLeft: 0,
   trackWidth: 0,
 }
+
+void React
 
 function aisleScrollbarGeometryEqual(left: AisleHorizontalScrollbarGeometry, right: AisleHorizontalScrollbarGeometry) {
   return (
