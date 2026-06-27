@@ -744,7 +744,7 @@
   margin-top: 0.55rem;
   border: 1px solid var(--app-border-muted);
   border-radius: 999px;
-  background: var(--app-surface);
+  background: var(--app-panel);
   overflow: hidden;
 }
 
@@ -974,6 +974,10 @@
 .shortcut-menu-pool-label {
   color: var(--modal-muted-text);
   font-size: 0.82em;
+}
+
+.shortcut-menu-pool-label {
+  font-size: 1em;
 }
 
 .shortcut-menu-operation-chip {

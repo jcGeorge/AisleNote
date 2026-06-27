@@ -383,7 +383,7 @@
   gap: 0.45rem;
   padding: 0.45rem 0.2rem 0.3rem;
   border-top: 1px solid var(--app-border);
-  background: var(--app-surface);
+  background: var(--app-panel);
   font-size: var(--ui-font-body);
   max-height: 42%;
   overflow: auto;
@@ -1028,7 +1028,7 @@
   width: min(100%, 27rem);
   border: 1px solid var(--app-border);
   border-radius: 0.5rem;
-  background: var(--app-surface);
+  background: var(--app-panel);
   box-shadow: var(--app-shadow-popover);
   padding: 1rem;
 }
@@ -1222,7 +1222,7 @@
   align-items: stretch;
   padding: 0;
   border-top: 1px solid var(--app-border-muted);
-  background: var(--app-surface);
+  background: var(--app-panel);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -1236,7 +1236,7 @@
   flex: 1 1 auto;
   min-width: 0;
   height: 100%;
-  background: var(--app-surface);
+  background: var(--app-panel);
   cursor: pointer;
   touch-action: none;
 }
@@ -1252,7 +1252,7 @@
   left: 0;
   min-width: 3rem;
   height: 100%;
-  border: 0.2rem solid var(--app-surface);
+  border: 0.2rem solid var(--app-panel);
   border-radius: 999px;
   background: var(--app-border);
   cursor: grab;
@@ -1277,7 +1277,7 @@
   min-width: 0;
   width: 100%;
   border-top: 1px solid var(--app-border);
-  background: var(--app-surface);
+  background: var(--app-panel);
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
@@ -1292,7 +1292,7 @@
   grid-template-columns: minmax(0, 1fr) 1.75rem;
   align-items: stretch;
   border-right: 1px solid var(--app-border-muted);
-  background: color-mix(in srgb, var(--app-surface) 88%, var(--editor-bg));
+  background: color-mix(in srgb, var(--app-panel) 88%, var(--editor-bg));
   color: var(--app-muted-text);
   overflow: hidden;
 }
@@ -1388,7 +1388,7 @@
   padding: 0.1rem 0.3rem;
   border: 1px solid color-mix(in srgb, var(--app-primary) 72%, var(--app-border));
   border-radius: 4px;
-  background: var(--app-surface);
+  background: var(--app-panel);
   color: var(--app-text);
   font: inherit;
   font-size: var(--ui-font-small);
@@ -1429,7 +1429,7 @@
   min-width: 30rem;
   border: 0;
   border-right: 1px solid var(--app-border);
-  background: var(--app-surface);
+  background: var(--app-panel);
 }
 
 .note-aisle-pane.has-custom-width {
@@ -1744,7 +1744,7 @@
   margin-top: 0.55rem;
   border: 1px solid var(--app-border-muted);
   border-radius: 999px;
-  background: var(--app-surface);
+  background: var(--app-panel);
   overflow: hidden;
 }
 
@@ -1849,7 +1849,7 @@
   overflow: hidden;
   border: 1px solid var(--app-border-muted);
   border-radius: 0.38rem;
-  background: var(--app-surface);
+  background: var(--app-panel);
   color: var(--modal-body-text);
   padding: 0.48rem 0.55rem;
   font-size: 0.84em;
@@ -1906,7 +1906,7 @@
   padding: 0.38rem 0.45rem;
   border: 1px solid var(--app-border-muted);
   border-radius: 0.35rem;
-  background: color-mix(in srgb, var(--app-surface) 82%, var(--app-primary));
+  background: color-mix(in srgb, var(--app-panel) 82%, var(--app-primary));
   color: var(--modal-body-text);
 }
 
@@ -2933,7 +2933,7 @@
   border-left: 4px solid var(--toast-warning);
   border-radius: 0.5rem;
   padding: 0.85rem 1rem;
-  background: var(--settings-card-bg, var(--editor-surface));
+  background: var(--settings-card-bg, var(--editor-panel-bg));
   box-shadow: var(--toast-shadow);
 }
 

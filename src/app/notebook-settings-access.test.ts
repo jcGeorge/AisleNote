@@ -157,8 +157,8 @@ describe('notebook settings access', () => {
   })
 
   it('restores plain JSON theme import and export controls', () => {
-    expect(notebookAppSource).toContain('serializeThemeSettings(selectedPalette)')
-    expect(notebookAppSource).toContain('parseThemeSettingsImport(themeJsonDraft, selectedPalette)')
+    expect(notebookAppSource).toContain('serializeThemeSettings(draftPalette)')
+    expect(notebookAppSource).toContain('parseThemeSettingsImport(themeJsonDraft, draftPalette)')
     expect(notebookAppSource).toContain('className="custom-theme-transfer-actions"')
     expect(notebookAppSource).toContain('className="custom-theme-transfer-actions-left"')
     expect(notebookAppSource).toContain('className="custom-theme-transfer-actions-right"')
@@ -186,10 +186,22 @@ describe('notebook settings access', () => {
   })
 
   it('derives editor toolbar colors from the sidebar palette for every palette theme', () => {
-    expect(baseCssSource).toContain('--editor-toolbar-bg: var(--custom-theme-sidebar, var(--custom-palette-surface));')
-    expect(baseCssSource).toContain('var(--custom-theme-sidebar, var(--custom-palette-surface)) 70%')
+    expect(baseCssSource).toContain('--custom-palette-button: var(--custom-theme-button, #13264a);')
+    expect(baseCssSource).toContain('--editor-toolbar-bg: var(--custom-theme-sidebar, var(--custom-palette-panel));')
+    expect(baseCssSource).toContain('--editor-toolbar-hover-bg: color-mix(in srgb, var(--custom-palette-primary) 16%, var(--custom-palette-button));')
     expect(baseCssSource).toContain('--editor-toolbar-active-bg: var(--custom-palette-primary);')
-    expect(baseCssSource).toContain('--editor-toolbar-button-bg: color-mix(')
+    expect(baseCssSource).toContain('--editor-toolbar-button-bg: var(--custom-palette-button);')
     expect(cheeseCssSource).not.toContain('--editor-toolbar-bg: var(--custom-theme-sidebar);')
+  })
+
+  it('previews inactive and active button states in an extra theme aisle', () => {
+    expect(notebookAppSource).toContain('className="visuals-preview-aisles"')
+    expect(notebookAppSource).toContain('className="notebook-utility-tabs visuals-preview-button-tabs"')
+    expect(notebookAppSource).toContain('aria-label="Preview button states"')
+    expect(notebookAppSource).toContain('Messages')
+    expect(notebookAppSource).toContain('className="is-active" tabIndex={-1}')
+    expect(notebookAppSource).toContain('Settings')
+    expect(settingsCssSource).toContain('--notebook-control-bg: var(--app-button);')
+    expect(settingsCssSource).toContain('.visuals-preview-control-aisle')
   })
 })

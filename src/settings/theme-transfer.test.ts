@@ -36,6 +36,9 @@ describe('theme transfer helpers', () => {
   it('imports a partial plain palette object into the current palette', () => {
     const result = parseThemeSettingsImport(JSON.stringify({
       primary: 'abc',
+      button: '#123456',
+      surface: '#111111',
+      surfaceRaised: '#222222',
       secondary: '#112233',
       tagBg: '#ddeeff',
       tooltipPrimary: '#ccddee',
@@ -48,14 +51,17 @@ describe('theme transfer helpers', () => {
       palette: {
         ...DEFAULT_CUSTOM_THEME_PALETTE,
         primary: '#aabbcc',
+        button: '#123456',
         tagBg: '#ddeeff',
       },
-      importedSlots: ['primary', 'tagBg'],
+      importedSlots: ['button', 'primary', 'tagBg'],
     })
   })
 
   it('rejects imports containing only removed palette slots', () => {
     const result = parseThemeSettingsImport(JSON.stringify({
+      surface: '#111111',
+      surfaceRaised: '#222222',
       secondary: '#112233',
       tooltipPrimary: '#ccddee',
       tooltipSecondary: '#667788',

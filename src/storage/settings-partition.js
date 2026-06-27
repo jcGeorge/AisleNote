@@ -142,8 +142,9 @@ const CUSTOM_THEME_IDS = ['custom1', 'custom2', 'custom3']
 const CUSTOM_THEME_PALETTE_SLOTS = [
   'canvas',
   'page',
-  'surface',
-  'surfaceRaised',
+  'panel',
+  'raised',
+  'button',
   'text',
   'mutedText',
   'border',

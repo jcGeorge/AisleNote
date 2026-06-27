@@ -84,6 +84,15 @@
     border-bottom: 1px solid var(--app-border);
   }
 
+  .visuals-preview-aisles {
+    grid-template-columns: 1fr;
+  }
+
+  .visuals-preview-control-aisle {
+    border-right: 0;
+    border-bottom: 1px solid var(--editor-border);
+  }
+
   .visuals-preview-note-header {
     display: grid;
   }

@@ -2701,44 +2701,56 @@ function NotebookThemeSettings({
                 })}
               </div>
             </div>
-            <div className="visuals-preview-panel">
-              <div className="visuals-preview-note-header">
-                <div className="visuals-preview-note-title">
-                  <strong>Launch checklist</strong>
-                </div>
-                <div className="visuals-preview-note-actions" aria-label="Preview aisle indicators">
-                  <button
-                    type="button"
-                    className="note-aisle-action-btn note-aisle-link-btn visuals-preview-note-action"
-                    aria-label="Synced duplicate"
-                    disabled
-                    tabIndex={-1}
-                  >
-                    <ToolbarToolIcon toolId="link" className="note-aisle-link-icon" />
+            <div className="visuals-preview-aisles">
+              <aside className="visuals-preview-control-aisle" aria-label="Preview controls">
+                <div className="notebook-utility-tabs visuals-preview-button-tabs" role="tablist" aria-label="Preview button states">
+                  <button type="button" role="tab" aria-selected="false" tabIndex={-1}>
+                    Messages
                   </button>
-                  <button
-                    type="button"
-                    className="note-aisle-action-btn note-aisle-frontmatter-btn visuals-preview-note-action"
-                    aria-label="Frontmatter"
-                    disabled
-                    tabIndex={-1}
-                  >
-                    <span className="frontmatter-toolbar-icon note-aisle-frontmatter-icon" aria-hidden="true">fm</span>
+                  <button type="button" role="tab" aria-selected="true" className="is-active" tabIndex={-1}>
+                    Settings
                   </button>
                 </div>
+              </aside>
+              <div className="visuals-preview-panel">
+                <div className="visuals-preview-note-header">
+                  <div className="visuals-preview-note-title">
+                    <strong>Launch checklist</strong>
+                  </div>
+                  <div className="visuals-preview-note-actions" aria-label="Preview aisle indicators">
+                    <button
+                      type="button"
+                      className="note-aisle-action-btn note-aisle-link-btn visuals-preview-note-action"
+                      aria-label="Synced duplicate"
+                      disabled
+                      tabIndex={-1}
+                    >
+                      <ToolbarToolIcon toolId="link" className="note-aisle-link-icon" />
+                    </button>
+                    <button
+                      type="button"
+                      className="note-aisle-action-btn note-aisle-frontmatter-btn visuals-preview-note-action"
+                      aria-label="Frontmatter"
+                      disabled
+                      tabIndex={-1}
+                    >
+                      <span className="frontmatter-toolbar-icon note-aisle-frontmatter-icon" aria-hidden="true">fm</span>
+                    </button>
+                  </div>
+                </div>
+                <article className="visuals-preview-editor-sample toastui-editor-contents">
+                  <h3 className="visuals-preview-heading">Release brief</h3>
+                  <p className="visuals-preview-tag-line">
+                    Scope tagged <span className="aislenote-tag-token">#launch</span> and{' '}
+                    <span className="aislenote-tag-token">#customer</span>
+                  </p>
+                  <ul className="visuals-preview-list">
+                    <li>Lock the announcement copy after legal review.</li>
+                    <li>Attach launch images and confirm captions.</li>
+                    <li>Publish support notes before the release window.</li>
+                  </ul>
+                </article>
               </div>
-              <article className="visuals-preview-editor-sample toastui-editor-contents">
-                <h3 className="visuals-preview-heading">Release brief</h3>
-                <p className="visuals-preview-tag-line">
-                  Scope tagged <span className="aislenote-tag-token">#launch</span> and{' '}
-                  <span className="aislenote-tag-token">#customer</span>
-                </p>
-                <ul className="visuals-preview-list">
-                  <li>Lock the announcement copy after legal review.</li>
-                  <li>Attach launch images and confirm captions.</li>
-                  <li>Publish support notes before the release window.</li>
-                </ul>
-              </article>
             </div>
           </div>
         </div>
@@ -7231,7 +7243,6 @@ export function NotebookApp() {
               aria-expanded={notebookFoldersAvailable ? notebookSwitcherOpen : undefined}
               title={switcherTitle}
             >
-              <AppIcon iconId={notebookFoldersAvailable ? 'folderOpen' : 'folder'} className="notebook-sidebar-switcher-icon" />
               <span className="notebook-sidebar-switcher-name">{activeNotebookName}</span>
               {notebookFoldersAvailable ? (
                 <AppIcon
@@ -7254,12 +7265,8 @@ export function NotebookApp() {
                         onClick={() => switchNotebookFromSidebar(notebook)}
                         title={notebook.notebookPath}
                       >
-                        <AppIcon
-                          iconId={notebook.available ? 'folderOpen' : 'folder'}
-                          className="notebook-sidebar-switcher-row-icon"
-                        />
                         <span className="notebook-sidebar-switcher-row-copy">
-                          <strong>{notebook.notebookName}</strong>
+                          <span className="notebook-sidebar-switcher-row-name">{notebook.notebookName}</span>
                           <small>{notebook.isActive ? 'current notebook' : notebook.available ? notebook.notebookPath : 'folder missing'}</small>
                         </span>
                         <span className="notebook-sidebar-switcher-row-status">
@@ -7284,16 +7291,6 @@ export function NotebookApp() {
             ) : null}
           </div>
         ) : null}
-        <button
-          className="notebook-icon-button notebook-sidebar-footer-action notebook-sidebar-open-button"
-          type="button"
-          onClick={openNotebookFromSidebar}
-          disabled={!notebookFoldersAvailable}
-          aria-label="Open notebook"
-          title={notebookFoldersAvailable ? 'Open notebook...' : 'Notebook folders are available in the desktop app'}
-        >
-          <AppIcon iconId="folderOpen" className="notebook-sidebar-footer-icon" />
-        </button>
         <button
           className="notebook-icon-button notebook-sidebar-footer-action notebook-sidebar-toggle"
           type="button"
@@ -7452,7 +7449,7 @@ export function NotebookApp() {
         ))}
       </div>
       <div className="settings-divider" />
-      <div className="settings-hotkey-row">
+      <div className="settings-hotkey-row settings-shortcut-menu-toggle-row">
         <span className="settings-hotkey-label">{NEWLINE_OPERATION_LABELS.operationsMenu}</span>
         <button
           type="button"

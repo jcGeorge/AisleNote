@@ -129,7 +129,12 @@ describe('portable app settings parsing', () => {
       ui: {
         themePalettes: {
           custom1: {
+            panel: '#010203',
+            raised: '#040506',
+            button: '#070809',
             primary: '#123456',
+            surface: '#111111',
+            surfaceRaised: '#222222',
             secondary: '#112233',
             tooltipPrimary: '#ccddee',
             tooltipSecondary: '#667788',
@@ -144,12 +149,17 @@ describe('portable app settings parsing', () => {
       settings: {
         themePalettes: {
           custom1: {
+            panel: '#010203',
+            raised: '#040506',
+            button: '#070809',
             primary: '#123456',
           },
         },
       },
     })
     if (settings.ok) {
+      expect(settings.settings.themePalettes.custom1).not.toHaveProperty('surface')
+      expect(settings.settings.themePalettes.custom1).not.toHaveProperty('surfaceRaised')
       expect(settings.settings.themePalettes.custom1).not.toHaveProperty('secondary')
       expect(settings.settings.themePalettes.custom1).not.toHaveProperty('tooltipPrimary')
       expect(settings.settings.themePalettes.custom1).not.toHaveProperty('tooltipSecondary')

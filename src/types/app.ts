@@ -365,8 +365,9 @@ export type ToastHistoryEntry = {
 export type CustomThemePaletteSlot =
   | 'canvas'
   | 'page'
-  | 'surface'
-  | 'surfaceRaised'
+  | 'panel'
+  | 'raised'
+  | 'button'
   | 'text'
   | 'mutedText'
   | 'border'

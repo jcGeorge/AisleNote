@@ -373,6 +373,8 @@ describe('NotebookApp notebook manager wiring', () => {
   })
 
   it('renders a bottom sidebar notebook switcher through the storage controller', () => {
+    const sidebarFooterStart = source.indexOf('const renderSidebarNotebookFooter = () => {')
+    const sidebarFooter = source.slice(sidebarFooterStart, source.indexOf('const renderDataSettings', sidebarFooterStart))
     expect(source).toContain('function getNotebookRowsFromStorageStatus(storageProfileStatus: StorageProfileStatus | null): KnownNotebook[]')
     expect(source).toContain('const [notebookSwitcherOpen, setNotebookSwitcherOpen] = useState(false)')
     expect(source).toContain('const switchNotebookFromSidebar = useCallback((notebook: KnownNotebook) => {')
@@ -386,6 +388,13 @@ describe('NotebookApp notebook manager wiring', () => {
     expect(source).toContain('onClick={() => switchNotebookFromSidebar(notebook)}')
     expect(source).toContain('onClick={toggleSidebarCollapsed}')
     expect(source).toContain('{renderSidebarNotebookFooter()}')
+    expect(sidebarFooter).toContain('<span className="notebook-sidebar-switcher-row-name">{notebook.notebookName}</span>')
+    expect(sidebarFooter).toContain('<AppIcon iconId="folderOpen" className="notebook-sidebar-switcher-row-icon" />')
+    expect(sidebarFooter).not.toContain('notebook-sidebar-switcher-icon')
+    expect(sidebarFooter).not.toContain('notebook-sidebar-open-button')
+    expect(sidebarFooter).not.toContain('<strong>')
+    expect(sidebarFooter).not.toContain('iconId={notebook.available ?')
+    expect(appCss).toContain('.notebook-sidebar-switcher-name {\n  color: var(--app-text-heading);\n  font-weight: 400;\n}')
     expect(appCss).toContain('.notebook-sidebar-footer')
     expect(appCss).toContain('.notebook-sidebar-switcher-popover')
     expect(appCss).toContain('.notebook-sidebar-footer.is-collapsed')
@@ -396,7 +405,7 @@ describe('NotebookApp notebook manager wiring', () => {
     expect(appCss).toContain('.notebook-setup-action-row')
     expect(appCss).toContain('.notebook-setup-action-button.is-primary')
     expect(appCss).toContain('background: var(--app-page-bg)')
-    expect(appCss).toContain('background: var(--app-surface-raised)')
+    expect(appCss).toContain('background: var(--app-raised)')
     expect(appCss).toContain('border: 1px solid var(--app-border-muted)')
   })
 

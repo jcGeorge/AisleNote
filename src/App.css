@@ -39,14 +39,14 @@
   --resize-handle-capsule-width: 0.34rem;
   --resize-handle-capsule-height: calc(3rem + 4px);
   --resize-handle-center-y: calc(var(--notebook-topbar-height) + (100vh - var(--notebook-topbar-height)) * 0.7);
-  --notebook-sidebar-bg: var(--app-surface);
+  --notebook-sidebar-bg: var(--app-panel);
   --notebook-action-accent: var(--app-primary);
   --notebook-sidebar-active-bg: var(--action-chip-selected-bg);
   --notebook-sidebar-active-text: var(--action-chip-selected-text);
-  --notebook-control-bg: var(--action-chip-bg);
+  --notebook-control-bg: var(--app-button);
   --notebook-control-border: var(--action-chip-border);
   --notebook-control-text: var(--action-chip-text);
-  --notebook-control-hover-bg: color-mix(in srgb, var(--app-primary) 14%, var(--app-surface-raised));
+  --notebook-control-hover-bg: color-mix(in srgb, var(--app-primary) 16%, var(--app-button));
 
   flex-direction: row;
   width: 100vw;
@@ -73,10 +73,10 @@
 }
 
 .notebook-shell.theme-palette-derived {
-  --notebook-sidebar-bg: var(--custom-theme-sidebar, var(--app-surface));
+  --notebook-sidebar-bg: var(--custom-theme-sidebar, var(--app-panel));
   --notebook-action-accent: var(--app-primary);
   --notebook-sidebar-active-bg: color-mix(in srgb, var(--notebook-action-accent) 78%, var(--notebook-sidebar-bg));
-  --notebook-control-hover-bg: color-mix(in srgb, var(--notebook-action-accent) 16%, var(--app-surface-raised));
+  --notebook-control-hover-bg: color-mix(in srgb, var(--notebook-action-accent) 16%, var(--app-button));
 }
 
 .notebook-sidebar {
@@ -312,7 +312,7 @@
   left: 0;
   z-index: 8;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--notebook-sidebar-control-size) var(--notebook-sidebar-control-size);
+  grid-template-columns: minmax(0, 1fr) var(--notebook-sidebar-control-size);
   align-items: center;
   gap: var(--notebook-sidebar-utility-control-gap);
   padding: 4px var(--notebook-sidebar-control-inset-inline);
@@ -350,7 +350,7 @@
 
 .notebook-sidebar-switcher-trigger {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 7px;
   width: 100%;
@@ -383,7 +383,7 @@
 }
 
 .notebook-sidebar-switcher-name,
-.notebook-sidebar-switcher-row-copy strong,
+.notebook-sidebar-switcher-row-name,
 .notebook-sidebar-switcher-row-copy small {
   min-width: 0;
   overflow: hidden;
@@ -393,7 +393,7 @@
 
 .notebook-sidebar-switcher-name {
   color: var(--app-text-heading);
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .notebook-sidebar-switcher-popover {
@@ -409,7 +409,7 @@
   overflow: auto;
   border: 1px solid var(--app-border);
   border-radius: 8px;
-  background: var(--app-surface-raised);
+  background: var(--app-raised);
   box-shadow: 0 16px 34px color-mix(in srgb, #000 32%, transparent);
 }
 
@@ -421,7 +421,7 @@
 .notebook-sidebar-switcher-row,
 .notebook-sidebar-switcher-open {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   min-height: 34px;
@@ -546,8 +546,6 @@
 }
 
 .notebook-sidebar-toggle-icon,
-.notebook-sidebar-footer-icon,
-.notebook-sidebar-switcher-icon,
 .notebook-sidebar-switcher-chevron,
 .notebook-sidebar-switcher-row-icon {
   display: block;
@@ -608,7 +606,7 @@
   padding: 6px 34px;
   border: 1px solid var(--app-border);
   border-radius: 6px;
-  background: var(--app-surface-raised);
+  background: var(--app-raised);
   color: var(--app-text);
   font: inherit;
 }
@@ -711,7 +709,7 @@
   padding: 4px;
   border: 1px solid var(--app-border-muted);
   border-radius: 6px;
-  background: var(--app-surface-raised);
+  background: var(--app-raised);
 }
 
 .notebook-sidebar-search-suggestion {
@@ -755,7 +753,7 @@
   padding: 7px;
   border: 1px solid var(--app-border-muted);
   border-radius: 6px;
-  background: var(--app-surface-raised);
+  background: var(--app-raised);
 }
 
 .notebook-sidebar-search-menu-section {
@@ -1126,7 +1124,7 @@
   padding: 2px 5px;
   border: 1px solid color-mix(in srgb, var(--notebook-action-accent) 72%, var(--app-border));
   border-radius: 4px;
-  background: var(--app-surface);
+  background: var(--app-panel);
   color: var(--app-text-heading);
   font: inherit;
   outline: none;
@@ -1228,7 +1226,7 @@
   margin: 0 -18px 18px;
   padding: 12px 18px;
   border-bottom: 1px solid var(--app-border);
-  background: color-mix(in srgb, var(--app-surface) 92%, transparent);
+  background: color-mix(in srgb, var(--app-panel) 92%, transparent);
 }
 
 .notebook-panel h2 {
@@ -1260,7 +1258,7 @@
   min-height: var(--notebook-topbar-height);
   padding: var(--notebook-topbar-block-padding) var(--notebook-topbar-inline-padding);
   border-bottom: 1px solid var(--notebook-topbar-border);
-  background: color-mix(in srgb, var(--app-surface) 92%, transparent);
+  background: color-mix(in srgb, var(--app-panel) 92%, transparent);
 }
 
 .app-shell.notebook-shell .notebook-utility-header {
@@ -1273,6 +1271,18 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
+}
+
+.notebook-settings-panel > .notebook-utility-tabs {
+  box-sizing: border-box;
+  justify-content: flex-start;
+  max-width: 960px;
+  margin: 0 auto 8px;
+  padding-inline: 14px;
+}
+
+.notebook-settings-section > .notebook-utility-tabs {
+  margin-bottom: 12px;
 }
 
 .notebook-utility-header .notebook-utility-tabs {
@@ -1366,11 +1376,15 @@
 
 .notebook-settings-section {
   max-width: 960px;
-  margin: 0 0 18px;
+  margin: 0 auto 18px;
   padding: 14px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
-  background: var(--app-surface);
+  background: var(--app-panel);
+}
+
+.settings-shortcut-menu-toggle-row + .shortcut-menu-settings {
+  margin-top: 0.75rem;
 }
 
 .notebook-settings-stack,
@@ -1401,7 +1415,7 @@
   min-height: 32px;
   border: 1px solid var(--settings-control-border, var(--app-border));
   border-radius: 6px;
-  background: var(--settings-control-bg, var(--app-surface-raised));
+  background: var(--settings-control-bg, var(--app-raised));
   color: var(--settings-control-text, var(--app-text));
   font: inherit;
 }
@@ -1461,7 +1475,7 @@
   padding: 10px;
   border: 1px solid var(--app-border-muted);
   border-radius: 8px;
-  background: var(--app-surface-raised);
+  background: var(--app-raised);
 }
 
 .notebook-storage-card span {
@@ -1477,7 +1491,7 @@
   padding: 12px;
   border: 1px solid var(--app-border-muted);
   border-radius: 8px;
-  background: var(--app-surface-raised);
+  background: var(--app-raised);
 }
 
 .notebook-setup-main {
@@ -1529,7 +1543,7 @@
   padding: 18px 20px;
   border: 1px solid var(--app-border-muted);
   border-radius: 8px;
-  background: var(--app-surface-raised);
+  background: var(--app-raised);
   box-shadow: var(--app-shadow-popover);
 }
 
@@ -1671,7 +1685,7 @@
   padding: 8px;
   border: 1px solid var(--app-border-muted);
   border-radius: 8px;
-  background: var(--app-surface);
+  background: var(--app-panel);
 }
 
 .notebook-manager-row.is-active {
@@ -1730,7 +1744,7 @@
   height: 32px;
   border: 1px solid var(--app-border-muted);
   border-radius: 6px;
-  background: var(--app-surface-raised);
+  background: var(--app-raised);
   color: var(--app-text);
 }
 
@@ -1744,7 +1758,7 @@
   padding: 4px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
-  background: var(--app-surface-raised);
+  background: var(--app-raised);
   box-shadow: 0 14px 30px color-mix(in srgb, #000 28%, transparent);
 }
 
@@ -1878,7 +1892,7 @@
 .notebook-trash-preview {
   margin: 0 0 8px;
   border: 1px solid var(--app-border-muted);
-  background: var(--editor-bg, var(--app-surface-raised));
+  background: var(--editor-bg, var(--app-raised));
 }
 
 .notebook-trash-preview .trash-markdown-preview-shell {
@@ -2011,7 +2025,7 @@
   min-height: 38px;
   padding: 8px;
   border-bottom: 1px solid var(--editor-toolbar-border, var(--app-border));
-  background: var(--editor-toolbar-bg, var(--app-surface));
+  background: var(--editor-toolbar-bg, var(--app-panel));
 }
 
 .notebook-theme-preview-toolbar span {
@@ -2019,7 +2033,7 @@
   height: 22px;
   border: 1px solid var(--editor-toolbar-button-border, var(--app-border));
   border-radius: 5px;
-  background: var(--editor-toolbar-button-bg, var(--app-surface-raised));
+  background: var(--editor-toolbar-button-bg, var(--app-raised));
 }
 
 .notebook-theme-preview-page {
@@ -2028,7 +2042,7 @@
   padding: 14px;
   border: 1px solid var(--editor-border, var(--app-border));
   border-radius: 8px;
-  background: var(--editor-bg, var(--app-surface-raised));
+  background: var(--editor-bg, var(--app-raised));
   color: var(--editor-text, var(--app-text));
 }
 
@@ -2081,7 +2095,7 @@
   overflow: hidden;
   border: 1px solid var(--app-border);
   border-radius: 8px;
-  background: var(--app-surface);
+  background: var(--app-panel);
   color: var(--app-text);
   box-shadow: 0 18px 60px rgb(0 0 0 / 32%);
 }
@@ -2123,7 +2137,7 @@
   min-height: 0;
   padding: 12px 14px;
   overflow: auto;
-  background: var(--editor-bg, var(--app-surface-raised));
+  background: var(--editor-bg, var(--app-raised));
 }
 
 .notebook-frontmatter-body .frontmatter-note-toolbar {
@@ -2146,7 +2160,7 @@
 
 .notebook-frontmatter-body .frontmatter-template-suggestion-banner {
   border-color: var(--app-border-muted);
-  background: var(--app-surface);
+  background: var(--app-panel);
   color: var(--app-text-muted);
 }
 
@@ -2186,7 +2200,7 @@
   border: 0;
   border-radius: 0;
   outline: none;
-  background: var(--editor-bg, var(--app-surface-raised));
+  background: var(--editor-bg, var(--app-raised));
   color: var(--editor-text, var(--app-text));
   font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
@@ -2204,7 +2218,7 @@
   padding: 8px 14px;
   border-top: 1px solid var(--app-border-muted);
   color: var(--app-text-muted);
-  background: var(--app-surface);
+  background: var(--app-panel);
 }
 
 .notebook-frontmatter-warning-list p {
@@ -2319,7 +2333,7 @@
   padding: 8px 10px;
   border: 1px solid var(--app-border);
   border-radius: 6px;
-  background: var(--app-surface);
+  background: var(--app-panel);
   color: var(--app-text);
   font: inherit;
 }
@@ -2329,7 +2343,7 @@
   padding: 8px 10px;
   border: 1px solid var(--app-border-muted);
   border-radius: 6px;
-  background: var(--app-surface);
+  background: var(--app-panel);
   color: var(--app-text);
   font: inherit;
   line-height: 1.35;
@@ -2369,7 +2383,7 @@
   padding: 8px 10px;
   border: 1px solid var(--app-border-muted);
   border-radius: 6px;
-  background: var(--app-surface);
+  background: var(--app-panel);
   color: var(--app-text);
   font: inherit;
   text-align: left;
@@ -2383,7 +2397,7 @@
 
 .notebook-decouple-row.is-will-decouple {
   border-color: var(--app-border-muted);
-  background: var(--app-surface);
+  background: var(--app-panel);
 }
 
 .notebook-decouple-row.is-current {
@@ -2414,7 +2428,7 @@
 .notebook-note-action-result.is-highlighted,
 .notebook-note-action-result.is-selected {
   border-color: var(--app-primary-border);
-  background: color-mix(in srgb, var(--app-primary-action) 14%, var(--app-surface));
+  background: color-mix(in srgb, var(--app-primary-action) 14%, var(--app-panel));
 }
 
 .notebook-note-action-choice.is-highlighted {
@@ -2452,7 +2466,7 @@
   padding: 10px;
   border: 1px solid var(--app-border-muted);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--app-surface) 84%, transparent);
+  background: color-mix(in srgb, var(--app-panel) 84%, transparent);
 }
 
 .notebook-note-action-preview-aisle-label {
@@ -2503,7 +2517,7 @@
   padding: 8px 10px;
   border: 1px solid var(--app-border-muted);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--app-surface) 84%, transparent);
+  background: color-mix(in srgb, var(--app-panel) 84%, transparent);
 }
 
 .notebook-decouple-error {
@@ -2539,7 +2553,7 @@
     right: auto;
     bottom: auto;
     left: var(--notebook-sidebar-control-inset-inline);
-    grid-template-columns: var(--notebook-sidebar-control-size) var(--notebook-sidebar-control-size);
+    grid-template-columns: var(--notebook-sidebar-control-size);
     padding: 0;
   }
 

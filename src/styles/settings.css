@@ -1191,13 +1191,20 @@
 
 .visuals-preview-canvas {
   --visuals-preview-border: var(--app-border);
-  --visuals-preview-primary: var(--notebook-action-accent, var(--app-primary));
+  --visuals-preview-primary: var(--app-primary);
   --visuals-preview-panel-bg: var(--editor-bg);
   --visuals-preview-text: var(--editor-text);
   --visuals-preview-muted-text: var(--editor-muted-text);
   --visuals-preview-sidebar-row-bg: color-mix(in srgb, var(--app-text) 7%, transparent);
   --visuals-preview-selected-bg: color-mix(in srgb, var(--visuals-preview-primary) 16%, transparent);
   --visuals-preview-selected-border: color-mix(in srgb, var(--visuals-preview-primary) 68%, transparent);
+  --notebook-action-accent: var(--app-primary);
+  --notebook-sidebar-active-bg: color-mix(in srgb, var(--visuals-preview-primary) 78%, var(--notebook-sidebar-bg));
+  --notebook-sidebar-active-text: var(--action-chip-selected-text);
+  --notebook-control-bg: var(--app-button);
+  --notebook-control-border: var(--action-chip-border);
+  --notebook-control-text: var(--action-chip-text);
+  --notebook-control-hover-bg: color-mix(in srgb, var(--visuals-preview-primary) 16%, var(--app-button));
 
   display: grid;
   grid-template-columns: minmax(11.5rem, 0.34fr) minmax(0, 1fr);
@@ -1277,6 +1284,39 @@
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   background: var(--editor-shell-bg, var(--editor-bg));
+}
+
+.visuals-preview-aisles {
+  display: grid;
+  grid-template-columns: minmax(8.5rem, 0.28fr) minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.visuals-preview-control-aisle {
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--editor-border);
+  padding: calc(0.58rem * var(--note-font-scale, 1));
+  background: var(--editor-panel-bg, var(--app-panel));
+  color: var(--app-text);
+}
+
+.visuals-preview-button-tabs.notebook-utility-tabs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 0.4rem;
+}
+
+.visuals-preview-button-tabs.notebook-utility-tabs button {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding-inline: 0.62rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .visuals-preview-rail-stack {
@@ -1486,7 +1526,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.4rem 1rem;
-  margin-top: 0.35rem;
+  margin-top: 0.9rem;
 }
 
 .custom-theme-transfer-actions-left,
@@ -1815,9 +1855,23 @@
   white-space: nowrap;
 }
 
+.notebook-utility-content .settings-shortcut-select,
 .settings-shortcut-select {
   width: min(220px, 48vw);
+  padding-right: 2.05rem;
   font-size: 1em;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 0.86rem) 50%,
+    calc(100% - 0.62rem) 50%;
+  background-repeat: no-repeat;
+  background-size:
+    0.26rem 0.26rem,
+    0.26rem 0.26rem;
 }
 
 .settings-shortcut-btn:hover {
