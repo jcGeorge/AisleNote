@@ -66,6 +66,15 @@ export type BuildFrontmatterDataResult =
     }
   | { ok: false; message: string }
 
+export type FrontmatterTemplateFieldRemovalImpact = {
+  fieldCount: number
+  rowCount: number
+  noteCount: number
+  aisleCount: number
+  fieldLabels: string[]
+  templateNames: string[]
+}
+
 export type FrontmatterDropPosition = 'before' | 'after'
 export type FrontmatterRowDropPosition = FrontmatterDropPosition
 
@@ -551,6 +560,87 @@ export function buildFrontmatterModalDraftForNote(
   return aisleBodyId
     ? buildFrontmatterModalDraftForAisle(state, noteBodyId, aisleBodyId, location)
     : { rows: [], selectedTemplateId: '', templateDerived: false, isTemplateSuggestionDraft: false }
+}
+
+function getRemovedFieldsByTemplate(
+  previous: AppState['frontmatter'],
+  next: AppState['frontmatter'],
+): Map<string, { templateName: string; fields: FrontmatterTemplateField[] }> {
+  const nextTemplatesById = new Map(next.templates.map((template) => [template.id, template]))
+  const removedByTemplate = new Map<string, { templateName: string; fields: FrontmatterTemplateField[] }>()
+
+  previous.templates.forEach((template) => {
+    const nextTemplate = nextTemplatesById.get(template.id)
+    if (!nextTemplate) return
+    const nextFieldIds = new Set(nextTemplate.fields.map((field) => field.id).filter(Boolean))
+    const removedFields = template.fields.filter((field) => field.id && !nextFieldIds.has(field.id))
+    if (removedFields.length <= 0) return
+    removedByTemplate.set(template.id, {
+      templateName: template.name,
+      fields: removedFields,
+    })
+  })
+
+  return removedByTemplate
+}
+
+export function getFrontmatterTemplateFieldRemovalImpact(
+  state: AppState,
+  nextFrontmatter: AppState['frontmatter'],
+): FrontmatterTemplateFieldRemovalImpact | null {
+  const removedByTemplate = getRemovedFieldsByTemplate(state.frontmatter, nextFrontmatter)
+  if (removedByTemplate.size <= 0) return null
+
+  const nextState: AppState = { ...state, frontmatter: nextFrontmatter }
+  const noteIds = new Set<string>()
+  const aisleSlotIds = new Set<string>()
+  const fieldLabels = new Set<string>()
+  const templateNames = new Set<string>()
+  let rowCount = 0
+
+  for (const { note } of listVaultNotes(state.vault.items)) {
+    const noteBody = getNoteBody(state, note.noteBodyId)
+    if (!noteBody) continue
+
+    for (const aisle of noteBody.aisles) {
+      const aisleBody = getAisleBody(state, aisle.aisleBodyId)
+      const templateId = aisleBody?.frontmatterMeta?.templateId ?? ''
+      const removed = templateId ? removedByTemplate.get(templateId) : undefined
+      if (!removed || !aisleBody?.frontmatterMeta?.templateDerived) continue
+
+      const beforeDraft = buildFrontmatterModalDraftForAisle(state, note.noteBodyId, aisle.aisleBodyId, { noteId: note.id })
+      if (!beforeDraft.templateDerived || beforeDraft.selectedTemplateId !== templateId) continue
+
+      const afterDraft = buildFrontmatterModalDraftForAisle(nextState, note.noteBodyId, aisle.aisleBodyId, { noteId: note.id })
+      const afterKeys = new Set(afterDraft.rows.map((row) => row.key.trim()).filter(Boolean))
+      const removedFieldIds = new Set(removed.fields.map((field) => field.id))
+      let aisleAffected = false
+
+      beforeDraft.rows.forEach((row) => {
+        const key = row.key.trim()
+        if (!key || !row.derived || !row.templateFieldId || !removedFieldIds.has(row.templateFieldId)) return
+        if (afterKeys.has(key)) return
+        rowCount += 1
+        fieldLabels.add(key)
+        aisleAffected = true
+      })
+
+      if (!aisleAffected) continue
+      noteIds.add(note.id)
+      aisleSlotIds.add(`${note.id}:${aisle.id}`)
+      templateNames.add(removed.templateName)
+    }
+  }
+
+  if (rowCount <= 0) return null
+  return {
+    fieldCount: fieldLabels.size,
+    rowCount,
+    noteCount: noteIds.size,
+    aisleCount: aisleSlotIds.size,
+    fieldLabels: Array.from(fieldLabels),
+    templateNames: Array.from(templateNames),
+  }
 }
 
 export function buildFrontmatterDataFromRows(

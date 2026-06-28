@@ -332,6 +332,69 @@ describe('frontmatter templates', () => {
     expect(result.updated).toBe('2026-05-14T09:30:00.000Z')
   })
 
+  it('coerces matching existing frontmatter values into editable template field types', () => {
+    const typedTemplate: FrontmatterTemplate = {
+      id: 'typed-template',
+      name: 'Typed',
+      fields: [
+        { id: 'series-order', key: 'seriesOrder', type: 'number', defaultValue: '1', computed: 'none' },
+        { id: 'draft', key: 'draft', type: 'boolean', defaultValue: 'true', computed: 'none' },
+        { id: 'publish-date', key: 'publishDate', type: 'date', defaultValue: '', computed: 'none' },
+        { id: 'misc-tags', key: 'miscTags', type: 'list', defaultValue: '', computed: 'none' },
+        {
+          id: 'status',
+          key: 'status',
+          type: 'fixedList',
+          defaultValue: 'draft',
+          computed: 'none',
+          options: ['draft', 'published', 'archived'],
+        },
+      ],
+    }
+
+    const result = applyFrontmatterTemplate(
+      {
+        seriesOrder: '2',
+        draft: 'false',
+        publishDate: '1/10/2026',
+        miscTags: 'yes, yes1, yes2',
+        status: ['missing', 'published'],
+      },
+      typedTemplate,
+      context,
+    )
+
+    expect(result).toEqual({
+      seriesOrder: 2,
+      draft: false,
+      publishDate: '2026-01-10',
+      miscTags: ['yes', 'yes1', 'yes2'],
+      status: ['published'],
+    })
+  })
+
+  it('falls back to template defaults when matching existing values cannot be coerced', () => {
+    const typedTemplate: FrontmatterTemplate = {
+      id: 'fallback-template',
+      name: 'Fallback',
+      fields: [
+        { id: 'series-order', key: 'seriesOrder', type: 'number', defaultValue: '1', computed: 'none' },
+        { id: 'draft', key: 'draft', type: 'boolean', defaultValue: 'true', computed: 'none' },
+        { id: 'publish-date', key: 'publishDate', type: 'date', defaultValue: '', computed: 'none' },
+      ],
+    }
+
+    expect(applyFrontmatterTemplate(
+      { seriesOrder: 'two', draft: 'maybe', publishDate: 'not a date' },
+      typedTemplate,
+      context,
+    )).toEqual({
+      seriesOrder: 1,
+      draft: true,
+      publishDate: null,
+    })
+  })
+
   it('applies frontmatter as template fields only', () => {
     const result = applyFrontmatterTemplate({ extra: true }, template, context)
 

@@ -74,11 +74,13 @@ import {
   buildFrontmatterModalDraftForAisle,
   buildFrontmatterRowsForAisle,
   disableInvalidComputedFrontmatterRows,
+  getFrontmatterTemplateFieldRemovalImpact,
   makeFrontmatterRowsManual,
   normalizeFrontmatterDraftRows,
   reorderFrontmatterItemsByTargetIndex,
   reorderFrontmatterTemplateFieldsByTargetIndex,
   resolveFrontmatterRowComputedForType,
+  type FrontmatterTemplateFieldRemovalImpact,
   type FrontmatterRowDraft,
 } from '../frontmatter/frontmatter-state'
 import {
@@ -3201,6 +3203,70 @@ function FrontmatterTemplateDeleteDialog({
   )
 }
 
+function formatFrontmatterTemplateImpactCount(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`
+}
+
+function formatFrontmatterTemplateImpactList(values: string[]) {
+  if (values.length <= 0) return 'template row'
+  if (values.length <= 3) return values.join(', ')
+  return `${values.slice(0, 3).join(', ')} and ${values.length - 3} more`
+}
+
+function FrontmatterTemplateFieldRemovalWarningDialog({
+  impact,
+  onCancel,
+  onConfirm,
+}: {
+  impact: FrontmatterTemplateFieldRemovalImpact
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  const rowLabel = formatFrontmatterTemplateImpactCount(impact.rowCount, 'derived row')
+  const noteLabel = formatFrontmatterTemplateImpactCount(impact.noteCount, 'note')
+  const aisleLabel = formatFrontmatterTemplateImpactCount(impact.aisleCount, 'aisle')
+  const fieldLabel = formatFrontmatterTemplateImpactList(impact.fieldLabels)
+
+  return (
+    <div className="modal-backdrop vault-modal-backdrop" role="presentation" onMouseDown={onCancel}>
+      <section
+        className="modal-card vault-frontmatter-modal frontmatter-template-field-removal-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="frontmatter-template-field-removal-title"
+        onMouseDown={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') onCancel()
+        }}
+      >
+        <header className="modal-card-header">
+          <h2 id="frontmatter-template-field-removal-title">Save template changes?</h2>
+          <button type="button" className="app-close-button" aria-label="Close save template warning" onClick={onCancel}>
+            <AppIcon iconId="x" className="app-close-button-icon" />
+          </button>
+        </header>
+        <div className="vault-frontmatter-body">
+          <p className="frontmatter-template-field-removal-message">
+            Saving will remove {rowLabel} from {noteLabel} across {aisleLabel}.
+          </p>
+          <p className="frontmatter-template-field-removal-name">{fieldLabel}</p>
+          <p className="frontmatter-template-field-removal-help">
+            Saved frontmatter values with matching keys stay as manual rows.
+          </p>
+        </div>
+        <footer className="modal-card-footer">
+          <button type="button" className="vault-settings-action" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" className="vault-settings-action app-danger-btn" onClick={onConfirm}>
+            Save template
+          </button>
+        </footer>
+      </section>
+    </div>
+  )
+}
+
 export function VaultApp() {
   const { state, setState, stateRef, externalStateLoadVersion, commitAppStateNow } = usePersistentAppState()
   const [viewMode, setViewMode] = useState<ViewMode>('main')
@@ -3251,6 +3317,8 @@ export function VaultApp() {
   const [frontmatterFixedListOptionDrafts, setFrontmatterFixedListOptionDrafts] = useState<Record<string, string>>({})
   const [frontmatterTemplateDeleteTargetId, setFrontmatterTemplateDeleteTargetId] = useState('')
   const [frontmatterTemplateImportTarget, setFrontmatterTemplateImportTarget] = useState<FrontmatterTemplateImportTarget | null>(null)
+  const [frontmatterTemplateFieldRemovalImpact, setFrontmatterTemplateFieldRemovalImpact] =
+    useState<FrontmatterTemplateFieldRemovalImpact | null>(null)
   const frontmatterTemplateFieldListRef = useRef<HTMLDivElement | null>(null)
   const frontmatterTemplateFieldRectsRef = useRef<FrontmatterListDropRect[]>([])
   const frontmatterTemplateFieldDragIdRef = useRef('')
@@ -6966,7 +7034,7 @@ export function VaultApp() {
         templateDerived: true,
         isTemplateSuggestionDraft: modal.isTemplateSuggestionDraft,
         rows: buildFrontmatterRowsForAisle(state, modal.noteBodyId, modal.aisleBodyId, modal.location, template, {
-          includeExisting: false,
+          includeExisting: true,
           derived: true,
         }),
       }
@@ -8183,6 +8251,7 @@ export function VaultApp() {
       clearFrontmatterTemplateFieldDrag()
       setFrontmatterTemplateDeleteTargetId('')
       setFrontmatterTemplateImportTarget(null)
+      setFrontmatterTemplateFieldRemovalImpact(null)
       updateFrontmatterDraft((frontmatter) => ({
         ...frontmatter,
         templates: [...frontmatter.templates, template],
@@ -8196,6 +8265,7 @@ export function VaultApp() {
       setFrontmatterFixedListOptionDrafts({})
       setFrontmatterTemplateDeleteTargetId('')
       setFrontmatterTemplateImportTarget(null)
+      setFrontmatterTemplateFieldRemovalImpact(null)
       updateFrontmatterDraft((frontmatter) => {
         const nextTemplates = frontmatter.templates.filter((template) => template.id !== templateId)
         return {
@@ -8241,6 +8311,7 @@ export function VaultApp() {
       if (!activeTemplate) return
       clearFrontmatterTemplateFieldDrag()
       setFrontmatterTemplateDeleteTargetId('')
+      setFrontmatterTemplateFieldRemovalImpact(null)
       setFrontmatterTemplateImportTarget({
         templateId: activeTemplate.id,
         templateName: activeTemplate.name,
@@ -8254,6 +8325,7 @@ export function VaultApp() {
 
       clearFrontmatterTemplateFieldDrag()
       setFrontmatterFixedListOptionDrafts({})
+      setFrontmatterTemplateFieldRemovalImpact(null)
       updateFrontmatterDraft((frontmatter) => ({
         ...frontmatter,
         templates: frontmatter.templates.map((template) =>
@@ -8472,22 +8544,24 @@ export function VaultApp() {
       if (field.type === 'boolean') {
         const checked = isFrontmatterBooleanTrue(field.defaultValue)
         return (
-          <label className="frontmatter-boolean-switch form-check form-switch settings-switch frontmatter-default-input">
-            <input
-              className="form-check-input"
-              type="checkbox"
-              role="switch"
-              checked={checked}
-              disabled={field.computed !== 'none'}
-              aria-label="frontmatter default boolean value"
-              onChange={(event) =>
-                updateFrontmatterTemplateField(templateId, field.id, {
-                  defaultValue: event.target.checked ? 'true' : 'false',
-                })
-              }
-            />
-            <span className="frontmatter-boolean-switch-label">{checked ? 'true' : 'false'}</span>
-          </label>
+          <div className="frontmatter-default-boolean-control frontmatter-default-input">
+            <label className="frontmatter-boolean-switch form-check form-switch settings-switch">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                role="switch"
+                checked={checked}
+                disabled={field.computed !== 'none'}
+                aria-label="frontmatter default boolean value"
+                onChange={(event) =>
+                  updateFrontmatterTemplateField(templateId, field.id, {
+                    defaultValue: event.target.checked ? 'true' : 'false',
+                  })
+                }
+              />
+              <span className="frontmatter-boolean-switch-label">{checked ? 'true' : 'false'}</span>
+            </label>
+          </div>
         )
       }
 
@@ -8527,15 +8601,25 @@ export function VaultApp() {
       )
     }
 
-    const saveFrontmatterTemplates = () => {
-      const nextFrontmatter = frontmatterDraft
+    const commitFrontmatterTemplates = (nextFrontmatter: AppState['frontmatter']) => {
       frontmatterStateSnapshotRef.current = nextFrontmatter
       setFrontmatterFixedListOptionDrafts({})
       setFrontmatterTemplateImportTarget(null)
+      setFrontmatterTemplateFieldRemovalImpact(null)
       mutateState((previous) => ({
         ...previous,
         frontmatter: nextFrontmatter,
       }))
+    }
+
+    const saveFrontmatterTemplates = () => {
+      const nextFrontmatter = frontmatterDraft
+      const impact = getFrontmatterTemplateFieldRemovalImpact(stateRef.current, nextFrontmatter)
+      if (impact) {
+        setFrontmatterTemplateFieldRemovalImpact(impact)
+        return
+      }
+      commitFrontmatterTemplates(nextFrontmatter)
     }
     const deleteTargetTemplate = templates.find((template) => template.id === frontmatterTemplateDeleteTargetId) ?? null
 
@@ -8772,6 +8856,7 @@ export function VaultApp() {
                   clearFrontmatterTemplateFieldDrag()
                   setFrontmatterTemplateDeleteTargetId('')
                   setFrontmatterTemplateImportTarget(null)
+                  setFrontmatterTemplateFieldRemovalImpact(null)
                   setFrontmatterDraft(stateRef.current.frontmatter)
                 }}
               >
@@ -8794,6 +8879,13 @@ export function VaultApp() {
           templateName={deleteTargetTemplate.name}
           onCancel={() => setFrontmatterTemplateDeleteTargetId('')}
           onConfirm={() => deleteFrontmatterTemplate(deleteTargetTemplate.id)}
+        />
+      ) : null}
+      {frontmatterTemplateFieldRemovalImpact ? (
+        <FrontmatterTemplateFieldRemovalWarningDialog
+          impact={frontmatterTemplateFieldRemovalImpact}
+          onCancel={() => setFrontmatterTemplateFieldRemovalImpact(null)}
+          onConfirm={() => commitFrontmatterTemplates(frontmatterDraft)}
         />
       ) : null}
       {frontmatterTemplateImportTarget ? (

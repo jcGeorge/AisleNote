@@ -172,7 +172,7 @@
 
 .aislenote-rendered-markdown-surface p.aislenote-annotation-line {
   position: relative;
-  padding-left: 2.4rem;
+  padding-left: 1.55rem;
 }
 
 .aislenote-rendered-markdown-surface p.aislenote-annotation-line::before {
@@ -180,7 +180,7 @@
   position: absolute;
   left: 0.35rem;
   top: 50%;
-  width: 1.55rem;
+  width: 0.9rem;
   height: 2px;
   border-radius: 999px;
   background: currentColor;
@@ -1741,7 +1741,7 @@
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background: rgba(4, 9, 16, 0.58);
+  background: color-mix(in srgb, var(--app-bg) 46%, transparent);
 }
 
 .aisle-edit-modal {

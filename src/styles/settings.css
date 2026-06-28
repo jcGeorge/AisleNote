@@ -464,6 +464,20 @@
   align-items: center;
 }
 
+.frontmatter-template-field-row .frontmatter-default-boolean-control {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  height: 2.35rem;
+  min-height: 2.35rem;
+}
+
+.frontmatter-template-field-row .frontmatter-default-boolean-control .frontmatter-boolean-switch {
+  width: auto;
+  height: auto;
+  min-height: 0;
+}
+
 .frontmatter-template-lock-icon,
 .frontmatter-template-remove-icon {
   width: 1rem;
@@ -484,7 +498,8 @@
   line-height: 1;
 }
 
-.frontmatter-template-delete-modal {
+.frontmatter-template-delete-modal,
+.frontmatter-template-field-removal-modal {
   width: min(30rem, calc(100vw - 32px));
 }
 
@@ -496,6 +511,9 @@
 
 .frontmatter-template-delete-message,
 .frontmatter-template-delete-name,
+.frontmatter-template-field-removal-message,
+.frontmatter-template-field-removal-name,
+.frontmatter-template-field-removal-help,
 .frontmatter-template-import-message,
 .frontmatter-template-import-name,
 .frontmatter-template-import-status {
@@ -503,9 +521,15 @@
 }
 
 .frontmatter-template-delete-name,
+.frontmatter-template-field-removal-name,
 .frontmatter-template-import-name {
   color: var(--app-text-heading);
   font-weight: 700;
+}
+
+.frontmatter-template-field-removal-help {
+  color: var(--app-text-muted);
+  font-size: 0.9rem;
 }
 
 .frontmatter-template-import-textarea {

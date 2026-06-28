@@ -480,14 +480,60 @@ export function resolveFrontmatterFixedListValues(
   return normalizedOptions.filter((option) => fallbackValues.has(option))
 }
 
-function isCompatibleValue(type: FrontmatterFieldType, value: unknown): boolean {
-  if (value == null || value === '') return false
-  if (type === 'text' || type === 'date' || type === 'datetime') return typeof value === 'string' || value instanceof Date
-  if (type === 'number') return typeof value === 'number' && Number.isFinite(value)
-  if (type === 'boolean') return typeof value === 'boolean'
-  if (type === 'list') return Array.isArray(value)
-  if (type === 'fixedList') return typeof value === 'string' || Array.isArray(value)
-  return false
+type ExistingFrontmatterValueResolution =
+  | { ok: true; value: unknown }
+  | { ok: false }
+
+function tryResolveExistingNumberValue(value: unknown): ExistingFrontmatterValueResolution {
+  if (typeof value === 'number' && Number.isFinite(value)) return { ok: true, value }
+  if (typeof value !== 'string') return { ok: false }
+  const trimmed = value.trim()
+  if (!trimmed) return { ok: false }
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? { ok: true, value: parsed } : { ok: false }
+}
+
+function tryResolveExistingBooleanValue(value: unknown): ExistingFrontmatterValueResolution {
+  if (typeof value === 'boolean') return { ok: true, value }
+  if (typeof value === 'number' && (value === 0 || value === 1)) return { ok: true, value: Boolean(value) }
+  if (typeof value !== 'string') return { ok: false }
+  const normalized = value.trim().toLowerCase()
+  if (['true', 'yes', 'on', '1', 'false', 'no', 'off', '0'].includes(normalized)) {
+    return { ok: true, value: parseBoolean(value) }
+  }
+  return { ok: false }
+}
+
+function tryResolveExistingListValue(value: unknown): ExistingFrontmatterValueResolution {
+  if (Array.isArray(value)) return { ok: true, value: parseList(value) }
+  if (typeof value !== 'string') return { ok: false }
+  const parsed = parseList(value)
+  return parsed.length > 0 ? { ok: true, value: parsed } : { ok: false }
+}
+
+function tryResolveExistingFieldValue(
+  field: FrontmatterTemplateField,
+  value: unknown,
+): ExistingFrontmatterValueResolution {
+  if (field.type === 'text') return { ok: true, value: coerceFrontmatterString(value) }
+  if (field.type === 'number') return tryResolveExistingNumberValue(value)
+  if (field.type === 'boolean') return tryResolveExistingBooleanValue(value)
+  if (field.type === 'date') {
+    const pickerValue = getFrontmatterDatePickerValue(value)
+    return pickerValue ? { ok: true, value: pickerValue } : { ok: false }
+  }
+  if (field.type === 'datetime') {
+    const pickerValue = getFrontmatterDatetimePickerValue(value)
+    return pickerValue ? { ok: true, value: coerceFrontmatterFieldValue('datetime', pickerValue) } : { ok: false }
+  }
+  if (field.type === 'list') return tryResolveExistingListValue(value)
+  if (field.type === 'fixedList') {
+    const selectedValues = resolveFrontmatterFixedListValues(field.options, value)
+    if (selectedValues.length > 0 || (Array.isArray(value) && value.length === 0)) {
+      return { ok: true, value: selectedValues }
+    }
+  }
+  return { ok: false }
 }
 
 export function isFrontmatterReferenceComputedValue(computed: FrontmatterComputedValue) {
@@ -547,15 +593,19 @@ function resolveFieldValue(
   existing: FrontmatterData,
   context: FrontmatterTemplateContext,
 ): unknown {
-  const currentValue = existing[field.key]
   const computedValue = getComputedValue(field.computed, context)
   if (computedValue !== undefined) {
     return isFrontmatterReferenceComputedValue(field.computed) ? computedValue : coerceFrontmatterFieldValue(field.type, computedValue)
   }
+  const hasCurrentValue = Object.prototype.hasOwnProperty.call(existing, field.key)
+  const currentValue = existing[field.key]
+  if (hasCurrentValue) {
+    const existingValue = tryResolveExistingFieldValue(field, currentValue)
+    if (existingValue.ok) return existingValue.value
+  }
   if (field.type === 'fixedList') {
     return resolveFrontmatterFixedListValues(field.options, currentValue, field.defaultValue)
   }
-  if (isCompatibleValue(field.type, currentValue)) return coerceFrontmatterFieldValue(field.type, currentValue)
   return coerceFrontmatterFieldValue(field.type, field.defaultValue)
 }
 

@@ -4,6 +4,7 @@ import {
   buildFrontmatterDataFromRows,
   buildFrontmatterModalDraftForAisle,
   disableInvalidComputedFrontmatterRows,
+  getFrontmatterTemplateFieldRemovalImpact,
   normalizeFrontmatterDraftRows,
   reorderFrontmatterItemsByTargetIndex,
   reorderFrontmatterRowsByInsertion,
@@ -377,6 +378,43 @@ describe('frontmatter structured row state', () => {
     const draft = buildFrontmatterModalDraftForAisle(removedState, 'body-1', 'aisle-body-1', location)
 
     expect(draft.rows.map((row) => row.key)).toEqual(['status', 'created'])
+  })
+
+  it('counts only generated derived rows that disappear when template fields are removed', () => {
+    const state = createState()
+    const nextFrontmatter: AppState['frontmatter'] = {
+      ...state.frontmatter,
+      templates: [
+        {
+          ...template,
+          fields: template.fields.filter((field) => field.id !== 'title' && field.id !== 'status'),
+        },
+      ],
+    }
+
+    expect(getFrontmatterTemplateFieldRemovalImpact(state, nextFrontmatter)).toEqual({
+      fieldCount: 1,
+      rowCount: 2,
+      noteCount: 2,
+      aisleCount: 2,
+      fieldLabels: ['title'],
+      templateNames: ['template'],
+    })
+  })
+
+  it('does not count removed template fields that remain as saved manual frontmatter rows', () => {
+    const state = createState()
+    const nextFrontmatter: AppState['frontmatter'] = {
+      ...state.frontmatter,
+      templates: [
+        {
+          ...template,
+          fields: template.fields.filter((field) => field.id !== 'status'),
+        },
+      ],
+    }
+
+    expect(getFrontmatterTemplateFieldRemovalImpact(state, nextFrontmatter)).toBeNull()
   })
 
   it('opens blank frontmatter as an unsaved last-applied template suggestion', () => {

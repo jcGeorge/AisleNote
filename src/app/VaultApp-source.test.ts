@@ -46,6 +46,12 @@ describe('VaultApp frontmatter modal routing', () => {
     expect(source).not.toContain('<option value="">no options</option>')
   })
 
+  it('reuses existing frontmatter values when selecting a template for an aisle', () => {
+    expect(source).toContain('const selectFrontmatterTemplate = useCallback')
+    expect(source).toContain('includeExisting: true')
+    expect(source).not.toContain('includeExisting: false')
+  })
+
   it('routes frontmatter modal copy and aisle paste through the frontmatter clipboard helpers', () => {
     expect(source).toContain("from '../frontmatter/frontmatter-clipboard'")
     expect(source).toContain('const copyFrontmatterFromModal = useCallback')

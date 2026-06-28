@@ -155,6 +155,8 @@ describe('vault settings access', () => {
     expect(settingsCssSource).toContain('.frontmatter-template-delete-modal')
     expect(settingsCssSource).toContain('.frontmatter-template-field-row.is-drop-index-before::before')
     expect(settingsCssSource).toContain('.frontmatter-template-field-drag-handle')
+    expect(vaultAppSource).toContain('className="frontmatter-default-boolean-control frontmatter-default-input"')
+    expect(settingsCssSource).toContain('.frontmatter-template-field-row .frontmatter-default-boolean-control {\n  box-sizing: border-box;\n  display: flex;\n  align-items: center;')
     expect(settingsCssSource).not.toContain('.frontmatter-template-list-item.is-drop-before::before')
   })
 

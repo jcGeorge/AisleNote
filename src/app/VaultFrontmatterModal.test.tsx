@@ -80,6 +80,12 @@ function getControlTag(html: string, className: string): string {
   return html.match(new RegExp(`<[^>]+${className}[^>]*>`))?.[0] ?? ''
 }
 
+function getCssRule(css: string, selector: string): string {
+  const start = css.indexOf(`${selector} {`)
+  if (start < 0) return ''
+  return css.slice(start, css.indexOf('}', start) + 1)
+}
+
 describe('VaultFrontmatterModal', () => {
   it('renders structured frontmatter rows instead of a raw YAML textarea', () => {
     const html = renderModal()
@@ -102,6 +108,16 @@ describe('VaultFrontmatterModal', () => {
     expect(appCss).toMatch(
       /\.note-content-overlay-region \.frontmatter-note-modal-backdrop \{[\s\S]*?background: color-mix\(in srgb, var\(--app-bg\) 46%, transparent\);/,
     )
+  })
+
+  it('uses the frontmatter note backdrop tint for other modal backdrops', () => {
+    const vaultBackdropRule = getCssRule(appCss, '.vault-modal-backdrop')
+    const deleteBackdropRule = getCssRule(overlaysCss, '.delete-modal-backdrop')
+
+    expect(vaultBackdropRule).toContain('background: color-mix(in srgb, var(--app-bg) 46%, transparent);')
+    expect(vaultBackdropRule).not.toContain('rgba(4, 9, 16, 0.58)')
+    expect(deleteBackdropRule).toContain('background: color-mix(in srgb, var(--app-bg) 46%, transparent);')
+    expect(deleteBackdropRule).not.toContain('rgba(4, 9, 16, 0.58)')
   })
 
   it('locks template-owned key and type while keeping normal values editable', () => {
