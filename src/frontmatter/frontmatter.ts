@@ -24,6 +24,10 @@ export type ParseFrontmatterYamlResult =
   | { ok: true; data: FrontmatterData | null }
   | { ok: false; message: string }
 
+export type FrontmatterTemplateImportResult =
+  | { ok: true; fields: FrontmatterTemplateField[] }
+  | { ok: false; message: string }
+
 export type MarkdownFrontmatterExtraction = {
   frontmatter: FrontmatterData | null
   markdown: string
@@ -231,6 +235,7 @@ export function coerceFrontmatterString(value: unknown): string {
 }
 
 const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/
+const US_DATE_ONLY_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
 const DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})(?:$|[T\s])/
 const LOCAL_DATETIME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::\d{2}(?:\.\d{1,3})?)?$/
 
@@ -255,6 +260,31 @@ function parseDateOnlyParts(value: string): { year: number; month: number; day: 
   return { year, month, day }
 }
 
+function parseUsDateOnlyParts(value: string): { year: number; month: number; day: number } | null {
+  const match = value.match(US_DATE_ONLY_RE)
+  if (!match) return null
+  const month = Number.parseInt(match[1] ?? '', 10)
+  const day = Number.parseInt(match[2] ?? '', 10)
+  const year = Number.parseInt(match[3] ?? '', 10)
+  const date = new Date(year, month - 1, day)
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null
+  }
+  return { year, month, day }
+}
+
+function parseDateInputParts(value: string): { year: number; month: number; day: number } | null {
+  return parseDateOnlyParts(value) ?? parseUsDateOnlyParts(value)
+}
+
+function formatDateParts(parts: { year: number; month: number; day: number }): string {
+  return `${parts.year}-${padDatePart(parts.month)}-${padDatePart(parts.day)}`
+}
+
 function formatLocalDate(value: Date): string {
   return `${value.getFullYear()}-${padDatePart(value.getMonth() + 1)}-${padDatePart(value.getDate())}`
 }
@@ -264,7 +294,7 @@ function formatLocalDateTime(value: Date): string {
 }
 
 function dateAtLocalDefaultTime(dateValue: string): Date | null {
-  const parts = parseDateOnlyParts(dateValue)
+  const parts = parseDateInputParts(dateValue)
   if (!parts) return null
   return new Date(parts.year, parts.month - 1, parts.day, 15, 0, 0, 0)
 }
@@ -282,8 +312,8 @@ export function getFrontmatterDatePickerValue(value: unknown): string {
   }
   const rawValue = coerceFrontmatterString(value).trim()
   if (!rawValue) return ''
-  const dateOnly = parseDateOnlyParts(rawValue)
-  if (dateOnly) return rawValue
+  const dateOnly = parseDateInputParts(rawValue)
+  if (dateOnly) return formatDateParts(dateOnly)
   const prefix = rawValue.match(DATE_PREFIX_RE)?.[1] ?? ''
   return prefix && parseDateOnlyParts(prefix) ? prefix : ''
 }
@@ -295,8 +325,8 @@ export function getFrontmatterDatetimePickerValue(value: unknown): string {
   }
   const rawValue = coerceFrontmatterString(value).trim()
   if (!rawValue) return ''
-  const dateOnly = parseDateOnlyParts(rawValue)
-  if (dateOnly) return `${rawValue}T15:00`
+  const dateOnly = parseDateInputParts(rawValue)
+  if (dateOnly) return `${formatDateParts(dateOnly)}T15:00`
 
   const localMatch = rawValue.match(LOCAL_DATETIME_RE)
   if (localMatch) {
@@ -326,6 +356,61 @@ export function getFrontmatterDraftValueForType(
     return datetimeValue || (getFrontmatterDatePickerValue(value) ? getFrontmatterDefaultDatetimePickerValue(value) : '')
   }
   return coerceFrontmatterString(value)
+}
+
+function inferImportedFrontmatterFieldType(value: unknown): FrontmatterFieldType {
+  if (typeof value === 'number' && Number.isFinite(value)) return 'number'
+  if (typeof value === 'boolean') return 'boolean'
+  if (Array.isArray(value)) return 'list'
+  if (value instanceof Date) return 'datetime'
+  if (typeof value === 'string') {
+    const rawValue = value.trim()
+    if (rawValue && parseDateInputParts(rawValue)) return 'date'
+    if (rawValue && getFrontmatterDatetimePickerValue(rawValue)) return 'datetime'
+    if (rawValue && getFrontmatterDatePickerValue(rawValue)) return 'date'
+  }
+  return 'text'
+}
+
+function getImportedFrontmatterDefaultValue(type: FrontmatterFieldType, value: unknown): string {
+  if (type === 'boolean') return parseBoolean(value) ? 'true' : 'false'
+  return getFrontmatterDraftValueForType(type, value)
+}
+
+function parseFrontmatterTemplateImportData(raw: string): ParseFrontmatterYamlResult {
+  const trimmed = raw.trim()
+  if (!trimmed) return { ok: true, data: null }
+  if (!getFrontmatterOpenRegex().test(trimmed)) return parseFrontmatterYaml(trimmed)
+
+  const split = splitMarkdownFrontmatter(trimmed)
+  if (split.status === 'invalid') {
+    return { ok: false, message: split.error ?? 'Frontmatter YAML is invalid.' }
+  }
+  return { ok: true, data: split.frontmatter }
+}
+
+export function parseFrontmatterTemplateImport(raw: string): FrontmatterTemplateImportResult {
+  const parsed = parseFrontmatterTemplateImportData(raw)
+  if (!parsed.ok) return { ok: false, message: parsed.message }
+  if (!parsed.data || Object.keys(parsed.data).length === 0) {
+    return { ok: false, message: 'No frontmatter fields found.' }
+  }
+
+  const fields = Object.entries(parsed.data).flatMap(([rawKey, value], index): FrontmatterTemplateField[] => {
+    const key = rawKey.trim()
+    if (!key) return []
+    const type = inferImportedFrontmatterFieldType(value)
+    return [{
+      id: stableId('fm-field', key, index),
+      key,
+      type,
+      defaultValue: getImportedFrontmatterDefaultValue(type, value),
+      computed: 'none',
+    }]
+  })
+
+  if (fields.length === 0) return { ok: false, message: 'No frontmatter fields found.' }
+  return { ok: true, fields }
 }
 
 function parseBoolean(value: unknown): boolean {

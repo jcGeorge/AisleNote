@@ -6,6 +6,7 @@ import {
   getFrontmatterDatetimePickerValue,
   getFrontmatterDraftValueForType,
   normalizeFrontmatterFixedListOptions,
+  parseFrontmatterTemplateImport,
   parseFrontmatterYaml,
   prependMarkdownFrontmatter,
   normalizeFrontmatterSettings,
@@ -69,6 +70,57 @@ describe('frontmatter parsing', () => {
 
   it('rejects non-mapping YAML', () => {
     expect(parseFrontmatterYaml('- item').ok).toBe(false)
+  })
+
+  it('imports template fields from a full Markdown frontmatter block and ignores the body', () => {
+    const result = parseFrontmatterTemplateImport(`---
+status: draft
+tags:
+  - launch
+nested:
+  title: Launch
+---
+# Body
+body: ignored`)
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.fields).toMatchObject([
+      { key: 'status', type: 'text', defaultValue: 'draft', computed: 'none' },
+      { key: 'tags', type: 'list', defaultValue: 'launch', computed: 'none' },
+      { key: 'nested', type: 'text', defaultValue: 'title: Launch', computed: 'none' },
+    ])
+    expect(result.fields.some((field) => field.key === 'body')).toBe(false)
+  })
+
+  it('imports template fields from bare YAML with inferred plain defaults', () => {
+    const result = parseFrontmatterTemplateImport(`status: published
+count: 3
+featured: true
+publishDate: 1/10/2026
+publishAt: 2026-06-28T10:30:00
+tags:
+  - launch
+  - customer`)
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.fields).toMatchObject([
+      { key: 'status', type: 'text', defaultValue: 'published', computed: 'none' },
+      { key: 'count', type: 'number', defaultValue: '3', computed: 'none' },
+      { key: 'featured', type: 'boolean', defaultValue: 'true', computed: 'none' },
+      { key: 'publishDate', type: 'date', defaultValue: '2026-01-10', computed: 'none' },
+      { key: 'publishAt', type: 'datetime', defaultValue: '2026-06-28T10:30', computed: 'none' },
+      { key: 'tags', type: 'list', defaultValue: 'launch, customer', computed: 'none' },
+    ])
+    expect(result.fields.every((field) => field.computed === 'none')).toBe(true)
+  })
+
+  it('rejects invalid or empty frontmatter template imports', () => {
+    expect(parseFrontmatterTemplateImport('').ok).toBe(false)
+    expect(parseFrontmatterTemplateImport('{}')).toEqual({ ok: false, message: 'No frontmatter fields found.' })
+    expect(parseFrontmatterTemplateImport('- item').ok).toBe(false)
+    expect(parseFrontmatterTemplateImport('---\nkey: [unterminated\n---\nbody').ok).toBe(false)
   })
 })
 
@@ -236,10 +288,14 @@ describe('frontmatter templates', () => {
 
   it('coerces picker date and datetime values', () => {
     expect(coerceFrontmatterFieldValue('date', '2026-05-15')).toBe('2026-05-15')
+    expect(coerceFrontmatterFieldValue('date', '1/10/2026')).toBe('2026-01-10')
+    expect(getFrontmatterDraftValueForType('date', '1/10/2026')).toBe('2026-01-10')
+    expect(getFrontmatterDraftValueForType('date', 'not a date')).toBe('')
     expect(coerceFrontmatterFieldValue('datetime', '2026-05-15')).toBe(
       new Date(2026, 4, 15, 15, 0, 0, 0).toISOString(),
     )
     expect(getFrontmatterDatetimePickerValue('2026-05-15')).toBe('2026-05-15T15:00')
+    expect(getFrontmatterDatetimePickerValue('1/10/2026')).toBe('2026-01-10T15:00')
     expect(getFrontmatterDraftValueForType('datetime', '2026-05-15')).toBe('2026-05-15T15:00')
   })
 

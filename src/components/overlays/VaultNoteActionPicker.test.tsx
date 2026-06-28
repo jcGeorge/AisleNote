@@ -69,9 +69,34 @@ describe('VaultNoteActionPicker', () => {
 
   it('keeps the restored mention actions on one row with a wider picker', () => {
     expect(appCss).toContain('width: min(520px, calc(100vw - 28px));')
+    expect(appCss).toContain('.vault-note-action-layer.is-note-scoped')
+    expect(appCss).toContain('width: min(520px, calc(100% - 28px));')
     expect(appCss).toContain('.vault-note-action-query')
     expect(appCss).toContain('flex-wrap: nowrap;')
     expect(appCss).toContain('white-space: nowrap;')
+  })
+
+  it('scopes anchored note search to the live note content viewport', () => {
+    const html = renderToStaticMarkup(
+      <VaultNoteActionPicker
+        title="Select note"
+        entries={entries}
+        query="spe"
+        showSearchInput={false}
+        showHeader={false}
+        anchor={{ top: 160, left: 500 }}
+        viewportRect={{ top: 100, left: 200, width: 800, height: 500 }}
+        initialSelectedNoteId="note-2"
+        actions={['note-link', 'note-preview', 'independent-copy', 'synced-copy']}
+        onQueryChange={vi.fn()}
+        onAction={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(html).toContain('vault-note-action-layer is-note-scoped')
+    expect(html).toContain('style="top:100px;left:200px;width:800px;height:500px"')
+    expect(html).toContain('style="top:60px;left:300px"')
   })
 
   it('keeps URL insertion available for the toolbar link flow', () => {

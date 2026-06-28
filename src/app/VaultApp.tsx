@@ -64,6 +64,7 @@ import {
   getFrontmatterDraftValueForType,
   isFrontmatterComputedValueCompatibleWithFieldType,
   normalizeFrontmatterFixedListOptions,
+  parseFrontmatterTemplateImport,
   resolveFrontmatterFixedListValues,
   stringifyFrontmatterYaml,
 } from '../frontmatter/frontmatter'
@@ -292,6 +293,7 @@ import {
   type VaultNoteActionPickerActionOptions,
   type VaultNoteActionPickerAnchor,
   type VaultNoteActionPickerAisleOption,
+  type VaultNoteActionPickerViewportRect,
 } from '../components/overlays/VaultNoteActionPicker'
 import { VaultDecoupleDialog } from '../components/overlays/VaultDecoupleDialog'
 import {
@@ -716,6 +718,11 @@ export type VaultFrontmatterModalState = {
   isTemplateSuggestionDraft: boolean
 }
 
+type FrontmatterTemplateImportTarget = {
+  templateId: string
+  templateName: string
+}
+
 const FRONTMATTER_TEMPLATE_FIELD_DRAG_MIME = 'application/x-aislenote-frontmatter-template-field'
 const FRONTMATTER_ROW_DRAG_MIME = 'application/x-aislenote-frontmatter-row'
 const VAULT_NOTE_ACTION_PICKER_MAX_WIDTH = 520
@@ -788,6 +795,27 @@ function getCenteredAisleViewportLeft(workspaceRoot: HTMLElement | null, aisleId
   return rect.left + rect.width / 2
 }
 
+function getNoteContentViewportRect(workspaceRoot: HTMLElement | null): VaultNoteActionPickerViewportRect | null {
+  const contentRegion = workspaceRoot?.querySelector<HTMLElement>('.note-content-region') ?? null
+  const rect = contentRegion?.getBoundingClientRect()
+  if (!rect || rect.width <= 0 || rect.height <= 0) return null
+  return {
+    top: Math.round(rect.top),
+    left: Math.round(rect.left),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height),
+  }
+}
+
+function areViewportRectsEqual(
+  a: VaultNoteActionPickerViewportRect | null,
+  b: VaultNoteActionPickerViewportRect | null,
+): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height
+}
+
 function getAisleCenteredNoteActionPickerAnchor(
   workspaceRoot: HTMLElement | null,
   aisleId: string,
@@ -805,9 +833,12 @@ function getAisleCenteredNoteActionPickerAnchor(
   }
 }
 
-function getFrontmatterNoteModalStyle(workspaceRoot: HTMLElement | null, aisleId: string): CSSProperties | undefined {
-  const contentRegion = workspaceRoot?.querySelector<HTMLElement>('.note-content-region') ?? null
-  const contentRect = contentRegion?.getBoundingClientRect()
+function getFrontmatterNoteModalStyle(
+  workspaceRoot: HTMLElement | null,
+  aisleId: string,
+  noteContentViewportRect: VaultNoteActionPickerViewportRect | null,
+): CSSProperties | undefined {
+  const contentRect = noteContentViewportRect ?? getNoteContentViewportRect(workspaceRoot)
   if (!contentRect || contentRect.width <= 0) return undefined
 
   const aisleViewportLeft = getCenteredAisleViewportLeft(workspaceRoot, aisleId)
@@ -816,7 +847,10 @@ function getFrontmatterNoteModalStyle(workspaceRoot: HTMLElement | null, aisleId
   const minLeft = FRONTMATTER_NOTE_MODAL_CONTENT_GUTTER + modalWidth / 2
   const maxLeft = contentRect.width - FRONTMATTER_NOTE_MODAL_CONTENT_GUTTER - modalWidth / 2
   const left = clampOverlayCoordinate(rawLeft, minLeft, maxLeft)
-  return { '--frontmatter-note-modal-left': `${left}px` } as CSSProperties
+  return {
+    '--frontmatter-note-modal-left': `${left}px`,
+    '--frontmatter-note-modal-width': `${modalWidth}px`,
+  } as CSSProperties
 }
 
 function readFrontmatterListDropRects(container: HTMLElement | null, rowSelector: string): FrontmatterListDropRect[] {
@@ -3053,6 +3087,74 @@ function VaultNameDialog({
   )
 }
 
+function FrontmatterTemplateImportDialog({
+  templateName,
+  onCancel,
+  onImport,
+}: {
+  templateName: string
+  onCancel: () => void
+  onImport: (raw: string) => string | null
+}) {
+  const [draft, setDraft] = useState('')
+  const [status, setStatus] = useState('')
+
+  useEffect(() => {
+    setDraft('')
+    setStatus('')
+  }, [templateName])
+
+  const importFrontmatter = () => {
+    const message = onImport(draft)
+    if (message) setStatus(message)
+  }
+
+  return (
+    <div className="modal-backdrop vault-modal-backdrop" role="presentation" onMouseDown={onCancel}>
+      <section
+        className="modal-card vault-frontmatter-modal frontmatter-template-import-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="frontmatter-template-import-title"
+        onMouseDown={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') onCancel()
+        }}
+      >
+        <header className="modal-card-header">
+          <h2 id="frontmatter-template-import-title">Import frontmatter</h2>
+          <button type="button" className="app-close-button" aria-label="Close import frontmatter dialog" onClick={onCancel}>
+            <AppIcon iconId="x" className="app-close-button-icon" />
+          </button>
+        </header>
+        <div className="vault-frontmatter-body">
+          <p className="frontmatter-template-import-message">This will overwrite the template:</p>
+          <p className="frontmatter-template-import-name">{templateName}</p>
+          <textarea
+            className="settings-text-input frontmatter-template-import-textarea"
+            value={draft}
+            spellCheck={false}
+            aria-label="Frontmatter import content"
+            onChange={(event) => {
+              setDraft(event.target.value)
+              setStatus('')
+            }}
+          />
+          {status ? <p className="frontmatter-template-import-status">{status}</p> : null}
+        </div>
+        <footer className="modal-card-footer frontmatter-template-import-modal-actions">
+          <button type="button" className="vault-settings-action" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" className="vault-settings-action" onClick={importFrontmatter}>
+            Import frontmatter
+          </button>
+        </footer>
+      </section>
+    </div>
+  )
+}
+
 function FrontmatterTemplateDeleteDialog({
   templateName,
   onCancel,
@@ -3148,6 +3250,7 @@ export function VaultApp() {
   const [frontmatterDraft, setFrontmatterDraft] = useState<AppState['frontmatter']>(() => state.frontmatter)
   const [frontmatterFixedListOptionDrafts, setFrontmatterFixedListOptionDrafts] = useState<Record<string, string>>({})
   const [frontmatterTemplateDeleteTargetId, setFrontmatterTemplateDeleteTargetId] = useState('')
+  const [frontmatterTemplateImportTarget, setFrontmatterTemplateImportTarget] = useState<FrontmatterTemplateImportTarget | null>(null)
   const frontmatterTemplateFieldListRef = useRef<HTMLDivElement | null>(null)
   const frontmatterTemplateFieldRectsRef = useRef<FrontmatterListDropRect[]>([])
   const frontmatterTemplateFieldDragIdRef = useRef('')
@@ -3168,6 +3271,7 @@ export function VaultApp() {
   const [runtimeVersion, setRuntimeVersion] = useState('')
   const [zoomHudPercent, setZoomHudPercent] = useState<number | null>(null)
   const [observedVaultTopbarHeight, setObservedVaultTopbarHeight] = useState(0)
+  const [noteContentViewportRect, setNoteContentViewportRect] = useState<VaultNoteActionPickerViewportRect | null>(null)
   const [vaultTreeViewport, setVaultTreeViewport] = useState({ scrollTop: 0, height: 0 })
   const aisleScrollRef = useRef<HTMLDivElement | null>(null)
   const vaultShellRef = useRef<HTMLDivElement | null>(null)
@@ -3260,6 +3364,16 @@ export function VaultApp() {
       Math.abs(currentHeight - nextHeight) < 0.5 ? currentHeight : nextHeight,
     )
   }, [])
+  const updateNoteContentViewportRect = useCallback(() => {
+    const nextRect = getNoteContentViewportRect(workspaceRootRef.current)
+    setNoteContentViewportRect((currentRect) =>
+      areViewportRectsEqual(currentRect, nextRect) ? currentRect : nextRect,
+    )
+  }, [])
+  const handleWorkspaceRootChange = useCallback((node: HTMLElement | null) => {
+    workspaceRootRef.current = node
+    window.requestAnimationFrame(updateNoteContentViewportRect)
+  }, [updateNoteContentViewportRect])
 
   useEffect(() => () => {
     cancelScheduledAisleFocusScroll(scheduledAisleFocusScrollRef.current, window)
@@ -3287,6 +3401,32 @@ export function VaultApp() {
     state.ui.toolbarLayouts,
     state.vault.activeNoteId,
     updateObservedVaultTopbarHeight,
+    viewMode,
+  ])
+
+  useLayoutEffect(() => {
+    updateNoteContentViewportRect()
+    const workspaceRoot = workspaceRootRef.current
+    const contentRegion = workspaceRoot?.querySelector<HTMLElement>('.note-content-region') ?? null
+    if (!workspaceRoot || !contentRegion) return undefined
+
+    let observer: ResizeObserver | null = null
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(updateNoteContentViewportRect)
+      observer.observe(workspaceRoot)
+      observer.observe(contentRegion)
+    }
+    window.addEventListener('resize', updateNoteContentViewportRect)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', updateNoteContentViewportRect)
+    }
+  }, [
+    scratchpadActive,
+    state.ui.sidebarCollapsed,
+    state.ui.sidebarWidth,
+    state.vault.activeNoteId,
+    updateNoteContentViewportRect,
     viewMode,
   ])
 
@@ -3847,6 +3987,7 @@ export function VaultApp() {
       setDraggingFrontmatterTemplateFieldId('')
       setFrontmatterTemplateFieldDropIndex(null)
       setFrontmatterTemplateDeleteTargetId('')
+      setFrontmatterTemplateImportTarget(null)
     }
     frontmatterStateSnapshotRef.current = state.frontmatter
   }, [frontmatterDraft, state.frontmatter])
@@ -7452,7 +7593,7 @@ export function VaultApp() {
     <>
       <VaultFrontmatterModal
         modal={visibleFrontmatterModal}
-        modalStyle={visibleFrontmatterModal ? getFrontmatterNoteModalStyle(workspaceRootRef.current, visibleFrontmatterModal.aisleId) : undefined}
+        modalStyle={visibleFrontmatterModal ? getFrontmatterNoteModalStyle(workspaceRootRef.current, visibleFrontmatterModal.aisleId, noteContentViewportRect) : undefined}
         templates={state.frontmatter.templates}
         onCancel={() => closeFrontmatterModalSession()}
         onChange={updateFrontmatterModalSession}
@@ -8041,6 +8182,7 @@ export function VaultApp() {
       }
       clearFrontmatterTemplateFieldDrag()
       setFrontmatterTemplateDeleteTargetId('')
+      setFrontmatterTemplateImportTarget(null)
       updateFrontmatterDraft((frontmatter) => ({
         ...frontmatter,
         templates: [...frontmatter.templates, template],
@@ -8053,6 +8195,7 @@ export function VaultApp() {
       clearFrontmatterTemplateFieldDrag()
       setFrontmatterFixedListOptionDrafts({})
       setFrontmatterTemplateDeleteTargetId('')
+      setFrontmatterTemplateImportTarget(null)
       updateFrontmatterDraft((frontmatter) => {
         const nextTemplates = frontmatter.templates.filter((template) => template.id !== templateId)
         return {
@@ -8092,6 +8235,39 @@ export function VaultApp() {
             : template,
         ),
       }))
+    }
+
+    const openFrontmatterTemplateImport = () => {
+      if (!activeTemplate) return
+      clearFrontmatterTemplateFieldDrag()
+      setFrontmatterTemplateDeleteTargetId('')
+      setFrontmatterTemplateImportTarget({
+        templateId: activeTemplate.id,
+        templateName: activeTemplate.name,
+      })
+    }
+
+    const importFrontmatterTemplate = (templateId: string, raw: string): string | null => {
+      if (!templates.some((template) => template.id === templateId)) return 'Select a template before importing frontmatter.'
+      const result = parseFrontmatterTemplateImport(raw)
+      if (!result.ok) return result.message
+
+      clearFrontmatterTemplateFieldDrag()
+      setFrontmatterFixedListOptionDrafts({})
+      updateFrontmatterDraft((frontmatter) => ({
+        ...frontmatter,
+        templates: frontmatter.templates.map((template) =>
+          template.id === templateId
+            ? {
+                ...template,
+                fields: result.fields,
+              }
+            : template,
+        ),
+        settingsTemplateId: templateId,
+      }))
+      setFrontmatterTemplateImportTarget(null)
+      return null
     }
 
     const readFrontmatterTemplateFieldDragId = (event: ReactDragEvent<HTMLElement>) =>
@@ -8355,6 +8531,7 @@ export function VaultApp() {
       const nextFrontmatter = frontmatterDraft
       frontmatterStateSnapshotRef.current = nextFrontmatter
       setFrontmatterFixedListOptionDrafts({})
+      setFrontmatterTemplateImportTarget(null)
       mutateState((previous) => ({
         ...previous,
         frontmatter: nextFrontmatter,
@@ -8398,6 +8575,14 @@ export function VaultApp() {
                 />
               </label>
               <div className="frontmatter-template-actions">
+                <button
+                  type="button"
+                  className="vault-settings-action"
+                  disabled={!activeTemplate}
+                  onClick={openFrontmatterTemplateImport}
+                >
+                  Import frontmatter
+                </button>
                 <button
                   type="button"
                   className="vault-settings-action"
@@ -8586,6 +8771,7 @@ export function VaultApp() {
                   setFrontmatterFixedListOptionDrafts({})
                   clearFrontmatterTemplateFieldDrag()
                   setFrontmatterTemplateDeleteTargetId('')
+                  setFrontmatterTemplateImportTarget(null)
                   setFrontmatterDraft(stateRef.current.frontmatter)
                 }}
               >
@@ -8608,6 +8794,13 @@ export function VaultApp() {
           templateName={deleteTargetTemplate.name}
           onCancel={() => setFrontmatterTemplateDeleteTargetId('')}
           onConfirm={() => deleteFrontmatterTemplate(deleteTargetTemplate.id)}
+        />
+      ) : null}
+      {frontmatterTemplateImportTarget ? (
+        <FrontmatterTemplateImportDialog
+          templateName={frontmatterTemplateImportTarget.templateName}
+          onCancel={() => setFrontmatterTemplateImportTarget(null)}
+          onImport={(raw) => importFrontmatterTemplate(frontmatterTemplateImportTarget.templateId, raw)}
         />
       ) : null}
       </>
@@ -8952,6 +9145,10 @@ export function VaultApp() {
     : scratchpadActive
       ? 'Return to notes'
       : 'Show scratchpad'
+  const noteActionPickerViewportRect = viewMode === 'main' ? noteContentViewportRect : null
+  const noteActionPickerAnchor = noteActionPicker?.anchor
+    ? getAisleCenteredNoteActionPickerAnchor(workspaceRootRef.current, renderedActiveAisleId, noteActionPicker.anchor)
+    : null
 
   return (
     <div
@@ -9209,9 +9406,7 @@ export function VaultApp() {
                     ? tableOfContentsPanels.openAisleIds
                     : undefined
                 }
-                onRootChange={(node) => {
-                  workspaceRootRef.current = node
-                }}
+                onRootChange={handleWorkspaceRootChange}
                 onAisleScroll={() => undefined}
                 onActivateAisle={(editorKey, pointer) => {
                   const activationSource = pointer ? 'pointer' : undefined
@@ -9410,7 +9605,8 @@ export function VaultApp() {
           showSearchInput={noteActionPicker.source !== 'mention'}
           showHeader={noteActionPicker.source !== 'mention'}
           actions={noteActionPicker.actions}
-          anchor={noteActionPicker.anchor}
+          anchor={noteActionPickerAnchor}
+          viewportRect={noteActionPickerViewportRect}
           urlEnabled={noteActionPicker.urlEnabled}
           onQueryChange={updateNoteActionPickerQuery}
           onSubmitUrl={submitUrlLink}

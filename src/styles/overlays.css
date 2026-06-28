@@ -281,6 +281,26 @@
   font-size: 1em;
 }
 
+select.settings-select-input {
+  --settings-select-caret-left-x: calc(100% - 1.08rem);
+  --settings-select-caret-right-x: calc(100% - 0.82rem);
+  --settings-select-caret-size: 0.26rem;
+  box-sizing: border-box;
+  padding-right: 1.95rem;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    var(--settings-select-caret-left-x) 50%,
+    var(--settings-select-caret-right-x) 50%;
+  background-repeat: no-repeat;
+  background-size:
+    var(--settings-select-caret-size) var(--settings-select-caret-size),
+    var(--settings-select-caret-size) var(--settings-select-caret-size);
+}
+
 .settings-select-input:focus {
   outline: none;
   border-color: var(--settings-select-focus-border);
