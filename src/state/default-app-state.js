@@ -50,6 +50,7 @@ export const DEFAULT_SHORTCUTS = {
   reopenClosedNoteTab: 'mod+shift+t',
   formatStrikethrough: 'mod+shift+x',
   formatHighlight: 'mod+shift+h',
+  pastePlainText: 'mod+shift+v',
   cycleAislePrev: 'mod+alt+arrowleft',
   cycleAisleNext: 'mod+alt+arrowright',
 }

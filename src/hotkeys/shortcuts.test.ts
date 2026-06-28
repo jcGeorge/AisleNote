@@ -97,6 +97,26 @@ describe('newline shortcut settings', () => {
     ).toBe(true)
   })
 
+  it('defaults paste as plain text to a platform modifier shortcut', () => {
+    expect(DEFAULT_SHORTCUTS.pastePlainText).toBe('Mod+Shift+V')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.pastePlainText, true)).toBe('cmd+shift+v')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.pastePlainText, false)).toBe('ctrl+shift+v')
+    expect(
+      eventMatchesShortcut(
+        { key: 'V', code: 'KeyV', ctrlKey: false, metaKey: true, altKey: false, shiftKey: true } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.pastePlainText,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      eventMatchesShortcut(
+        { key: 'V', code: 'KeyV', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.pastePlainText,
+        false,
+      ),
+    ).toBe(true)
+  })
+
   it('keeps block quote and block indent as separate newline operations', () => {
     expect(NEWLINE_OPERATION_LABELS.blockQuote).toBe('block quote')
     expect(NEWLINE_OPERATION_LABELS.blockIndent).toBe('block indent')
@@ -339,6 +359,7 @@ describe('newline shortcut settings', () => {
     expect(normalized.shortcuts.cycleAisleNext).toBe('Mod+Alt+ArrowRight')
     expect(normalized.shortcuts.formatStrikethrough).toBe('')
     expect(normalized.shortcuts.formatHighlight).toBe('Mod+Shift+H')
+    expect(normalized.shortcuts.pastePlainText).toBe('Mod+Shift+V')
     expect(normalized.shortcuts.toggleNotesFilter).toBe('')
     expect(normalized.shortcuts.closeCurrentNote).toBe('Mod+W')
     expect(normalized.shortcuts.cyclePinnedNoteTabNext).toBe('Ctrl+Tab')

@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import {
   VaultEditorContextMenu,
+  getVaultEditorContextMenuViewport,
   getVaultEditorContextMenuAisleIdFromTarget,
   type VaultEditorContextMenuState,
 } from './VaultEditorContextMenu'
@@ -13,6 +14,7 @@ import {
 const sourceDir = dirname(fileURLToPath(import.meta.url))
 const vaultAppSource = readFileSync(join(sourceDir, '../../app/VaultApp.tsx'), 'utf8')
 const vaultEditorsSource = readFileSync(join(sourceDir, '../../editor/useVaultAisleEditors.ts'), 'utf8')
+const overlaysCssSource = readFileSync(join(sourceDir, '../../styles/overlays.css'), 'utf8')
 
 function renderMenu(options: {
   menu?: VaultEditorContextMenuState | null
@@ -38,6 +40,8 @@ function renderMenu(options: {
       onFilterSyncedAisle={vi.fn()}
       onDecoupleAisle={vi.fn()}
       onShowSyncedAisle={vi.fn()}
+      onPrintAisle={vi.fn()}
+      onExportPdf={vi.fn()}
       onRevealLocation={vi.fn()}
     />,
   )
@@ -55,6 +59,26 @@ function fakeTarget(aisleId: string, options: { ignored?: boolean; tableCell?: b
 }
 
 describe('VaultEditorContextMenu', () => {
+  it('uses the editor scroll area as its bottom positioning boundary', () => {
+    vi.stubGlobal('window', { innerWidth: 480, innerHeight: 520 })
+    try {
+      const editorScroll = {
+        getBoundingClientRect: () => ({ bottom: 360 }),
+      }
+      const editorSurface = {
+        querySelector: vi.fn((selector: string) => (selector === '.note-aisle-scroll' ? editorScroll : null)),
+      }
+      const menuElement = {
+        closest: vi.fn((selector: string) => (selector === '.vault-editor-surface' ? editorSurface : null)),
+      } as unknown as Element
+
+      expect(getVaultEditorContextMenuViewport(menuElement)).toEqual({ width: 480, height: 360 })
+      expect(editorSurface.querySelector).toHaveBeenCalledWith('.note-aisle-scroll')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('renders restored editor-essential actions without stale rows', () => {
     const html = renderMenu()
 
@@ -63,6 +87,7 @@ describe('VaultEditorContextMenu', () => {
       'copy',
       'paste',
       'paste as plain text',
+      'here',
       'new aisle on left',
       'new aisle on right',
       'copy note as',
@@ -96,10 +121,18 @@ describe('VaultEditorContextMenu', () => {
       'table',
       'horizontal rule',
       'code block',
+      'print aisle',
+      'export to PDF',
+      'export aisle',
+      'export note',
       'Reveal in Finder',
     ].forEach((label) => expect(html).toContain(label))
 
     expect(html.indexOf('code block')).toBeLessThan(html.lastIndexOf('Reveal in Finder'))
+    expect(html.indexOf('print aisle')).toBeLessThan(html.lastIndexOf('Reveal in Finder'))
+    expect(html.indexOf('export to PDF')).toBeLessThan(html.lastIndexOf('Reveal in Finder'))
+    expect(html.indexOf('here')).toBeLessThan(html.indexOf('new aisle on left'))
+    expect(html.indexOf('new aisle on left')).toBeLessThan(html.indexOf('new aisle on right'))
     expect(html).not.toContain('No synced item')
     expect(html).not.toContain('find &amp; replace')
     expect(html).not.toContain('find & replace')
@@ -146,6 +179,14 @@ describe('VaultEditorContextMenu', () => {
     expect(getVaultEditorContextMenuAisleIdFromTarget(fakeTarget('aisle-1', { tableCell: true }))).toBeNull()
     expect(getVaultEditorContextMenuAisleIdFromTarget(null)).toBeNull()
   })
+
+  it('keeps editor context menus above workspace chrome while clamping before it', () => {
+    expect(overlaysCssSource).toContain('.tab-context-menu {\n  position: fixed;\n  z-index: 3300;')
+    expect(overlaysCssSource).toContain('.tab-context-submenu-panel {\n  position: fixed;\n  z-index: 3301;')
+    expect(readFileSync(join(sourceDir, './VaultEditorContextMenu.tsx'), 'utf8')).toContain(
+      "?.querySelector<HTMLElement>('.note-aisle-scroll')",
+    )
+  })
 })
 
 describe('vault editor context menu wiring', () => {
@@ -172,6 +213,11 @@ describe('vault editor context menu wiring', () => {
     expect(vaultAppSource).toContain('onInsertAttachment={vaultEditors.insertAttachmentFile}')
     expect(vaultAppSource).toContain('onCopyAs={copyVaultStructureAs}')
     expect(vaultAppSource).toContain('onRevealLocation={revealEditorContextLocation}')
+    expect(vaultAppSource).toContain('onPrintAisle={printAisle}')
+    expect(vaultAppSource).toContain('onExportPdf={exportPdf}')
+    expect(vaultAppSource).toContain('window.electronAPI?.onPrintActiveAisleRequested?.(() => printAisle(renderedActiveAisleId))')
+    expect(readFileSync(join(sourceDir, './VaultEditorContextMenu.tsx'), 'utf8')).toContain('runAisleAction(onPrintAisle)')
+    expect(readFileSync(join(sourceDir, './VaultEditorContextMenu.tsx'), 'utf8')).toContain('runPdfExport')
     expect(vaultAppSource).toContain("trigger: 'vault-editor-reveal-location'")
     expect(vaultAppSource).toContain('const latest = getLatestVaultStateFromMountedEditors()')
     expect(vaultAppSource).toContain('pendingEditorCount: latest.pendingEditorCount')

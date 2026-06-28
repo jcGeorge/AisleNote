@@ -18,6 +18,7 @@ export type VaultHotkeyIntent = Extract<
   | 'cycleAisleNext'
   | 'formatStrikethrough'
   | 'formatHighlight'
+  | 'pastePlainText'
 >
 
 type VaultHotkeyActions = Record<VaultHotkeyIntent, () => void> & {
@@ -40,6 +41,7 @@ const VAULT_HOTKEY_INTENTS: VaultHotkeyIntent[] = [
   'cycleAisleNext',
   'formatStrikethrough',
   'formatHighlight',
+  'pastePlainText',
 ]
 
 const MAIN_ONLY_INTENTS = new Set<VaultHotkeyIntent>([
@@ -51,6 +53,11 @@ const MAIN_ONLY_INTENTS = new Set<VaultHotkeyIntent>([
   'closeCurrentNote',
   'formatStrikethrough',
   'formatHighlight',
+  'pastePlainText',
+])
+
+const EDITOR_TARGET_INTENTS = new Set<VaultHotkeyIntent>([
+  'pastePlainText',
 ])
 
 const REPEATABLE_INTENTS = new Set<VaultHotkeyIntent>([
@@ -82,6 +89,16 @@ function isEditableTarget(target: EventTarget | null): boolean {
   if (typeof Element === 'undefined') return false
   if (!(target instanceof Element)) return false
   return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+}
+
+function isEditorContentTarget(target: EventTarget | null): boolean {
+  const targetWithClosest = target as { closest?: (selector: string) => unknown } | null
+  if (typeof targetWithClosest?.closest === 'function') {
+    return Boolean(targetWithClosest.closest('.ProseMirror[contenteditable="true"]'))
+  }
+  if (typeof Element === 'undefined') return false
+  if (!(target instanceof Element)) return false
+  return Boolean(target.closest('.ProseMirror[contenteditable="true"]'))
 }
 
 export function shouldIgnoreVaultHotkeyEvent(event: KeyboardEvent): boolean {
@@ -159,6 +176,7 @@ export function getVaultHotkeyIntent({
   const normalizedHotkeys = normalizeHotkeySettings(hotkeys)
   for (const intent of VAULT_HOTKEY_INTENTS) {
     if (MAIN_ONLY_INTENTS.has(intent) && viewMode !== 'main') continue
+    if (EDITOR_TARGET_INTENTS.has(intent) && !isEditorContentTarget(event.target)) continue
     const shortcut = normalizedHotkeys.shortcuts[intent]
     if (shortcut && eventMatchesShortcut(event, shortcut, isMacPlatform)) return intent
   }

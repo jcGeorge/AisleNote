@@ -32,6 +32,12 @@ function keyboardEvent(
   } as KeyboardEvent
 }
 
+function editorTarget(): EventTarget {
+  return {
+    closest: (selector: string) => selector.includes('.ProseMirror') ? {} : null,
+  } as unknown as EventTarget
+}
+
 describe('vault hotkey intents', () => {
   it('resolves mod comma to open settings on mac and windows', () => {
     expect(getVaultHotkeyIntent({
@@ -126,6 +132,18 @@ describe('vault hotkey intents', () => {
       viewMode: 'main',
     })).toBe('formatHighlight')
     expect(getVaultHotkeyIntent({
+      event: keyboardEvent('V', { code: 'KeyV', metaKey: true, shiftKey: true, target: editorTarget() }),
+      hotkeys,
+      isMacPlatform: true,
+      viewMode: 'main',
+    })).toBe('pastePlainText')
+    expect(getVaultHotkeyIntent({
+      event: keyboardEvent('V', { code: 'KeyV', ctrlKey: true, shiftKey: true, target: editorTarget() }),
+      hotkeys,
+      isMacPlatform: false,
+      viewMode: 'main',
+    })).toBe('pastePlainText')
+    expect(getVaultHotkeyIntent({
       event: keyboardEvent('Tab', { code: 'Tab', ctrlKey: true }),
       hotkeys,
       isMacPlatform: true,
@@ -194,6 +212,12 @@ describe('vault hotkey intents', () => {
       isMacPlatform: true,
       viewMode: 'settings',
     })).toBeNull()
+    expect(getVaultHotkeyIntent({
+      event: keyboardEvent('V', { code: 'KeyV', metaKey: true, shiftKey: true, target: editorTarget() }),
+      hotkeys: defaultHotkeys,
+      isMacPlatform: true,
+      viewMode: 'settings',
+    })).toBeNull()
   })
 
   it('does not hijack unmodified printable typing inside editable targets', () => {
@@ -209,6 +233,38 @@ describe('vault hotkey intents', () => {
       isMacPlatform: true,
       viewMode: 'main',
     })).toBeNull()
+  })
+
+  it('requires the paste-as-plain-text hotkey to start from editor content and allows reassignment', () => {
+    const editableTarget = {
+      closest: (selector: string) => selector.includes('input') ? {} : null,
+    } as unknown as EventTarget
+    const reassignedHotkeys: AppState['hotkeys'] = {
+      ...defaultHotkeys,
+      shortcuts: {
+        ...DEFAULT_SHORTCUTS,
+        pastePlainText: 'Mod+Alt+V',
+      },
+    }
+
+    expect(getVaultHotkeyIntent({
+      event: keyboardEvent('V', { code: 'KeyV', metaKey: true, shiftKey: true, target: editableTarget }),
+      hotkeys: defaultHotkeys,
+      isMacPlatform: true,
+      viewMode: 'main',
+    })).toBeNull()
+    expect(getVaultHotkeyIntent({
+      event: keyboardEvent('V', { code: 'KeyV', metaKey: true, shiftKey: true, target: editorTarget() }),
+      hotkeys: reassignedHotkeys,
+      isMacPlatform: true,
+      viewMode: 'main',
+    })).toBeNull()
+    expect(getVaultHotkeyIntent({
+      event: keyboardEvent('v', { code: 'KeyV', metaKey: true, altKey: true, target: editorTarget() }),
+      hotkeys: reassignedHotkeys,
+      isMacPlatform: true,
+      viewMode: 'main',
+    })).toBe('pastePlainText')
   })
 
   it('recognizes restored history navigation keys without using Mac command arrows', () => {

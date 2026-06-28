@@ -57,6 +57,7 @@ function createState(): AppState {
         reopenClosedNoteTab: 'mod+shift+t',
         formatStrikethrough: '',
         formatHighlight: 'mod+shift+h',
+        pastePlainText: 'mod+shift+v',
         cycleAislePrev: '',
         cycleAisleNext: '',
       },

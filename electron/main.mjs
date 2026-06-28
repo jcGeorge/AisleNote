@@ -8,6 +8,7 @@ import { registerStorageIpc } from './ipc-storage.mjs'
 import { registerUpdateIpc } from './ipc-updates.mjs'
 import { registerDiagnosticIpc } from './ipc-diagnostics.mjs'
 import { configureEditorSpellcheckerForWindow, createEditorContextMenuIpc } from './editor-context-menu.mjs'
+import { registerPrintIpc } from './print-aisle.mjs'
 import { finishCloseAfterFlush } from './quit-flow.mjs'
 import { createNoopUpdateService } from './update-service.mjs'
 import { loadWindowState, saveWindowState, watchWindowState } from './window-state.mjs'
@@ -101,6 +102,20 @@ function sendMultilineShortcutToWindow(window, direction) {
   void window.webContents.executeJavaScript(`window.__aislenoteHandleMultilineShortcut?.(${JSON.stringify(direction)})`, true)
 }
 
+function sendPrintActiveAisleRequestToWindow(window) {
+  if (!window || window.isDestroyed()) return
+  const sendPrintEvent = () => {
+    if (!window.isDestroyed()) {
+      window.webContents.send('print-active-aisle-requested')
+    }
+  }
+  if (window.webContents.isLoadingMainFrame()) {
+    window.webContents.once('did-finish-load', () => setTimeout(sendPrintEvent, 100))
+    return
+  }
+  sendPrintEvent()
+}
+
 function withTimeout(promise, timeoutMs) {
   let timeoutId
   const timeout = new Promise((_resolve, reject) => {
@@ -113,6 +128,10 @@ function withTimeout(promise, timeoutMs) {
 
 function sendMultilineShortcut(direction) {
   sendMultilineShortcutToWindow(BrowserWindow.getFocusedWindow(), direction)
+}
+
+function printFocusedAisle() {
+  sendPrintActiveAisleRequestToWindow(BrowserWindow.getFocusedWindow())
 }
 
 function clampAppZoomLevel(zoomLevel) {
@@ -169,7 +188,7 @@ async function confirmAndResetUserSettings(window = BrowserWindow.getFocusedWind
   }
 }
 
-function installApplicationMenu({ onNewWindow, onOpenVault, onResetUserSettings }) {
+function installApplicationMenu({ onNewWindow, onOpenVault, onPrintAisle, onResetUserSettings }) {
   const isMac = process.platform === 'darwin'
   if (!isMac) {
     Menu.setApplicationMenu(null)
@@ -196,6 +215,11 @@ function installApplicationMenu({ onNewWindow, onOpenVault, onResetUserSettings 
         {
           label: 'Open Vault',
           click: onOpenVault,
+        },
+        {
+          label: 'Print Aisle',
+          accelerator: 'CommandOrControl+P',
+          click: onPrintAisle,
         },
         { type: 'separator' },
         {
@@ -321,9 +345,30 @@ function getZoomShortcutAction(input) {
   return null
 }
 
+function isPrintShortcut(input) {
+  if (input.type !== 'keyDown') return false
+  const key = typeof input.key === 'string' ? input.key.toLowerCase() : ''
+  const code = typeof input.code === 'string' ? input.code.toLowerCase() : ''
+  const isP = key === 'p' || code === 'keyp'
+  if (!isP || input.alt || input.shift) return false
+  return process.platform === 'darwin' ? Boolean(input.meta && !input.control) : Boolean(input.control && !input.meta)
+}
+
+function getAppPngIconPath() {
+  return path.join(app.getAppPath(), 'build', 'icon.png')
+}
+
 function getWindowIconPath() {
   if (process.platform === 'darwin') return undefined
-  return path.join(app.getAppPath(), 'build', 'icon.png')
+  return getAppPngIconPath()
+}
+
+function applyMacDockIcon() {
+  if (process.platform !== 'darwin' || !app.dock) return
+  const appIcon = nativeImage.createFromPath(getAppPngIconPath())
+  if (!appIcon.isEmpty()) {
+    app.dock.setIcon(appIcon)
+  }
 }
 
 function createWindow(storageSession) {
@@ -358,6 +403,11 @@ function createWindow(storageSession) {
 
   window.webContents.on('before-input-event', (event, input) => {
     if (process.platform !== 'darwin') {
+      if (isPrintShortcut(input)) {
+        event.preventDefault()
+        printFocusedAisle()
+        return
+      }
       const zoomAction = getZoomShortcutAction(input)
       if (zoomAction) {
         event.preventDefault()
@@ -448,6 +498,7 @@ if (!gotSingleInstanceLock) {
   })
 
   app.whenReady().then(() => {
+    applyMacDockIcon()
     const updateService = createNoopUpdateService(app)
     storageSession = registerStorageIpc({ ipcMain, app, BrowserWindow, dialog, shell })
     editorContextMenuIpc = createEditorContextMenuIpc({ ipcMain, BrowserWindow })
@@ -455,7 +506,15 @@ if (!gotSingleInstanceLock) {
     installApplicationMenu({
       onNewWindow: openAppWindow,
       onOpenVault: openVaultManager,
+      onPrintAisle: printFocusedAisle,
       onResetUserSettings: () => confirmAndResetUserSettings(),
+    })
+    registerPrintIpc({
+      ipcMain,
+      BrowserWindow,
+      dialog,
+      preloadPath: path.join(__dirname, 'preload.cjs'),
+      appIndexPath: path.join(__dirname, '..', 'dist', 'index.html'),
     })
     registerFileIpc({ ipcMain, dialog, storageSession })
     registerClipboardIpc({ ipcMain, clipboard, nativeImage })

@@ -50,6 +50,15 @@ describe('electron application menu', () => {
     expect(mainSource).not.toContain("{ role: 'zoomOut' }")
   })
 
+  it('routes native print commands to the renderer active aisle command', () => {
+    expect(mainSource).toContain("label: 'Print Aisle'")
+    expect(mainSource).toContain("accelerator: 'CommandOrControl+P'")
+    expect(mainSource).toContain('onPrintAisle: printFocusedAisle')
+    expect(mainSource).toContain('isPrintShortcut(input)')
+    expect(mainSource).toContain("window.webContents.send('print-active-aisle-requested')")
+    expect(mainSource).toContain('registerPrintIpc({')
+  })
+
   it('does not expose the old native default-vault reset path', () => {
     expect(mainSource).not.toContain('Reset Vault to Blank')
     expect(mainSource).not.toContain('confirmAndResetLocalVault')
@@ -70,6 +79,14 @@ describe('electron application menu', () => {
     expect(mainSource).toContain('watchWindowState(userDataPath, window)')
     expect(mainSource).toContain('saveWindowState(userDataPath, window)')
     expect(mainSource).toContain('window.maximize()')
+  })
+
+  it('applies the packaged PNG icon to the macOS Dock during local Electron runs', () => {
+    expect(mainSource).toContain("path.join(app.getAppPath(), 'build', 'icon.png')")
+    expect(mainSource).toContain("process.platform !== 'darwin'")
+    expect(mainSource).toContain('nativeImage.createFromPath(getAppPngIconPath())')
+    expect(mainSource).toContain('app.dock.setIcon(appIcon)')
+    expect(mainSource).toContain('applyMacDockIcon()')
   })
 
   it('leaves Command+W available to the renderer tab/aisle delete shortcut', () => {

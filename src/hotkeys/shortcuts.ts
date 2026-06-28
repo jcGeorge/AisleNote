@@ -13,6 +13,7 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
   reopenClosedNoteTab: 'Mod+Shift+T',
   formatStrikethrough: '',
   formatHighlight: 'Mod+Shift+H',
+  pastePlainText: 'Mod+Shift+V',
   cycleAislePrev: 'Mod+Alt+ArrowLeft',
   cycleAisleNext: 'Mod+Alt+ArrowRight',
 }

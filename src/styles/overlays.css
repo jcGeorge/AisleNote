@@ -1,6 +1,6 @@
 .tab-context-menu {
   position: fixed;
-  z-index: 2000;
+  z-index: 3300;
   min-width: 145px;
   font-size: var(--ui-font-body);
   background: var(--context-menu-bg);
@@ -68,7 +68,7 @@
 
 .tab-context-submenu-panel {
   position: fixed;
-  z-index: 2001;
+  z-index: 3301;
   display: block;
   visibility: hidden;
   opacity: 0;

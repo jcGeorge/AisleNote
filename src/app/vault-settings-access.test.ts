@@ -64,6 +64,7 @@ describe('vault settings access', () => {
     expect(vaultAppSource).toContain("{ id: 'newNote', label: 'New note' }")
     expect(vaultAppSource).toContain("{ id: 'newFolder', label: 'New folder' }")
     expect(vaultAppSource).toContain("{ id: 'formatHighlight', label: 'Highlight' }")
+    expect(vaultAppSource).toContain("{ id: 'pastePlainText', label: 'Paste as plain text' }")
   })
 
   it('uses platform-aware vault hotkey recorder buttons', () => {

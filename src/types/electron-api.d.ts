@@ -109,6 +109,36 @@ export type EditorSpellcheckContext = {
   canLookUpSelection: boolean
 }
 
+export type ElectronPrintableAislePayload = {
+  label: string
+  markdown: string
+}
+
+export type ElectronPrintDocumentPayload = {
+  noteTitle: string
+  mode?: 'aisle' | 'note'
+  aisleLabel?: string
+  markdown?: string
+  aisles?: ElectronPrintableAislePayload[]
+  defaultFileName?: string
+}
+
+export type ElectronPrintAislePayload = {
+  noteTitle: string
+  aisleLabel: string
+  markdown: string
+}
+
+export type ElectronPrintAisleResult =
+  | {
+      ok: true
+      canceled: boolean
+    }
+  | {
+      ok: false
+      error: string
+    }
+
 type ImportAssetResult =
   | {
       ok: true
@@ -325,6 +355,11 @@ declare global {
       revealAsset?: (payload: { url?: string; assetPath?: string }) => Promise<{ ok: boolean; error?: string }>
       revealNoteLocation?: (payload: ElectronNoteRevealPayload) => Promise<{ ok: boolean; error?: string }>
       revealVaultItemLocation?: (payload: ElectronVaultItemRevealPayload) => Promise<{ ok: boolean; error?: string }>
+      printAisle?: (payload: ElectronPrintAislePayload) => Promise<ElectronPrintAisleResult>
+      exportPrintPdf?: (payload: ElectronPrintDocumentPayload) => Promise<
+        | { ok: true; canceled: boolean; filePath?: string }
+        | { ok: false; error: string }
+      >
       readAsset?: (payload: { url?: string; assetPath?: string }) => Promise<ReadAssetResult>
       getEditorSpellcheckContext?: (payload: { x: number; y: number }) => Promise<EditorSpellcheckContext | null>
       replaceMisspelling?: (payload: { word: string }) => Promise<{ ok: boolean; error?: string }>
@@ -368,6 +403,10 @@ declare global {
         { ok: true; status: StorageProfileStatus; warning?: string } | { ok: false; error?: string; status: StorageProfileStatus }
       >
       onOpenVaultManager?: (handler: () => void) => () => void
+      onPrintActiveAisleRequested?: (handler: () => void) => () => void
+      onPrintAislePayload?: (handler: (payload: ElectronPrintDocumentPayload) => void) => () => void
+      notifyPrintAislePayloadReady?: () => void
+      notifyPrintAisleRenderReady?: () => void
       onAppZoomChanged?: (handler: (payload: AppZoomChangedPayload) => void) => () => void
       onStorageProfileStatusUpdated?: (handler: (payload: StorageProfileStatus) => void) => () => void
       onUserSettingsLocationStatusUpdated?: (handler: (payload: UserSettingsLocationStatus) => void) => () => void

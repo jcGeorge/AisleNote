@@ -43,6 +43,7 @@ describe('portable app settings parsing', () => {
           cyclePinnedNoteTabPrev: 'Ctrl+Shift+Tab',
           reopenClosedNoteTab: 'Mod+Shift+T',
           formatHighlight: 'Mod+Shift+H',
+          pastePlainText: 'Mod+Shift+V',
         },
         newlineShortcuts: {
           shortcuts: {
@@ -230,6 +231,7 @@ describe('portable app settings parsing', () => {
             cyclePinnedNoteTabPrev: 'Ctrl+Shift+Tab',
             reopenClosedNoteTab: 'Mod+Shift+T',
             formatHighlight: 'Mod+Shift+H',
+            pastePlainText: 'Mod+Shift+V',
           },
           newlineShortcuts: {
             shortcuts: {
@@ -269,6 +271,7 @@ describe('portable app settings parsing', () => {
     expect(syncedSettings.hotkeys.shortcuts.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')
     expect(syncedSettings.hotkeys.shortcuts.reopenClosedNoteTab).toBe('Mod+Shift+T')
     expect(syncedSettings.hotkeys.shortcuts.formatHighlight).toBe('Mod+Shift+H')
+    expect(syncedSettings.hotkeys.shortcuts.pastePlainText).toBe('Mod+Shift+V')
     expect(syncedSettings.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Alt+ArrowLeft')
     expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Alt+ArrowRight')
     expect(syncedSettings.hotkeys.newlineShortcuts.menuOperations).toEqual(['blockQuote', 'strikethrough'])

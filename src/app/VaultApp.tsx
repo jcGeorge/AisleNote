@@ -500,6 +500,7 @@ const HOTKEY_ROWS: Array<{ id: ShortcutId; label: string }> = [
   { id: 'reopenClosedNoteTab', label: 'Reopen closed note tab' },
   { id: 'formatStrikethrough', label: 'Strikethrough' },
   { id: 'formatHighlight', label: 'Highlight' },
+  { id: 'pastePlainText', label: 'Paste as plain text' },
   { id: 'cycleAislePrev', label: 'Previous aisle' },
   { id: 'cycleAisleNext', label: 'Next aisle' },
 ]
@@ -4408,6 +4409,94 @@ export function VaultApp() {
     }
   }, [applyActiveCursorToState, vaultEditors, stateRef])
 
+  const printAisle = useCallback((aisleId: string) => {
+    const printAisleBridge = window.electronAPI?.printAisle
+    if (typeof printAisleBridge !== 'function') {
+      pushAppToast('Printing is only available in the desktop app.', 'warning')
+      return
+    }
+
+    const latest = getLatestVaultStateFromMountedEditors()
+    const latestModel = activeModelIsScratchpad
+      ? getScratchpadEditorModel(latest.state)
+      : getActiveNoteModel(latest.state)
+    const targetIndex = latestModel?.resolved.aisles.findIndex((aisle) => aisle.id === aisleId) ?? -1
+    const targetAisle = targetIndex >= 0 ? latestModel?.resolved.aisles[targetIndex] : null
+
+    if (!latestModel || !targetAisle) {
+      pushAppToast('Could not find an aisle to print.', 'warning')
+      return
+    }
+
+    void printAisleBridge({
+      noteTitle: latestModel.title || 'Untitled',
+      aisleLabel: `Aisle ${targetIndex + 1}`,
+      markdown: targetAisle.markdown,
+    })
+      .then((result) => {
+        if (!result.ok) pushAppToast(result.error || 'Could not print aisle.', 'error')
+      })
+      .catch(() => pushAppToast('Could not print aisle.', 'error'))
+  }, [activeModelIsScratchpad, getLatestVaultStateFromMountedEditors, pushAppToast])
+
+  const exportPdf = useCallback((kind: 'aisle' | 'note', aisleId: string) => {
+    const exportPdfBridge = window.electronAPI?.exportPrintPdf
+    if (typeof exportPdfBridge !== 'function') {
+      pushAppToast('PDF export is only available in the desktop app.', 'warning')
+      return
+    }
+
+    const latest = getLatestVaultStateFromMountedEditors()
+    const latestModel = activeModelIsScratchpad
+      ? getScratchpadEditorModel(latest.state)
+      : getActiveNoteModel(latest.state)
+
+    if (!latestModel) {
+      pushAppToast('Could not find a note to export.', 'warning')
+      return
+    }
+
+    const noteTitle = latestModel.title || 'Untitled'
+    const targetIndex = latestModel.resolved.aisles.findIndex((aisle) => aisle.id === aisleId)
+    const targetAisle = targetIndex >= 0 ? latestModel.resolved.aisles[targetIndex] : null
+    const payload = kind === 'note'
+      ? {
+          noteTitle,
+          mode: 'note' as const,
+          aisles: latestModel.resolved.aisles.map((aisle, index) => ({
+            label: `Aisle ${index + 1}`,
+            markdown: aisle.markdown,
+          })),
+        }
+      : targetAisle
+        ? {
+            noteTitle,
+            mode: 'aisle' as const,
+            aisleLabel: `Aisle ${targetIndex + 1}`,
+            markdown: targetAisle.markdown,
+          }
+        : null
+
+    if (!payload) {
+      pushAppToast('Could not find an aisle to export.', 'warning')
+      return
+    }
+
+    void exportPdfBridge(payload)
+      .then((result) => {
+        if (!result.ok) {
+          pushAppToast(result.error || 'Could not export PDF.', 'error')
+          return
+        }
+        if (!result.canceled) pushAppToast(result.filePath ? `PDF exported to ${result.filePath}` : 'PDF exported.', 'success')
+      })
+      .catch(() => pushAppToast('Could not export PDF.', 'error'))
+  }, [activeModelIsScratchpad, getLatestVaultStateFromMountedEditors, pushAppToast])
+
+  useEffect(() => (
+    window.electronAPI?.onPrintActiveAisleRequested?.(() => printAisle(renderedActiveAisleId)) ?? (() => undefined)
+  ), [printAisle, renderedActiveAisleId])
+
   const commitVaultBeforeStorageAction = useCallback(async () => {
     const latest = getLatestVaultStateFromMountedEditors()
     await commitAppStateNow(latest.state, {
@@ -5965,6 +6054,9 @@ export function VaultApp() {
       },
       formatHighlight: () => {
         vaultEditors.runCommand('highlight')
+      },
+      pastePlainText: () => {
+        vaultEditors.runClipboardAction('pastePlainText')
       },
       navigateHistoryBack: () => {
         navigateVaultHistoryBy(-1)
@@ -8885,6 +8977,8 @@ export function VaultApp() {
                 onFilterSyncedAisle={filterSyncedAisle}
                 onDecoupleAisle={decoupleAisle}
                 onShowSyncedAisle={openDecoupleAisleDialog}
+                onPrintAisle={printAisle}
+                onExportPdf={exportPdf}
                 onRevealLocation={revealEditorContextLocation}
               />
               {findReplaceOpen ? (

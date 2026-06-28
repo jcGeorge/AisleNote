@@ -23,6 +23,7 @@ describe('default app state', () => {
       cyclePinnedNoteTabPrev: 'ctrl+shift+tab',
       reopenClosedNoteTab: 'mod+shift+t',
       formatHighlight: 'mod+shift+h',
+      pastePlainText: 'mod+shift+v',
       cycleAislePrev: 'mod+alt+arrowleft',
       cycleAisleNext: 'mod+alt+arrowright',
     })
@@ -73,6 +74,7 @@ describe('default app state', () => {
     expect(parsed.hotkeys.shortcuts.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')
     expect(parsed.hotkeys.shortcuts.reopenClosedNoteTab).toBe('Mod+Shift+T')
     expect(parsed.hotkeys.shortcuts.formatHighlight).toBe('Mod+Shift+H')
+    expect(parsed.hotkeys.shortcuts.pastePlainText).toBe('Mod+Shift+V')
     expect(parsed.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Alt+ArrowLeft')
     expect(parsed.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Alt+ArrowRight')
   })

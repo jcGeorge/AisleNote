@@ -259,6 +259,7 @@ export type ShortcutId =
   | 'reopenClosedNoteTab'
   | 'formatStrikethrough'
   | 'formatHighlight'
+  | 'pastePlainText'
   | 'cycleAislePrev'
   | 'cycleAisleNext'
 

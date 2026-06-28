@@ -21,6 +21,7 @@ export type VaultEditorPasteDestination = 'here' | 'new-aisle-left' | 'new-aisle
 export type VaultEditorAisleInsertSide = 'left' | 'right'
 export type VaultEditorCopyAsKind = 'note' | 'aisle'
 export type VaultEditorCopyAsMode = 'independent' | 'synced'
+export type VaultEditorPdfExportKind = 'aisle' | 'note'
 
 const VAULT_CONTEXT_MENU_IGNORE_SELECTOR = [
   '.note-shared-toolbar',
@@ -37,6 +38,19 @@ function getViewportSize(): MenuViewport {
   return {
     width: window.innerWidth,
     height: window.innerHeight,
+  }
+}
+
+export function getVaultEditorContextMenuViewport(element: Element | null): MenuViewport {
+  const viewport = getViewportSize()
+  const editorScroll = element
+    ?.closest('.vault-editor-surface')
+    ?.querySelector<HTMLElement>('.note-aisle-scroll')
+  const editorBottom = editorScroll?.getBoundingClientRect().bottom
+  if (typeof editorBottom !== 'number' || !Number.isFinite(editorBottom) || editorBottom <= 0) return viewport
+  return {
+    ...viewport,
+    height: Math.min(viewport.height, editorBottom),
   }
 }
 
@@ -110,7 +124,7 @@ function SubMenu({
       getSubmenuPosition(
         toMenuRect(trigger.getBoundingClientRect()),
         getElementSize(panel),
-        getViewportSize(),
+        getVaultEditorContextMenuViewport(trigger),
       ),
     )
   }, [])
@@ -158,6 +172,8 @@ export function VaultEditorContextMenu({
   onFilterSyncedAisle,
   onDecoupleAisle,
   onShowSyncedAisle,
+  onPrintAisle,
+  onExportPdf,
   onRevealLocation,
 }: {
   menu: VaultEditorContextMenuState | null
@@ -182,6 +198,8 @@ export function VaultEditorContextMenu({
   onFilterSyncedAisle: (aisleId: string) => void
   onDecoupleAisle: (aisleId: string) => void
   onShowSyncedAisle: (aisleId: string) => void
+  onPrintAisle: (aisleId: string) => void
+  onExportPdf: (kind: VaultEditorPdfExportKind, aisleId: string) => void
   onRevealLocation: (aisleId: string) => void
 }) {
   const rootRef = React.useRef<HTMLDivElement | null>(null)
@@ -196,7 +214,7 @@ export function VaultEditorContextMenu({
         clampContextMenuPosition(
           { x: menu.x, y: menu.y },
           element ? getElementSize(element) : { width: 0, height: 0 },
-          getViewportSize(),
+          getVaultEditorContextMenuViewport(element),
         ),
       )
     }
@@ -227,6 +245,9 @@ export function VaultEditorContextMenu({
   const runAisleAction = (action: (aisleId: string) => void) => {
     runAction(() => action(menu.aisleId))
   }
+  const runPdfExport = (kind: VaultEditorPdfExportKind) => {
+    runAction(() => onExportPdf(kind, menu.aisleId))
+  }
   const runEditLink = () => {
     const prompt = menu.linkPrompt
     if (prompt) runAction(() => onEditLink(prompt))
@@ -237,9 +258,9 @@ export function VaultEditorContextMenu({
     label: string,
   ) => (
     <SubMenu label={label} onClick={() => runClipboard(action, 'here')}>
+      <MenuButton onClick={() => runClipboard(action, 'here')}>here</MenuButton>
       <MenuButton onClick={() => runClipboard(action, 'new-aisle-left')}>new aisle on left</MenuButton>
       <MenuButton onClick={() => runClipboard(action, 'new-aisle-right')}>new aisle on right</MenuButton>
-      <MenuButton onClick={() => runClipboard(action, 'here')}>here</MenuButton>
     </SubMenu>
   )
 
@@ -321,6 +342,11 @@ export function VaultEditorContextMenu({
         <MenuButton onClick={() => runCommand('codeBlock')}>code block</MenuButton>
       </SubMenu>
       <MenuSeparator />
+      <MenuButton onClick={() => runAisleAction(onPrintAisle)}>print aisle</MenuButton>
+      <SubMenu label="export to PDF">
+        <MenuButton onClick={() => runPdfExport('aisle')}>export aisle</MenuButton>
+        <MenuButton onClick={() => runPdfExport('note')}>export note</MenuButton>
+      </SubMenu>
       <button
         type="button"
         className={`tab-context-delete ${canReveal ? '' : 'is-disabled'}`.trim()}

@@ -626,6 +626,7 @@ function buildAppStateFromParts({ vaultIndex, navigationState, noteRegistry, tra
             closeCurrentNote: 'mod+w',
             formatStrikethrough: 'mod+shift+x',
             formatHighlight: 'mod+shift+h',
+            pastePlainText: 'mod+shift+v',
             cycleAislePrev: 'mod+alt+arrowleft',
             cycleAisleNext: 'mod+alt+arrowright',
           },
