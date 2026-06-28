@@ -44,8 +44,8 @@ export type VaultNoteActionPickerKeyboardIntent =
   | 'run-action'
 
 const ACTION_LABELS: Record<VaultNoteActionPickerAction, string> = {
-  'note-link': 'note link',
-  'note-preview': 'note preview',
+  'note-link': 'link',
+  'note-preview': 'preview',
   'independent-copy': 'independent copy',
   'synced-copy': 'synced copy',
 }
@@ -400,9 +400,9 @@ export function VaultNoteActionPicker({
         </div>
         {selectedEntry && selectedActions.length > 0 && (
           <div className="vault-note-action-choices" aria-label={`Actions for ${selectedEntry.noteName}`}>
-            <div>
+            <div className="vault-note-action-selected-note">
               <strong>{selectedEntry.noteName}</strong>
-              <small>{selectedEntry.label}</small>
+              <small className="vault-note-action-selected-path">{selectedEntry.folderPath || 'Vault'}</small>
             </div>
             <div className="vault-note-action-choice-row">
               {selectedActions.map((action, index) => (

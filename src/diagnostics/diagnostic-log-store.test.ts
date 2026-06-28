@@ -6,6 +6,8 @@ import {
 } from './diagnostic-log'
 import {
   appendDiagnosticLogEntry,
+  deleteAllDiagnosticLogs,
+  deleteDiagnosticLogDay,
   listDiagnosticLogDays,
   readDiagnosticLogEntries,
   writeBrowserDiagnosticLogEntriesForTest,
@@ -79,5 +81,36 @@ describe('diagnostic log store', () => {
     const readEntries = await readDiagnosticLogEntries('2026-06-06')
     expect(readEntries).toHaveLength(DIAGNOSTIC_LOG_MAX_ENTRIES_PER_DAY)
     expect(readEntries[0]?.id).toBe('2026-06-06-3')
+  })
+
+  it('deletes one localStorage diagnostic day', async () => {
+    const storage = createStorage()
+    vi.stubGlobal('localStorage', storage)
+
+    await appendDiagnosticLogEntry(entry('2026-06-01', 1))
+    await appendDiagnosticLogEntry(entry('2026-06-02', 2))
+
+    await expect(deleteDiagnosticLogDay('2026-06-01')).resolves.toEqual({
+      ok: true,
+      days: ['2026-06-02'],
+    })
+    expect(await readDiagnosticLogEntries('2026-06-01')).toEqual([])
+    expect(await listDiagnosticLogDays()).toEqual(['2026-06-02'])
+  })
+
+  it('deletes all localStorage diagnostic days', async () => {
+    const storage = createStorage()
+    vi.stubGlobal('localStorage', storage)
+
+    await appendDiagnosticLogEntry(entry('2026-06-01', 1))
+    await appendDiagnosticLogEntry(entry('2026-06-02', 2))
+
+    await expect(deleteAllDiagnosticLogs()).resolves.toEqual({
+      ok: true,
+      days: [],
+    })
+    expect(await listDiagnosticLogDays()).toEqual([])
+    expect(await readDiagnosticLogEntries('2026-06-01')).toEqual([])
+    expect(await readDiagnosticLogEntries('2026-06-02')).toEqual([])
   })
 })

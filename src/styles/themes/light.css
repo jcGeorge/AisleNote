@@ -71,9 +71,11 @@
   --settings-range-thumb-hover-border: #2c527f;
   --settings-switch-bg: #f3f6fb;
   --settings-switch-border: #a5b7d4;
+  --settings-switch-thumb-bg: #536884;
   --settings-switch-focus-border: #a5b7d4;
   --settings-switch-checked-bg: #2f67de;
   --settings-switch-checked-border: #2f67de;
+  --settings-switch-checked-thumb-bg: #ffffff;
   --theme-switch-bg: #e5edf7;
   --theme-switch-border: #9bb6de;
   --theme-switch-option-text: #315179;
@@ -267,6 +269,15 @@
 .theme-light .task-reorder-marker::after {
   background: var(--task-reorder-marker);
   box-shadow: none;
+}
+
+.app-shell.theme-light.theme-palette-derived {
+  --settings-switch-bg: #f3f6fb;
+  --settings-switch-border: #a5b7d4;
+  --settings-switch-thumb-bg: #536884;
+  --settings-switch-checked-bg: #2f67de;
+  --settings-switch-checked-border: #2f67de;
+  --settings-switch-checked-thumb-bg: #ffffff;
 }
 
 .theme-light .link-prompt {

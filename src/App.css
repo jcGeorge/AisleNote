@@ -24,7 +24,11 @@
   --vault-topbar-content-height: calc(
     var(--vault-topbar-control-size) + var(--vault-topbar-block-padding) + var(--vault-topbar-block-padding)
   );
-  --vault-topbar-height: calc(var(--vault-topbar-content-height) + 1px);
+  --vault-topbar-observed-height: 0px;
+  --vault-topbar-height: max(
+    calc(var(--vault-topbar-content-height) + 1px),
+    var(--vault-topbar-observed-height)
+  );
   --vault-topbar-border: var(--app-border);
   --vault-sidebar-control-size: var(--vault-topbar-control-size);
   --vault-sidebar-control-icon-size: var(--vault-topbar-icon-size);
@@ -172,7 +176,7 @@
 .vault-sidebar-header {
   box-sizing: border-box;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--vault-sidebar-control-gap);
   min-height: var(--vault-topbar-height);
   padding: var(--vault-sidebar-control-inset-block)
@@ -199,6 +203,7 @@
 
 .vault-shell .note-shared-toolbar .app-shared-editor-toolbar {
   align-content: center !important;
+  height: auto !important;
   min-height: var(--vault-topbar-content-height) !important;
   padding: var(--vault-topbar-block-padding) var(--vault-topbar-inline-padding) !important;
   row-gap: var(--vault-topbar-row-gap) !important;
@@ -2148,6 +2153,41 @@
 
 .vault-frontmatter-modal.frontmatter-note-modal {
   width: min(960px, calc(100vw - 32px));
+  border-color: var(--modal-border);
+  background: var(--modal-bg);
+  color: var(--modal-text);
+}
+
+.note-content-overlay-region .frontmatter-note-modal-backdrop {
+  position: absolute;
+  z-index: var(--note-workspace-overlay-z, 2620);
+  inset: 0;
+  display: block;
+  background: color-mix(in srgb, var(--app-bg) 46%, transparent);
+}
+
+.note-content-overlay-region .vault-frontmatter-modal.frontmatter-note-modal {
+  position: absolute;
+  top: 50%;
+  left: var(--frontmatter-note-modal-left, 50%);
+  width: min(960px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  transform: translate(-50%, -50%);
+}
+
+.vault-frontmatter-modal.frontmatter-note-modal .modal-card-header,
+.vault-frontmatter-modal.frontmatter-note-modal .modal-card-footer {
+  background: var(--modal-bg);
+  color: var(--modal-text);
+}
+
+.vault-frontmatter-modal.frontmatter-note-modal h2 {
+  color: var(--modal-text);
+}
+
+.vault-frontmatter-modal.frontmatter-note-modal .vault-frontmatter-body {
+  background: var(--modal-bg);
+  color: var(--modal-text);
 }
 
 .vault-frontmatter-modal.vault-name-modal {
@@ -2305,7 +2345,7 @@
 }
 
 .vault-note-action-picker.is-anchored {
-  transform: translateY(8px);
+  transform: translate(-50%, 8px);
 }
 
 .vault-note-action-header,
@@ -2386,13 +2426,16 @@
 
 .vault-note-action-query {
   min-width: 0;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
   padding: 8px 10px;
   border: 1px solid var(--app-border-muted);
   border-radius: 6px;
   background: var(--app-panel);
   color: var(--app-text);
   font: inherit;
-  line-height: 1.35;
+  line-height: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2497,6 +2540,25 @@
   gap: 8px;
   padding-top: 10px;
   border-top: 1px solid var(--app-border-muted);
+}
+
+.vault-note-action-selected-note {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.vault-note-action-selected-note strong,
+.vault-note-action-selected-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-note-action-selected-path {
+  direction: rtl;
+  text-align: left;
 }
 
 .vault-note-action-choice-row {

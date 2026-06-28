@@ -167,6 +167,7 @@ type NoteWorkspaceProps = {
   imageToolsOverlay: ReactNode
   tableControlsOverlay: ReactNode
   listReorderControlsOverlay?: ReactNode
+  noteContentOverlay?: ReactNode
   arrangeDestinationPrompt?: ReactNode
   tableOfContentsHeadingsByAisle?: Record<string, HeadingOutlineItem[]>
   tableOfContentsLinksByAisle?: Record<string, TableOfContentsLinkItem[]>
@@ -377,6 +378,7 @@ export function NoteWorkspace({
   imageToolsOverlay,
   tableControlsOverlay,
   listReorderControlsOverlay = null,
+  noteContentOverlay = null,
   arrangeDestinationPrompt = null,
   tableOfContentsHeadingsByAisle = {},
   tableOfContentsLinksByAisle = {},
@@ -570,103 +572,104 @@ export function NoteWorkspace({
       {tableControlsOverlay}
       {listReorderControlsOverlay}
       {arrangeDestinationPrompt}
-      <div
-        ref={setAisleScrollRef}
-        className="note-aisle-scroll"
-        onPointerDownCapture={(event) => {
-          if (shouldExitArrangeModeFromNoteWorkspacePointer(arrangeModeActive, event.button)) {
-            scheduleNoteWorkspaceArrangeExit(onExitArrangeMode)
-          }
-          const shouldActivateAisle = shouldActivateAisleFromNoteWorkspacePointer(event.button)
-          if (shouldActivateAisle && !editorReadOnly && event.target instanceof Element) {
-            onSelectEditableAsset(event.target)
-          }
-          const pointer = shouldActivateAisle
-            ? getAisleActivationPointerFromNoteWorkspaceEvent(event.nativeEvent)
-            : undefined
-          if (pointer) {
+      <div className="note-content-region">
+        <div
+          ref={setAisleScrollRef}
+          className="note-aisle-scroll"
+          onPointerDownCapture={(event) => {
+            if (shouldExitArrangeModeFromNoteWorkspacePointer(arrangeModeActive, event.button)) {
+              scheduleNoteWorkspaceArrangeExit(onExitArrangeMode)
+            }
+            const shouldActivateAisle = shouldActivateAisleFromNoteWorkspacePointer(event.button)
+            if (shouldActivateAisle && !editorReadOnly && event.target instanceof Element) {
+              onSelectEditableAsset(event.target)
+            }
+            const pointer = shouldActivateAisle
+              ? getAisleActivationPointerFromNoteWorkspaceEvent(event.nativeEvent)
+              : undefined
+            if (pointer) {
+              const gutterTarget = activateAisleFromWorkspaceTarget(event.target, pointer)
+              if (gutterTarget) {
+                event.preventDefault()
+              }
+            }
+          }}
+          onMouseDownCapture={(event) => {
+            if (!shouldActivateAisleFromNoteWorkspacePointer(event.button)) return
+            const pointer = getAisleActivationPointerFromNoteWorkspaceMouseEvent(event.nativeEvent, event.target)
             const gutterTarget = activateAisleFromWorkspaceTarget(event.target, pointer)
             if (gutterTarget) {
               event.preventDefault()
+              event.stopPropagation()
+              event.nativeEvent.stopImmediatePropagation()
             }
-          }
-        }}
-        onMouseDownCapture={(event) => {
-          if (!shouldActivateAisleFromNoteWorkspacePointer(event.button)) return
-          const pointer = getAisleActivationPointerFromNoteWorkspaceMouseEvent(event.nativeEvent, event.target)
-          const gutterTarget = activateAisleFromWorkspaceTarget(event.target, pointer)
-          if (gutterTarget) {
+          }}
+          onClickCapture={(event) => {
+            const target = event.target instanceof Element ? event.target : null
+            const tagToken = target?.closest<HTMLElement>('[data-aislenote-tag]')
+            const tag = tagToken?.dataset.aislenoteTag?.trim()
+            if (!tag) return
             event.preventDefault()
             event.stopPropagation()
-            event.nativeEvent.stopImmediatePropagation()
-          }
-        }}
-        onClickCapture={(event) => {
-          const target = event.target instanceof Element ? event.target : null
-          const tagToken = target?.closest<HTMLElement>('[data-aislenote-tag]')
-          const tag = tagToken?.dataset.aislenoteTag?.trim()
-          if (!tag) return
-          event.preventDefault()
-          event.stopPropagation()
-          onOpenTagFilter(tag)
-        }}
-        onScroll={(event) => onAisleScroll(event.currentTarget.scrollLeft)}
-      >
-        {aisles.map((aisle, index) => {
-          const editorKey = buildAisleEditorKey(noteBodyId, aisle.id)
-          const editorMountFailed = failedEditorMountAisleIds?.has(aisle.id) ?? false
-          const editorMounted = mountedAisleIds.has(aisle.id) && !editorMountFailed
-          const editorMountPending =
-            suppressActiveAislePreviewFallback && !editorMounted && !editorMountFailed && aisle.id === activeAisleId
-          const previewMarkdown = editorMounted || editorMountPending ? '' : getPreviewMarkdownForAisle(aisle)
-          const previewProfile =
-            previewMarkdown.length > 0
-              ? getMarkdownWorkloadProfile(previewMarkdown, aisle.aisleBodyId || aisle.id)
-              : null
-          const previewRenderMode = getAislePreviewRenderMode({
-            active: aisle.id === activeAisleId,
-            arrangeModeActive,
-            deferInactivePreviewFallbacks,
-            editorMounted,
-            editorMountPending,
-            inactivePreviewsHydrated,
-            profile: previewProfile,
-          })
-          const renderedPreviewMarkdown = previewRenderMode === 'markdown-preview' ? previewMarkdown : ''
-          const lightweightPreviewText =
-            previewRenderMode === 'lightweight-preview' ? getLightweightPreviewText(previewMarkdown) : ''
-          const previewHydrationPending =
-            previewRenderMode === 'lightweight-preview' &&
-            deferInactivePreviewFallbacks &&
-            !inactivePreviewsHydrated &&
-            Boolean(previewProfile?.isLinkHeavy)
-          const tableOfContentsHeadings = tableOfContentsHeadingsByAisle[aisle.id] ?? []
-          const tableOfContentsLinks = tableOfContentsLinksByAisle[aisle.id] ?? []
-          const tableOfContentsOpen =
-            openTableOfContentsAisleIds.has(aisle.id) &&
-            (tableOfContentsHeadings.length > 0 || tableOfContentsLinks.length > 0)
-          const showLinkButton = wholeNoteLinked || linkedAisleIds.has(aisle.id)
-          const showFrontmatterButton = frontmatterAisleIds.has(aisle.id)
-          const customAisleWidth = isSplitWorkspace ? aisleWidths[aisle.id] : undefined
-          const aislePaneStyle =
-            typeof customAisleWidth === 'number'
-              ? ({ '--note-aisle-width': `${customAisleWidth}px` } as CSSProperties)
-              : undefined
-          const aislePaneClassName = [
-            'note-aisle-pane',
-            aisle.id === activeAisleId ? 'is-active' : '',
-            customAisleWidth ? 'has-custom-width' : '',
-          ].filter(Boolean).join(' ')
-          return (
-            <section
-              key={aisle.id}
-              ref={(node) => onRegisterAislePaneRoot(aisle.id, node)}
-              className={aislePaneClassName}
-              style={aislePaneStyle}
-              aria-label={`Aisle ${index + 1}`}
-              data-aisle-id={aisle.id}
-              data-aisle-editor-key={editorKey}
-            >
+            onOpenTagFilter(tag)
+          }}
+          onScroll={(event) => onAisleScroll(event.currentTarget.scrollLeft)}
+        >
+          {aisles.map((aisle, index) => {
+            const editorKey = buildAisleEditorKey(noteBodyId, aisle.id)
+            const editorMountFailed = failedEditorMountAisleIds?.has(aisle.id) ?? false
+            const editorMounted = mountedAisleIds.has(aisle.id) && !editorMountFailed
+            const editorMountPending =
+              suppressActiveAislePreviewFallback && !editorMounted && !editorMountFailed && aisle.id === activeAisleId
+            const previewMarkdown = editorMounted || editorMountPending ? '' : getPreviewMarkdownForAisle(aisle)
+            const previewProfile =
+              previewMarkdown.length > 0
+                ? getMarkdownWorkloadProfile(previewMarkdown, aisle.aisleBodyId || aisle.id)
+                : null
+            const previewRenderMode = getAislePreviewRenderMode({
+              active: aisle.id === activeAisleId,
+              arrangeModeActive,
+              deferInactivePreviewFallbacks,
+              editorMounted,
+              editorMountPending,
+              inactivePreviewsHydrated,
+              profile: previewProfile,
+            })
+            const renderedPreviewMarkdown = previewRenderMode === 'markdown-preview' ? previewMarkdown : ''
+            const lightweightPreviewText =
+              previewRenderMode === 'lightweight-preview' ? getLightweightPreviewText(previewMarkdown) : ''
+            const previewHydrationPending =
+              previewRenderMode === 'lightweight-preview' &&
+              deferInactivePreviewFallbacks &&
+              !inactivePreviewsHydrated &&
+              Boolean(previewProfile?.isLinkHeavy)
+            const tableOfContentsHeadings = tableOfContentsHeadingsByAisle[aisle.id] ?? []
+            const tableOfContentsLinks = tableOfContentsLinksByAisle[aisle.id] ?? []
+            const tableOfContentsOpen =
+              openTableOfContentsAisleIds.has(aisle.id) &&
+              (tableOfContentsHeadings.length > 0 || tableOfContentsLinks.length > 0)
+            const showLinkButton = wholeNoteLinked || linkedAisleIds.has(aisle.id)
+            const showFrontmatterButton = frontmatterAisleIds.has(aisle.id)
+            const customAisleWidth = isSplitWorkspace ? aisleWidths[aisle.id] : undefined
+            const aislePaneStyle =
+              typeof customAisleWidth === 'number'
+                ? ({ '--note-aisle-width': `${customAisleWidth}px` } as CSSProperties)
+                : undefined
+            const aislePaneClassName = [
+              'note-aisle-pane',
+              aisle.id === activeAisleId ? 'is-active' : '',
+              customAisleWidth ? 'has-custom-width' : '',
+            ].filter(Boolean).join(' ')
+            return (
+              <section
+                key={aisle.id}
+                ref={(node) => onRegisterAislePaneRoot(aisle.id, node)}
+                className={aislePaneClassName}
+                style={aislePaneStyle}
+                aria-label={`Aisle ${index + 1}`}
+                data-aisle-id={aisle.id}
+                data-aisle-editor-key={editorKey}
+              >
               {isSplitWorkspace && (
                 <button
                   type="button"
@@ -782,9 +785,15 @@ export function NoteWorkspace({
                   onSelectLink={onSelectTableOfContentsLink}
                 />
               )}
-            </section>
-          )
-        })}
+              </section>
+            )
+          })}
+        </div>
+        {noteContentOverlay ? (
+          <div className="note-content-overlay-region">
+            {noteContentOverlay}
+          </div>
+        ) : null}
       </div>
       {isSplitWorkspace && (
         <AisleHorizontalScrollbar

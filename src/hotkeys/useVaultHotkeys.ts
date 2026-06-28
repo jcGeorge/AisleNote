@@ -9,7 +9,6 @@ export type VaultHotkeyIntent = Extract<
   | 'newFolder'
   | 'toggleNotesTrash'
   | 'toggleNotesScratchpad'
-  | 'toggleNotesFilter'
   | 'closeCurrentNote'
   | 'cyclePinnedNoteTabNext'
   | 'cyclePinnedNoteTabPrev'
@@ -32,7 +31,6 @@ const VAULT_HOTKEY_INTENTS: VaultHotkeyIntent[] = [
   'newFolder',
   'toggleNotesTrash',
   'toggleNotesScratchpad',
-  'toggleNotesFilter',
   'closeCurrentNote',
   'cyclePinnedNoteTabNext',
   'cyclePinnedNoteTabPrev',

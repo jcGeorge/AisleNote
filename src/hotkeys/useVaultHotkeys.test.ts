@@ -55,12 +55,11 @@ describe('vault hotkey intents', () => {
     })).toBe('openSettings')
   })
 
-  it('resolves vault creation, filtering, aisle, and strikethrough shortcuts', () => {
+  it('resolves vault creation, aisle, and strikethrough shortcuts', () => {
     const hotkeys: AppState['hotkeys'] = {
       ...defaultHotkeys,
       shortcuts: {
         ...DEFAULT_SHORTCUTS,
-        toggleNotesFilter: 'Mod+F',
         formatStrikethrough: 'Mod+Shift+X',
       },
     }
@@ -95,12 +94,6 @@ describe('vault hotkey intents', () => {
       isMacPlatform: true,
       viewMode: 'main',
     })).toBe('toggleNotesTrash')
-    expect(getVaultHotkeyIntent({
-      event: keyboardEvent('f', { code: 'KeyF', metaKey: true }),
-      hotkeys,
-      isMacPlatform: true,
-      viewMode: 'main',
-    })).toBe('toggleNotesFilter')
     expect(getVaultHotkeyIntent({
       event: keyboardEvent('ArrowLeft', { code: 'ArrowLeft', metaKey: true, altKey: true }),
       hotkeys,

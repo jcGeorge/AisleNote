@@ -40,6 +40,9 @@ type MessagesViewProps = {
   onDiagnosticModeChange?: (mode: DiagnosticLogMode) => void
   onDiagnosticCaptureEnabledChange?: (enabled: boolean) => void
   onOpenDiagnosticsFolder?: () => void
+  onDeleteTodayDiagnosticLogs?: () => void
+  onDeleteAllDiagnosticLogs?: () => void
+  canDeleteTodayDiagnosticLogs?: boolean
   onDismissMessage: (messageId: string) => void
   onOpenRecoveredVaultLocation?: (message: AppMessage) => void
   onOpenLocation: (location: NoteLocation) => void
@@ -205,6 +208,9 @@ export function MessagesView({
   onDiagnosticModeChange = () => undefined,
   onDiagnosticCaptureEnabledChange = () => undefined,
   onOpenDiagnosticsFolder,
+  onDeleteTodayDiagnosticLogs,
+  onDeleteAllDiagnosticLogs,
+  canDeleteTodayDiagnosticLogs = diagnosticDays.length > 0,
   onDismissMessage,
   onOpenRecoveredVaultLocation,
   onOpenLocation,
@@ -304,6 +310,26 @@ export function MessagesView({
       {onOpenDiagnosticsFolder ? (
         <button type="button" className="btn btn-sm settings-action-btn" onClick={onOpenDiagnosticsFolder}>
           open diagnostics folder
+        </button>
+      ) : null}
+      {onDeleteTodayDiagnosticLogs ? (
+        <button
+          type="button"
+          className="btn btn-sm settings-action-btn app-danger-btn"
+          onClick={onDeleteTodayDiagnosticLogs}
+          disabled={!canDeleteTodayDiagnosticLogs}
+        >
+          delete today
+        </button>
+      ) : null}
+      {onDeleteAllDiagnosticLogs ? (
+        <button
+          type="button"
+          className="btn btn-sm settings-action-btn app-danger-btn"
+          onClick={onDeleteAllDiagnosticLogs}
+          disabled={diagnosticDays.length === 0}
+        >
+          delete all
         </button>
       ) : null}
     </div>

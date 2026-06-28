@@ -620,7 +620,6 @@ function buildAppStateFromParts({ vaultIndex, navigationState, noteRegistry, tra
           shortcuts: {
             toggleNotesTrash: 'mod+shift+backspace',
             toggleNotesScratchpad: 'mod+shift+s',
-            toggleNotesFilter: 'mod+shift+f',
             newNote: 'mod+n',
             newFolder: 'mod+shift+n',
             closeCurrentNote: 'mod+w',

@@ -250,7 +250,6 @@ export type ShortcutId =
   | 'openSettings'
   | 'toggleNotesTrash'
   | 'toggleNotesScratchpad'
-  | 'toggleNotesFilter'
   | 'newNote'
   | 'newFolder'
   | 'closeCurrentNote'

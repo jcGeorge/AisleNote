@@ -58,6 +58,23 @@ describe('AisleEditModal', () => {
     expect(html).toContain('aria-label="Scroll edit aisles horizontally"')
   })
 
+  it('uses a note-content scoped backdrop instead of a full-window fixed overlay', () => {
+    const backdropRule = editorShellCss.slice(
+      editorShellCss.indexOf('.aisle-edit-modal-backdrop {'),
+      editorShellCss.indexOf('.aisle-edit-modal {'),
+    )
+    const modalRule = editorShellCss.slice(
+      editorShellCss.indexOf('.aisle-edit-modal {'),
+      editorShellCss.indexOf('.aisle-edit-scroll-shell {'),
+    )
+
+    expect(renderModal([aisle('a', 'first')])).toContain('aisle-edit-modal-backdrop')
+    expect(backdropRule).toContain('position: absolute;')
+    expect(backdropRule).not.toContain('position: fixed;')
+    expect(modalRule).toContain('width: min(70rem, calc(100% - 2rem));')
+    expect(modalRule).not.toContain('calc(100vw - 2rem)')
+  })
+
   it('uses before and after drop-target classes for aisle drag placement', () => {
     const source = readFileSync(join(componentDir, 'AisleEditModal.tsx'), 'utf8')
 

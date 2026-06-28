@@ -117,15 +117,13 @@
 @media (max-width: 520px) {
   .note-shared-toolbar {
     --editor-toolbar-spacer-width: 0.8rem;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
+    overflow: visible;
   }
 
   .note-shared-toolbar .app-shared-editor-toolbar {
-    width: max-content !important;
-    min-width: 100% !important;
-    flex-wrap: nowrap !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    flex-wrap: wrap !important;
     align-content: center !important;
   }
 
@@ -150,6 +148,7 @@
   }
 
   .toast-editor-host,
+  .note-content-region,
   .note-aisle-scroll,
   .note-aisle-pane,
   .editor-shell,

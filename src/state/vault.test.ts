@@ -49,7 +49,6 @@ function createState(): AppState {
       shortcuts: {
         toggleNotesTrash: '',
         toggleNotesScratchpad: '',
-        toggleNotesFilter: '',
         newNote: 'mod+n',
         newFolder: 'mod+shift+n',
         closeCurrentNote: 'mod+w',

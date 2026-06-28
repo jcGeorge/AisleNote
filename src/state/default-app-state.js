@@ -41,7 +41,6 @@ export const DEFAULT_SHORTCUTS = {
   openSettings: 'mod+,',
   toggleNotesTrash: 'mod+shift+backspace',
   toggleNotesScratchpad: 'mod+s',
-  toggleNotesFilter: 'mod+shift+f',
   newNote: 'mod+n',
   newFolder: 'mod+shift+n',
   closeCurrentNote: 'mod+w',

@@ -341,6 +341,9 @@ describe('MessagesView', () => {
         diagnosticEntries={diagnosticEntries}
         diagnosticCaptureEnabled={false}
         onOpenDiagnosticsFolder={vi.fn()}
+        onDeleteTodayDiagnosticLogs={vi.fn()}
+        onDeleteAllDiagnosticLogs={vi.fn()}
+        canDeleteTodayDiagnosticLogs={true}
         onDiagnosticDayChange={vi.fn()}
         onDismissMessage={vi.fn()}
         onOpenRecoveredVaultLocation={vi.fn()}
@@ -351,7 +354,32 @@ describe('MessagesView', () => {
     expect(html).toContain('aria-label="capture diagnostics"')
     expect(html).not.toContain('checked=""')
     expect(html).toContain('open diagnostics folder')
+    expect(html).toContain('delete today')
+    expect(html).toContain('delete all')
     expect(html).toContain('performance: slow-operation')
+  })
+
+  it('disables diagnostic delete controls when no matching logs exist', () => {
+    const html = renderToStaticMarkup(
+      <MessagesView
+        section="diagnostics"
+        messages={[]}
+        toastHistory={[]}
+        diagnosticDays={[]}
+        diagnosticEntries={[]}
+        onDeleteTodayDiagnosticLogs={vi.fn()}
+        onDeleteAllDiagnosticLogs={vi.fn()}
+        canDeleteTodayDiagnosticLogs={false}
+        onDiagnosticDayChange={vi.fn()}
+        onDismissMessage={vi.fn()}
+        onOpenRecoveredVaultLocation={vi.fn()}
+        onOpenLocation={vi.fn()}
+      />,
+    )
+
+    expect(html).toContain('delete today')
+    expect(html).toContain('delete all')
+    expect(html.match(/disabled=""/g)).toHaveLength(3)
   })
 
   it('filters diagnostic logs by type', () => {

@@ -11,6 +11,16 @@ const DIAGNOSTIC_LOG_DAYS_STORAGE_KEY = 'aislenote:diagnostic-log:v1:days'
 const DIAGNOSTIC_LOG_DAY_STORAGE_PREFIX = 'aislenote:diagnostic-log:v1:day:'
 
 type DiagnosticLogChangeListener = (entry: DiagnosticLogEntry) => void
+type DiagnosticLogDeleteResult =
+  | {
+      ok: true
+      days: string[]
+    }
+  | {
+      ok: false
+      days: string[]
+      error: string
+    }
 
 const listeners = new Set<DiagnosticLogChangeListener>()
 
@@ -88,6 +98,26 @@ function appendBrowserDiagnosticLogEntry(entry: DiagnosticLogEntry, storage = ge
   writeBrowserDiagnosticDays([dayKey, ...readBrowserDiagnosticDays(storage)], storage)
 }
 
+function deleteBrowserDiagnosticLogDay(dayKey: string, storage = getBrowserStorage()): DiagnosticLogDeleteResult {
+  if (!storage) return { ok: true, days: [] }
+  if (!isDiagnosticDayKey(dayKey)) return { ok: false, error: 'invalid-day', days: readBrowserDiagnosticDays(storage) }
+  removeStorageKey(storage, getDayStorageKey(dayKey))
+  return {
+    ok: true,
+    days: writeBrowserDiagnosticDays(
+      readBrowserDiagnosticDays(storage).filter((day) => day !== dayKey),
+      storage,
+    ),
+  }
+}
+
+function deleteAllBrowserDiagnosticLogs(storage = getBrowserStorage()): DiagnosticLogDeleteResult {
+  if (!storage) return { ok: true, days: [] }
+  readBrowserDiagnosticDays(storage).forEach((dayKey) => removeStorageKey(storage, getDayStorageKey(dayKey)))
+  removeStorageKey(storage, DIAGNOSTIC_LOG_DAYS_STORAGE_KEY)
+  return { ok: true, days: [] }
+}
+
 export async function appendDiagnosticLogEntry(entry: DiagnosticLogEntry): Promise<void> {
   try {
     if (hasElectronDiagnosticsApi()) {
@@ -141,6 +171,50 @@ export async function readDiagnosticLogEntries(dayKey: string): Promise<Diagnost
   return readJsonArray(storage, getDayStorageKey(dayKey))
     .map(normalizeDiagnosticLogEntry)
     .filter((entry): entry is DiagnosticLogEntry => Boolean(entry))
+}
+
+export async function deleteDiagnosticLogDay(dayKey: string): Promise<DiagnosticLogDeleteResult> {
+  try {
+    if (typeof window !== 'undefined' && window.electronAPI?.deleteDiagnosticLogDay) {
+      const result = await window.electronAPI.deleteDiagnosticLogDay({ dayKey })
+      return result?.ok
+        ? { ok: true, days: orderDiagnosticDaysForDisplay(result.days) }
+        : {
+            ok: false,
+            error: result?.error ?? 'delete-failed',
+            days: orderDiagnosticDaysForDisplay(result?.days ?? []),
+          }
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'delete-failed',
+      days: await listDiagnosticLogDays(),
+    }
+  }
+  return deleteBrowserDiagnosticLogDay(dayKey)
+}
+
+export async function deleteAllDiagnosticLogs(): Promise<DiagnosticLogDeleteResult> {
+  try {
+    if (typeof window !== 'undefined' && window.electronAPI?.deleteAllDiagnosticLogs) {
+      const result = await window.electronAPI.deleteAllDiagnosticLogs()
+      return result?.ok
+        ? { ok: true, days: orderDiagnosticDaysForDisplay(result.days) }
+        : {
+            ok: false,
+            error: result?.error ?? 'delete-failed',
+            days: orderDiagnosticDaysForDisplay(result?.days ?? []),
+          }
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'delete-failed',
+      days: await listDiagnosticLogDays(),
+    }
+  }
+  return deleteAllBrowserDiagnosticLogs()
 }
 
 export function subscribeDiagnosticLogChanges(listener: DiagnosticLogChangeListener): () => void {

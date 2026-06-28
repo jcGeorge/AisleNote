@@ -35,7 +35,6 @@ describe('portable app settings parsing', () => {
           openSettings: 'Mod+,',
           toggleNotesTrash: 'Mod+T',
           toggleNotesScratchpad: 'Mod+S',
-          toggleNotesFilter: '',
           newNote: 'Mod+N',
           newFolder: 'Mod+Shift+N',
           closeCurrentNote: 'Mod+W',
@@ -224,7 +223,6 @@ describe('portable app settings parsing', () => {
             openSettings: 'Mod+,',
             toggleNotesTrash: 'Mod+T',
             toggleNotesScratchpad: 'Mod+S',
-            toggleNotesFilter: '',
             newNote: 'Mod+N',
             newFolder: 'Mod+Shift+N',
             closeCurrentNote: 'Mod+W',
@@ -264,7 +262,6 @@ describe('portable app settings parsing', () => {
     expect(syncedSettings.hotkeys.shortcuts.toggleNotesTrash).toBe('Mod+T')
     expect(syncedSettings.hotkeys.shortcuts.openSettings).toBe('Mod+,')
     expect(syncedSettings.hotkeys.shortcuts.toggleNotesScratchpad).toBe('Mod+S')
-    expect(syncedSettings.hotkeys.shortcuts.toggleNotesFilter).toBe('')
     expect(syncedSettings.hotkeys.shortcuts.newNote).toBe('Mod+N')
     expect(syncedSettings.hotkeys.shortcuts.newFolder).toBe('Mod+Shift+N')
     expect(syncedSettings.hotkeys.shortcuts.closeCurrentNote).toBe('Mod+W')

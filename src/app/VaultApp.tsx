@@ -139,6 +139,7 @@ import {
   recordDiagnosticEvent,
 } from '../diagnostics/diagnostic-logger'
 import {
+  getDiagnosticDayKey,
   orderDiagnosticDaysForDisplay,
   type DiagnosticLogDisplayLimit,
   type DiagnosticLogEntry,
@@ -146,6 +147,8 @@ import {
   type DiagnosticLogMode,
 } from '../diagnostics/diagnostic-log'
 import {
+  deleteAllDiagnosticLogs as deleteAllStoredDiagnosticLogs,
+  deleteDiagnosticLogDay,
   listDiagnosticLogDays,
   readDiagnosticLogEntries,
   subscribeDiagnosticLogChanges,
@@ -211,6 +214,7 @@ import {
   useVaultNavigationHistory,
   type VaultNavigationLocation,
 } from '../navigation/vault-navigation-history'
+import { getNextNotesScratchpadToggleState } from '../navigation/toggle-notes-scratchpad'
 import { getTipDefinition } from '../tips/tips'
 import {
   buildTableOfContentsPanels,
@@ -491,7 +495,6 @@ const HOTKEY_ROWS: Array<{ id: ShortcutId; label: string }> = [
   { id: 'openSettings', label: 'Open settings' },
   { id: 'toggleNotesTrash', label: 'Toggle notes / trash' },
   { id: 'toggleNotesScratchpad', label: 'Toggle scratchpad' },
-  { id: 'toggleNotesFilter', label: 'Toggle filter' },
   { id: 'newNote', label: 'New note' },
   { id: 'newFolder', label: 'New folder' },
   { id: 'closeCurrentNote', label: 'Close current note' },
@@ -715,11 +718,105 @@ export type VaultFrontmatterModalState = {
 
 const FRONTMATTER_TEMPLATE_FIELD_DRAG_MIME = 'application/x-aislenote-frontmatter-template-field'
 const FRONTMATTER_ROW_DRAG_MIME = 'application/x-aislenote-frontmatter-row'
+const VAULT_NOTE_ACTION_PICKER_MAX_WIDTH = 520
+const VAULT_NOTE_ACTION_PICKER_VIEWPORT_GUTTER = 14
+const FRONTMATTER_NOTE_MODAL_MAX_WIDTH = 960
+const FRONTMATTER_NOTE_MODAL_CONTENT_GUTTER = 16
 
 type FrontmatterListDropRect = {
   index: number
   top: number
   bottom: number
+}
+
+function clampOverlayCoordinate(value: number, min: number, max: number): number {
+  if (max < min) return value
+  return Math.max(min, Math.min(max, value))
+}
+
+function readCssPixelValue(value: string): number {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function getElementVerticalBorderHeight(element: HTMLElement): number {
+  const styles = window.getComputedStyle(element)
+  return readCssPixelValue(styles.borderTopWidth) + readCssPixelValue(styles.borderBottomWidth)
+}
+
+function getUtilityHeaderObservedHeight(header: HTMLElement): number {
+  const styles = window.getComputedStyle(header)
+  const contentHeight = Array.from(header.children).reduce((height, child) => {
+    return child instanceof HTMLElement
+      ? Math.max(height, child.getBoundingClientRect().height)
+      : height
+  }, 0)
+  return Math.ceil(
+    contentHeight +
+      readCssPixelValue(styles.paddingTop) +
+      readCssPixelValue(styles.paddingBottom) +
+      readCssPixelValue(styles.borderTopWidth) +
+      readCssPixelValue(styles.borderBottomWidth),
+  )
+}
+
+function readObservedVaultTopbarHeight(shell: HTMLElement): number {
+  const toolbarInner = shell.querySelector<HTMLElement>(
+    '.note-aisles-shell > .note-shared-toolbar .app-shared-editor-toolbar',
+  )
+  const toolbarHeight = toolbarInner
+    ? Math.ceil(
+        toolbarInner.getBoundingClientRect().height +
+          getElementVerticalBorderHeight(toolbarInner.closest<HTMLElement>('.note-shared-toolbar') ?? toolbarInner),
+      )
+    : 0
+  const utilityHeader = shell.querySelector<HTMLElement>('.vault-utility-header')
+  const utilityHeaderHeight = utilityHeader ? getUtilityHeaderObservedHeight(utilityHeader) : 0
+  return Math.max(toolbarHeight, utilityHeaderHeight)
+}
+
+function getAislePaneRect(workspaceRoot: HTMLElement | null, aisleId: string): DOMRect | null {
+  if (!workspaceRoot || !aisleId) return null
+  const pane = Array.from(workspaceRoot.querySelectorAll<HTMLElement>('.note-aisle-pane'))
+    .find((candidate) => candidate.dataset.aisleId === aisleId)
+  return pane?.getBoundingClientRect() ?? null
+}
+
+function getCenteredAisleViewportLeft(workspaceRoot: HTMLElement | null, aisleId: string): number | null {
+  const rect = getAislePaneRect(workspaceRoot, aisleId)
+  if (!rect || rect.width <= 0) return null
+  return rect.left + rect.width / 2
+}
+
+function getAisleCenteredNoteActionPickerAnchor(
+  workspaceRoot: HTMLElement | null,
+  aisleId: string,
+  cursorAnchor: VaultNoteActionPickerAnchor | null,
+): VaultNoteActionPickerAnchor | null {
+  if (typeof window === 'undefined') return cursorAnchor
+  const fallbackTop = Math.max(72, Math.min(160, window.innerHeight * 0.16))
+  const pickerWidth = Math.min(VAULT_NOTE_ACTION_PICKER_MAX_WIDTH, Math.max(0, window.innerWidth - VAULT_NOTE_ACTION_PICKER_VIEWPORT_GUTTER * 2))
+  const minLeft = VAULT_NOTE_ACTION_PICKER_VIEWPORT_GUTTER + pickerWidth / 2
+  const maxLeft = window.innerWidth - VAULT_NOTE_ACTION_PICKER_VIEWPORT_GUTTER - pickerWidth / 2
+  const rawLeft = getCenteredAisleViewportLeft(workspaceRoot, aisleId) ?? cursorAnchor?.left ?? window.innerWidth / 2
+  return {
+    top: fallbackTop,
+    left: clampOverlayCoordinate(rawLeft, minLeft, maxLeft),
+  }
+}
+
+function getFrontmatterNoteModalStyle(workspaceRoot: HTMLElement | null, aisleId: string): CSSProperties | undefined {
+  const contentRegion = workspaceRoot?.querySelector<HTMLElement>('.note-content-region') ?? null
+  const contentRect = contentRegion?.getBoundingClientRect()
+  if (!contentRect || contentRect.width <= 0) return undefined
+
+  const aisleViewportLeft = getCenteredAisleViewportLeft(workspaceRoot, aisleId)
+  const rawLeft = aisleViewportLeft === null ? contentRect.width / 2 : aisleViewportLeft - contentRect.left
+  const modalWidth = Math.min(FRONTMATTER_NOTE_MODAL_MAX_WIDTH, Math.max(0, contentRect.width - FRONTMATTER_NOTE_MODAL_CONTENT_GUTTER * 2))
+  const minLeft = FRONTMATTER_NOTE_MODAL_CONTENT_GUTTER + modalWidth / 2
+  const maxLeft = contentRect.width - FRONTMATTER_NOTE_MODAL_CONTENT_GUTTER - modalWidth / 2
+  const left = clampOverlayCoordinate(rawLeft, minLeft, maxLeft)
+  return { '--frontmatter-note-modal-left': `${left}px` } as CSSProperties
 }
 
 function readFrontmatterListDropRects(container: HTMLElement | null, rowSelector: string): FrontmatterListDropRect[] {
@@ -1725,6 +1822,7 @@ function VaultAisleContextMenu({
 
 export function VaultFrontmatterModal({
   modal,
+  modalStyle,
   templates,
   onCancel,
   onChange,
@@ -1737,6 +1835,7 @@ export function VaultFrontmatterModal({
   onCopyFrontmatter,
 }: {
   modal: VaultFrontmatterModalState | null
+  modalStyle?: CSSProperties
   templates: FrontmatterTemplate[]
   onCancel: () => void
   onChange: (modal: VaultFrontmatterModalState) => void
@@ -2002,12 +2101,16 @@ export function VaultFrontmatterModal({
   }
 
   return (
-    <div className="modal-backdrop vault-modal-backdrop" role="presentation" onMouseDown={onCancel}>
+    <div
+      className="modal-backdrop vault-modal-backdrop frontmatter-note-modal-backdrop"
+      role="presentation"
+      onMouseDown={onCancel}
+    >
       <section
         className="modal-card vault-frontmatter-modal frontmatter-note-modal"
         role="dialog"
-        aria-modal="true"
         aria-label="Frontmatter"
+        style={modalStyle}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="modal-card-header">
@@ -3041,7 +3144,7 @@ export function VaultApp() {
   const [findReplaceHighlightRequestId, setFindReplaceHighlightRequestId] = useState(0)
   const [tagAutocompleteRecentKeys, setTagAutocompleteRecentKeys] = useState(loadTagAutocompleteRecentKeys)
   const [aisleEditModalOpen, setAisleEditModalOpen] = useState(false)
-  const [frontmatterModal, setFrontmatterModal] = useState<VaultFrontmatterModalState | null>(null)
+  const [frontmatterModalSessions, setFrontmatterModalSessions] = useState<Record<string, VaultFrontmatterModalState>>({})
   const [frontmatterDraft, setFrontmatterDraft] = useState<AppState['frontmatter']>(() => state.frontmatter)
   const [frontmatterFixedListOptionDrafts, setFrontmatterFixedListOptionDrafts] = useState<Record<string, string>>({})
   const [frontmatterTemplateDeleteTargetId, setFrontmatterTemplateDeleteTargetId] = useState('')
@@ -3064,8 +3167,10 @@ export function VaultApp() {
   const [expandedTrashItemId, setExpandedTrashItemId] = useState('')
   const [runtimeVersion, setRuntimeVersion] = useState('')
   const [zoomHudPercent, setZoomHudPercent] = useState<number | null>(null)
+  const [observedVaultTopbarHeight, setObservedVaultTopbarHeight] = useState(0)
   const [vaultTreeViewport, setVaultTreeViewport] = useState({ scrollTop: 0, height: 0 })
   const aisleScrollRef = useRef<HTMLDivElement | null>(null)
+  const vaultShellRef = useRef<HTMLDivElement | null>(null)
   const vaultTreeScrollRef = useRef<HTMLDivElement | null>(null)
   const workspaceRootRef = useRef<HTMLElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -3075,6 +3180,7 @@ export function VaultApp() {
   const dismissedMentionStartRef = useRef<number | null>(null)
   const activeAisleIdRef = useRef('')
   const activeNoteLocationKeyRef = useRef('')
+  const viewModeRef = useRef<ViewMode>('main')
   const scratchpadActiveRef = useRef(false)
   const activeNoteTreeRevealNoteIdRef = useRef(state.vault.activeNoteId)
   const pendingActiveNoteTreeRevealIdRef = useRef('')
@@ -3147,10 +3253,42 @@ export function VaultApp() {
         : nextViewport,
     )
   }, [])
+  const updateObservedVaultTopbarHeight = useCallback(() => {
+    const shell = vaultShellRef.current
+    const nextHeight = shell ? readObservedVaultTopbarHeight(shell) : 0
+    setObservedVaultTopbarHeight((currentHeight) =>
+      Math.abs(currentHeight - nextHeight) < 0.5 ? currentHeight : nextHeight,
+    )
+  }, [])
 
   useEffect(() => () => {
     cancelScheduledAisleFocusScroll(scheduledAisleFocusScrollRef.current, window)
   }, [])
+
+  useLayoutEffect(() => {
+    updateObservedVaultTopbarHeight()
+    const shell = vaultShellRef.current
+    if (!shell || typeof ResizeObserver === 'undefined') return undefined
+
+    const observedElements = [
+      shell.querySelector<HTMLElement>('.note-aisles-shell > .note-shared-toolbar .app-shared-editor-toolbar'),
+      shell.querySelector<HTMLElement>('.vault-utility-header .vault-utility-tabs'),
+      shell.querySelector<HTMLElement>('.vault-utility-header .vault-settings-action'),
+    ].filter((element): element is HTMLElement => Boolean(element))
+    if (observedElements.length === 0) return undefined
+
+    const observer = new ResizeObserver(updateObservedVaultTopbarHeight)
+    observedElements.forEach((element) => observer.observe(element))
+    return () => observer.disconnect()
+  }, [
+    activeToolbarLayoutId,
+    scratchpadActive,
+    state.ui.toolbarButtonScale,
+    state.ui.toolbarLayouts,
+    state.vault.activeNoteId,
+    updateObservedVaultTopbarHeight,
+    viewMode,
+  ])
 
   useLayoutEffect(() => {
     updateVaultTreeViewport()
@@ -3182,15 +3320,22 @@ export function VaultApp() {
     }
   }, [])
 
-  const loadDiagnosticDays = useCallback(async (preferredDay?: string) => {
-    const days = orderDiagnosticDaysForDisplay(await listDiagnosticLogDays())
-    setDiagnosticDays(days)
+  const applyDiagnosticDays = useCallback((days: string[], preferredDay?: string) => {
+    const orderedDays = orderDiagnosticDaysForDisplay(days)
+    setDiagnosticDays(orderedDays)
+    if (!selectedDiagnosticDayRef.current || !orderedDays.includes(selectedDiagnosticDayRef.current)) {
+      setDiagnosticEntries([])
+    }
     setSelectedDiagnosticDay((currentDay) => {
-      if (preferredDay && days.includes(preferredDay)) return preferredDay
-      if (currentDay && days.includes(currentDay)) return currentDay
-      return days[0] ?? ''
+      if (preferredDay && orderedDays.includes(preferredDay)) return preferredDay
+      if (currentDay && orderedDays.includes(currentDay)) return currentDay
+      return orderedDays[0] ?? ''
     })
   }, [])
+
+  const loadDiagnosticDays = useCallback(async (preferredDay?: string) => {
+    applyDiagnosticDays(await listDiagnosticLogDays(), preferredDay)
+  }, [applyDiagnosticDays])
 
   useEffect(() => {
     void loadDiagnosticDays()
@@ -3243,6 +3388,11 @@ export function VaultApp() {
     editorRef,
     stateRef,
   })
+  const closeToolbarPopoversRef = useRef(toolbarState.closeToolbarPopovers)
+
+  useEffect(() => {
+    closeToolbarPopoversRef.current = toolbarState.closeToolbarPopovers
+  }, [toolbarState.closeToolbarPopovers])
 
   const activeVaultModel = useMemo(
     () => getActiveNoteModel(stateRef.current),
@@ -3258,6 +3408,25 @@ export function VaultApp() {
   )
   const activeModel = scratchpadActive ? scratchpadModel ?? activeVaultModel : activeVaultModel
   const activeModelIsScratchpad = activeModel?.kind === 'scratchpad'
+  const visibleFrontmatterModal =
+    viewMode === 'main' && activeModel && activeModel.kind !== 'scratchpad'
+      ? frontmatterModalSessions[activeModel.noteId] ?? null
+      : null
+  const updateFrontmatterModalSession = useCallback((modal: VaultFrontmatterModalState) => {
+    setFrontmatterModalSessions((currentSessions) => ({
+      ...currentSessions,
+      [modal.location.noteId]: modal,
+    }))
+  }, [])
+  const closeFrontmatterModalSession = useCallback((noteId?: string) => {
+    const targetNoteId = noteId ?? (activeModel && activeModel.kind !== 'scratchpad' ? activeModel.noteId : '')
+    if (!targetNoteId) return
+    setFrontmatterModalSessions((currentSessions) => {
+      if (!currentSessions[targetNoteId]) return currentSessions
+      const { [targetNoteId]: _removedSession, ...nextSessions } = currentSessions
+      return nextSessions
+    })
+  }, [activeModel])
   const noteTabItems = useMemo<NoteTabStripItem[]>(
     () =>
       (state.vault.openTabs ?? []).flatMap((tab): NoteTabStripItem[] => {
@@ -3432,9 +3601,11 @@ export function VaultApp() {
         }),
         '--note-font-scale': String(state.ui.noteFontScale),
         '--toolbar-button-scale': String(state.ui.toolbarButtonScale ?? defaultToolbarButtonScale),
+        '--vault-topbar-observed-height': `${observedVaultTopbarHeight}px`,
       }) as CSSProperties,
     [
       defaultToolbarButtonScale,
+      observedVaultTopbarHeight,
       state.theme,
       state.ui.noteFontScale,
       state.ui.themePalettes,
@@ -3464,6 +3635,7 @@ export function VaultApp() {
 
   activeAisleIdRef.current = renderedActiveAisleId
   activeNoteLocationKeyRef.current = activeNoteLocationKey
+  viewModeRef.current = viewMode
   scratchpadActiveRef.current = scratchpadActive
   isMainViewRef.current = viewMode === 'main'
 
@@ -3679,17 +3851,46 @@ export function VaultApp() {
     frontmatterStateSnapshotRef.current = state.frontmatter
   }, [frontmatterDraft, state.frontmatter])
 
-  const openUtilityView = useCallback((targetViewMode: UtilityViewMode = 'settings') => {
-    setViewMode(targetViewMode)
+  const closeTransientFloatingUi = useCallback(() => {
+    setVaultSwitcherOpen(false)
+    setOpenVaultActionMenuKey('')
+    setAisleContextMenu(null)
+    setEditorContextMenu(null)
+    setTreeContextMenu(null)
+    setShortcutMenu(null)
+    setNoteActionPicker(null)
+    setLinkPrompt(CLOSED_LINK_PROMPT_STATE)
+    closeToolbarPopoversRef.current()
   }, [])
 
+  const openUtilityView = useCallback((targetViewMode: UtilityViewMode = 'settings') => {
+    closeTransientFloatingUi()
+    setAisleEditModalOpen(false)
+    setViewMode(targetViewMode)
+  }, [closeTransientFloatingUi])
+
   const handleSidebarSettingsClick = useCallback(() => {
+    closeTransientFloatingUi()
     if (viewMode === 'settings') {
       setViewMode('main')
       return
     }
     openUtilityView('settings')
-  }, [openUtilityView, viewMode])
+  }, [closeTransientFloatingUi, openUtilityView, viewMode])
+
+  useEffect(() => {
+    setFrontmatterModalSessions((currentSessions) => {
+      const nextEntries = Object.entries(currentSessions).filter(([noteId]) => findVaultNote(state.vault.items, noteId))
+      if (nextEntries.length === Object.keys(currentSessions).length) return currentSessions
+      return Object.fromEntries(nextEntries)
+    })
+  }, [state.vault.items])
+
+  useEffect(() => {
+    setFrontmatterModalSessions({})
+    setAisleEditModalOpen(false)
+    closeTransientFloatingUi()
+  }, [closeTransientFloatingUi, externalStateLoadVersion])
 
   const setSettingsSection = useCallback(
     (section: SettingsSection) => {
@@ -4000,7 +4201,6 @@ export function VaultApp() {
   )
 
   const handleNoteMentionQueryChange = useCallback((mention: NoteMentionQuery | null, anchor: VaultNoteActionPickerAnchor | null) => {
-    void anchor
     setNoteActionPicker((current) => {
       if (!mention) {
         dismissedMentionStartRef.current = null
@@ -4015,11 +4215,11 @@ export function VaultApp() {
         title: 'Select note',
         query: mention.query,
         mentionRange: mention,
-        anchor: null,
+        anchor: getAisleCenteredNoteActionPickerAnchor(workspaceRootRef.current, renderedActiveAisleId, anchor),
         actions: ['note-link', 'note-preview', 'independent-copy', 'synced-copy'],
       }
     })
-  }, [])
+  }, [renderedActiveAisleId])
 
   const openNoteReferenceFromEditor = useCallback(
     (target: NoteLocation) => {
@@ -4283,6 +4483,42 @@ export function VaultApp() {
       })
       .catch(() => pushAppToast('Could not open diagnostics folder.', 'error'))
   }, [pushAppToast])
+
+  const deleteTodayDiagnosticLogs = useCallback(() => {
+    const todayKey = getDiagnosticDayKey()
+    if (!diagnosticDays.includes(todayKey)) {
+      pushAppToast('No diagnostics for today.')
+      return
+    }
+    void deleteDiagnosticLogDay(todayKey)
+      .then((result) => {
+        applyDiagnosticDays(result.days)
+        if (result.ok) {
+          pushAppToast("Deleted today's diagnostics.", 'success')
+          return
+        }
+        pushAppToast(result.error || "Could not delete today's diagnostics.", 'error')
+      })
+      .catch(() => pushAppToast("Could not delete today's diagnostics.", 'error'))
+  }, [applyDiagnosticDays, diagnosticDays, pushAppToast])
+
+  const deleteAllDiagnosticLogs = useCallback(() => {
+    if (diagnosticDays.length === 0) {
+      pushAppToast('No diagnostic logs to delete.')
+      return
+    }
+    void deleteAllStoredDiagnosticLogs()
+      .then((result) => {
+        applyDiagnosticDays(result.days)
+        if (result.ok) {
+          setDiagnosticEntries([])
+          pushAppToast('Deleted all diagnostic logs.', 'success')
+          return
+        }
+        pushAppToast(result.error || 'Could not delete diagnostic logs.', 'error')
+      })
+      .catch(() => pushAppToast('Could not delete diagnostic logs.', 'error'))
+  }, [applyDiagnosticDays, diagnosticDays.length, pushAppToast])
 
   const activateEditorFromAssetTarget = useCallback(
     (target: EventTarget | null) => {
@@ -5914,14 +6150,21 @@ export function VaultApp() {
   }, [])
 
   const toggleNotesScratchpadFromShortcut = useCallback(() => {
+    const currentScratchpadActive = scratchpadActiveRef.current
+    const nextToggleState = getNextNotesScratchpadToggleState({
+      viewMode: viewModeRef.current,
+      scratchpadActive: currentScratchpadActive,
+    })
+    viewModeRef.current = nextToggleState.viewMode
+    scratchpadActiveRef.current = nextToggleState.scratchpadActive
     pendingFindReplaceRevealRef.current = null
     setFindReplaceOpen(false)
     clearVaultNavigationTransientUi()
     closeSidebarSearchMode()
-    setViewMode('main')
+    setViewMode(nextToggleState.viewMode)
 
-    if (scratchpadActiveRef.current) {
-      setScratchpadActive(false)
+    if (!nextToggleState.scratchpadActive) {
+      if (currentScratchpadActive) setScratchpadActive(false)
       return
     }
 
@@ -5939,7 +6182,7 @@ export function VaultApp() {
     scheduleAisleFocusScroll(activeScratchpad.noteBody.id, targetAisleId)
   }, [clearVaultNavigationTransientUi, closeSidebarSearchMode, scheduleAisleFocusScroll, stateRef])
 
-  const focusNotesFilterFromShortcut = useCallback(() => {
+  const focusNotesFilter = useCallback(() => {
     vaultEditors.flushPendingEditorAppStateCommit()
     pendingFindReplaceRevealRef.current = null
     setFindReplaceOpen(false)
@@ -5970,8 +6213,8 @@ export function VaultApp() {
       closeSidebarSearchMode()
       return
     }
-    focusNotesFilterFromShortcut()
-  }, [closeSidebarSearchMode, focusNotesFilterFromShortcut, sidebarSearchVisible])
+    focusNotesFilter()
+  }, [closeSidebarSearchMode, focusNotesFilter, sidebarSearchVisible])
 
   const toggleFolder = useCallback(
     (folderId: string) => {
@@ -6095,7 +6338,6 @@ export function VaultApp() {
       reopenClosedNoteTab,
       toggleNotesTrash: toggleNotesTrashFromShortcut,
       toggleNotesScratchpad: toggleNotesScratchpadFromShortcut,
-      toggleNotesFilter: focusNotesFilterFromShortcut,
       cycleAislePrev: () => cycleActiveAisle(-1),
       cycleAisleNext: () => cycleActiveAisle(1),
       formatStrikethrough: () => {
@@ -6552,14 +6794,14 @@ export function VaultApp() {
         window.alert(modal)
         return
       }
-      setFrontmatterModal(modal)
+      if (modal) updateFrontmatterModalSession(modal)
     },
-    [activeModel, buildFrontmatterModalForAisle, renderedActiveAisleId, state],
+    [activeModel, buildFrontmatterModalForAisle, renderedActiveAisleId, state, updateFrontmatterModalSession],
   )
 
   const selectFrontmatterAisle = useCallback(
     (modal: VaultFrontmatterModalState, aisleId: string): VaultFrontmatterModalState | string | null => {
-      if (!activeModel || activeModel.kind === 'scratchpad') return null
+      if (!activeModel || activeModel.kind === 'scratchpad' || activeModel.noteId !== modal.location.noteId) return null
       return buildFrontmatterModalForAisle(state, activeModel, aisleId) ?? modal
     },
     [activeModel, buildFrontmatterModalForAisle, state],
@@ -6623,17 +6865,17 @@ export function VaultApp() {
       }))
       setSettingsSection('frontmatter')
       openUtilityView('settings')
-      setFrontmatterModal(null)
+      closeFrontmatterModalSession()
     },
-    [openUtilityView, setSettingsSection],
+    [closeFrontmatterModalSession, openUtilityView, setSettingsSection],
   )
 
   const filterFrontmatterTemplateFromModal = useCallback(
     (modal: VaultFrontmatterModalState) => {
-      setFrontmatterModal(null)
+      closeFrontmatterModalSession(modal.location.noteId)
       filterAisleFrontmatterTemplate(modal.aisleId)
     },
-    [filterAisleFrontmatterTemplate],
+    [closeFrontmatterModalSession, filterAisleFrontmatterTemplate],
   )
 
   const copyFrontmatterFromModal = useCallback(
@@ -6646,7 +6888,7 @@ export function VaultApp() {
         if (computedRepair.warnings.length > 0) {
           resultStatus = 'computed-repair-warning'
           warningCount = computedRepair.warnings.length
-          setFrontmatterModal({
+          updateFrontmatterModalSession({
             ...modal,
             rows: computedRepair.rows,
           })
@@ -6699,7 +6941,7 @@ export function VaultApp() {
         )
       }
     },
-    [stateRef],
+    [stateRef, updateFrontmatterModalSession],
   )
 
   const saveFrontmatter = useCallback(
@@ -6712,7 +6954,7 @@ export function VaultApp() {
         if (computedRepair.warnings.length > 0) {
           resultStatus = 'computed-repair-warning'
           warningCount = computedRepair.warnings.length
-          setFrontmatterModal({
+          updateFrontmatterModalSession({
             ...modal,
             rows: computedRepair.rows,
           })
@@ -6741,7 +6983,7 @@ export function VaultApp() {
             computedFields: result.computedFields,
           }),
         )
-        setFrontmatterModal(null)
+        closeFrontmatterModalSession(modal.location.noteId)
         return null
       } finally {
         recordVaultFrontmatterTiming(
@@ -6761,7 +7003,7 @@ export function VaultApp() {
         )
       }
     },
-    [mutateState, stateRef],
+    [closeFrontmatterModalSession, mutateState, stateRef, updateFrontmatterModalSession],
   )
 
   const openTableOfContents = useCallback((options: { scope?: TableOfContentsScope; focusedAisleId?: string } = {}) => {
@@ -6984,25 +7226,17 @@ export function VaultApp() {
         target?.closest('.note-toolbar-copy-popover') ||
         target?.closest('.note-toolbar-heading-popover') ||
         target?.closest('.note-shared-toolbar') ||
-        target?.closest('.vault-sidebar-switcher')
+        target?.closest('.vault-sidebar-switcher') ||
+        target?.closest('.vault-manager-menu') ||
+        target?.closest('.vault-manager-kebab')
       ) {
         return
       }
-      setVaultSwitcherOpen(false)
-      setAisleContextMenu(null)
-      setEditorContextMenu(null)
-      setTreeContextMenu(null)
-      setShortcutMenu(null)
-      toolbarState.closeToolbarPopovers()
+      closeTransientFloatingUi()
     }
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
-      setAisleContextMenu(null)
-      setEditorContextMenu(null)
-      setTreeContextMenu(null)
-      setShortcutMenu(null)
-      setVaultSwitcherOpen(false)
-      toolbarState.closeToolbarPopovers()
+      closeTransientFloatingUi()
     }
     document.addEventListener('pointerdown', closeFloatingUi)
     document.addEventListener('keydown', closeOnEscape)
@@ -7010,15 +7244,12 @@ export function VaultApp() {
       document.removeEventListener('pointerdown', closeFloatingUi)
       document.removeEventListener('keydown', closeOnEscape)
     }
-  }, [toolbarState])
+  }, [closeTransientFloatingUi])
 
   useEffect(() => {
-    setAisleContextMenu(null)
-    setEditorContextMenu(null)
-    setTreeContextMenu(null)
-    setShortcutMenu(null)
-    setVaultSwitcherOpen(false)
-  }, [activeModel?.noteId, viewMode])
+    closeTransientFloatingUi()
+    setAisleEditModalOpen(false)
+  }, [activeModel?.noteId, closeTransientFloatingUi, viewMode])
 
   const runEditorContextClipboardAction = useCallback(
     (
@@ -7164,10 +7395,16 @@ export function VaultApp() {
       activeHeadingLevel={toolbarState.activeHeadingLevel}
       toolbarShortcutFeedback={toolbarState.toolbarShortcutFeedback}
       onOpenCopy={openCopyMenu}
-      onOpenFrontmatter={() => openFrontmatterModalForAisle()}
+      onOpenFrontmatter={() => {
+        closeTransientFloatingUi()
+        openFrontmatterModalForAisle()
+      }}
       onOpenTableOfContents={openTableOfContents}
-      onOpenAisleEditModal={() => setAisleEditModalOpen(true)}
-      onOpenFindReplace={focusNotesFilterFromShortcut}
+      onOpenAisleEditModal={() => {
+        closeTransientFloatingUi()
+        setAisleEditModalOpen(true)
+      }}
+      onOpenFindReplace={focusNotesFilter}
       onToggleHeading={openHeadingMenu}
       onCommand={vaultEditors.runCommand}
       onHistory={(direction) => vaultEditors.runCommand(direction)}
@@ -7209,6 +7446,36 @@ export function VaultApp() {
         toolbarState.setCopyMenuOpen(false)
       }}
     />
+  ) : null
+
+  const noteWorkspaceOverlay = activeModel ? (
+    <>
+      <VaultFrontmatterModal
+        modal={visibleFrontmatterModal}
+        modalStyle={visibleFrontmatterModal ? getFrontmatterNoteModalStyle(workspaceRootRef.current, visibleFrontmatterModal.aisleId) : undefined}
+        templates={state.frontmatter.templates}
+        onCancel={() => closeFrontmatterModalSession()}
+        onChange={updateFrontmatterModalSession}
+        onSave={saveFrontmatter}
+        onSelectAisle={selectFrontmatterAisle}
+        onSelectTemplate={selectFrontmatterTemplate}
+        onToggleTemplateDerived={toggleFrontmatterTemplateDerived}
+        onEditTemplate={editFrontmatterTemplateFromModal}
+        onFilterTemplate={filterFrontmatterTemplateFromModal}
+        onCopyFrontmatter={copyFrontmatterFromModal}
+      />
+      <AisleEditModal
+        open={aisleEditModalOpen}
+        aisles={activeModel.resolved.aisles}
+        linkedAisleIds={linkedAisleIds}
+        frontmatterAisleIds={frontmatterAisleIds}
+        maxAisles={MAX_NOTE_AISLES}
+        maxAislesWarningMessage={MAX_AISLE_WARNING_MESSAGE}
+        onCancel={() => setAisleEditModalOpen(false)}
+        onApply={applyAisleEditDraftToActiveNote}
+        onWarn={(message) => window.alert(message)}
+      />
+    </>
   ) : null
 
   const getVaultSelector = useCallback((vault: KnownVault) => ({
@@ -8528,6 +8795,9 @@ export function VaultApp() {
             ? openDiagnosticsFolder
             : undefined
         }
+        onDeleteTodayDiagnosticLogs={deleteTodayDiagnosticLogs}
+        onDeleteAllDiagnosticLogs={deleteAllDiagnosticLogs}
+        canDeleteTodayDiagnosticLogs={diagnosticDays.includes(getDiagnosticDayKey())}
         onDismissMessage={(messageId) =>
           mutateState((previous) => ({
             ...previous,
@@ -8675,8 +8945,17 @@ export function VaultApp() {
     </main>
   )
 
+  const scratchpadToggleLabel = viewMode === 'settings'
+    ? scratchpadActive
+      ? 'Return to scratchpad'
+      : 'Return to notes'
+    : scratchpadActive
+      ? 'Return to notes'
+      : 'Show scratchpad'
+
   return (
     <div
+      ref={vaultShellRef}
       className={`app-shell vault-shell ${getThemeClassName(state.theme)}`}
       data-theme={state.theme}
       style={rootStyle}
@@ -8730,8 +9009,8 @@ export function VaultApp() {
               scratchpadActive ? 'is-active' : ''
             }`}
             onClick={toggleNotesScratchpadFromShortcut}
-            aria-label={scratchpadActive ? 'Return to notes' : 'Show scratchpad'}
-            title={scratchpadActive ? 'Return to notes' : 'Show scratchpad'}
+            aria-label={scratchpadToggleLabel}
+            title={scratchpadToggleLabel}
             aria-pressed={scratchpadActive}
           >
             <span className="vault-sidebar-scratchpad-icon" aria-hidden="true" />
@@ -8914,6 +9193,7 @@ export function VaultApp() {
                 imageToolsOverlay={imageToolsOverlay}
                 tableControlsOverlay={tableControlsOverlay}
                 listReorderControlsOverlay={listReorderControlsOverlay}
+                noteContentOverlay={noteWorkspaceOverlay}
                 tableOfContentsHeadingsByAisle={
                   tableOfContentsPanels?.noteBodyId === activeModel.noteBody.id
                     ? tableOfContentsPanels.headingsByAisle
@@ -9183,30 +9463,6 @@ export function VaultApp() {
         onReveal={revealTreeContextItem}
         onRename={renameTreeContextItem}
         onDelete={deleteTreeContextItem}
-      />
-      <VaultFrontmatterModal
-        modal={frontmatterModal}
-        templates={state.frontmatter.templates}
-        onCancel={() => setFrontmatterModal(null)}
-        onChange={setFrontmatterModal}
-        onSave={saveFrontmatter}
-        onSelectAisle={selectFrontmatterAisle}
-        onSelectTemplate={selectFrontmatterTemplate}
-        onToggleTemplateDerived={toggleFrontmatterTemplateDerived}
-        onEditTemplate={editFrontmatterTemplateFromModal}
-        onFilterTemplate={filterFrontmatterTemplateFromModal}
-        onCopyFrontmatter={copyFrontmatterFromModal}
-      />
-      <AisleEditModal
-        open={aisleEditModalOpen && Boolean(activeModel)}
-        aisles={activeModel?.resolved.aisles ?? []}
-        linkedAisleIds={linkedAisleIds}
-        frontmatterAisleIds={frontmatterAisleIds}
-        maxAisles={MAX_NOTE_AISLES}
-        maxAislesWarningMessage={MAX_AISLE_WARNING_MESSAGE}
-        onCancel={() => setAisleEditModalOpen(false)}
-        onApply={applyAisleEditDraftToActiveNote}
-        onWarn={(message) => window.alert(message)}
       />
       <ToastHost
         toasts={appNotifications.toasts}

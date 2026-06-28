@@ -27,7 +27,7 @@ const entries: NoteSearchEntry[] = [
     noteBodyId: 'body-2',
     parentFolderId: 'folder-1',
     folderName: 'Work',
-    folderPath: 'Work',
+    folderPath: 'Works in Progress/Arrange These',
     noteName: 'Specs',
     label: 'Work > Specs',
     searchText: 'work specs',
@@ -53,10 +53,14 @@ describe('VaultNoteActionPicker', () => {
 
     expect(html).toContain('Alpha')
     expect(html).toContain('Specs')
-    expect(html).toContain('note link')
-    expect(html).toContain('note preview')
+    expect(html).toContain('link')
+    expect(html).toContain('preview')
     expect(html).toContain('independent copy')
     expect(html).toContain('synced copy')
+    expect(html).toContain('vault-note-action-selected-note')
+    expect(html).toContain('vault-note-action-selected-path')
+    expect(html).toContain('Works in Progress/Arrange These')
+    expect(html).not.toContain('Works in Progress &gt; Arrange These')
     expect(html).toContain('Current note search')
     expect(html).toContain('@spe')
     expect(html).not.toContain('<h2>')
@@ -87,8 +91,8 @@ describe('VaultNoteActionPicker', () => {
     )
 
     expect(html).toContain('url link')
-    expect(html).toContain('note link')
-    expect(html).toContain('note preview')
+    expect(html).toContain('link')
+    expect(html).toContain('preview')
   })
 
   it('uses the selected note action list when rendering choices', () => {
@@ -108,8 +112,8 @@ describe('VaultNoteActionPicker', () => {
       />,
     )
 
-    expect(html).toContain('note link')
-    expect(html).not.toContain('note preview')
+    expect(html).toContain('link')
+    expect(html).not.toContain('preview')
     expect(html).not.toContain('independent copy')
     expect(html).not.toContain('synced copy')
   })

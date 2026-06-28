@@ -23,6 +23,17 @@ export function normalizeVisualClipboardText(value: string): string {
   return normalizeClipboardLineEndings(value)
 }
 
+export function isLayoutSensitiveClipboardText(value: string | null | undefined): boolean {
+  const normalized = normalizeVisualClipboardText(value ?? '')
+  if (!normalized) return false
+  return (
+    normalized.includes('\n') ||
+    normalized.includes('\t') ||
+    /(^|\n)[ \t]+/.test(normalized) ||
+    / {2,}/.test(normalized)
+  )
+}
+
 function getNodeTypeName(node: ProseMirrorNode | null | undefined): string {
   return String(node?.type?.name ?? '')
 }
@@ -570,9 +581,10 @@ export function insertClipboardDataIntoView(view: any | null, dataTransfer: Data
   if (tablePayload && insertTableSelectionClipboardPayloadIntoView(view, tablePayload)) return true
   const tabsMarkdown = readAisleNoteMarkdownFromDataTransfer(dataTransfer)
   if (tabsMarkdown) return insertVisualClipboardMarkdownIntoView(view, tabsMarkdown)
+  const text = dataTransfer?.getData('text/plain') ?? ''
+  if (isLayoutSensitiveClipboardText(text) && insertVisualClipboardTextIntoView(view, text)) return true
   const html = dataTransfer?.getData('text/html') ?? ''
   if (html && insertClipboardHtmlIntoView(view, html)) return true
-  const text = dataTransfer?.getData('text/plain') ?? ''
   return text ? insertVisualClipboardTextIntoView(view, text) : false
 }
 

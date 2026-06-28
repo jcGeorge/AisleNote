@@ -749,6 +749,8 @@
 }
 
 .settings-switch .form-check-input {
+  --settings-switch-thumb-image: radial-gradient(circle, var(--settings-switch-thumb-bg) 0 52%, transparent 54%);
+  --bs-form-switch-bg: var(--settings-switch-thumb-image);
   width: 2.35rem;
   min-width: 2.35rem;
   height: 1.22rem;
@@ -757,7 +759,7 @@
   float: none !important;
   cursor: pointer;
   background-color: var(--settings-switch-bg);
-  background-image: radial-gradient(circle, var(--settings-switch-thumb-bg) 0 52%, transparent 54%);
+  background-image: var(--settings-switch-thumb-image);
   background-position: left center;
   background-repeat: no-repeat;
   background-size: 1.05rem 1.05rem;
@@ -765,16 +767,30 @@
   border-radius: 999px;
 }
 
+.settings-switch.form-switch .form-check-input,
+.settings-switch.form-switch .form-check-input:not(:checked):not(:focus) {
+  --bs-form-switch-bg: var(--settings-switch-thumb-image) !important;
+  background-image: var(--settings-switch-thumb-image) !important;
+}
+
 .settings-switch .form-check-input:focus {
+  --bs-form-switch-bg: var(--settings-switch-thumb-image);
   border-color: var(--settings-switch-focus-border);
   box-shadow: var(--settings-switch-focus-shadow);
 }
 
 .settings-switch .form-check-input:checked {
+  --settings-switch-thumb-image: radial-gradient(circle, var(--settings-switch-checked-thumb-bg) 0 52%, transparent 54%);
+  --bs-form-switch-bg: var(--settings-switch-thumb-image);
   background-color: var(--settings-switch-checked-bg);
-  background-image: radial-gradient(circle, var(--settings-switch-thumb-bg) 0 52%, transparent 54%);
+  background-image: var(--settings-switch-thumb-image);
   background-position: right center;
   border-color: var(--settings-switch-checked-border);
+}
+
+.settings-switch.form-switch .form-check-input:checked {
+  --bs-form-switch-bg: var(--settings-switch-thumb-image) !important;
+  background-image: var(--settings-switch-thumb-image) !important;
 }
 
 .settings-switch .form-check-input:checked:focus {

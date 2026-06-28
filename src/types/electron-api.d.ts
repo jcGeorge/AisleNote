@@ -311,6 +311,17 @@ type DiagnosticLogEntriesResult =
       entries: DiagnosticLogEntry[]
     }
 
+type DiagnosticLogDeleteResult =
+  | {
+      ok: true
+      days: string[]
+    }
+  | {
+      ok: false
+      error: string
+      days: string[]
+    }
+
 type OpenDiagnosticsFolderResult =
   | {
       ok: true
@@ -450,6 +461,8 @@ declare global {
       appendDiagnosticLogEntry?: (payload: DiagnosticLogEntry) => Promise<DiagnosticLogWriteResult>
       listDiagnosticLogDays?: () => Promise<DiagnosticLogDaysResult>
       readDiagnosticLogEntries?: (payload: { dayKey: string }) => Promise<DiagnosticLogEntriesResult>
+      deleteDiagnosticLogDay?: (payload: { dayKey: string }) => Promise<DiagnosticLogDeleteResult>
+      deleteAllDiagnosticLogs?: () => Promise<DiagnosticLogDeleteResult>
       openDiagnosticsFolder?: () => Promise<OpenDiagnosticsFolderResult>
     }
     __aislenoteGetLatestAppState?: () => string
