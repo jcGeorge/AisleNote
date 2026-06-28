@@ -144,6 +144,7 @@ export function createDefaultAppState(options = {}) {
       aisleWidths: {},
       toolbarLayouts: [],
       toolbarEditorShowNames: false,
+      noteDropAutoExpandsFolders: false,
       seenTipIds: [],
       disabledTipIds: [],
     },

@@ -258,9 +258,9 @@ export function VaultEditorContextMenu({
     label: string,
   ) => (
     <SubMenu label={label} onClick={() => runClipboard(action, 'here')}>
-      <MenuButton onClick={() => runClipboard(action, 'here')}>here</MenuButton>
-      <MenuButton onClick={() => runClipboard(action, 'new-aisle-left')}>new aisle on left</MenuButton>
-      <MenuButton onClick={() => runClipboard(action, 'new-aisle-right')}>new aisle on right</MenuButton>
+      <MenuButton onClick={() => runClipboard(action, 'here')}>Here</MenuButton>
+      <MenuButton onClick={() => runClipboard(action, 'new-aisle-left')}>New aisle on left</MenuButton>
+      <MenuButton onClick={() => runClipboard(action, 'new-aisle-right')}>New aisle on right</MenuButton>
     </SubMenu>
   )
 
@@ -275,77 +275,77 @@ export function VaultEditorContextMenu({
     >
       {menu.linkPrompt ? (
         <>
-          <MenuButton onClick={runEditLink}>edit link</MenuButton>
+          <MenuButton onClick={runEditLink}>Edit link</MenuButton>
           <MenuSeparator />
         </>
       ) : null}
-      <MenuButton onClick={() => runClipboard('cut')}>cut</MenuButton>
-      <MenuButton onClick={() => runClipboard('copy')}>copy</MenuButton>
-      {renderPasteSubmenu('paste', 'paste')}
-      {renderPasteSubmenu('pastePlainText', 'paste as plain text')}
-      <SubMenu label="copy note as">
-        <MenuButton onClick={() => runCopyAs('note', 'independent')}>independent copy</MenuButton>
-        <MenuButton onClick={() => runCopyAs('note', 'synced')}>synced copy</MenuButton>
+      <MenuButton onClick={() => runClipboard('cut')}>Cut</MenuButton>
+      <MenuButton onClick={() => runClipboard('copy')}>Copy</MenuButton>
+      {renderPasteSubmenu('paste', 'Paste')}
+      {renderPasteSubmenu('pastePlainText', 'Paste as plain text')}
+      <SubMenu label="Copy note as">
+        <MenuButton onClick={() => runCopyAs('note', 'independent')}>Independent copy</MenuButton>
+        <MenuButton onClick={() => runCopyAs('note', 'synced')}>Synced copy</MenuButton>
       </SubMenu>
-      <SubMenu label="copy aisle as">
-        <MenuButton onClick={() => runCopyAs('aisle', 'independent')}>independent copy</MenuButton>
-        <MenuButton onClick={() => runCopyAs('aisle', 'synced')}>synced copy</MenuButton>
+      <SubMenu label="Copy aisle as">
+        <MenuButton onClick={() => runCopyAs('aisle', 'independent')}>Independent copy</MenuButton>
+        <MenuButton onClick={() => runCopyAs('aisle', 'synced')}>Synced copy</MenuButton>
       </SubMenu>
       <MenuSeparator />
-      <MenuButton onClick={() => runAction(onCreateSyncedCopy)}>make this a copy of</MenuButton>
+      <MenuButton onClick={() => runAction(onCreateSyncedCopy)}>Make this a copy of</MenuButton>
       {canDecoupleAisle && (
         <>
-          <MenuButton onClick={() => runAisleAction(onFilterSyncedAisle)}>filter synced aisle</MenuButton>
-          <MenuButton onClick={() => runAisleAction(onDecoupleAisle)}>decouple aisle</MenuButton>
-          <MenuButton onClick={() => runAisleAction(onShowSyncedAisle)}>show synced aisles</MenuButton>
+          <MenuButton onClick={() => runAisleAction(onFilterSyncedAisle)}>Filter synced aisle</MenuButton>
+          <MenuButton onClick={() => runAisleAction(onDecoupleAisle)}>Decouple aisle</MenuButton>
+          <MenuButton onClick={() => runAisleAction(onShowSyncedAisle)}>Show synced aisles</MenuButton>
         </>
       )}
       <MenuSeparator />
-      <SubMenu label="format">
-        <MenuButton onClick={() => runCommand('bold')}>bold</MenuButton>
-        <MenuButton onClick={() => runCommand('italic')}>italic</MenuButton>
-        <MenuButton onClick={() => runCommand('strike')}>strikethrough</MenuButton>
-        <MenuButton onClick={() => runCommand('highlight')}>highlight</MenuButton>
-        <MenuButton onClick={() => runCommand('code')}>inline code</MenuButton>
+      <SubMenu label="Format">
+        <MenuButton onClick={() => runCommand('bold')}>Bold</MenuButton>
+        <MenuButton onClick={() => runCommand('italic')}>Italic</MenuButton>
+        <MenuButton onClick={() => runCommand('strike')}>Strikethrough</MenuButton>
+        <MenuButton onClick={() => runCommand('highlight')}>Highlight</MenuButton>
+        <MenuButton onClick={() => runCommand('code')}>Inline code</MenuButton>
       </SubMenu>
-      <SubMenu label="paragraph">
-        <MenuButton onClick={() => runCommand('bulletList')}>bullet list</MenuButton>
-        <MenuButton onClick={() => runCommand('dashList')}>dash list</MenuButton>
-        <MenuButton onClick={() => runCommand('orderedList')}>numbered list</MenuButton>
-        <MenuButton onClick={() => runCommand('taskList')}>task list</MenuButton>
+      <SubMenu label="Paragraph">
+        <MenuButton onClick={() => runCommand('bulletList')}>Bullet list</MenuButton>
+        <MenuButton onClick={() => runCommand('dashList')}>Dash list</MenuButton>
+        <MenuButton onClick={() => runCommand('orderedList')}>Numbered list</MenuButton>
+        <MenuButton onClick={() => runCommand('taskList')}>Task list</MenuButton>
         <MenuSeparator />
         {[1, 2, 3, 4, 5, 6].map((level) => (
           <MenuButton key={level} onClick={() => runCommand('heading', { level })}>
-            heading {level}
+            Heading {level}
           </MenuButton>
         ))}
-        <MenuButton onClick={() => runCommand('heading', { level: 0 })}>paragraph</MenuButton>
+        <MenuButton onClick={() => runCommand('heading', { level: 0 })}>Paragraph</MenuButton>
         <MenuSeparator />
-        <MenuButton onClick={() => runCommand('blockQuote')}>quote block</MenuButton>
-        <MenuButton onClick={() => runCommand('blockIndent')}>block indent</MenuButton>
-        <MenuButton onClick={() => runCommand('removeBlockIndent')}>remove block indent</MenuButton>
+        <MenuButton onClick={() => runCommand('blockQuote')}>Quote block</MenuButton>
+        <MenuButton onClick={() => runCommand('blockIndent')}>Block indent</MenuButton>
+        <MenuButton onClick={() => runCommand('removeBlockIndent')}>Remove block indent</MenuButton>
       </SubMenu>
-      <SubMenu label="insert">
-        <MenuButton onClick={() => runAction(onInsertUrlLink)}>url link</MenuButton>
-        <MenuButton onClick={() => runAction(onInsertNoteLink)}>note link</MenuButton>
-        <MenuButton onClick={() => runAction(onInsertNotePreview)}>note preview</MenuButton>
+      <SubMenu label="Insert">
+        <MenuButton onClick={() => runAction(onInsertUrlLink)}>URL link</MenuButton>
+        <MenuButton onClick={() => runAction(onInsertNoteLink)}>Note link</MenuButton>
+        <MenuButton onClick={() => runAction(onInsertNotePreview)}>Note preview</MenuButton>
         <MenuSeparator />
-        <SubMenu label="aisle" onClick={() => runInsertAisle('right')}>
-          <MenuButton onClick={() => runInsertAisle('left')}>to the left</MenuButton>
-          <MenuButton onClick={() => runInsertAisle('right')}>to the right</MenuButton>
+        <SubMenu label="Aisle" onClick={() => runInsertAisle('right')}>
+          <MenuButton onClick={() => runInsertAisle('left')}>To the left</MenuButton>
+          <MenuButton onClick={() => runInsertAisle('right')}>To the right</MenuButton>
         </SubMenu>
         <MenuSeparator />
-        <MenuButton onClick={() => runAction(onInsertAttachment)}>attachment</MenuButton>
-        <MenuButton onClick={() => runCommand('addTable', { rowCount: 2, columnCount: 2 })}>table</MenuButton>
-        <MenuButton onClick={() => runCommand('hr')}>horizontal rule</MenuButton>
+        <MenuButton onClick={() => runAction(onInsertAttachment)}>Attachment</MenuButton>
+        <MenuButton onClick={() => runCommand('addTable', { rowCount: 2, columnCount: 2 })}>Table</MenuButton>
+        <MenuButton onClick={() => runCommand('hr')}>Horizontal rule</MenuButton>
         <MenuSeparator />
-        <MenuButton onClick={() => runCommand('codeBlock')}>code block</MenuButton>
+        <MenuButton onClick={() => runCommand('codeBlock')}>Code block</MenuButton>
       </SubMenu>
       <MenuSeparator />
-      <MenuButton onClick={() => runAisleAction(onPrintAisle)}>print aisle</MenuButton>
-      <SubMenu label="export to PDF">
-        <MenuButton onClick={() => runPdfExport('aisle')}>export aisle</MenuButton>
-        <MenuButton onClick={() => runPdfExport('note')}>export note</MenuButton>
+      <MenuButton onClick={() => runAisleAction(onPrintAisle)}>Print aisle</MenuButton>
+      <SubMenu label="Export to PDF">
+        <MenuButton onClick={() => runPdfExport('aisle')}>Export aisle</MenuButton>
+        <MenuButton onClick={() => runPdfExport('note')}>Export note</MenuButton>
       </SubMenu>
       <button
         type="button"

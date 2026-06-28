@@ -311,6 +311,7 @@ describe('schema 2 app-state storage', () => {
       ...appSettingsState.ui,
       settingsSection: 'visuals',
       selectedCustomTheme: 'custom2',
+      noteDropAutoExpandsFolders: true,
       toolbarLayouts: [{ id: 'main', name: 'Main', items: [] }],
     }
 
@@ -332,6 +333,7 @@ describe('schema 2 app-state storage', () => {
     expect(loadedA.hotkeys.shortcuts.openSettings).toBe('Ctrl+,')
     expect(loadedA.ui.settingsSection).toBe('visuals')
     expect(loadedA.ui.selectedCustomTheme).toBe('custom2')
+    expect(loadedA.ui.noteDropAutoExpandsFolders).toBe(true)
     expect(loadedA.ui.toolbarLayouts).toEqual([{ id: 'main', name: 'Main', items: [] }])
     expect(loadedA.ui.sidebarWidth).toBe(333)
     expect(loadedB.ui.sidebarWidth).toBe(444)
@@ -354,6 +356,7 @@ describe('schema 2 app-state storage', () => {
       collapsedFolderIds: ['folder-projects'],
       settingsSection: 'visuals',
       selectedCustomTheme: 'custom2',
+      noteDropAutoExpandsFolders: true,
       toolbarLayouts: [{ id: 'main', name: 'Main', items: [] }],
       noteCursorLocations: {
         'note-root': {
@@ -392,6 +395,7 @@ describe('schema 2 app-state storage', () => {
     expect(editorState).not.toHaveProperty('hotkeys')
     expect(editorState.ui).not.toHaveProperty('settingsSection')
     expect(editorState.ui).not.toHaveProperty('selectedCustomTheme')
+    expect(editorState.ui).not.toHaveProperty('noteDropAutoExpandsFolders')
     expect(editorState.ui).not.toHaveProperty('toolbarLayouts')
     expect(editorState.scratchpad).toEqual(state.scratchpad)
     expect(editorState.ui.sidebarCollapsed).toBe(true)
@@ -405,6 +409,7 @@ describe('schema 2 app-state storage', () => {
     expect(appSettings.theme).toBe('custom1')
     expect(appSettings.hotkeys.shortcuts.openSettings).toBe('Ctrl+,')
     expect(appSettings.ui.settingsSection).toBe('visuals')
+    expect(appSettings.ui.noteDropAutoExpandsFolders).toBe(true)
     expect(appSettings.ui.toolbarLayouts).toEqual([{ id: 'main', name: 'Main', items: [] }])
   })
 

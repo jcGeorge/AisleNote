@@ -1125,6 +1125,20 @@ function getVisibleVaultTreeNoteIds(items: VaultTreeItem[], collapsedFolderIds: 
   return noteIds
 }
 
+function vaultTreeItemContainsNoteId(item: VaultTreeItem, noteId: string): boolean {
+  if (!noteId) return false
+  if (item.type === 'note') return item.id === noteId
+  return item.children.some((child) => vaultTreeItemContainsNoteId(child, noteId))
+}
+
+function deletedVaultItemsContainNoteId(items: VaultTreeItem[], itemIds: string[], noteId: string): boolean {
+  if (!noteId) return false
+  return itemIds.some((itemId) => {
+    const entry = findVaultItem(items, itemId)
+    return entry ? vaultTreeItemContainsNoteId(entry.item, noteId) : false
+  })
+}
+
 function flattenVisibleVaultTreeRows(
   items: VaultTreeItem[],
   collapsedFolderIds: Set<string>,
@@ -1333,6 +1347,7 @@ function TreeItemRow({
   parentFolderId,
   index,
   activeFolderId,
+  activeNoteId,
   renamingItemId,
   renameDraft,
   draggingItemId,
@@ -1362,6 +1377,7 @@ function TreeItemRow({
   parentFolderId: string | null
   index: number
   activeFolderId: string
+  activeNoteId: string
   renamingItemId: string
   renameDraft: string
   draggingItemId: string
@@ -1390,7 +1406,8 @@ function TreeItemRow({
   const collapsed = isFolder && collapsedFolderIds.has(item.id)
   const children = isFolder ? item.children : []
   const folderIconId = isFolder && !collapsed && children.length > 0 ? 'folderOpen' : 'folder'
-  const active = item.type === 'folder' && item.id === activeFolderId
+  const activeNote = item.type === 'note' && item.id === activeNoteId
+  const active = (item.type === 'folder' && item.id === activeFolderId) || activeNote
   const selected = item.type === 'note' && selectedNoteIds.has(item.id)
   const renaming = item.id === renamingItemId
   const tabCreatesNext = item.id === createdRenameItemId
@@ -1620,6 +1637,7 @@ function TreeItemRow({
               parentFolderId={item.id}
               index={childIndex}
               activeFolderId={activeFolderId}
+              activeNoteId={activeNoteId}
               renamingItemId={renamingItemId}
               renameDraft={renameDraft}
               draggingItemId={draggingItemId}
@@ -1685,21 +1703,21 @@ function VaultAisleContextMenu({
         className="tab-context-delete"
         onClick={() => runAction(onFilterSyncedAisle)}
       >
-        filter synced aisle
+        Filter synced aisle
       </button>
       <button
         type="button"
         className="tab-context-delete"
         onClick={() => runAction(onQuickDecoupleAisle)}
       >
-        decouple aisle
+        Decouple aisle
       </button>
       <button
         type="button"
         className="tab-context-delete"
         onClick={() => runAction(onShowSyncedAisle)}
       >
-        show synced aisles
+        Show synced aisles
       </button>
     </div>
   )
@@ -3060,6 +3078,7 @@ export function VaultApp() {
   const scratchpadActiveRef = useRef(false)
   const activeNoteTreeRevealNoteIdRef = useRef(state.vault.activeNoteId)
   const pendingActiveNoteTreeRevealIdRef = useRef('')
+  const suppressActiveNoteTreeRevealForDeleteRef = useRef<string | null>(null)
   const previousAssetToolsNoteLocationKeyRef = useRef('')
   const isMainViewRef = useRef(true)
   const pendingScrollToAisleIdRef = useRef<string | null>(null)
@@ -3517,8 +3536,14 @@ export function VaultApp() {
   useLayoutEffect(() => {
     const activeNoteId = state.vault.activeNoteId
     if (activeNoteId !== activeNoteTreeRevealNoteIdRef.current) {
+      const previousActiveNoteId = activeNoteTreeRevealNoteIdRef.current
       activeNoteTreeRevealNoteIdRef.current = activeNoteId
-      pendingActiveNoteTreeRevealIdRef.current = activeNoteId
+      if (suppressActiveNoteTreeRevealForDeleteRef.current === previousActiveNoteId) {
+        suppressActiveNoteTreeRevealForDeleteRef.current = null
+        pendingActiveNoteTreeRevealIdRef.current = ''
+      } else {
+        pendingActiveNoteTreeRevealIdRef.current = activeNoteId
+      }
     }
 
     const pendingNoteId = pendingActiveNoteTreeRevealIdRef.current
@@ -4393,6 +4418,15 @@ export function VaultApp() {
     [scrollAisleIntoHorizontalView, stateRef],
   )
 
+  const queueAisleFocusScroll = useCallback(
+    (noteBodyId: string, aisleId: string) => {
+      if (!noteBodyId || !aisleId) return
+      pendingScrollToAisleIdRef.current = aisleId
+      scheduleAisleFocusScroll(noteBodyId, aisleId)
+    },
+    [scheduleAisleFocusScroll],
+  )
+
   useEffect(() => {
     const pendingAisleId = pendingScrollToAisleIdRef.current
     if (viewMode !== 'main' || !activeModel || !pendingAisleId) return
@@ -4913,11 +4947,18 @@ export function VaultApp() {
     [stateRef],
   )
 
+  const applyVaultNavigationHistoryLocation = useCallback(
+    (location: VaultNavigationLocation) => {
+      applyVaultNavigationLocation(location, { tabDisposition: 'preserve' })
+    },
+    [applyVaultNavigationLocation],
+  )
+
   const { navigateVaultHistoryBy } = useVaultNavigationHistory({
     viewMode,
     activeNoteId: activeVaultModel?.noteId ?? '',
     resolveLocation: resolveVaultNavigationHistoryLocation,
-    onApplyLocation: applyVaultNavigationLocation,
+    onApplyLocation: applyVaultNavigationHistoryLocation,
   })
 
   usePendingNoteCursorRestore({
@@ -5484,6 +5525,9 @@ export function VaultApp() {
       if (!draggedItemId) return
       const draggedNoteIds = draggingTreeNoteIds
       mutateState((previous) => {
+        const shouldExpandDropParent =
+          Boolean(target.parentFolderId) &&
+          (draggedNoteIds.length === 0 || previous.ui.noteDropAutoExpandsFolders === true)
         const vault =
           draggedNoteIds.length > 0
             ? moveVaultItems(previous.vault, draggedNoteIds, target.parentFolderId, target.index)
@@ -5492,7 +5536,7 @@ export function VaultApp() {
         return {
           ...previous,
           vault,
-          ui: target.parentFolderId
+          ui: shouldExpandDropParent
             ? {
                 ...previous.ui,
                 collapsedFolderIds: previous.ui.collapsedFolderIds.filter((folderId) => folderId !== target.parentFolderId),
@@ -5578,12 +5622,16 @@ export function VaultApp() {
       const targetItemIds = Array.from(new Set(itemIds.filter(Boolean)))
       if (targetItemIds.length === 0) return
       const targetItemIdSet = new Set(targetItemIds)
+      const activeNoteId = stateRef.current.vault.activeNoteId
+      if (deletedVaultItemsContainNoteId(stateRef.current.vault.items, targetItemIds, activeNoteId)) {
+        suppressActiveNoteTreeRevealForDeleteRef.current = activeNoteId
+      }
       mutateState((previous) => deleteVaultItemsInState(previous, targetItemIds))
       setSelectedTreeNoteIds((current) => current.filter((noteId) => !targetItemIdSet.has(noteId)))
       setDraggingTreeNoteIds((current) => current.filter((noteId) => !targetItemIdSet.has(noteId)))
       setTreeSelectionAnchorNoteId((current) => (targetItemIdSet.has(current) ? '' : current))
     },
-    [mutateState],
+    [mutateState, stateRef],
   )
 
   const renameTreeContextItem = useCallback(() => {
@@ -6007,11 +6055,12 @@ export function VaultApp() {
       const nextAisle = activeModel.resolved.aisles[nextIndex]
       if (!nextAisle) return
       setActiveAisleId(nextAisle.id)
+      queueAisleFocusScroll(activeModel.noteBody.id, nextAisle.id)
       window.setTimeout(() => {
         vaultEditors.activateAisleEditor(buildAisleEditorKey(activeModel.noteBody.id, nextAisle.id), { focus: true })
       }, 0)
     },
-    [activeModel, vaultEditors, renderedActiveAisleId],
+    [activeModel, queueAisleFocusScroll, vaultEditors, renderedActiveAisleId],
   )
 
   const runShortcutMenuOperation = useCallback(
@@ -8332,6 +8381,20 @@ export function VaultApp() {
     return (
       <section className="vault-settings-section" aria-label="Misc settings">
         <div className="settings-hotkeys-list">
+          <VaultSettingsSwitch
+            id="note-drop-auto-expands-folders"
+            label="Moving notes into a folder auto-expands that folder"
+            checked={state.ui.noteDropAutoExpandsFolders === true}
+            onChange={(noteDropAutoExpandsFolders) =>
+              mutateState((previous) => ({
+                ...previous,
+                ui: {
+                  ...previous.ui,
+                  noteDropAutoExpandsFolders,
+                },
+              }))
+            }
+          />
           {renderSegmentedSetting(
             'Table add target',
             state.ui.tableAddTargetMode,
@@ -8736,6 +8799,7 @@ export function VaultApp() {
                           parentFolderId={row.parentFolderId}
                           index={row.index}
                           activeFolderId={activeFolderId}
+                          activeNoteId={activeModelIsScratchpad ? '' : state.vault.activeNoteId}
                           renamingItemId={renamingItemSurface === 'tree' ? renamingTreeItemId : ''}
                           renameDraft={treeRenameDraft}
                           draggingItemId={draggingTreeItemId}
@@ -8772,6 +8836,7 @@ export function VaultApp() {
                       parentFolderId={null}
                       index={itemIndex}
                       activeFolderId={activeFolderId}
+                      activeNoteId={activeModelIsScratchpad ? '' : state.vault.activeNoteId}
                       renamingItemId={renamingItemSurface === 'tree' ? renamingTreeItemId : ''}
                       renameDraft={treeRenameDraft}
                       draggingItemId={draggingTreeItemId}
@@ -8871,8 +8936,6 @@ export function VaultApp() {
                 onActivateAisle={(editorKey, pointer) => {
                   const activationSource = pointer ? 'pointer' : undefined
                   const targetAisleId = getAisleIdFromAisleEditorKey(editorKey)
-                  const shouldAlignSwitchedAisle =
-                    Boolean(targetAisleId) && targetAisleId !== activeAisleIdRef.current
                   if (shouldClearPendingCursorRestoreForAisleActivation(activationSource)) {
                     pendingCursorRestoreRef.current = null
                     pendingFocusToAisleIdRef.current = null
@@ -8889,8 +8952,8 @@ export function VaultApp() {
                         }
                       : undefined,
                   )
-                  if (shouldAlignSwitchedAisle) {
-                    scheduleAisleFocusScroll(activeModel.noteBody.id, targetAisleId)
+                  if (pointer && targetAisleId) {
+                    queueAisleFocusScroll(activeModel.noteBody.id, targetAisleId)
                   }
                 }}
                 onResizeAisleWidth={(aisleId, width) => {

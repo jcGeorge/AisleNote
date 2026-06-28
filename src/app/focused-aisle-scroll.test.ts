@@ -135,7 +135,30 @@ describe('focused aisle scroll scheduling', () => {
     expect(vaultAppSource).toContain('scheduleAisleFocusScroll(targetNoteBodyId, resolvedLocation.aisleId)')
     expect(vaultAppSource).toContain('scheduleFocusedAisleScroll({')
     expect(vaultAppSource).toContain('scrollAislePaneIntoHorizontalView(scrollNode, aisleId)')
-    expect(vaultAppSource).toContain('scheduleAisleFocusScroll(activeModel.noteBody.id, targetAisleId)')
+    expect(vaultAppSource).toContain('const queueAisleFocusScroll = useCallback')
+    expect(vaultAppSource).toContain('pendingScrollToAisleIdRef.current = aisleId')
+    expect(vaultAppSource).toContain('scheduleAisleFocusScroll(noteBodyId, aisleId)')
     expect(vaultAppSource).toContain('cancelScheduledAisleFocusScroll(scheduledAisleFocusScrollRef.current, window)')
+  })
+
+  it('queues focused scroll for pointer aisle activation without relying on switched active state', () => {
+    const start = vaultAppSource.indexOf('onActivateAisle={(editorKey, pointer) => {')
+    const end = vaultAppSource.indexOf('onResizeAisleWidth=', start)
+    const activationSource = vaultAppSource.slice(start, end)
+
+    expect(activationSource).toContain('if (pointer && targetAisleId) {')
+    expect(activationSource).toContain('queueAisleFocusScroll(activeModel.noteBody.id, targetAisleId)')
+    expect(activationSource).not.toContain('shouldAlignSwitchedAisle')
+    expect(activationSource).not.toContain('targetAisleId !== activeAisleIdRef.current')
+  })
+
+  it('queues focused scroll when keyboard cycling changes the active aisle', () => {
+    const start = vaultAppSource.indexOf('const cycleActiveAisle = useCallback')
+    const end = vaultAppSource.indexOf('const runShortcutMenuOperation = useCallback', start)
+    const cycleSource = vaultAppSource.slice(start, end)
+
+    expect(cycleSource).toContain('setActiveAisleId(nextAisle.id)')
+    expect(cycleSource).toContain('queueAisleFocusScroll(activeModel.noteBody.id, nextAisle.id)')
+    expect(cycleSource).toContain('[activeModel, queueAisleFocusScroll, vaultEditors, renderedActiveAisleId]')
   })
 })

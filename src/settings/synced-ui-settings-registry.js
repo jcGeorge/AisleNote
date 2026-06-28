@@ -22,6 +22,7 @@ export const SYNCED_UI_SIMPLE_SETTING_DEFINITIONS = Object.freeze([
   { key: 'tableOfContentsScope', kind: 'enum', defaultValue: 'all-aisles', values: ['all-aisles', 'focused-aisle'] },
   { key: 'tabColorIndicatorPlacement', kind: 'enum', defaultValue: 'bottom', values: ['bottom', 'top'] },
   { key: 'toolbarEditorShowNames', kind: 'boolean', defaultValue: false },
+  { key: 'noteDropAutoExpandsFolders', kind: 'boolean', defaultValue: false },
 ])
 
 const SIMPLE_SETTING_BY_KEY = new Map(SYNCED_UI_SIMPLE_SETTING_DEFINITIONS.map((definition) => [definition.key, definition]))

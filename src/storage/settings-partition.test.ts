@@ -55,6 +55,7 @@ describe('portable app settings parsing', () => {
       ui: {
         settingsSection: 'hotkeys',
         dataSettingsSection: 'transfer',
+        noteDropAutoExpandsFolders: false,
         tabRenameEnterBehavior: 'goes-to-note',
         tabColorIndicatorPlacement: 'bottom',
         noteFilter: {

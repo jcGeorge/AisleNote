@@ -421,6 +421,10 @@ export function normalizeAppState(raw: unknown): AppState {
       aisleWidths: isRecord(ui.aisleWidths) ? ui.aisleWidths as AppState['ui']['aisleWidths'] : {},
       toolbarLayouts: normalizeToolbarLayouts(ui.toolbarLayouts),
       toolbarEditorShowNames: typeof ui.toolbarEditorShowNames === 'boolean' ? ui.toolbarEditorShowNames : fallback.ui.toolbarEditorShowNames,
+      noteDropAutoExpandsFolders:
+        typeof ui.noteDropAutoExpandsFolders === 'boolean'
+          ? ui.noteDropAutoExpandsFolders
+          : fallback.ui.noteDropAutoExpandsFolders,
     },
   }))
 }

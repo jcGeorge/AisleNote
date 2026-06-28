@@ -83,56 +83,56 @@ describe('VaultEditorContextMenu', () => {
     const html = renderMenu()
 
     ;[
-      'cut',
-      'copy',
-      'paste',
-      'paste as plain text',
-      'here',
-      'new aisle on left',
-      'new aisle on right',
-      'copy note as',
-      'copy aisle as',
-      'independent copy',
-      'synced copy',
-      'make this a copy of',
-      'format',
-      'bold',
-      'italic',
-      'strikethrough',
-      'highlight',
-      'inline code',
-      'paragraph',
-      'bullet list',
-      'dash list',
-      'numbered list',
-      'task list',
-      'heading 1',
-      'heading 6',
-      'quote block',
-      'block indent',
-      'remove block indent',
-      'insert',
-      'url link',
-      'note link',
-      'note preview',
-      'to the left',
-      'to the right',
-      'attachment',
-      'table',
-      'horizontal rule',
-      'code block',
-      'print aisle',
-      'export to PDF',
-      'export aisle',
-      'export note',
+      'Cut',
+      'Copy',
+      'Paste',
+      'Paste as plain text',
+      'Here',
+      'New aisle on left',
+      'New aisle on right',
+      'Copy note as',
+      'Copy aisle as',
+      'Independent copy',
+      'Synced copy',
+      'Make this a copy of',
+      'Format',
+      'Bold',
+      'Italic',
+      'Strikethrough',
+      'Highlight',
+      'Inline code',
+      'Paragraph',
+      'Bullet list',
+      'Dash list',
+      'Numbered list',
+      'Task list',
+      'Heading 1',
+      'Heading 6',
+      'Quote block',
+      'Block indent',
+      'Remove block indent',
+      'Insert',
+      'URL link',
+      'Note link',
+      'Note preview',
+      'To the left',
+      'To the right',
+      'Attachment',
+      'Table',
+      'Horizontal rule',
+      'Code block',
+      'Print aisle',
+      'Export to PDF',
+      'Export aisle',
+      'Export note',
       'Reveal in Finder',
     ].forEach((label) => expect(html).toContain(label))
 
-    expect(html.indexOf('code block')).toBeLessThan(html.lastIndexOf('Reveal in Finder'))
-    expect(html.indexOf('print aisle')).toBeLessThan(html.lastIndexOf('Reveal in Finder'))
-    expect(html.indexOf('export to PDF')).toBeLessThan(html.lastIndexOf('Reveal in Finder'))
-    expect(html.indexOf('here')).toBeLessThan(html.indexOf('new aisle on left'))
-    expect(html.indexOf('new aisle on left')).toBeLessThan(html.indexOf('new aisle on right'))
+    expect(html.indexOf('Code block')).toBeLessThan(html.lastIndexOf('Reveal in Finder'))
+    expect(html.indexOf('Print aisle')).toBeLessThan(html.lastIndexOf('Reveal in Finder'))
+    expect(html.indexOf('Export to PDF')).toBeLessThan(html.lastIndexOf('Reveal in Finder'))
+    expect(html.indexOf('Here')).toBeLessThan(html.indexOf('New aisle on left'))
+    expect(html.indexOf('New aisle on left')).toBeLessThan(html.indexOf('New aisle on right'))
     expect(html).not.toContain('No synced item')
     expect(html).not.toContain('find &amp; replace')
     expect(html).not.toContain('find & replace')
@@ -140,20 +140,20 @@ describe('VaultEditorContextMenu', () => {
 
   it('shows de-couple actions only when they are available', () => {
     expect(renderMenu()).not.toContain('de-couple note')
-    expect(renderMenu()).not.toContain('decouple aisle')
+    expect(renderMenu()).not.toContain('Decouple aisle')
     expect(renderMenu()).not.toContain('filter synced note')
-    expect(renderMenu()).not.toContain('show synced aisles')
+    expect(renderMenu()).not.toContain('Show synced aisles')
 
     const linkedAisleHtml = renderMenu({ canDecoupleAisle: true })
-    expect(linkedAisleHtml).toContain('filter synced aisle')
-    expect(linkedAisleHtml).toContain('decouple aisle')
-    expect(linkedAisleHtml).toContain('show synced aisles')
+    expect(linkedAisleHtml).toContain('Filter synced aisle')
+    expect(linkedAisleHtml).toContain('Decouple aisle')
+    expect(linkedAisleHtml).toContain('Show synced aisles')
     expect(linkedAisleHtml).not.toContain('filter synced note')
     expect(linkedAisleHtml).not.toContain('de-couple note')
   })
 
   it('shows edit link only when the right-click target is a link', () => {
-    expect(renderMenu()).not.toContain('edit link')
+    expect(renderMenu()).not.toContain('Edit link')
     expect(renderMenu({
       menu: {
         x: 10,
@@ -170,7 +170,7 @@ describe('VaultEditorContextMenu', () => {
           editRange: { from: 1, to: 8, href: 'https://example.com' },
         },
       },
-    })).toContain('edit link')
+    })).toContain('Edit link')
   })
 
   it('routes ordinary aisle/editor targets and ignores toolbar or menu targets', () => {

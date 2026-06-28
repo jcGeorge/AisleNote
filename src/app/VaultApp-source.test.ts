@@ -263,6 +263,16 @@ describe('VaultApp large vault performance wiring', () => {
     expect(source).toMatch(/const updateFindReplaceQuery = useCallback\(\(nextQuery: string\) => {\s*vaultEditors\.flushPendingEditorAppStateCommit\(\)/)
   })
 
+  it('applies vault history navigation without replacing temporary tabs', () => {
+    expect(source).toContain('const applyVaultNavigationHistoryLocation = useCallback')
+    expect(source).toContain("applyVaultNavigationLocation(location, { tabDisposition: 'preserve' })")
+    const historyStart = source.indexOf('const { navigateVaultHistoryBy } = useVaultNavigationHistory')
+    const historyEnd = source.indexOf('usePendingNoteCursorRestore', historyStart)
+    const historyBody = source.slice(historyStart, historyEnd)
+    expect(historyBody).toContain('onApplyLocation: applyVaultNavigationHistoryLocation')
+    expect(historyBody).not.toContain('onApplyLocation: applyVaultNavigationLocation')
+  })
+
   it('memoizes and virtualizes the sidebar tree over the large-vault threshold', () => {
     expect(source).toContain('const VAULT_TREE_VIRTUALIZATION_THRESHOLD = 300')
     expect(source).toContain('const VAULT_TREE_VIRTUAL_ROW_HEIGHT = 28')
@@ -417,8 +427,13 @@ describe('VaultApp vault manager wiring', () => {
     expect(sidebarFooter).not.toContain('vault-sidebar-open-button')
     expect(sidebarFooter).not.toContain('<strong>')
     expect(sidebarFooter).not.toContain('iconId={vault.available ?')
+    const footerRule = appCss.slice(
+      appCss.indexOf('.vault-sidebar-footer {'),
+      appCss.indexOf('.vault-sidebar-footer.is-collapsed'),
+    )
     expect(appCss).toContain('.vault-sidebar-switcher-name {\n  color: var(--app-text-heading);\n  font-weight: 400;\n}')
     expect(appCss).toContain('.vault-sidebar-footer')
+    expect(footerRule).not.toContain('box-shadow')
     expect(appCss).toContain('.vault-sidebar-switcher-popover')
     expect(appCss).toContain('.vault-sidebar-switcher-actions')
     expect(appCss).toContain('.vault-sidebar-switcher-new')

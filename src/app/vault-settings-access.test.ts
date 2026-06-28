@@ -94,6 +94,9 @@ describe('vault settings access', () => {
 
   it('uses restored vault misc and frontmatter settings controls', () => {
     expect(vaultAppSource).toContain('settings-segmented-control settings-flag-segmented-control')
+    expect(vaultAppSource).toContain('id="note-drop-auto-expands-folders"')
+    expect(vaultAppSource).toContain('Moving notes into a folder auto-expands that folder')
+    expect(vaultAppSource).toContain('checked={state.ui.noteDropAutoExpandsFolders === true}')
     expect(vaultAppSource).toContain('TAB_COLOR_INDICATOR_PLACEMENT_OPTIONS')
     expect(vaultAppSource).toContain("{ id: 'bottom', label: 'Bottom' }")
     expect(vaultAppSource).toContain("{ id: 'top', label: 'Top' }")

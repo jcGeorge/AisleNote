@@ -328,7 +328,6 @@
   padding: var(--vault-sidebar-footer-block-padding) var(--vault-sidebar-control-inset-inline);
   border-top: var(--vault-sidebar-footer-border-size) solid color-mix(in srgb, var(--vault-topbar-border) 78%, transparent);
   background: color-mix(in srgb, var(--vault-sidebar-bg) 94%, transparent);
-  box-shadow: 0 -8px 18px color-mix(in srgb, #000 10%, transparent);
 }
 
 .vault-sidebar-footer.is-collapsed {
@@ -998,6 +997,7 @@
   color: var(--app-text-heading);
 }
 
+.vault-tree-row.is-note.is-active .vault-tree-main,
 .vault-tree-row.is-note.is-selected .vault-tree-main {
   --vault-tree-row-bg: color-mix(in srgb, var(--vault-action-accent) 14%, transparent);
   border-color: color-mix(in srgb, var(--vault-action-accent) 62%, transparent);
@@ -1085,6 +1085,8 @@
   color: var(--app-text-heading);
 }
 
+.vault-tree-row.is-note.is-active .vault-tree-main:hover,
+.vault-tree-row.is-note.is-active .vault-tree-main:focus-visible,
 .vault-tree-row.is-note.is-selected .vault-tree-main:hover,
 .vault-tree-row.is-note.is-selected .vault-tree-main:focus-visible {
   --vault-tree-row-bg: color-mix(in srgb, var(--vault-action-accent) 18%, transparent);

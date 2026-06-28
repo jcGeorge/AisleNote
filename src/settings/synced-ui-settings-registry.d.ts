@@ -19,6 +19,7 @@ export type SimpleSyncedUiSettingKey =
   | 'tableOfContentsScope'
   | 'tabColorIndicatorPlacement'
   | 'toolbarEditorShowNames'
+  | 'noteDropAutoExpandsFolders'
 
 export type SyncedUiBooleanSettingKey =
   | 'findCaseSensitive'
@@ -29,6 +30,7 @@ export type SyncedUiBooleanSettingKey =
   | 'decoupledItemsKeepData'
   | 'trashDeleteForRealRequiresConfirmation'
   | 'toolbarEditorShowNames'
+  | 'noteDropAutoExpandsFolders'
 
 export type SimpleSyncedUiSettings = Pick<AppState['ui'], SimpleSyncedUiSettingKey>
 export type SyncedUiBooleanSettings = Record<SyncedUiBooleanSettingKey, boolean>
@@ -105,6 +107,7 @@ export function normalizeRegisteredSyncedUiSetting(
   value: unknown,
 ): NonNullable<AppState['ui']['tabColorIndicatorPlacement']>
 export function normalizeRegisteredSyncedUiSetting(key: 'toolbarEditorShowNames', value: unknown): boolean
+export function normalizeRegisteredSyncedUiSetting(key: 'noteDropAutoExpandsFolders', value: unknown): boolean
 export function normalizeRegisteredSyncedUiSetting(key: SimpleSyncedUiSettingKey, value: unknown): unknown
 
 export function normalizeRegisteredSyncedUiSettings(rawUi: unknown): SimpleSyncedUiSettings

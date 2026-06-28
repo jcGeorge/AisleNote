@@ -431,6 +431,7 @@ export type AppState = {
     aisleWidths?: Record<string, Record<string, number>>
     toolbarLayouts?: ToolbarLayout[]
     toolbarEditorShowNames?: boolean
+    noteDropAutoExpandsFolders?: boolean
     seenTipIds: TipId[]
     disabledTipIds: TipId[]
   }
