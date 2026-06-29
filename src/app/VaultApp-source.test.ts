@@ -530,6 +530,8 @@ describe('VaultApp vault manager wiring', () => {
     expect(appCss).toContain('.vault-sidebar-switcher-name {\n  color: var(--app-text-heading);\n  font-weight: 400;\n}')
     expect(appCss).toContain('.vault-sidebar-footer')
     expect(footerRule).not.toContain('box-shadow')
+    expect(footerRule).toContain('background: var(--vault-sidebar-bg);')
+    expect(footerRule).not.toContain('background: color-mix(in srgb, var(--vault-sidebar-bg)')
     expect(appCss).toContain('.vault-sidebar-switcher-popover')
     expect(appCss).toContain('.vault-sidebar-switcher-actions')
     expect(appCss).toContain('.vault-sidebar-switcher-new')

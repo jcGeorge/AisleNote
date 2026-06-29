@@ -332,7 +332,7 @@
   gap: var(--vault-sidebar-utility-control-gap);
   padding: var(--vault-sidebar-footer-block-padding) var(--vault-sidebar-control-inset-inline);
   border-top: var(--vault-sidebar-footer-border-size) solid color-mix(in srgb, var(--vault-topbar-border) 78%, transparent);
-  background: color-mix(in srgb, var(--vault-sidebar-bg) 94%, transparent);
+  background: var(--vault-sidebar-bg);
 }
 
 .vault-sidebar-footer.is-collapsed {
@@ -729,7 +729,8 @@
   top: calc(100% + 5px);
   left: 0;
   right: 0;
-  max-height: min(340px, calc(100vh - 180px));
+  max-height: calc(100vh - var(--vault-topbar-height) - 56px);
+  max-height: calc(100dvh - var(--vault-topbar-height) - 56px);
   overflow-y: auto;
   box-shadow: 0 10px 22px color-mix(in srgb, black 28%, transparent);
 }
