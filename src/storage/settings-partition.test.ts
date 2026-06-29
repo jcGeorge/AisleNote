@@ -55,6 +55,8 @@ describe('portable app settings parsing', () => {
         settingsSection: 'hotkeys',
         dataSettingsSection: 'transfer',
         noteDropAutoExpandsFolders: false,
+        tableAddTargetMode: 'bottom-right',
+        tableDeleteTargetMode: 'bottom-right',
         tabRenameEnterBehavior: 'goes-to-note',
         tabColorIndicatorPlacement: 'bottom',
         noteFilter: {

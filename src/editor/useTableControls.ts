@@ -8,6 +8,7 @@ import {
   CLOSED_TABLE_SELECTION_OVERLAY_STATE,
   getActiveTableContext,
   getActiveTableDomContext,
+  getActiveTableRange,
   getAdjustedRangeMoveIndex,
   getTableColumnReorderMarkerStyle,
   getTableColumnSegmentRects,
@@ -17,10 +18,16 @@ import {
   getTableRowReorderMarkerStyle,
   getTableRowSegmentRects,
   getTableSelectionCellClassNames,
+  moveTableCellSelectionByEnter,
   normalizeTableSelectionRange,
   isEditorRootFocused,
+  placeCaretOutsideTableAtCoords,
+  placeTableCaretAtCoords,
+  selectTableCellAtPosition,
   type TableControlOperation,
   type TableControlsOverlayState,
+  type ActiveTableContext,
+  type TableRange,
   type TableReorderAxis,
   type TableSelectionOverlayState,
   type TableSelectionRange,
@@ -68,6 +75,7 @@ type CellSelectionInteraction = {
   startY: number
   selecting: boolean
   suppressingSelection: boolean
+  nativeTextSelection: boolean
 }
 
 type RangeReorderInteraction = {
@@ -103,7 +111,23 @@ type SelectorGestureInteraction = {
   suppressingSelection: boolean
 }
 
-type TableInteractionState = CellSelectionInteraction | RangeReorderInteraction | SelectorGestureInteraction
+type OutsideTableClickInteraction = {
+  kind: 'outside-table-click'
+  editor: Editor
+  range: TableRange
+  target: Element | null
+  startX: number
+  startY: number
+  movedBeyondSlop: boolean
+}
+
+type TableInteractionState =
+  | CellSelectionInteraction
+  | RangeReorderInteraction
+  | SelectorGestureInteraction
+  | OutsideTableClickInteraction
+
+export type TableCellPointerMoveDecision = 'plain-click' | 'native-text-selection' | 'cell-selection'
 
 function tableControlsStateEqual(left: TableControlsOverlayState, right: TableControlsOverlayState) {
   return (
@@ -123,6 +147,7 @@ const TABLE_REORDER_ACTIVE_CLASS = 'table-reorder-active'
 const TABLE_REORDER_MARKER_GAP_OFFSET_PX = 4
 const TABLE_REORDER_SLOT_HYSTERESIS_PX = 6
 const TABLE_RANGE_REORDER_DRAG_SLOP_PX = 3
+const TABLE_CELL_SELECTION_DRAG_SLOP_PX = 6
 const TABLE_SELECTOR_SIZE_PX = 14
 const TABLE_SELECTOR_GAP_PX = 4
 
@@ -143,6 +168,26 @@ function isInteractiveTableCellTarget(target: Element | null) {
 
 function isTableOverlayTarget(target: Element | null) {
   return Boolean(target?.closest('.table-tools, .table-selector-segment, .table-selection-rect'))
+}
+
+function getPointerDistanceFromStart(startX: number, startY: number, clientX: number, clientY: number) {
+  const deltaX = clientX - startX
+  const deltaY = clientY - startY
+  return Math.max(Math.abs(deltaX), Math.abs(deltaY))
+}
+
+function isClickLikePointerMovement(startX: number, startY: number, clientX: number, clientY: number) {
+  return getPointerDistanceFromStart(startX, startY, clientX, clientY) < TABLE_CELL_SELECTION_DRAG_SLOP_PX
+}
+
+export function getTableCellPointerMoveDecision(
+  deltaX: number,
+  deltaY: number,
+  isDifferentCell: boolean,
+): TableCellPointerMoveDecision {
+  const distance = Math.max(Math.abs(deltaX), Math.abs(deltaY))
+  if (!Number.isFinite(distance) || distance < TABLE_CELL_SELECTION_DRAG_SLOP_PX) return 'plain-click'
+  return isDifferentCell ? 'cell-selection' : 'native-text-selection'
 }
 
 function clearTableReorderClasses(root: HTMLElement) {
@@ -433,7 +478,9 @@ export function useTableControls({
   const tableSelectionRef = useRef<TableSelectionRange | null>(null)
   const refreshFrameRef = useRef<number | null>(null)
   const activeCellRef = useRef<HTMLTableCellElement | null>(null)
+  const tableControlsTargetRef = useRef<ActiveTableContext | null>(null)
   const lockedTableControlsRef = useRef<TableControlsOverlayState | null>(null)
+  const lockedTableControlsTargetRef = useRef<ActiveTableContext | null>(null)
   const interactionStateRef = useRef<TableInteractionState | null>(null)
   const suppressNextClickRef = useRef(false)
   const selectionSuppressionRef = useRef(createTaskReorderSelectionSuppressionController())
@@ -476,6 +523,8 @@ export function useTableControls({
 
   const close = useCallback(() => {
     lockedTableControlsRef.current = null
+    lockedTableControlsTargetRef.current = null
+    tableControlsTargetRef.current = null
     setActiveCell(null)
     setCurrentTableSelection(null)
     updateTableSelectionOverlay(CLOSED_TABLE_SELECTION_OVERLAY_STATE)
@@ -484,6 +533,7 @@ export function useTableControls({
 
   const releaseLockedTableControls = useCallback(() => {
     lockedTableControlsRef.current = null
+    lockedTableControlsTargetRef.current = null
   }, [])
 
   const refresh = useCallback(() => {
@@ -502,6 +552,8 @@ export function useTableControls({
     const root = editorEventRootRef.current ?? view?.dom ?? null
     if (!view || !isEditorRootFocused(root)) {
       lockedTableControlsRef.current = null
+      lockedTableControlsTargetRef.current = null
+      tableControlsTargetRef.current = null
       setActiveCell(null)
       setCurrentTableSelection(null)
       updateTableSelectionOverlay(CLOSED_TABLE_SELECTION_OVERLAY_STATE)
@@ -516,6 +568,8 @@ export function useTableControls({
 
     if (!tableDomContext) {
       lockedTableControlsRef.current = null
+      lockedTableControlsTargetRef.current = null
+      tableControlsTargetRef.current = null
       setCurrentTableSelection(null)
       updateTableSelectionOverlay(CLOSED_TABLE_SELECTION_OVERLAY_STATE)
       updateTableControls(CLOSED_TABLE_CONTROLS_STATE)
@@ -535,9 +589,11 @@ export function useTableControls({
 
     const lockedControls = lockedTableControlsRef.current
     if (lockedControls?.visible) {
+      tableControlsTargetRef.current = lockedTableControlsTargetRef.current ?? tableDomContext.context
       updateTableControls(lockedControls)
       return
     }
+    tableControlsTargetRef.current = tableDomContext.context
     updateTableControls(
       firstCell instanceof HTMLTableCellElement ? getTableControlsOverlayStateForCell(firstCell) : getTableControlsOverlayState(view),
     )
@@ -572,17 +628,29 @@ export function useTableControls({
       const view = getWysiwygView(currentEditor)
       if (!currentEditor || !view) return false
       const frozenControls = tableControlsRef.current.visible ? tableControlsRef.current : getTableControlsOverlayState(view)
-      const handled = applyTableControlOperationToView(view, operation, targetMode)
+      const activeTable = getActiveTableContext(view)
+      const visibleTableContext = tableControlsTargetRef.current
+      const operationContext =
+        visibleTableContext && activeTable?.tableStart !== visibleTableContext.tableStart
+          ? visibleTableContext
+          : activeTable
+      const handled = applyTableControlOperationToView(view, operation, targetMode, operationContext)
       if (!handled) return false
       setCurrentTableSelection(null)
-      const activeTable = getActiveTableContext(view)
-      lockedTableControlsRef.current = activeTable && frozenControls.visible ? frozenControls : null
+      const nextActiveTable = getActiveTableContext(view)
+      tableControlsTargetRef.current = nextActiveTable
+      const shouldLockControls = Boolean(nextActiveTable && frozenControls.visible)
+      lockedTableControlsRef.current = shouldLockControls ? frozenControls : null
+      lockedTableControlsTargetRef.current = shouldLockControls ? nextActiveTable : null
       if (lockedTableControlsRef.current) {
         updateTableControls(lockedTableControlsRef.current)
       }
       currentEditor.focus()
       commitActiveEditorMarkdownNow(currentEditor)
       syncToolbarFormatState()
+      if (nextActiveTable) {
+        scheduleTableControlCaretRepair(currentEditor, nextActiveTable)
+      }
       scheduleRefresh()
       return true
     },
@@ -595,6 +663,64 @@ export function useTableControls({
       updateTableControls,
     ],
   )
+
+  function scheduleTableCellClickRepair(
+    editor: Editor,
+    coords: { left: number; top: number },
+    targetCell: HTMLTableCellElement,
+  ) {
+    if (typeof window === 'undefined') return
+    window.requestAnimationFrame(() => {
+      const view = getWysiwygView(editor)
+      if (!view) return
+
+      const targetContext = getTableContextForCellElement(view, targetCell)
+      const activeContext = getActiveTableContext(view)
+      const nativeSelectionReachedTargetCell =
+        targetContext &&
+        activeContext &&
+        activeContext.tableStart === targetContext.tableStart &&
+        activeContext.rowIndex === targetContext.rowIndex &&
+        activeContext.columnIndex === targetContext.columnIndex
+      if (nativeSelectionReachedTargetCell) return
+
+      placeTableCaretAtCoords(view, coords, targetCell)
+    })
+  }
+
+  function scheduleOutsideTableClickRepair(
+    editor: Editor,
+    range: TableRange,
+    coords: { left: number; top: number },
+    target: Element | null,
+  ) {
+    if (typeof window === 'undefined') return
+    window.requestAnimationFrame(() => {
+      const view = getWysiwygView(editor)
+      if (!view) return
+      placeCaretOutsideTableAtCoords(view, coords, range, target)
+    })
+  }
+
+  function scheduleTableControlCaretRepair(editor: Editor, expectedContext: ActiveTableContext) {
+    if (typeof window === 'undefined') return
+    window.requestAnimationFrame(() => {
+      const lockedTarget = lockedTableControlsTargetRef.current
+      if (!lockedTarget || lockedTarget.tableStart !== expectedContext.tableStart) return
+
+      const view = getWysiwygView(editor)
+      if (!view) return
+      const activeContext = getActiveTableContext(view)
+      if (activeContext?.tableStart === lockedTarget.tableStart) return
+
+      if (selectTableCellAtPosition(view, lockedTarget.tableStart, lockedTarget.rowIndex, lockedTarget.columnIndex)) {
+        const repairedContext = getActiveTableContext(view)
+        tableControlsTargetRef.current = repairedContext
+        lockedTableControlsTargetRef.current = repairedContext
+        scheduleRefresh()
+      }
+    })
+  }
 
   const endInteraction = useCallback(
     (options: { releaseSelectionAfterBrowserPass?: boolean } = {}) => {
@@ -704,11 +830,21 @@ export function useTableControls({
       targetCell !== interactionState.sourceCell ||
       targetContext.rowIndex !== interactionState.context.rowIndex ||
       targetContext.columnIndex !== interactionState.context.columnIndex
-    if (!interactionState.selecting && !isDifferentCell) {
-      return
-    }
+
+    if (interactionState.nativeTextSelection && !isDifferentCell) return
 
     if (!interactionState.selecting) {
+      const decision = getTableCellPointerMoveDecision(
+        event.clientX - interactionState.startX,
+        event.clientY - interactionState.startY,
+        isDifferentCell,
+      )
+      if (decision === 'plain-click') return
+      if (decision === 'native-text-selection') {
+        interactionState.nativeTextSelection = true
+        return
+      }
+
       interactionState.selecting = true
       interactionState.suppressingSelection = true
       suppressNextClickRef.current = true
@@ -785,6 +921,12 @@ export function useTableControls({
       handleCellSelectionMove(interactionState, event)
       return
     }
+    if (interactionState.kind === 'outside-table-click') {
+      if (!isClickLikePointerMovement(interactionState.startX, interactionState.startY, event.clientX, event.clientY)) {
+        interactionState.movedBeyondSlop = true
+      }
+      return
+    }
     if (interactionState.kind === 'selector-gesture') {
       handleSelectorGestureMove(interactionState, event)
       return
@@ -833,13 +975,35 @@ export function useTableControls({
       return
     }
 
-    if (interactionState.kind !== 'range-reorder') {
-      if (interactionState.kind === 'cell-selection' && interactionState.selecting) {
+    if (interactionState.kind === 'outside-table-click') {
+      const shouldRepair =
+        !interactionState.movedBeyondSlop &&
+        isClickLikePointerMovement(interactionState.startX, interactionState.startY, event.clientX, event.clientY)
+      const { editor, range, target } = interactionState
+      const coords = { left: event.clientX, top: event.clientY }
+      endInteraction({ releaseSelectionAfterBrowserPass: true })
+      if (shouldRepair) {
+        scheduleOutsideTableClickRepair(editor, range, coords, target)
+      }
+      return
+    }
+
+    if (interactionState.kind === 'cell-selection') {
+      if (interactionState.selecting) {
         event.preventDefault()
         event.stopPropagation()
         event.stopImmediatePropagation()
       }
+      const shouldRepair =
+        !interactionState.selecting &&
+        !interactionState.nativeTextSelection &&
+        isClickLikePointerMovement(interactionState.startX, interactionState.startY, event.clientX, event.clientY)
+      const { editor, sourceCell } = interactionState
+      const coords = { left: event.clientX, top: event.clientY }
       endInteraction({ releaseSelectionAfterBrowserPass: true })
+      if (shouldRepair) {
+        scheduleTableCellClickRepair(editor, coords, sourceCell)
+      }
       return
     }
 
@@ -873,7 +1037,14 @@ export function useTableControls({
 
   function handleSelectStart(event: Event) {
     const interactionState = interactionStateRef.current
-    if (!interactionState?.suppressingSelection && interactionState?.kind !== 'range-reorder') return
+    const shouldSuppress =
+      (interactionState?.kind === 'cell-selection' &&
+        (interactionState.suppressingSelection || interactionState.selecting)) ||
+      (interactionState?.kind === 'selector-gesture' &&
+        (interactionState.suppressingSelection || interactionState.dragging)) ||
+      (interactionState?.kind === 'range-reorder' &&
+        (interactionState.suppressingSelection || interactionState.dragging))
+    if (!shouldSuppress) return
     event.preventDefault()
     event.stopPropagation()
     event.stopImmediatePropagation()
@@ -883,11 +1054,17 @@ export function useTableControls({
   function handleNativeDragStart(event: Event) {
     const interactionState = interactionStateRef.current
     if (!interactionState) return
+    const shouldSuppress =
+      (interactionState.kind === 'cell-selection' &&
+        (interactionState.suppressingSelection || interactionState.selecting)) ||
+      (interactionState.kind === 'selector-gesture' &&
+        (interactionState.suppressingSelection || interactionState.dragging)) ||
+      (interactionState.kind === 'range-reorder' &&
+        (interactionState.suppressingSelection || interactionState.dragging))
+    if (!shouldSuppress) return
     event.preventDefault()
     event.stopPropagation()
-    if (interactionState.suppressingSelection || interactionState.kind === 'range-reorder') {
-      selectionSuppressionRef.current.clearAfterBrowserPass()
-    }
+    selectionSuppressionRef.current.clearAfterBrowserPass()
   }
 
   function installWindowInteractionListeners() {
@@ -906,8 +1083,25 @@ export function useTableControls({
     if (!(sourceCell instanceof HTMLTableCellElement)) {
       if (isTableOverlayTarget(target)) return
       suppressNextClickRef.current = false
+      lockedTableControlsRef.current = null
+      lockedTableControlsTargetRef.current = null
       setCurrentTableSelection(null)
       if (interactionStateRef.current) endInteraction()
+      const editor = editorRef.current
+      const view = getWysiwygView(editor)
+      const activeTableRange = getActiveTableRange(view)
+      if (editor && view?.dom?.contains?.(target) && activeTableRange) {
+        interactionStateRef.current = {
+          kind: 'outside-table-click',
+          editor,
+          range: activeTableRange,
+          target,
+          startX: event.clientX,
+          startY: event.clientY,
+          movedBeyondSlop: false,
+        }
+        installWindowInteractionListeners()
+      }
       return
     }
     if (isInteractiveTableCellTarget(target)) {
@@ -925,6 +1119,7 @@ export function useTableControls({
 
     setCurrentTableSelection(null)
     lockedTableControlsRef.current = null
+    lockedTableControlsTargetRef.current = null
     interactionStateRef.current = {
       kind: 'cell-selection',
       editor,
@@ -937,6 +1132,7 @@ export function useTableControls({
       startY: event.clientY,
       selecting: false,
       suppressingSelection: false,
+      nativeTextSelection: false,
     }
     installWindowInteractionListeners()
   }
@@ -960,6 +1156,24 @@ export function useTableControls({
   function handleKeyDown(event: KeyboardEvent) {
     if (event.key === 'Meta' || event.key === 'Control' || event.key === 'Alt' || event.key === 'Shift') return
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'c') return
+    if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.isComposing) {
+      const editor = editorRef.current
+      const view = getWysiwygView(editor)
+      const result = moveTableCellSelectionByEnter(view)
+      if (result.handled) {
+        event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation()
+        releaseLockedTableControls()
+        setCurrentTableSelection(null)
+        if (editor && result.changed) {
+          commitActiveEditorMarkdownNow(editor)
+          syncToolbarFormatState()
+        }
+        scheduleRefresh()
+        return
+      }
+    }
     releaseLockedTableControls()
     setCurrentTableSelection(null)
     scheduleRefresh()
@@ -1011,6 +1225,7 @@ export function useTableControls({
       )
 
       lockedTableControlsRef.current = null
+      lockedTableControlsTargetRef.current = null
       const sourceSelection = createAxisSelection(tableDomContext.context.tableStart, axis, sourceRange.start, sourceRange.end)
       setCurrentTableSelection(sourceSelection)
       const root = editorEventRootRef.current

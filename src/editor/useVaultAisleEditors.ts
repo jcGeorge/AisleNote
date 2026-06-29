@@ -61,7 +61,7 @@ import {
 import {
   finishEditorOperation,
   insertEditorTextOperation,
-  replaceSelectedTextWithTableOperation,
+  insertTableOperation,
   runEditorCommandOperation,
   type EditorOperationRuntime,
 } from './editor-operation-runner'
@@ -1718,17 +1718,10 @@ export function useVaultAisleEditors({
 
       if (command === 'addTable' || command === 'table') {
         markEditorUserEditIntentForEditor(editor)
-        const tableSelectionResult = replaceSelectedTextWithTableOperation(editorOperationRuntime, {
-          commitMode: 'none',
-          syncToolbar: false,
+        insertTableOperation(editorOperationRuntime, payload ?? { rowCount: 2, columnCount: 2 }, {
+          commitMode: 'deferred',
+          syncToolbar: true,
         })
-        if (!tableSelectionResult.handled) {
-          runEditorCommandOperation(editorOperationRuntime, 'addTable', payload ?? { rowCount: 2, columnCount: 2 }, {
-            commitMode: 'none',
-            syncToolbar: false,
-          })
-        }
-        finishEditorOperation(editorOperationRuntime, editor, { commitMode: 'deferred', syncToolbar: true })
         return true
       }
 

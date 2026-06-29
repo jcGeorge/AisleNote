@@ -1093,7 +1093,24 @@ export function placeTableCaretAtCoords(
 
   if (targetPosition === null) return false
   setSelectionNearPosition(transaction, targetPosition)
-  view.dispatch(transaction.scrollIntoView())
+  view.dispatch(transaction.setMeta('addToHistory', false).scrollIntoView())
+  return true
+}
+
+export function selectTableCellAtPosition(
+  view: any,
+  tableStart: number,
+  rowIndex: number,
+  columnIndex: number,
+): boolean {
+  const transaction = view?.state?.tr
+  const tableNode = view?.state?.doc?.nodeAt?.(tableStart)
+  if (!transaction || !tableNode || tableNode.type?.name !== 'table' || typeof view?.dispatch !== 'function') return false
+
+  const targetPosition = getCellInnerPosition(tableNode, tableStart, rowIndex, columnIndex)
+  if (targetPosition === null) return false
+  setSelectionNearPosition(transaction, targetPosition)
+  view.dispatch(transaction.setMeta('addToHistory', false).scrollIntoView())
   return true
 }
 
@@ -1216,6 +1233,34 @@ export function moveTableCellSelectionByTab(
   return { handled, changed: handled }
 }
 
+export function moveTableCellSelectionByEnter(view: any): TableCellNavigationResult {
+  const context = getActiveTableContext(view)
+  const schema = view?.state?.schema
+  if (!context || !schema) return { handled: false, changed: false }
+
+  const tableNode = view.state.doc.nodeAt(context.tableStart)
+  if (!tableNode || tableNode.type?.name !== 'table') return { handled: false, changed: false }
+  const headRow = getHeadRow(tableNode)
+  if (!headRow) return { handled: false, changed: false }
+
+  const bodyRows = getBodyRows(tableNode)
+  const visualRows = [headRow, ...bodyRows]
+  if (context.rowIndex < visualRows.length - 1) {
+    return {
+      handled: dispatchTableCellSelection(view, context, context.rowIndex + 1, context.columnIndex),
+      changed: false,
+    }
+  }
+
+  const nextBodyRows = [...bodyRows, createEmptyBodyRow(schema, context.columnCount)]
+  const nextTable = buildTable(schema, tableNode, cloneRowAsType(schema, headRow, 'tableHeadCell'), nextBodyRows)
+  const handled = dispatchTableReplacement(view, context, nextTable, visualRows.length, context.columnIndex)
+  if (handled && typeof view.focus === 'function') {
+    view.focus()
+  }
+  return { handled, changed: handled }
+}
+
 export function selectFirstTableCellAfterPosition(view: any, position: number): boolean {
   const doc = view?.state?.doc
   const transaction = view?.state?.tr
@@ -1319,10 +1364,21 @@ export function applyTableControlOperationToView(
   view: any,
   operation: TableControlOperation,
   targetMode: TableControlTargetMode = 'active-cell',
+  sourceContext?: ActiveTableContext | null,
 ): boolean {
-  const context = getActiveTableContext(view)
+  const baseContext = sourceContext ?? getActiveTableContext(view)
   const schema = view?.state?.schema
-  if (!context || !schema) return false
+  if (!baseContext || !schema) return false
+
+  const freshTableNode = view.state.doc.nodeAt(baseContext.tableStart)
+  if (!freshTableNode || freshTableNode.type?.name !== 'table') return false
+  const context: ActiveTableContext = {
+    ...baseContext,
+    tableNode: freshTableNode,
+    tableEnd: baseContext.tableStart + freshTableNode.nodeSize,
+    columnCount: getColumnCount(freshTableNode),
+    bodyRowCount: getBodyRows(freshTableNode).length,
+  }
   const targetContext = getTargetedTableControlContext(context, targetMode)
 
   const tableNode = targetContext.tableNode
@@ -1334,7 +1390,7 @@ export function applyTableControlOperationToView(
     const nextHeadRow = addColumnToRow(schema, headRow, 'tableHeadCell', targetContext.columnIndex)
     const nextBodyRows = bodyRows.map((row) => addColumnToRow(schema, row, 'tableBodyCell', targetContext.columnIndex))
     const nextTable = buildTable(schema, tableNode, nextHeadRow, nextBodyRows)
-    return dispatchTableReplacement(view, targetContext, nextTable, targetContext.rowIndex, targetContext.columnIndex + 1)
+    return dispatchTableReplacement(view, targetContext, nextTable, context.rowIndex, context.columnIndex)
   }
 
   if (operation === 'remove-column') {
@@ -1342,12 +1398,18 @@ export function applyTableControlOperationToView(
     const nextHeadRow = removeColumnFromRow(schema, headRow, 'tableHeadCell', targetContext.columnIndex)
     const nextBodyRows = bodyRows.map((row) => removeColumnFromRow(schema, row, 'tableBodyCell', targetContext.columnIndex))
     const nextTable = buildTable(schema, tableNode, nextHeadRow, nextBodyRows)
+    const nextColumnIndex =
+      context.columnIndex < targetContext.columnIndex
+        ? context.columnIndex
+        : context.columnIndex > targetContext.columnIndex
+          ? context.columnIndex - 1
+          : Math.max(0, Math.min(targetContext.columnIndex, targetContext.columnCount - 2))
     return dispatchTableReplacement(
       view,
       targetContext,
       nextTable,
-      Math.min(targetContext.rowIndex, bodyRows.length),
-      Math.max(0, Math.min(targetContext.columnIndex, targetContext.columnCount - 2)),
+      Math.min(context.rowIndex, bodyRows.length),
+      nextColumnIndex,
     )
   }
 
@@ -1356,7 +1418,7 @@ export function applyTableControlOperationToView(
     const insertIndex = targetContext.inHeader ? 0 : Math.min(nextBodyRows.length, (targetContext.bodyRowIndex ?? 0) + 1)
     nextBodyRows.splice(insertIndex, 0, createEmptyBodyRow(schema, targetContext.columnCount))
     const nextTable = buildTable(schema, tableNode, cloneRowAsType(schema, headRow, 'tableHeadCell'), nextBodyRows)
-    return dispatchTableReplacement(view, targetContext, nextTable, insertIndex + 1, targetContext.columnIndex)
+    return dispatchTableReplacement(view, targetContext, nextTable, context.rowIndex, context.columnIndex)
   }
 
   if (operation === 'remove-row') {
@@ -1367,7 +1429,7 @@ export function applyTableControlOperationToView(
       const nextHeadRow = cloneRowAsType(schema, bodyRows[0], 'tableHeadCell')
       const nextBodyRows = bodyRows.slice(1).map((row) => cloneRowAsType(schema, row, 'tableBodyCell'))
       const nextTable = buildTable(schema, tableNode, nextHeadRow, nextBodyRows)
-      return dispatchTableReplacement(view, targetContext, nextTable, 0, targetContext.columnIndex)
+      return dispatchTableReplacement(view, targetContext, nextTable, Math.max(0, context.rowIndex - 1), context.columnIndex)
     }
 
     const removeIndex = targetContext.bodyRowIndex ?? 0
@@ -1375,8 +1437,15 @@ export function applyTableControlOperationToView(
       .filter((_, index) => index !== removeIndex)
       .map((row) => cloneRowAsType(schema, row, 'tableBodyCell'))
     const nextTable = buildTable(schema, tableNode, cloneRowAsType(schema, headRow, 'tableHeadCell'), nextBodyRows)
-    const nextGlobalRowIndex = nextBodyRows.length > 0 ? Math.min(removeIndex + 1, nextBodyRows.length) : 0
-    return dispatchTableReplacement(view, targetContext, nextTable, nextGlobalRowIndex, targetContext.columnIndex)
+    const nextGlobalRowIndex =
+      context.rowIndex < targetContext.rowIndex
+        ? context.rowIndex
+        : context.rowIndex > targetContext.rowIndex
+          ? context.rowIndex - 1
+          : nextBodyRows.length > 0
+            ? Math.min(removeIndex + 1, nextBodyRows.length)
+            : 0
+    return dispatchTableReplacement(view, targetContext, nextTable, nextGlobalRowIndex, context.columnIndex)
   }
 
   return false

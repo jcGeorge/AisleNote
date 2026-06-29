@@ -18,6 +18,7 @@ import {
   isEditorRootFocused,
   isTableRangeMoveNoop,
   isSelectedTableNode,
+  moveTableCellSelectionByEnter,
   moveTableCellSelectionByTab,
   moveSelectedTableBoundaryCaret,
   normalizeTableSelectionRange,
@@ -25,6 +26,7 @@ import {
   placeTableCaretAtCoords,
   replaceSelectedTextWithTable,
   selectFirstTableCellAfterPosition,
+  selectTableCellAtPosition,
   selectTableNodeAtPosition,
   type TableControlOperation,
   type TableReorderAxis,
@@ -277,6 +279,18 @@ function applyOperation(
   return view.state.doc
 }
 
+function applyOperationView(
+  operation: TableControlOperation,
+  rowIndex: number,
+  columnIndex: number,
+  doc = buildDoc(),
+  targetMode: TableControlTargetMode = 'active-cell',
+) {
+  const view = createView(doc, rowIndex, columnIndex)
+  expect(applyTableControlOperationToView(view, operation, targetMode)).toBe(true)
+  return view
+}
+
 function applyReorder(
   axis: TableReorderAxis,
   sourceIndex: number,
@@ -343,6 +357,59 @@ describe('table editing controls', () => {
     expect(getCellText(addedRowTable, 1, 0)).toBe('')
     expect(getCellText(addedRowTable, 2, 0)).toBe('A1')
     expect(getCellText(removedColumnTable, 0, 0)).toBe('H2')
+  })
+
+  it('applies table controls to an explicit source context instead of the active table', () => {
+    const firstTable = buildTableBlock()
+    const spacer = paragraph('between')
+    const secondTable = buildTableBlock()
+    const doc = buildDocWithBlocks([firstTable, spacer, secondTable])
+    const view = createView(doc, 1, 0)
+    const firstTableContext = getActiveTableContext(view)
+    const secondTableStart = firstTable.nodeSize + spacer.nodeSize
+    const secondTableCellPosition = secondTableStart + getCellTextPosition(buildDoc(), 1, 0)
+
+    view.state = view.state.apply(view.state.tr.setSelection(TextSelection.create(view.state.doc, secondTableCellPosition)))
+
+    expect(firstTableContext?.tableStart).toBe(0)
+    expect(getActiveTableContext(view)?.tableStart).toBe(secondTableStart)
+    expect(applyTableControlOperationToView(view, 'add-column', 'active-cell', firstTableContext)).toBe(true)
+
+    const updatedFirstTable = view.state.doc.child(0)
+    const updatedSecondTable = view.state.doc.child(2)
+    expect(updatedFirstTable.child(0).child(0).childCount).toBe(3)
+    expect(updatedSecondTable.child(0).child(0).childCount).toBe(2)
+    expect(getActiveTableContext(view)).toMatchObject({ tableStart: 0, rowIndex: 1, columnIndex: 0 })
+  })
+
+  it('keeps the caret in the source cell after adding rows or columns', () => {
+    const addedColumnView = applyOperationView('add-column', 1, 0)
+    const addedRowView = applyOperationView('add-row', 1, 0)
+
+    expectSelectionInCell(addedColumnView, 1, 0)
+    expect(getActiveTableContext(addedColumnView)).toMatchObject({ rowIndex: 1, columnIndex: 0 })
+    expectSelectionInCell(addedRowView, 1, 0)
+    expect(getActiveTableContext(addedRowView)).toMatchObject({ rowIndex: 1, columnIndex: 0 })
+  })
+
+  it('adds at the table edge without moving the caret in bottom-right mode', () => {
+    const addedColumnView = applyOperationView('add-column', 1, 0, buildDoc(), 'bottom-right')
+    const addedRowView = applyOperationView('add-row', 1, 0, buildDoc(), 'bottom-right')
+
+    expect(getCellText(getTable(addedColumnView.state.doc), 0, 2)).toBe('')
+    expectSelectionInCell(addedColumnView, 1, 0)
+    expect(getCellText(getTable(addedRowView.state.doc), 3, 0)).toBe('')
+    expectSelectionInCell(addedRowView, 1, 0)
+  })
+
+  it('removes at the table edge without moving the caret when the source cell survives', () => {
+    const removedColumnView = applyOperationView('remove-column', 1, 0, buildDoc(), 'bottom-right')
+    const removedRowView = applyOperationView('remove-row', 1, 0, buildDoc(), 'bottom-right')
+
+    expect(getCellText(getTable(removedColumnView.state.doc), 1, 0)).toBe('A1')
+    expectSelectionInCell(removedColumnView, 1, 0)
+    expect(getCellText(getTable(removedRowView.state.doc), 1, 0)).toBe('A1')
+    expectSelectionInCell(removedRowView, 1, 0)
   })
 
   it('adds a row at the table bottom in bottom-right mode', () => {
@@ -624,6 +691,14 @@ describe('table editing controls', () => {
     expect(placeTableCaretAtCoords(view, { left: 120, top: 80 })).toBe(false)
   })
 
+  it('selects a table cell by table position without adding history', () => {
+    const view = createView(buildDoc(), 1, 0) as any
+
+    expect(selectTableCellAtPosition(view, 0, 2, 1)).toBe(true)
+    expect(view.state.selection.from).toBe(getCellTextPosition(view.state.doc, 2, 1))
+    expect(getActiveTableContext(view)).toMatchObject({ tableStart: 0, rowIndex: 2, columnIndex: 1 })
+  })
+
   it('requires browser focus inside the editor root before showing table controls', () => {
     const activeElement = { id: 'cell' }
     const root = {
@@ -823,6 +898,21 @@ describe('table editing controls', () => {
 
     expect(moveTableCellSelectionByTab(view, 'forward')).toEqual({ handled: true, changed: false })
     expectSelectionInCell(view, 1, 1)
+  })
+
+  it('moves table enter navigation to the next row in the same column', () => {
+    const view = createView(buildDoc(), 1, 1)
+
+    expect(moveTableCellSelectionByEnter(view)).toEqual({ handled: true, changed: false })
+    expectSelectionInCell(view, 2, 1)
+  })
+
+  it('appends a row for table enter navigation at the last row', () => {
+    const view = createView(buildDoc(), 2, 1)
+
+    expect(moveTableCellSelectionByEnter(view)).toEqual({ handled: true, changed: true })
+    expect(getBodyRows(getTable(view.state.doc))).toHaveLength(3)
+    expectSelectionInCell(view, 3, 1)
   })
 
   it('selects the first cell in the inserted table after a command anchor', () => {

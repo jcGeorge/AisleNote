@@ -312,6 +312,8 @@ describe('schema 2 app-state storage', () => {
       settingsSection: 'visuals',
       selectedCustomTheme: 'custom2',
       noteDropAutoExpandsFolders: true,
+      tableAddTargetMode: 'bottom-right',
+      tableDeleteTargetMode: 'bottom-right',
       toolbarLayouts: [{ id: 'main', name: 'Main', items: [] }],
     }
 
@@ -334,6 +336,10 @@ describe('schema 2 app-state storage', () => {
     expect(loadedA.ui.settingsSection).toBe('visuals')
     expect(loadedA.ui.selectedCustomTheme).toBe('custom2')
     expect(loadedA.ui.noteDropAutoExpandsFolders).toBe(true)
+    expect(loadedA.ui.tableAddTargetMode).toBe('bottom-right')
+    expect(loadedA.ui.tableDeleteTargetMode).toBe('bottom-right')
+    expect(loadedB.ui.tableAddTargetMode).toBe('bottom-right')
+    expect(loadedB.ui.tableDeleteTargetMode).toBe('bottom-right')
     expect(loadedA.ui.toolbarLayouts).toEqual([{ id: 'main', name: 'Main', items: [] }])
     expect(loadedA.ui.sidebarWidth).toBe(333)
     expect(loadedB.ui.sidebarWidth).toBe(444)
@@ -357,6 +363,8 @@ describe('schema 2 app-state storage', () => {
       settingsSection: 'visuals',
       selectedCustomTheme: 'custom2',
       noteDropAutoExpandsFolders: true,
+      tableAddTargetMode: 'bottom-right',
+      tableDeleteTargetMode: 'bottom-right',
       toolbarLayouts: [{ id: 'main', name: 'Main', items: [] }],
       noteCursorLocations: {
         'note-root': {
@@ -410,6 +418,8 @@ describe('schema 2 app-state storage', () => {
     expect(appSettings.hotkeys.shortcuts.openSettings).toBe('Ctrl+,')
     expect(appSettings.ui.settingsSection).toBe('visuals')
     expect(appSettings.ui.noteDropAutoExpandsFolders).toBe(true)
+    expect(appSettings.ui.tableAddTargetMode).toBe('bottom-right')
+    expect(appSettings.ui.tableDeleteTargetMode).toBe('bottom-right')
     expect(appSettings.ui.toolbarLayouts).toEqual([{ id: 'main', name: 'Main', items: [] }])
   })
 

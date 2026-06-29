@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { getTableCellPointerMoveDecision } from './useTableControls'
 
 const source = readFileSync(new URL('./useTableControls.ts', import.meta.url), 'utf8')
 const getFunctionSource = (name: string) => {
@@ -10,6 +11,13 @@ const getFunctionSource = (name: string) => {
 }
 
 describe('table controls interaction wiring', () => {
+  it('classifies cell pointer movement with deliberate drag slop', () => {
+    expect(getTableCellPointerMoveDecision(5, 0, false)).toBe('plain-click')
+    expect(getTableCellPointerMoveDecision(6, 0, false)).toBe('native-text-selection')
+    expect(getTableCellPointerMoveDecision(5, 0, true)).toBe('plain-click')
+    expect(getTableCellPointerMoveDecision(6, 0, true)).toBe('cell-selection')
+  })
+
   it('clears stale table selection on cell mousedown before starting a fresh cell interaction', () => {
     expect(source).toContain('setCurrentTableSelection(null)')
     expect(source).toContain('lockedTableControlsRef.current = null')
@@ -29,6 +37,7 @@ describe('table controls interaction wiring', () => {
     const handleMouseDownSource = getFunctionSource('handleMouseDown')
     expect(handleMouseDownSource).toContain('sourceCell,')
     expect(handleMouseDownSource).toContain('suppressingSelection: false')
+    expect(handleMouseDownSource).toContain('nativeTextSelection: false')
     expect(handleMouseDownSource).not.toContain('selectionSuppressionRef.current.begin()')
     expect(handleMouseDownSource).not.toContain('root?.classList.add(TABLE_REORDER_PENDING_CLASS)')
   })
@@ -42,15 +51,62 @@ describe('table controls interaction wiring', () => {
   })
 
   it('does not block mouseup for a single-cell click that never becomes a rectangle selection', () => {
-    expect(source).toContain("if (interactionState.kind === 'cell-selection' && interactionState.selecting)")
+    expect(source).toContain("if (interactionState.kind === 'cell-selection')")
+    expect(source).toContain('if (interactionState.selecting)')
+    expect(source).toContain('scheduleTableCellClickRepair(editor, coords, sourceCell)')
     expect(source).not.toContain('if (interactionState.suppressingSelection || (interactionState.kind ===')
   })
 
+  it('keeps visible table controls targeted to the table they are locked over', () => {
+    expect(source).toContain('const tableControlsTargetRef = useRef<ActiveTableContext | null>(null)')
+    expect(source).toContain('const lockedTableControlsTargetRef = useRef<ActiveTableContext | null>(null)')
+    expect(source).toContain('tableControlsTargetRef.current = lockedTableControlsTargetRef.current ?? tableDomContext.context')
+    expect(source).toContain('lockedTableControlsTargetRef.current = shouldLockControls ? nextActiveTable : null')
+    expect(source).toContain('applyTableControlOperationToView(view, operation, targetMode, operationContext)')
+  })
+
+  it('repairs table-control caret jumps back to the operated table', () => {
+    expect(source).toContain('function scheduleTableControlCaretRepair(editor: Editor, expectedContext: ActiveTableContext)')
+    expect(source).toContain('if (activeContext?.tableStart === lockedTarget.tableStart) return')
+    expect(source).toContain('selectTableCellAtPosition(view, lockedTarget.tableStart, lockedTarget.rowIndex, lockedTarget.columnIndex)')
+    expect(source).toContain('scheduleTableControlCaretRepair(currentEditor, nextActiveTable)')
+  })
+
   it('does not promote same-cell movement into a custom rectangle selection', () => {
-    expect(source).toContain('targetCell !== interactionState.sourceCell')
-    expect(source).toContain('targetContext.rowIndex !== interactionState.context.rowIndex')
-    expect(source).toContain('targetContext.columnIndex !== interactionState.context.columnIndex')
-    expect(source).toContain('if (!interactionState.selecting && !isDifferentCell)')
+    const handleCellSelectionMoveSource = getFunctionSource('handleCellSelectionMove')
+    expect(handleCellSelectionMoveSource).toContain('targetCell !== interactionState.sourceCell')
+    expect(handleCellSelectionMoveSource).toContain('targetContext.rowIndex !== interactionState.context.rowIndex')
+    expect(handleCellSelectionMoveSource).toContain('targetContext.columnIndex !== interactionState.context.columnIndex')
+    expect(handleCellSelectionMoveSource).toContain('if (interactionState.nativeTextSelection && !isDifferentCell) return')
+    expect(handleCellSelectionMoveSource).toContain("if (decision === 'native-text-selection')")
+    expect(handleCellSelectionMoveSource).toContain('interactionState.nativeTextSelection = true')
+    expect(handleCellSelectionMoveSource).not.toContain('if (interactionState.nativeTextSelection) return')
+  })
+
+  it('repairs click-like table exits after the browser selection pass', () => {
+    expect(source).toContain("kind: 'outside-table-click'")
+    expect(source).toContain('const activeTableRange = getActiveTableRange(view)')
+    expect(source).toContain('scheduleOutsideTableClickRepair(editor, range, coords, target)')
+    expect(source).toContain('placeCaretOutsideTableAtCoords(view, coords, range, target)')
+  })
+
+  it('does not suppress native dragstart for plain pending cell clicks or outside-table clicks', () => {
+    const handleNativeDragStartSource = getFunctionSource('handleNativeDragStart')
+    expect(handleNativeDragStartSource).toContain('const shouldSuppress =')
+    expect(handleNativeDragStartSource).toContain("interactionState.kind === 'cell-selection'")
+    expect(handleNativeDragStartSource).toContain("interactionState.kind === 'selector-gesture'")
+    expect(handleNativeDragStartSource).toContain("interactionState.kind === 'range-reorder'")
+    expect(handleNativeDragStartSource).toContain('if (!shouldSuppress) return')
+    expect(handleNativeDragStartSource).not.toContain("interactionState.kind === 'outside-table-click'")
+  })
+
+  it('handles plain Enter inside tables without touching modified Enter shortcuts', () => {
+    const handleKeyDownSource = getFunctionSource('handleKeyDown')
+    expect(handleKeyDownSource).toContain("event.key === 'Enter'")
+    expect(handleKeyDownSource).toContain('!event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey')
+    expect(handleKeyDownSource).toContain('moveTableCellSelectionByEnter(view)')
+    expect(handleKeyDownSource).toContain('event.preventDefault()')
+    expect(handleKeyDownSource).toContain('if (editor && result.changed)')
   })
 
   it('routes row and column rail gestures through click-to-select or drag-to-reorder selector state', () => {

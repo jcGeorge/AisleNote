@@ -17,6 +17,8 @@ describe('default app state', () => {
     expect(scratchpadAisleBody?.markdown).toBe(DEFAULT_SCRATCHPAD_MARKDOWN)
     expect(state.ui).not.toHaveProperty('scratchpadAisleLimit')
     expect(state.ui).not.toHaveProperty('trashDeleteForRealRequiresConfirmation')
+    expect(state.ui.tableAddTargetMode).toBe('bottom-right')
+    expect(state.ui.tableDeleteTargetMode).toBe('bottom-right')
     expect(state.ui.tabColorIndicatorPlacement).toBe('bottom')
     expect(state.hotkeys.shortcuts).toMatchObject({
       cyclePinnedNoteTabNext: 'ctrl+tab',
@@ -42,6 +44,21 @@ describe('default app state', () => {
       'blockQuote',
       'strikethrough',
     ])
+  })
+
+  it('hydrates persisted Misc segmented setting choices from saved app state', () => {
+    const state = createDefaultAppState()
+    state.ui.tableAddTargetMode = 'active-cell'
+    state.ui.tableDeleteTargetMode = 'bottom-right'
+    state.ui.tableOfContentsScope = 'focused-aisle'
+    state.ui.tabColorIndicatorPlacement = 'top'
+
+    const parsed = parseSavedState(JSON.stringify(state))
+
+    expect(parsed.ui.tableAddTargetMode).toBe('active-cell')
+    expect(parsed.ui.tableDeleteTargetMode).toBe('bottom-right')
+    expect(parsed.ui.tableOfContentsScope).toBe('focused-aisle')
+    expect(parsed.ui.tabColorIndicatorPlacement).toBe('top')
   })
 
   it('hydrates persisted newline shortcut choices from saved app state', () => {
