@@ -9,6 +9,7 @@ export type HorizontalPaneScrollGeometry = {
 }
 
 const DEFAULT_SCROLLBAR_MIN_THUMB_WIDTH = 48
+const HORIZONTAL_PANE_VISIBILITY_EPSILON = 0.5
 
 export type AisleHorizontalScrollbarGeometryInput = {
   scrollLeft: number
@@ -124,7 +125,6 @@ export function getScrollLeftToRevealHorizontalPane({
   paneRight,
   scrollWidth,
   alignmentMargin = 0,
-  alignWhenVisible = false,
 }: HorizontalPaneScrollGeometry) {
   if (viewportWidth <= 0) return Math.max(0, currentScrollLeft)
 
@@ -134,10 +134,18 @@ export function getScrollLeftToRevealHorizontalPane({
   const safeAlignmentMargin = Math.max(0, alignmentMargin)
   const visibleLeft = safeCurrentScrollLeft
   const visibleRight = safeCurrentScrollLeft + viewportWidth
+
+  const paneWidth = Math.max(0, paneRight - paneLeft)
+  if (
+    paneLeft >= visibleLeft - HORIZONTAL_PANE_VISIBILITY_EPSILON &&
+    paneRight <= visibleRight + HORIZONTAL_PANE_VISIBILITY_EPSILON
+  ) {
+    return toScrollLeft(safeCurrentScrollLeft)
+  }
+
   const paddedPaneLeft = paneLeft - safeAlignmentMargin
   const paddedPaneRight = paneRight + safeAlignmentMargin
 
-  const paneWidth = Math.max(0, paneRight - paneLeft)
   if (paneWidth + safeAlignmentMargin * 2 > viewportWidth) {
     if (paneLeft < visibleLeft || paneRight > visibleRight) return toScrollLeft(paneLeft - safeAlignmentMargin)
     return toScrollLeft(safeCurrentScrollLeft)
@@ -145,16 +153,6 @@ export function getScrollLeftToRevealHorizontalPane({
 
   if (paddedPaneLeft < visibleLeft) return toScrollLeft(paddedPaneLeft)
   if (paddedPaneRight > visibleRight) return toScrollLeft(paddedPaneRight - viewportWidth)
-
-  if (alignWhenVisible && safeAlignmentMargin > 0) {
-    const paneCenter = paneLeft + paneWidth / 2
-    const viewportCenter = visibleLeft + viewportWidth / 2
-    return toScrollLeft(
-      paneCenter <= viewportCenter
-        ? paddedPaneLeft
-        : paddedPaneRight - viewportWidth,
-    )
-  }
 
   return toScrollLeft(safeCurrentScrollLeft)
 }
