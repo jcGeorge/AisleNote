@@ -353,6 +353,16 @@ describe('markdown WYSIWYG blank line preservation', () => {
     expect(normalizeMarkdownForPersistence('```\none\n<br>\ntwo\n```')).toBe('```\none\n<br>\ntwo\n```')
   })
 
+  it('unwraps span tags outside fenced code while preserving fenced examples', () => {
+    expect(normalizeMarkdownForPersistence('<span style="color: #bbbebf;">Matthew</span>')).toBe('Matthew')
+    expect(normalizeMarkdownForPersistence('Before <span lang="grc">δεῖπνον</span> after')).toBe(
+      'Before δεῖπνον after',
+    )
+    expect(normalizeMarkdownForPersistence('```\n<span style="color: #bbbebf;">Matthew</span>\n```')).toBe(
+      '```\n<span style="color: #bbbebf;">Matthew</span>\n```',
+    )
+  })
+
   it('strips editor blank placeholders when typed text lands on the placeholder line', () => {
     expect(normalizeMarkdownForPersistence(`${EDITOR_BLANK_LINE_PLACEHOLDER}x`)).toBe('x')
   })

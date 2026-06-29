@@ -42,6 +42,10 @@ export function sanitizeEditorHtml(html: string): string {
         element.removeAttribute(attribute.name)
         return
       }
+      if (name === 'style') {
+        element.removeAttribute(attribute.name)
+        return
+      }
       if ((name === 'src' || name === 'href' || name === 'xlink:href') && !isSafeUrl(attribute.value)) {
         element.removeAttribute(attribute.name)
       }

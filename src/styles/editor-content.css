@@ -427,7 +427,7 @@
 .toastui-editor-contents p.aislenote-annotation-line,
 .toastui-editor .ProseMirror p.aislenote-annotation-line {
   position: relative !important;
-  padding-left: 2.4rem !important;
+  padding-left: 1.55rem !important;
   color: var(--editor-text) !important;
 }
 
@@ -437,7 +437,7 @@
   position: absolute;
   left: 0.35rem;
   top: 1.18em;
-  width: 1.55rem;
+  width: 0.9rem;
   height: 2px;
   border-radius: 999px;
   background: currentColor !important;

@@ -8,10 +8,12 @@ const readOnlyMarkdownViewerSource = readFileSync(
 )
 
 describe('ReadOnlyMarkdownViewer source wiring', () => {
-  it('uses the shared Toast UI inline HTML renderer', () => {
+  it('uses sanitized Toast UI markdown without raw span preservation', () => {
     expect(readOnlyMarkdownViewerSource).toContain(
-      "import { AISLENOTE_TOAST_HTML_RENDERER } from '../../editor/toast-inline-html-renderer'",
+      "import { sanitizeEditorHtml } from '../../editor/editor-sanitizer'",
     )
-    expect(readOnlyMarkdownViewerSource).toContain('customHTMLRenderer: AISLENOTE_TOAST_HTML_RENDERER')
+    expect(readOnlyMarkdownViewerSource).toContain('customHTMLSanitizer: sanitizeEditorHtml')
+    expect(readOnlyMarkdownViewerSource).not.toContain('AISLENOTE_TOAST_HTML_RENDERER')
+    expect(readOnlyMarkdownViewerSource).not.toContain('customHTMLRenderer')
   })
 })

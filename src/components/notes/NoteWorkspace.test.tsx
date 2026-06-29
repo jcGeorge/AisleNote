@@ -91,6 +91,7 @@ function renderWorkspace(
     noteTabs?: Array<{ noteId: string; title: string; status: 'temporary' | 'retained'; active: boolean }>
     renamingNoteTabId?: string
     noteTabRenameDraft?: string
+    noteContentOverlay?: React.ReactNode
   } = {},
 ) {
   return renderToStaticMarkup(
@@ -109,6 +110,7 @@ function renderWorkspace(
       headingPopover={null}
       imageToolsOverlay={null}
       tableControlsOverlay={null}
+      noteContentOverlay={options.noteContentOverlay}
       mountedAisleIds={mountedAisleIds}
       failedEditorMountAisleIds={options.failedEditorMountAisleIds}
       suppressActiveAislePreviewFallback={options.suppressActiveAislePreviewFallback}
@@ -162,6 +164,24 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).not.toContain('data-aisle-editor-key="body-1::b" class="toast-editor-host"')
     expect(html).toContain('aisle-editor-preview-fallback')
     expect(html).toContain('<strong>preview</strong>')
+  })
+
+  it('renders note overlays inside the content region before the tab strip', () => {
+    const html = renderWorkspace(new Set(['a']), {
+      noteContentOverlay: <div className="test-note-overlay">overlay</div>,
+      noteTabs: [
+        { noteId: 'note-1', title: 'One', status: 'retained', active: true },
+        { noteId: 'note-2', title: 'Two', status: 'temporary', active: false },
+      ],
+    })
+
+    expect(html).toContain('note-content-region')
+    expect(html).toContain('note-content-overlay-region')
+    expect(html).toContain('test-note-overlay')
+    expect(html.indexOf('note-content-overlay-region')).toBeLessThan(html.indexOf('note-tab-strip'))
+    expect(editorShellCss).toContain('.note-content-overlay-region')
+    expect(editorShellCss).toContain('pointer-events: none;')
+    expect(editorShellCss).toContain('.note-content-overlay-region > *')
   })
 
   it('does not render markdown fallback for the active aisle while its editor mount is pending', () => {
@@ -608,17 +628,17 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).not.toContain('note-aisle-frontmatter-filter-btn')
   })
 
-  it('styles aisle action buttons as unfocused by default and selected in active aisles', () => {
+  it('styles aisle action buttons as unfocused by default and primary while active', () => {
     const defaultRule = editorShellCss.slice(
       editorShellCss.indexOf('.note-aisle-action-btn {'),
-      editorShellCss.indexOf('.note-aisle-action-btn:hover,'),
+      editorShellCss.indexOf('.note-aisle-action-btn:hover {'),
     )
     const hoverRule = editorShellCss.slice(
-      editorShellCss.indexOf('.note-aisle-action-btn:hover,'),
-      editorShellCss.indexOf('.note-aisle-pane.is-active .note-aisle-action-btn {'),
+      editorShellCss.indexOf('.note-aisle-action-btn:hover {'),
+      editorShellCss.indexOf('.note-aisle-action-btn:focus,'),
     )
-    const activeRule = editorShellCss.slice(
-      editorShellCss.indexOf('.note-aisle-pane.is-active .note-aisle-action-btn {'),
+    const primaryRule = editorShellCss.slice(
+      editorShellCss.indexOf('.note-aisle-action-btn:focus,'),
       editorShellCss.indexOf('.note-aisle-action-wrap {'),
     )
 
@@ -631,10 +651,14 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(hoverRule).toContain('border-color: var(--rail-control-hover-border);')
     expect(hoverRule).toContain('background: var(--rail-control-hover-bg);')
     expect(hoverRule).toContain('color: var(--rail-control-hover-text);')
-    expect(activeRule).toContain('.note-aisle-pane.is-active .note-aisle-action-btn')
-    expect(activeRule).toContain('border-color: var(--rail-control-selected-border);')
-    expect(activeRule).toContain('background: var(--rail-control-selected-bg);')
-    expect(activeRule).toContain('color: var(--rail-control-selected-text);')
+    expect(primaryRule).not.toContain('.note-aisle-pane.is-active .note-aisle-action-btn')
+    expect(primaryRule).toContain('.note-aisle-action-btn:focus')
+    expect(primaryRule).toContain('.note-aisle-action-btn:active')
+    expect(primaryRule).toContain('.note-aisle-action-btn[aria-pressed="true"]')
+    expect(primaryRule).toContain('.note-aisle-action-btn[aria-expanded="true"]')
+    expect(primaryRule).toContain('border-color: var(--modal-primary-border);')
+    expect(primaryRule).toContain('background: var(--modal-primary-bg);')
+    expect(primaryRule).toContain('color: var(--modal-primary-text);')
   })
 
   it('applies persisted custom aisle widths to split panes', () => {

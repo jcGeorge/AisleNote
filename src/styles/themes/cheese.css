@@ -72,10 +72,12 @@
   --settings-range-thumb-hover-border: #2e5147;
   --settings-switch-bg: #fffaef;
   --settings-switch-border: #b18450;
+  --settings-switch-thumb-bg: #5f4d3e;
   --settings-switch-focus-border: #3f715d;
   --settings-switch-focus-shadow: 0 0 0 0.2rem rgba(63, 113, 93, 0.2);
   --settings-switch-checked-bg: #3f715d;
   --settings-switch-checked-border: #3f715d;
+  --settings-switch-checked-thumb-bg: #fffaf3;
   --settings-switch-checked-focus-shadow: 0 0 0 0.2rem rgba(63, 113, 93, 0.22);
   --theme-switch-bg: #f3e5c7;
   --theme-switch-border: #b18450;
@@ -250,6 +252,12 @@
   --settings-range-thumb-bg: var(--custom-palette-primary);
   --settings-range-thumb-hover-bg: color-mix(in srgb, var(--custom-palette-primary) 84%, var(--custom-palette-text));
   --settings-range-thumb-hover-border: color-mix(in srgb, var(--custom-palette-primary) 72%, var(--custom-palette-text));
+  --settings-switch-bg: #fffaef;
+  --settings-switch-border: #b18450;
+  --settings-switch-thumb-bg: #5f4d3e;
+  --settings-switch-checked-bg: #3f715d;
+  --settings-switch-checked-border: #3f715d;
+  --settings-switch-checked-thumb-bg: #fffaf3;
   --note-aisle-resize-bg: var(--app-border);
   --note-aisle-resize-border: transparent;
   --note-aisle-resize-shadow:

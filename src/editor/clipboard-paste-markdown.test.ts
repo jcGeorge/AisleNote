@@ -40,6 +40,35 @@ describe('clipboard markdown paste helpers', () => {
     expect(convertPlainTextToMarkdown).not.toHaveBeenCalled()
   })
 
+  it('prefers layout-sensitive plain text over rich HTML for rich paste', async () => {
+    const plainText = 'Matthew 4:19\tAnd he says unto them\nMatthew 8:19\tAnd a certain scribe came'
+    const convertHtmlToMarkdown = vi.fn(async (html: string) => `converted html: ${html}`)
+    const convertPlainTextToMarkdown = vi.fn(async (text: string) => text)
+
+    const result = await readClipboardMarkdown({
+      mode: 'rich',
+      clipboard: {
+        read: async () => [
+          clipboardItem({
+            'text/html': '<p><span style="color: #bbbebf;">Matthew 4:19 And he says unto them Matthew 8:19 And a certain scribe came</span></p>',
+            'text/plain': plainText,
+          }),
+        ],
+      },
+      convertHtmlToMarkdown,
+      convertPlainTextToMarkdown,
+    })
+
+    expect(result).toEqual({
+      ok: true,
+      markdown: plainText,
+      source: 'plain-text',
+      text: plainText,
+    })
+    expect(convertPlainTextToMarkdown).toHaveBeenCalledWith(plainText)
+    expect(convertHtmlToMarkdown).not.toHaveBeenCalled()
+  })
+
   it('falls back to text/plain for rich paste when HTML is missing', async () => {
     const result = await readClipboardMarkdown({
       mode: 'rich',

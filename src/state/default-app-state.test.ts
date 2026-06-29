@@ -17,12 +17,15 @@ describe('default app state', () => {
     expect(scratchpadAisleBody?.markdown).toBe(DEFAULT_SCRATCHPAD_MARKDOWN)
     expect(state.ui).not.toHaveProperty('scratchpadAisleLimit')
     expect(state.ui).not.toHaveProperty('trashDeleteForRealRequiresConfirmation')
+    expect(state.ui.tableAddTargetMode).toBe('bottom-right')
+    expect(state.ui.tableDeleteTargetMode).toBe('bottom-right')
     expect(state.ui.tabColorIndicatorPlacement).toBe('bottom')
     expect(state.hotkeys.shortcuts).toMatchObject({
       cyclePinnedNoteTabNext: 'ctrl+tab',
       cyclePinnedNoteTabPrev: 'ctrl+shift+tab',
       reopenClosedNoteTab: 'mod+shift+t',
       formatHighlight: 'mod+shift+h',
+      pastePlainText: 'mod+shift+v',
       cycleAislePrev: 'mod+alt+arrowleft',
       cycleAisleNext: 'mod+alt+arrowright',
     })
@@ -41,6 +44,21 @@ describe('default app state', () => {
       'blockQuote',
       'strikethrough',
     ])
+  })
+
+  it('hydrates persisted Misc segmented setting choices from saved app state', () => {
+    const state = createDefaultAppState()
+    state.ui.tableAddTargetMode = 'active-cell'
+    state.ui.tableDeleteTargetMode = 'bottom-right'
+    state.ui.tableOfContentsScope = 'focused-aisle'
+    state.ui.tabColorIndicatorPlacement = 'top'
+
+    const parsed = parseSavedState(JSON.stringify(state))
+
+    expect(parsed.ui.tableAddTargetMode).toBe('active-cell')
+    expect(parsed.ui.tableDeleteTargetMode).toBe('bottom-right')
+    expect(parsed.ui.tableOfContentsScope).toBe('focused-aisle')
+    expect(parsed.ui.tabColorIndicatorPlacement).toBe('top')
   })
 
   it('hydrates persisted newline shortcut choices from saved app state', () => {
@@ -73,6 +91,7 @@ describe('default app state', () => {
     expect(parsed.hotkeys.shortcuts.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')
     expect(parsed.hotkeys.shortcuts.reopenClosedNoteTab).toBe('Mod+Shift+T')
     expect(parsed.hotkeys.shortcuts.formatHighlight).toBe('Mod+Shift+H')
+    expect(parsed.hotkeys.shortcuts.pastePlainText).toBe('Mod+Shift+V')
     expect(parsed.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Alt+ArrowLeft')
     expect(parsed.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Alt+ArrowRight')
   })

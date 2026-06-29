@@ -35,16 +35,16 @@ describe('vault sidebar tree', () => {
     expect(vaultAppSource).not.toContain('<button type="button" onClick={exportVault}>Export</button>')
   })
 
-  it('uses soft active styling only for the active folder create target', () => {
+  it('uses active styling for the active folder create target and active note row', () => {
     expect(appCssSource).toContain('.vault-tree-row.is-folder.is-active .vault-tree-main')
-    expect(appCssSource).not.toContain('.vault-tree-row.is-note.is-active .vault-tree-main')
     expect(appCssSource).not.toContain('.vault-tree-row.is-active .vault-tree-main')
     expect(vaultAppSource).toContain("const [activeFolderId, setActiveFolderId] = useState('')")
     expect(vaultAppSource).toContain('activeFolderId: string')
-    expect(vaultAppSource).toContain("const active = item.type === 'folder' && item.id === activeFolderId")
-    expect(vaultAppSource).not.toContain('activeNoteId: string')
-    expect(vaultAppSource).not.toContain('activeNoteId={state.vault.activeNoteId}')
+    expect(vaultAppSource).toContain('activeNoteId: string')
+    expect(vaultAppSource).toContain("const activeNote = item.type === 'note' && item.id === activeNoteId")
+    expect(vaultAppSource).toContain("const active = (item.type === 'folder' && item.id === activeFolderId) || activeNote")
     expect(vaultAppSource).toContain('activeFolderId={activeFolderId}')
+    expect(vaultAppSource).toContain("activeNoteId={activeModelIsScratchpad ? '' : state.vault.activeNoteId}")
     expect(vaultAppSource).toContain("const selected = item.type === 'note' && selectedNoteIds.has(item.id)")
     expect(appCssSource).toContain('--vault-tree-row-bg: color-mix(in srgb, var(--app-text) 10%, transparent);')
     expect(appCssSource).toContain('.vault-tree-children::before')
@@ -60,6 +60,7 @@ describe('vault sidebar tree', () => {
     expect(appCssSource).toContain('.vault-tree-folder-icon')
     expect(appCssSource).toContain('height: 20px;')
     expect(appCssSource).toContain('linear-gradient(var(--vault-tree-row-bg), var(--vault-tree-row-bg))')
+    expect(appCssSource).toContain('.vault-tree-row.is-note.is-active .vault-tree-main,\n.vault-tree-row.is-note.is-selected .vault-tree-main')
     expect(appCssSource).not.toContain('.vault-tree-row.is-active .vault-tree-main,\n.vault-search-result.is-active')
   })
 
@@ -109,8 +110,12 @@ describe('vault sidebar tree', () => {
     expect(vaultAppSource).toContain("event.key === 'Tab' && !event.shiftKey && tabCreatesNext")
     expect(vaultAppSource).toContain("onCommitRename('tab')")
     expect(vaultAppSource).toContain('draggable={!renaming}')
+    expect(vaultAppSource).toContain('const shouldExpandDropParent =')
+    expect(vaultAppSource).toContain('Boolean(target.parentFolderId) &&')
+    expect(vaultAppSource).toContain('(draggedNoteIds.length === 0 || previous.ui.noteDropAutoExpandsFolders === true)')
     expect(vaultAppSource).toContain('moveVaultItems(previous.vault, draggedNoteIds, target.parentFolderId, target.index)')
     expect(vaultAppSource).toContain('moveVaultItem(previous.vault, draggedItemId, target.parentFolderId, target.index)')
+    expect(vaultAppSource).toContain('ui: shouldExpandDropParent')
     expect(vaultAppSource).toContain('vault-tree-root-drop-zone')
     expect(appCssSource).toContain('.vault-tree-row.is-drop-before::before')
     expect(appCssSource).toContain('.vault-tree-row.is-drop-inside .vault-tree-main')
@@ -172,7 +177,9 @@ describe('vault sidebar tree', () => {
     expect(vaultAppSource).toContain("import { getVaultTreeRevealScrollTop } from './vault-tree-scroll'")
     expect(vaultAppSource).toContain('const activeNoteTreeRevealNoteIdRef = useRef(state.vault.activeNoteId)')
     expect(vaultAppSource).toContain("const pendingActiveNoteTreeRevealIdRef = useRef('')")
+    expect(vaultAppSource).toContain('const suppressActiveNoteTreeRevealForDeleteRef = useRef<string | null>(null)')
     expect(vaultAppSource).toContain('pendingActiveNoteTreeRevealIdRef.current = activeNoteId')
+    expect(vaultAppSource).toContain('suppressActiveNoteTreeRevealForDeleteRef.current === previousActiveNoteId')
     expect(vaultAppSource).toContain('if (scratchpadActive || activeModelIsScratchpad) {')
     expect(vaultAppSource).toContain('const collapsedAncestorIds = getVaultNoteFolderPath(state.vault.items, pendingNoteId)')
     expect(vaultAppSource).toContain('previous.ui.collapsedFolderIds.filter(')
@@ -184,6 +191,15 @@ describe('vault sidebar tree', () => {
     expect(vaultAppSource).toContain('const nextScrollTop = getVaultTreeRevealScrollTop(')
     expect(vaultAppSource).toContain('if (Math.abs(nextScrollTop - scrollNode.scrollTop) > 0.5) {')
     expect(vaultAppSource).toContain('updateVaultTreeViewport()')
+  })
+
+  it('suppresses sidebar tree reveal scrolling when deletion changes the active note', () => {
+    expect(vaultAppSource).toContain('function deletedVaultItemsContainNoteId(')
+    expect(vaultAppSource).toContain('return item.children.some((child) => vaultTreeItemContainsNoteId(child, noteId))')
+    expect(vaultAppSource).toContain('const activeNoteId = stateRef.current.vault.activeNoteId')
+    expect(vaultAppSource).toContain('deletedVaultItemsContainNoteId(stateRef.current.vault.items, targetItemIds, activeNoteId)')
+    expect(vaultAppSource).toContain('suppressActiveNoteTreeRevealForDeleteRef.current = activeNoteId')
+    expect(vaultAppSource).toContain('pendingActiveNoteTreeRevealIdRef.current = \'\'')
   })
 
   it('lets workspace pointer activation cancel pending cursor restore before focusing an aisle', () => {

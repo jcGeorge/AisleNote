@@ -11,7 +11,6 @@ export type AppCommandDefinition = {
 export const APP_COMMANDS: AppCommandDefinition[] = [
   { id: 'toggleNotesTrash', label: 'toggle notes / trash', defaultShortcut: 'Mod+T' },
   { id: 'toggleNotesScratchpad', label: 'toggle notes / scratchpad', defaultShortcut: 'Mod+S' },
-  { id: 'toggleNotesFilter', label: 'toggle notes / filter', defaultShortcut: '' },
   { id: 'newNote', label: 'new note', defaultShortcut: 'Mod+N' },
   { id: 'newFolder', label: 'new folder', defaultShortcut: 'Mod+Shift+N' },
   { id: 'closeCurrentNote', label: 'close current note', defaultShortcut: 'Mod+W' },
@@ -20,6 +19,7 @@ export const APP_COMMANDS: AppCommandDefinition[] = [
   { id: 'reopenClosedNoteTab', label: 'reopen closed note tab', defaultShortcut: 'Mod+Shift+T' },
   { id: 'formatStrikethrough', label: 'strikethrough', defaultShortcut: '' },
   { id: 'formatHighlight', label: 'highlight', defaultShortcut: 'Mod+Shift+H' },
+  { id: 'pastePlainText', label: 'paste as plain text', defaultShortcut: 'Mod+Shift+V' },
   { id: 'cycleAislePrev', label: 'previous aisle', defaultShortcut: 'Mod+Alt+ArrowLeft' },
   { id: 'cycleAisleNext', label: 'next aisle', defaultShortcut: 'Mod+Alt+ArrowRight' },
 ]

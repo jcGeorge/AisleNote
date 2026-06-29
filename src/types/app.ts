@@ -250,7 +250,6 @@ export type ShortcutId =
   | 'openSettings'
   | 'toggleNotesTrash'
   | 'toggleNotesScratchpad'
-  | 'toggleNotesFilter'
   | 'newNote'
   | 'newFolder'
   | 'closeCurrentNote'
@@ -259,6 +258,7 @@ export type ShortcutId =
   | 'reopenClosedNoteTab'
   | 'formatStrikethrough'
   | 'formatHighlight'
+  | 'pastePlainText'
   | 'cycleAislePrev'
   | 'cycleAisleNext'
 
@@ -430,6 +430,7 @@ export type AppState = {
     aisleWidths?: Record<string, Record<string, number>>
     toolbarLayouts?: ToolbarLayout[]
     toolbarEditorShowNames?: boolean
+    noteDropAutoExpandsFolders?: boolean
     seenTipIds: TipId[]
     disabledTipIds: TipId[]
   }

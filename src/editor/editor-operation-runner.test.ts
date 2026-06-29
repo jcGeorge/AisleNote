@@ -5,11 +5,13 @@ import { EditorState, TextSelection } from 'prosemirror-state'
 import {
   dispatchEditorTransaction,
   insertEditorTextOperation,
+  insertTableOperation,
   replaceEditorMarkdownOperation,
   replaceSelectedTextWithTableOperation,
   runEditorCommandOperation,
   type EditorOperationRuntime,
 } from './editor-operation-runner'
+import { getActiveTableContext } from './table-editing'
 
 const tableOperationSchema = new Schema({
   nodes: {
@@ -95,6 +97,57 @@ function createTableSelectionRuntime(text: string, options: { collapsed?: boolea
   return { runtime, editor, view }
 }
 
+function paragraph(text = '') {
+  return tableOperationSchema.nodes.paragraph.create(null, text ? tableOperationSchema.text(text) : undefined)
+}
+
+function tableCell(typeName: 'tableHeadCell' | 'tableBodyCell') {
+  return tableOperationSchema.nodes[typeName].create(null, paragraph())
+}
+
+function tableRow(cellTypeName: 'tableHeadCell' | 'tableBodyCell', columnCount = 2) {
+  return tableOperationSchema.nodes.tableRow.create(
+    null,
+    Array.from({ length: columnCount }, () => tableCell(cellTypeName)),
+  )
+}
+
+function basicTable() {
+  return tableOperationSchema.nodes.table.create(null, [
+    tableOperationSchema.nodes.tableHead.create(null, tableRow('tableHeadCell')),
+    tableOperationSchema.nodes.tableBody.create(null, tableRow('tableBodyCell')),
+  ])
+}
+
+function createCollapsedInsertTableRuntime(doc: any, selectionPosition: number) {
+  const view = {
+    state: EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, selectionPosition),
+    }),
+    dispatch: vi.fn((transaction) => {
+      view.state = view.state.apply(transaction)
+    }),
+  }
+  const editor = {
+    wwEditor: { view },
+    focus: vi.fn(),
+    exec: vi.fn((command: string) => {
+      if (command !== 'addTable') return
+      view.dispatch(view.state.tr.replaceSelectionWith(basicTable(), false).scrollIntoView())
+    }),
+    insertText: vi.fn(),
+  } as unknown as Editor & { exec: ReturnType<typeof vi.fn>; insertText: ReturnType<typeof vi.fn>; focus: ReturnType<typeof vi.fn> }
+  const runtime: EditorOperationRuntime = {
+    editorRef: { current: editor },
+    commitActiveEditorMarkdownNow: vi.fn(() => 'markdown'),
+    replaceActiveEditorMarkdown: vi.fn(),
+    syncToolbarFormatState: vi.fn(),
+    pushToast: vi.fn(),
+  }
+  return { runtime, editor, view }
+}
+
 function getFirstTable(doc: any) {
   let table: any | null = null
   doc.descendants((node: any) => {
@@ -164,6 +217,46 @@ describe('editor operation runner', () => {
 
     runEditorCommandOperation(collapsed.runtime, 'addTable', { rowCount: 2, columnCount: 2 }, { commitMode: 'none' })
     expect(collapsed.editor.exec).toHaveBeenCalledWith('addTable', { rowCount: 2, columnCount: 2 })
+  })
+
+  it('inserts a table operation from selected text and places the cursor in the first generated cell', () => {
+    const selected = createTableSelectionRuntime('one\ttwo')
+
+    const result = insertTableOperation(selected.runtime, { rowCount: 2, columnCount: 2 }, { syncToolbar: true })
+    const table = getFirstTable(selected.view.state.doc)
+
+    expect(result).toMatchObject({ handled: true, changed: true })
+    expect(selected.editor.exec).not.toHaveBeenCalled()
+    expect(selected.runtime.commitActiveEditorMarkdownNow).toHaveBeenCalledTimes(1)
+    expect(selected.runtime.syncToolbarFormatState).toHaveBeenCalledTimes(1)
+    expect(table.child(0).child(0).child(0).textContent).toBe('one')
+    expect(getActiveTableContext(selected.view)).toMatchObject({ rowIndex: 0, columnIndex: 0 })
+  })
+
+  it('places a collapsed addTable cursor in the first cell when text follows the table', () => {
+    const before = paragraph('before')
+    const doc = tableOperationSchema.nodes.doc.create(null, [before, paragraph('after')])
+    const setup = createCollapsedInsertTableRuntime(doc, before.nodeSize - 1)
+
+    const result = insertTableOperation(setup.runtime, { rowCount: 2, columnCount: 2 }, { syncToolbar: true })
+
+    expect(result).toMatchObject({ handled: true, changed: true })
+    expect(setup.editor.exec).toHaveBeenCalledWith('addTable', { rowCount: 2, columnCount: 2 })
+    expect(getActiveTableContext(setup.view)).toMatchObject({ rowIndex: 0, columnIndex: 0 })
+    expect(setup.runtime.commitActiveEditorMarkdownNow).toHaveBeenCalledTimes(1)
+    expect(setup.runtime.syncToolbarFormatState).toHaveBeenCalledTimes(1)
+  })
+
+  it('places a collapsed addTable cursor in the first cell when the table is inserted at document end', () => {
+    const before = paragraph('before')
+    const doc = tableOperationSchema.nodes.doc.create(null, [before])
+    const setup = createCollapsedInsertTableRuntime(doc, before.nodeSize - 1)
+
+    const result = insertTableOperation(setup.runtime, { rowCount: 2, columnCount: 2 }, { syncToolbar: true })
+
+    expect(result).toMatchObject({ handled: true, changed: true })
+    expect(setup.editor.exec).toHaveBeenCalledWith('addTable', { rowCount: 2, columnCount: 2 })
+    expect(getActiveTableContext(setup.view)).toMatchObject({ rowIndex: 0, columnIndex: 0 })
   })
 
   it('falls back to the editor command when a table selection conversion is unavailable', () => {

@@ -33,6 +33,9 @@ import {
   MAX_TOOLBAR_BUTTON_SCALE,
   MIN_NOTE_FONT_SCALE,
   MIN_TOOLBAR_BUTTON_SCALE,
+  normalizeTableControlTargetMode,
+  normalizeTableOfContentsScope,
+  normalizeTabColorIndicatorPlacement,
 } from '../settings/defaults'
 import { normalizeHotkeySettings } from '../hotkeys/shortcuts'
 
@@ -407,6 +410,10 @@ export function normalizeAppState(raw: unknown): AppState {
       sidebarCollapsed: typeof ui.sidebarCollapsed === 'boolean' ? ui.sidebarCollapsed : fallback.ui.sidebarCollapsed,
       sidebarWidth,
       collapsedFolderIds: normalizeStringList(ui.collapsedFolderIds),
+      tableAddTargetMode: normalizeTableControlTargetMode(ui.tableAddTargetMode),
+      tableDeleteTargetMode: normalizeTableControlTargetMode(ui.tableDeleteTargetMode),
+      tableOfContentsScope: normalizeTableOfContentsScope(ui.tableOfContentsScope),
+      tabColorIndicatorPlacement: normalizeTabColorIndicatorPlacement(ui.tabColorIndicatorPlacement),
       noteFontScale: normalizeNumber(ui.noteFontScale, fallback.ui.noteFontScale, MIN_NOTE_FONT_SCALE, MAX_NOTE_FONT_SCALE),
       toolbarButtonScale: normalizeNumber(
         ui.toolbarButtonScale,
@@ -421,6 +428,10 @@ export function normalizeAppState(raw: unknown): AppState {
       aisleWidths: isRecord(ui.aisleWidths) ? ui.aisleWidths as AppState['ui']['aisleWidths'] : {},
       toolbarLayouts: normalizeToolbarLayouts(ui.toolbarLayouts),
       toolbarEditorShowNames: typeof ui.toolbarEditorShowNames === 'boolean' ? ui.toolbarEditorShowNames : fallback.ui.toolbarEditorShowNames,
+      noteDropAutoExpandsFolders:
+        typeof ui.noteDropAutoExpandsFolders === 'boolean'
+          ? ui.noteDropAutoExpandsFolders
+          : fallback.ui.noteDropAutoExpandsFolders,
     },
   }))
 }

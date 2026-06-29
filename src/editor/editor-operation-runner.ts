@@ -1,7 +1,7 @@
 import type { MutableRefObject } from 'react'
 import type { Editor } from '@toast-ui/editor'
 import { getCommandCapableEditor, getWysiwygView } from './prosemirror-utils'
-import { replaceSelectedTextWithTable } from './table-editing'
+import { replaceSelectedTextWithTable, selectFirstTableCellAfterPosition } from './table-editing'
 import type { ToastTone } from '../types/app'
 
 export type EditorOperationHistoryPolicy = 'default' | 'skip'
@@ -202,6 +202,33 @@ export function replaceSelectedTextWithTableOperation(
   const handled = replaceSelectedTextWithTable(context.view)
   if (!handled) return buildEditorOperationResult(false, false, normalized)
 
+  finishEditorOperation(runtime, context.editor, normalized)
+  return buildEditorOperationResult(true, true, normalized)
+}
+
+export function insertTableOperation(
+  runtime: EditorOperationRuntime,
+  payload?: Record<string, unknown>,
+  options: EditorOperationOptions = {},
+): EditorOperationResult {
+  const normalized = normalizeOptions(options)
+  const context = getEditorOperationContext(runtime)
+  if (!context) return buildEditorOperationResult(false, false, normalized)
+
+  if (context.view && replaceSelectedTextWithTable(context.view)) {
+    finishEditorOperation(runtime, context.editor, normalized)
+    return buildEditorOperationResult(true, true, normalized)
+  }
+
+  const tableAnchor =
+    typeof context.view?.state?.selection?.from === 'number'
+      ? context.view.state.selection.from
+      : null
+  if (normalized.focus === 'focus') context.editor.focus()
+  getCommandCapableEditor(context.editor).exec('addTable', payload)
+  if (tableAnchor !== null && context.view) {
+    selectFirstTableCellAfterPosition(context.view, tableAnchor)
+  }
   finishEditorOperation(runtime, context.editor, normalized)
   return buildEditorOperationResult(true, true, normalized)
 }

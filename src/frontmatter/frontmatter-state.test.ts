@@ -4,7 +4,9 @@ import {
   buildFrontmatterDataFromRows,
   buildFrontmatterModalDraftForAisle,
   disableInvalidComputedFrontmatterRows,
+  getFrontmatterTemplateFieldRemovalUsage,
   normalizeFrontmatterDraftRows,
+  propagateFrontmatterTemplateChangesInState,
   reorderFrontmatterItemsByTargetIndex,
   reorderFrontmatterRowsByInsertion,
   reorderFrontmatterTemplateFieldsByTargetIndex,
@@ -377,6 +379,162 @@ describe('frontmatter structured row state', () => {
     const draft = buildFrontmatterModalDraftForAisle(removedState, 'body-1', 'aisle-body-1', location)
 
     expect(draft.rows.map((row) => row.key)).toEqual(['status', 'created'])
+  })
+
+  it('propagates saved template additions to derived aisle frontmatter', () => {
+    const oldTemplate: FrontmatterTemplate = {
+      ...template,
+      fields: [
+        { id: 'status', key: 'status', type: 'text', defaultValue: 'draft', computed: 'none' },
+        { id: 'created', key: 'created', type: 'date', defaultValue: '', computed: 'createdAt' },
+      ],
+    }
+    const nextTemplate: FrontmatterTemplate = {
+      ...oldTemplate,
+      fields: [
+        oldTemplate.fields[0],
+        { id: 'title', key: 'title', type: 'text', defaultValue: '', computed: 'noteTitle' },
+        oldTemplate.fields[1],
+      ],
+    }
+    const state = createState()
+    const oldState: AppState = {
+      ...state,
+      frontmatter: {
+        templates: [oldTemplate],
+        settingsTemplateId: oldTemplate.id,
+        lastAppliedTemplateId: oldTemplate.id,
+      },
+    }
+    const nextFrontmatter: AppState['frontmatter'] = {
+      ...oldState.frontmatter,
+      templates: [nextTemplate],
+    }
+
+    const nextState = propagateFrontmatterTemplateChangesInState(oldState, nextFrontmatter)
+    const body = nextState.noteAisleBodies?.find((candidate) => candidate.id === 'aisle-body-1')
+
+    expect(nextState.frontmatter).toBe(nextFrontmatter)
+    expect(Object.keys(body?.frontmatter ?? {})).toEqual(['status', 'title', 'created', 'extra'])
+    expect(body?.frontmatter?.title).toEqual({ id: 'body-1', title: 'Roadmap' })
+    expect(body?.frontmatterMeta?.templateFieldOrigins?.title).toEqual({
+      templateId: oldTemplate.id,
+      fieldId: 'title',
+    })
+    expect(body?.frontmatterMeta?.computedFields).toMatchObject({
+      created: 'createdAt',
+      title: 'noteTitle',
+    })
+    expect(body?.frontmatterRaw).toContain('title:')
+    expect(body?.frontmatterRaw).toContain('Roadmap')
+  })
+
+  it('does not re-add child-removed template rows during template propagation', () => {
+    const oldTemplate: FrontmatterTemplate = {
+      id: 'neighbor-template',
+      name: 'neighbor',
+      fields: [
+        { id: 'status', key: 'status', type: 'text', defaultValue: 'draft', computed: 'none' },
+        { id: 'title', key: 'title', type: 'text', defaultValue: '', computed: 'noteTitle' },
+        { id: 'created', key: 'created', type: 'date', defaultValue: '', computed: 'createdAt' },
+      ],
+    }
+    const nextTemplate: FrontmatterTemplate = {
+      ...oldTemplate,
+      fields: [
+        oldTemplate.fields[0],
+        oldTemplate.fields[1],
+        { id: 'reviewed', key: 'reviewed', type: 'boolean', defaultValue: 'true', computed: 'none' },
+        oldTemplate.fields[2],
+      ],
+    }
+    const state = createState()
+    const removedState: AppState = {
+      ...state,
+      frontmatter: {
+        templates: [oldTemplate],
+        settingsTemplateId: oldTemplate.id,
+        lastAppliedTemplateId: oldTemplate.id,
+      },
+      noteAisleBodies: state.noteAisleBodies.map((body) => ({
+        ...body,
+        frontmatter: {
+          status: 'ready',
+          created: '2024-01-02',
+          extra: 'kept',
+        },
+        frontmatterMeta: {
+          templateId: oldTemplate.id,
+          templateDerived: true,
+          templateFieldOrigins: {
+            status: { templateId: oldTemplate.id, fieldId: 'status' },
+            created: { templateId: oldTemplate.id, fieldId: 'created' },
+          },
+          templateRemovedFieldIds: ['title'],
+          computedFields: { created: 'createdAt' },
+        },
+      })),
+    }
+    const nextFrontmatter: AppState['frontmatter'] = {
+      ...removedState.frontmatter,
+      templates: [nextTemplate],
+    }
+
+    const nextState = propagateFrontmatterTemplateChangesInState(removedState, nextFrontmatter)
+    const body = nextState.noteAisleBodies?.find((candidate) => candidate.id === 'aisle-body-1')
+
+    expect(Object.keys(body?.frontmatter ?? {})).toEqual(['status', 'reviewed', 'created', 'extra'])
+    expect(body?.frontmatter?.reviewed).toBe(true)
+    expect(body?.frontmatter).not.toHaveProperty('title')
+    expect(body?.frontmatterMeta?.templateRemovedFieldIds).toEqual(['title'])
+  })
+
+  it('detects removed template fields on aisles derived from that template', () => {
+    const state = createState()
+    const nextFrontmatter: AppState['frontmatter'] = {
+      ...state.frontmatter,
+      templates: [
+        {
+          ...template,
+          fields: template.fields.filter((field) => field.id !== 'status' && field.id !== 'title'),
+        },
+      ],
+    }
+
+    expect(getFrontmatterTemplateFieldRemovalUsage(state, nextFrontmatter)).toEqual({
+      fieldCount: 2,
+      rowCount: 4,
+      storedValueCount: 1,
+      noteCount: 2,
+      aisleCount: 2,
+      fieldLabels: ['status', 'title'],
+      templateNames: ['template'],
+    })
+  })
+
+  it('does not warn for removed template fields that are not active on derived aisles', () => {
+    const state = createState()
+    const removedState: AppState = {
+      ...state,
+      noteAisleBodies: state.noteAisleBodies.map((body) => ({
+        ...body,
+        frontmatterMeta: {
+          ...body.frontmatterMeta,
+          templateRemovedFieldIds: ['title'],
+        },
+      })),
+    }
+    const nextFrontmatter: AppState['frontmatter'] = {
+      ...removedState.frontmatter,
+      templates: [
+        {
+          ...template,
+          fields: template.fields.filter((field) => field.id !== 'title'),
+        },
+      ],
+    }
+
+    expect(getFrontmatterTemplateFieldRemovalUsage(removedState, nextFrontmatter)).toBeNull()
   })
 
   it('opens blank frontmatter as an unsaved last-applied template suggestion', () => {

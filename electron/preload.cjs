@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   revealAsset: (payload) => ipcRenderer.invoke('reveal-asset', payload),
   revealNoteLocation: (payload) => ipcRenderer.invoke('reveal-note-location', payload),
   revealVaultItemLocation: (payload) => ipcRenderer.invoke('reveal-vault-item-location', payload),
+  printAisle: (payload) => ipcRenderer.invoke('print-aisle', payload),
+  exportPrintPdf: (payload) => ipcRenderer.invoke('export-print-pdf', payload),
   readAsset: (payload) => ipcRenderer.invoke('read-asset', payload),
   getEditorSpellcheckContext: (payload) => ipcRenderer.invoke('get-editor-spellcheck-context', payload),
   replaceMisspelling: (payload) => ipcRenderer.invoke('replace-misspelling', payload),
@@ -50,6 +52,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('open-vault-manager', listener)
     return () => ipcRenderer.removeListener('open-vault-manager', listener)
   },
+  onPrintActiveAisleRequested: (handler) => {
+    const listener = () => handler()
+    ipcRenderer.on('print-active-aisle-requested', listener)
+    return () => ipcRenderer.removeListener('print-active-aisle-requested', listener)
+  },
+  onPrintAislePayload: (handler) => {
+    const listener = (_event, payload) => handler(payload)
+    ipcRenderer.on('print-aisle-payload', listener)
+    return () => ipcRenderer.removeListener('print-aisle-payload', listener)
+  },
+  notifyPrintAislePayloadReady: () => ipcRenderer.send('print-aisle-payload-ready'),
+  notifyPrintAisleRenderReady: () => ipcRenderer.send('print-aisle-render-ready'),
   onAppZoomChanged: (handler) => {
     const listener = (_event, payload) => handler(payload)
     ipcRenderer.on('app-zoom-changed', listener)
@@ -76,5 +90,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   appendDiagnosticLogEntry: (payload) => ipcRenderer.invoke('append-diagnostic-log-entry', payload),
   listDiagnosticLogDays: () => ipcRenderer.invoke('list-diagnostic-log-days'),
   readDiagnosticLogEntries: (payload) => ipcRenderer.invoke('read-diagnostic-log-entries', payload),
+  deleteDiagnosticLogDay: (payload) => ipcRenderer.invoke('delete-diagnostic-log-day', payload),
+  deleteAllDiagnosticLogs: () => ipcRenderer.invoke('delete-all-diagnostic-logs'),
   openDiagnosticsFolder: () => ipcRenderer.invoke('open-diagnostics-folder'),
 })

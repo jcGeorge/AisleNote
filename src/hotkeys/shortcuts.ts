@@ -4,7 +4,6 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
   openSettings: 'Mod+,',
   toggleNotesTrash: 'Mod+T',
   toggleNotesScratchpad: 'Mod+S',
-  toggleNotesFilter: '',
   newNote: 'Mod+N',
   newFolder: 'Mod+Shift+N',
   closeCurrentNote: 'Mod+W',
@@ -13,6 +12,7 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutId, string> = {
   reopenClosedNoteTab: 'Mod+Shift+T',
   formatStrikethrough: '',
   formatHighlight: 'Mod+Shift+H',
+  pastePlainText: 'Mod+Shift+V',
   cycleAislePrev: 'Mod+Alt+ArrowLeft',
   cycleAisleNext: 'Mod+Alt+ArrowRight',
 }

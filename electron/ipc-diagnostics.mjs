@@ -148,6 +148,17 @@ function pruneDiagnosticDays(userDataPath) {
   return retainedDays
 }
 
+function deleteDiagnosticDay(userDataPath, dayKey) {
+  if (!isDiagnosticDayKey(dayKey)) return null
+  rmSync(getDiagnosticDayFile(userDataPath, dayKey), { force: true })
+  return pruneDiagnosticDays(userDataPath)
+}
+
+function deleteAllDiagnosticDays(userDataPath) {
+  rmSync(getDiagnosticsRoot(userDataPath), { recursive: true, force: true })
+  return []
+}
+
 function readDiagnosticEntries(userDataPath, dayKey) {
   if (!isDiagnosticDayKey(dayKey)) return []
   const filePath = getDiagnosticDayFile(userDataPath, dayKey)
@@ -209,6 +220,35 @@ export function registerDiagnosticIpc({ ipcMain, app, shell = null }) {
       return { ok: true, entries: readDiagnosticEntries(userDataPath, payload.dayKey) }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : 'read-failed', entries: [] }
+    }
+  })
+
+  ipcMain.handle('delete-diagnostic-log-day', async (_event, payload = {}) => {
+    try {
+      const days = deleteDiagnosticDay(userDataPath, payload.dayKey)
+      if (!days) return { ok: false, error: 'invalid-day', days: listDiagnosticDays(userDataPath) }
+      writesSinceCompactByDay.delete(payload.dayKey)
+      return { ok: true, days }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'delete-failed',
+        days: listDiagnosticDays(userDataPath),
+      }
+    }
+  })
+
+  ipcMain.handle('delete-all-diagnostic-logs', async () => {
+    try {
+      deleteAllDiagnosticDays(userDataPath)
+      writesSinceCompactByDay.clear()
+      return { ok: true, days: [] }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'delete-failed',
+        days: listDiagnosticDays(userDataPath),
+      }
     }
   })
 

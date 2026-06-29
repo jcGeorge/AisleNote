@@ -118,6 +118,46 @@ describe('diagnostic ipc', () => {
       expect(result.days).not.toContain('2026-06-01')
     }))
 
+  it('deletes one diagnostic day file', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const ipcMain = createIpcMain()
+      registerDiagnosticIpc({ ipcMain, app: appWithUserDataPath(userDataPath) })
+
+      await ipcMain.handlers.get('append-diagnostic-log-entry')(null, diagnosticEntry('2026-06-01'))
+      await ipcMain.handlers.get('append-diagnostic-log-entry')(null, diagnosticEntry('2026-06-02'))
+
+      await expect(
+        ipcMain.handlers.get('delete-diagnostic-log-day')(null, { dayKey: '2026-06-01' }),
+      ).resolves.toEqual({
+        ok: true,
+        days: ['2026-06-02'],
+      })
+      expect(existsSync(path.join(userDataPath, 'diagnostics', '2026-06-01.ndjson'))).toBe(false)
+      expect(existsSync(path.join(userDataPath, 'diagnostics', '2026-06-02.ndjson'))).toBe(true)
+      await expect(
+        ipcMain.handlers.get('delete-diagnostic-log-day')(null, { dayKey: '../bad' }),
+      ).resolves.toEqual({
+        ok: false,
+        error: 'invalid-day',
+        days: ['2026-06-02'],
+      })
+    }))
+
+  it('deletes all diagnostic day files', async () =>
+    withTempUserDataPath(async (userDataPath) => {
+      const ipcMain = createIpcMain()
+      registerDiagnosticIpc({ ipcMain, app: appWithUserDataPath(userDataPath) })
+
+      await ipcMain.handlers.get('append-diagnostic-log-entry')(null, diagnosticEntry('2026-06-01'))
+      await ipcMain.handlers.get('append-diagnostic-log-entry')(null, diagnosticEntry('2026-06-02'))
+
+      await expect(ipcMain.handlers.get('delete-all-diagnostic-logs')()).resolves.toEqual({
+        ok: true,
+        days: [],
+      })
+      expect(existsSync(path.join(userDataPath, 'diagnostics'))).toBe(false)
+    }))
+
   it('creates and opens the diagnostics folder', async () =>
     withTempUserDataPath(async (userDataPath) => {
       const ipcMain = createIpcMain()

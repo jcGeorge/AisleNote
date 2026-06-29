@@ -172,7 +172,7 @@
 
 .aislenote-rendered-markdown-surface p.aislenote-annotation-line {
   position: relative;
-  padding-left: 2.4rem;
+  padding-left: 1.55rem;
 }
 
 .aislenote-rendered-markdown-surface p.aislenote-annotation-line::before {
@@ -180,7 +180,7 @@
   position: absolute;
   left: 0.35rem;
   top: 50%;
-  width: 1.55rem;
+  width: 0.9rem;
   height: 2px;
   border-radius: 999px;
   background: currentColor;
@@ -1013,6 +1013,30 @@
   z-index: var(--note-workspace-chrome-z);
 }
 
+.note-content-region {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.note-content-overlay-region {
+  --note-workspace-overlay-z: 2620;
+
+  position: absolute;
+  z-index: var(--note-workspace-overlay-z);
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.note-content-overlay-region > * {
+  pointer-events: auto;
+}
+
 .note-workspace-recovery {
   flex: 1 1 auto;
   min-height: 0;
@@ -1551,26 +1575,20 @@
   pointer-events: auto;
 }
 
-.note-aisle-action-btn:hover,
-.note-aisle-action-btn:focus-visible,
-.note-aisle-action-btn:active {
+.note-aisle-action-btn:hover {
   border-color: var(--rail-control-hover-border);
   background: var(--rail-control-hover-bg);
   color: var(--rail-control-hover-text);
 }
 
-.note-aisle-pane.is-active .note-aisle-action-btn {
-  border-color: var(--rail-control-selected-border);
-  background: var(--rail-control-selected-bg);
-  color: var(--rail-control-selected-text);
-}
-
-.note-aisle-pane.is-active .note-aisle-action-btn:hover,
-.note-aisle-pane.is-active .note-aisle-action-btn:focus-visible,
-.note-aisle-pane.is-active .note-aisle-action-btn:active {
-  border-color: var(--rail-control-selected-border);
-  background: var(--rail-control-selected-bg);
-  color: var(--rail-control-selected-text);
+.note-aisle-action-btn:focus,
+.note-aisle-action-btn:focus-visible,
+.note-aisle-action-btn:active,
+.note-aisle-action-btn[aria-pressed="true"],
+.note-aisle-action-btn[aria-expanded="true"] {
+  border-color: var(--modal-primary-border);
+  background: var(--modal-primary-bg);
+  color: var(--modal-primary-text);
 }
 
 .note-aisle-action-wrap {
@@ -1716,20 +1734,21 @@
 }
 
 .aisle-edit-modal-backdrop {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 3500;
+  z-index: var(--note-workspace-overlay-z, 2620);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background: rgba(4, 9, 16, 0.58);
+  background: color-mix(in srgb, var(--modal-bg) 72%, transparent);
+  background-color: color-mix(in srgb, var(--modal-bg) 72%, transparent);
 }
 
 .aisle-edit-modal {
-  width: min(70rem, calc(100vw - 2rem));
-  max-width: calc(100vw - 2rem);
-  max-height: calc(100vh - 2rem);
+  width: min(70rem, calc(100% - 2rem));
+  max-width: calc(100% - 2rem);
+  max-height: calc(100% - 2rem);
   min-width: 0;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
@@ -2072,8 +2091,8 @@
 
 @media (max-width: 640px) {
   .aisle-edit-modal {
-    width: calc(100vw - 1rem);
-    max-height: calc(100vh - 1rem);
+    width: calc(100% - 1rem);
+    max-height: calc(100% - 1rem);
   }
 }
 

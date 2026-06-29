@@ -97,6 +97,26 @@ describe('newline shortcut settings', () => {
     ).toBe(true)
   })
 
+  it('defaults paste as plain text to a platform modifier shortcut', () => {
+    expect(DEFAULT_SHORTCUTS.pastePlainText).toBe('Mod+Shift+V')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.pastePlainText, true)).toBe('cmd+shift+v')
+    expect(formatShortcutLabel(DEFAULT_SHORTCUTS.pastePlainText, false)).toBe('ctrl+shift+v')
+    expect(
+      eventMatchesShortcut(
+        { key: 'V', code: 'KeyV', ctrlKey: false, metaKey: true, altKey: false, shiftKey: true } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.pastePlainText,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      eventMatchesShortcut(
+        { key: 'V', code: 'KeyV', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true } as KeyboardEvent,
+        DEFAULT_SHORTCUTS.pastePlainText,
+        false,
+      ),
+    ).toBe(true)
+  })
+
   it('keeps block quote and block indent as separate newline operations', () => {
     expect(NEWLINE_OPERATION_LABELS.blockQuote).toBe('block quote')
     expect(NEWLINE_OPERATION_LABELS.blockIndent).toBe('block indent')
@@ -131,7 +151,6 @@ describe('newline shortcut settings', () => {
 
     expect(normalized.shortcuts.toggleNotesTrash).toBe(DEFAULT_SHORTCUTS.toggleNotesTrash)
     expect(normalized.shortcuts.toggleNotesScratchpad).toBe(DEFAULT_SHORTCUTS.toggleNotesScratchpad)
-    expect(normalized.shortcuts.toggleNotesFilter).toBe(DEFAULT_SHORTCUTS.toggleNotesFilter)
     expect(normalized.shortcuts.openSettings).toBe(DEFAULT_SHORTCUTS.openSettings)
     expect(normalized.newlineShortcuts.shortcuts.controlEnter).toBe('dashList')
     expect(normalized.newlineShortcuts.shortcuts.shiftEnter).toBe('dashList')
@@ -250,17 +269,6 @@ describe('newline shortcut settings', () => {
     ).toBe(true)
   })
 
-  it('keeps notes/filter assignable but unbound by default', () => {
-    expect(DEFAULT_SHORTCUTS.toggleNotesFilter).toBe('')
-    expect(
-      eventMatchesShortcut(
-        { key: 'f', code: 'KeyF', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false } as KeyboardEvent,
-        DEFAULT_SHORTCUTS.toggleNotesFilter,
-        false,
-      ),
-    ).toBe(false)
-  })
-
   it('normalizes persisted block indent menu entries and shortcuts', () => {
     const normalized = normalizeHotkeySettings({
       newlineShortcuts: {
@@ -339,7 +347,7 @@ describe('newline shortcut settings', () => {
     expect(normalized.shortcuts.cycleAisleNext).toBe('Mod+Alt+ArrowRight')
     expect(normalized.shortcuts.formatStrikethrough).toBe('')
     expect(normalized.shortcuts.formatHighlight).toBe('Mod+Shift+H')
-    expect(normalized.shortcuts.toggleNotesFilter).toBe('')
+    expect(normalized.shortcuts.pastePlainText).toBe('Mod+Shift+V')
     expect(normalized.shortcuts.closeCurrentNote).toBe('Mod+W')
     expect(normalized.shortcuts.cyclePinnedNoteTabNext).toBe('Ctrl+Tab')
     expect(normalized.shortcuts.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')

@@ -4,9 +4,18 @@ import { describe, expect, it } from 'vitest'
 const source = readFileSync(new URL('./useVaultAisleEditors.ts', import.meta.url), 'utf8')
 
 describe('vault aisle editor task checkbox wiring', () => {
-  it('registers raw inline span support with Toast UI', () => {
-    expect(source).toContain("import { AISLENOTE_TOAST_HTML_RENDERER } from './toast-inline-html-renderer'")
-    expect(source).toContain('customHTMLRenderer: AISLENOTE_TOAST_HTML_RENDERER')
+  it('keeps raw inline spans out of the Toast UI editor setup', () => {
+    expect(source).not.toContain('AISLENOTE_TOAST_HTML_RENDERER')
+    expect(source).not.toContain('customHTMLRenderer')
+  })
+
+  it('routes normal editor clipboard events through app-owned clean markdown handlers', () => {
+    expect(source).toContain('insertClipboardDataIntoView')
+    expect(source).toContain('serializeProseMirrorSelectionForClipboard')
+    expect(source).toContain('writeEditorClipboardData')
+    expect(source).toContain("root.addEventListener('copy', handleCopyCut, true)")
+    expect(source).toContain("root.addEventListener('cut', handleCopyCut, true)")
+    expect(source).toContain("root.addEventListener('paste', handlePaste, true)")
   })
 
   it('fails closed after a Toast UI editor mount error for the same aisle revision', () => {

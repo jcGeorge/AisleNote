@@ -21,11 +21,50 @@ describe('VaultApp frontmatter modal routing', () => {
     expect(source).toContain('Frontmatter YAML is invalid. Fix the markdown block before using the structured frontmatter editor.')
   })
 
+  it('keeps note frontmatter editor sessions transient and keyed by active note', () => {
+    expect(source).toContain('const [frontmatterModalSessions, setFrontmatterModalSessions] = useState<Record<string, VaultFrontmatterModalState>>({})')
+    expect(source).toContain('const visibleFrontmatterModal =')
+    expect(source).toContain('frontmatterModalSessions[activeModel.noteId] ?? null')
+    expect(source).toContain('[modal.location.noteId]: modal')
+    expect(source).toContain('closeFrontmatterModalSession(modal.location.noteId)')
+    expect(source).toContain('setFrontmatterModalSessions({})')
+    expect(source).not.toContain('const [frontmatterModal, setFrontmatterModal]')
+  })
+
+  it('renders note modals through the note workspace overlay instead of the app root', () => {
+    expect(source).toContain('const noteWorkspaceOverlay = activeModel ? (')
+    expect(source).toContain('modal={visibleFrontmatterModal}')
+    expect(source).toContain('noteContentOverlay={noteWorkspaceOverlay}')
+    expect(source).not.toContain('modal={frontmatterModal}')
+    expect(source).not.toContain('open={aisleEditModalOpen && Boolean(activeModel)}')
+  })
+
   it('includes fixed list controls for template settings and note rows', () => {
     expect(source).toContain('aria-label="frontmatter fixed list values"')
     expect(source).toContain('aria-label="frontmatter fixed list default values"')
     expect(source).toContain('frontmatter-fixed-list-choice')
     expect(source).not.toContain('<option value="">no options</option>')
+  })
+
+  it('reuses existing frontmatter values when selecting a template for an aisle', () => {
+    expect(source).toContain('const selectFrontmatterTemplate = useCallback')
+    expect(source).toContain('includeExisting: true')
+    expect(source).not.toContain('includeExisting: false')
+  })
+
+  it('prompts for template field removals only when used derived rows are affected', () => {
+    expect(source).toContain('getFrontmatterTemplateFieldRemovalUsage(stateRef.current, nextFrontmatter)')
+    expect(source).toContain('setFrontmatterTemplateFieldRemovalDecision({ nextFrontmatter, usage })')
+    expect(source).toContain('propagateFrontmatterTemplateChangesInState(previous, nextFrontmatter)')
+    expect(source).toContain('FrontmatterTemplateFieldRemovalDecisionDialog')
+    expect(source).toContain('Keep rows in notes')
+    expect(source).toContain('Delete from notes')
+    expect(source).toMatch(
+      /<button type="button" className="vault-settings-action" onClick=\{onDeleteValues\}>\s*Delete from notes\s*<\/button>\s*<button type="button" className="vault-settings-action modal-primary-btn" onClick=\{onKeepValues\}>\s*Keep rows in notes\s*<\/button>/,
+    )
+    expect(source).toContain('materializeRemovedTemplateFieldValuesInState(previous, nextFrontmatter)')
+    expect(source).toContain('removeRemovedTemplateFieldValuesInState(previous, nextFrontmatter)')
+    expect(source).toContain('previous.frontmatter')
   })
 
   it('routes frontmatter modal copy and aisle paste through the frontmatter clipboard helpers', () => {
@@ -61,6 +100,8 @@ describe('VaultApp diagnostics and notification wiring', () => {
   it('wires diagnostic logging, heartbeat, log reading, and MessagesView controls', () => {
     expect(source).toContain('configureDiagnosticLogging,')
     expect(source).toContain('createMainThreadHeartbeat,')
+    expect(source).toContain('deleteAllDiagnosticLogs as deleteAllStoredDiagnosticLogs,')
+    expect(source).toContain('deleteDiagnosticLogDay,')
     expect(source).toContain('listDiagnosticLogDays,')
     expect(source).toContain('readDiagnosticLogEntries,')
     expect(source).toContain('subscribeDiagnosticLogChanges,')
@@ -79,6 +120,9 @@ describe('VaultApp diagnostics and notification wiring', () => {
     expect(source).toContain('diagnosticCaptureEnabled={diagnosticCaptureEnabled}')
     expect(source).toContain('onDiagnosticCaptureEnabledChange={setDiagnosticCaptureEnabled}')
     expect(source).toContain('onOpenDiagnosticsFolder={')
+    expect(source).toContain('onDeleteTodayDiagnosticLogs={deleteTodayDiagnosticLogs}')
+    expect(source).toContain('onDeleteAllDiagnosticLogs={deleteAllDiagnosticLogs}')
+    expect(source).toContain('canDeleteTodayDiagnosticLogs={diagnosticDays.includes(getDiagnosticDayKey())}')
   })
 
   it('wires the app notification hook, hosts, and toast history path', () => {
@@ -97,6 +141,24 @@ describe('VaultApp diagnostics and notification wiring', () => {
     expect(source).toContain("pushAppToast(warningMessages.join('\\n'), 'warning', 9000)")
     expect(source).not.toContain('const pushEditorToolToast = useCallback((message: string, tone?: ToastTone) => {')
     expect(source).not.toContain('const pushStorageToast = useCallback((message: string, tone?: ToastTone) => {')
+  })
+})
+
+describe('VaultApp scratchpad/settings navigation', () => {
+  it('routes the scratchpad toggle through settings-preserving navigation state', () => {
+    expect(source).toContain("import { getNextNotesScratchpadToggleState } from '../navigation/toggle-notes-scratchpad'")
+    expect(source).toContain("const viewModeRef = useRef<ViewMode>('main')")
+    expect(source).toContain('const nextToggleState = getNextNotesScratchpadToggleState({')
+    expect(source).toContain('viewMode: viewModeRef.current,')
+    expect(source).toContain('scratchpadActive: currentScratchpadActive,')
+    expect(source).toContain('viewModeRef.current = nextToggleState.viewMode')
+    expect(source).toContain('scratchpadActiveRef.current = nextToggleState.scratchpadActive')
+    expect(source).toContain('setViewMode(nextToggleState.viewMode)')
+    expect(source).toContain('if (!nextToggleState.scratchpadActive) {')
+    expect(source).toContain("const scratchpadToggleLabel = viewMode === 'settings'")
+    expect(source).toContain("? 'Return to scratchpad'")
+    expect(source).toContain(": 'Show scratchpad'")
+    expect(source).toContain('aria-label={scratchpadToggleLabel}')
   })
 })
 
@@ -152,8 +214,20 @@ describe('VaultApp sidebar resize handle', () => {
     expect(source).toContain('data-app-tooltip="Drag to resize. Double click to reset."')
     expect(source).toContain('onDoubleClick={resetSidebarWidth}')
     expect(source).toContain('className="vault-sidebar-resize-capsule"')
+    expect(source).toContain('const [observedVaultTopbarHeight, setObservedVaultTopbarHeight] = useState(0)')
+    expect(source).toContain('const vaultShellRef = useRef<HTMLDivElement | null>(null)')
+    expect(source).toContain('const updateObservedVaultTopbarHeight = useCallback')
+    expect(source).toContain('readObservedVaultTopbarHeight(shell)')
+    expect(source).toContain("shell.querySelector<HTMLElement>('.note-aisles-shell > .note-shared-toolbar .app-shared-editor-toolbar')")
+    expect(source).toContain("'--vault-topbar-observed-height': `${observedVaultTopbarHeight}px`")
+    expect(source).toContain('ref={vaultShellRef}')
+    expect(source).toContain("'--frontmatter-note-modal-width': `${modalWidth}px`")
+    expect(source).toContain('const [noteContentViewportRect, setNoteContentViewportRect] = useState<VaultNoteActionPickerViewportRect | null>(null)')
     expect(appCss).toContain('--vault-topbar-content-height: calc(')
-    expect(appCss).toContain('--vault-topbar-height: calc(var(--vault-topbar-content-height) + 1px);')
+    expect(appCss).toContain('--vault-topbar-observed-height: 0px;')
+    expect(appCss).toContain('--vault-topbar-height: max(')
+    expect(appCss).toContain('calc(var(--vault-topbar-content-height) + 1px),')
+    expect(appCss).toContain('var(--vault-topbar-observed-height)')
     expect(appCss).toContain('--vault-sidebar-footer-height: calc(')
     expect(appCss).toContain('--note-tab-strip-height: var(--vault-sidebar-footer-height);')
     expect(appCss).toContain('--note-tab-font-size: 1rem;')
@@ -166,9 +240,10 @@ describe('VaultApp sidebar resize handle', () => {
     expect(appCss).toContain('--resize-handle-center-y: calc(var(--vault-topbar-height) + (100vh - var(--vault-topbar-height)) * 0.7);')
     expect(appCss).not.toContain('--sidebar-resize-handle-top')
     expect(appCss).toContain('.vault-sidebar {\n  flex: 0 0 auto;\n  position: relative;\n  z-index: 40;')
-    expect(appCss).toContain('.vault-sidebar-header {\n  box-sizing: border-box;\n  display: flex;\n  align-items: center;\n  gap: var(--vault-sidebar-control-gap);\n  min-height: var(--vault-topbar-height);')
+    expect(appCss).toContain('.vault-sidebar-header {\n  box-sizing: border-box;\n  display: flex;\n  align-items: flex-start;\n  gap: var(--vault-sidebar-control-gap);\n  min-height: var(--vault-topbar-height);')
     expect(appCss).toContain('.vault-shell .note-shared-toolbar.toastui-editor-toolbar {\n  --editor-toolbar-spacer-width: 0.55rem;\n  border-bottom: 1px solid var(--vault-topbar-border) !important;\n  min-height: var(--vault-topbar-height) !important;')
-    expect(appCss).toContain('min-height: var(--vault-topbar-content-height) !important;\n  padding: var(--vault-topbar-block-padding) var(--vault-topbar-inline-padding) !important;')
+    expect(appCss).toContain('height: auto !important;\n  min-height: var(--vault-topbar-content-height) !important;\n  padding: var(--vault-topbar-block-padding) var(--vault-topbar-inline-padding) !important;')
+    expect(appCss).toContain('width: var(--frontmatter-note-modal-width, min(960px, calc(100% - 32px)));')
     expect(appCss).toContain('.vault-utility-header {\n  flex: 0 0 auto;\n  box-sizing: border-box;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: var(--vault-sidebar-control-gap);\n  min-height: var(--vault-topbar-height);')
     expect(appCss).toContain('.vault-sidebar-resize-handle {\n  position: absolute;\n  z-index: 6;\n  top: var(--resize-handle-center-y);')
     expect(appCss).toContain('border: 1px solid var(--note-aisle-resize-border);')
@@ -263,6 +338,16 @@ describe('VaultApp large vault performance wiring', () => {
     expect(source).toMatch(/const updateFindReplaceQuery = useCallback\(\(nextQuery: string\) => {\s*vaultEditors\.flushPendingEditorAppStateCommit\(\)/)
   })
 
+  it('applies vault history navigation without replacing temporary tabs', () => {
+    expect(source).toContain('const applyVaultNavigationHistoryLocation = useCallback')
+    expect(source).toContain("applyVaultNavigationLocation(location, { tabDisposition: 'preserve' })")
+    const historyStart = source.indexOf('const { navigateVaultHistoryBy } = useVaultNavigationHistory')
+    const historyEnd = source.indexOf('usePendingNoteCursorRestore', historyStart)
+    const historyBody = source.slice(historyStart, historyEnd)
+    expect(historyBody).toContain('onApplyLocation: applyVaultNavigationHistoryLocation')
+    expect(historyBody).not.toContain('onApplyLocation: applyVaultNavigationLocation')
+  })
+
   it('memoizes and virtualizes the sidebar tree over the large-vault threshold', () => {
     expect(source).toContain('const VAULT_TREE_VIRTUALIZATION_THRESHOLD = 300')
     expect(source).toContain('const VAULT_TREE_VIRTUAL_ROW_HEIGHT = 28')
@@ -311,7 +396,7 @@ describe('VaultApp find replace wiring', () => {
     expect(source).toContain('if (editor) vaultEditors.commitActiveEditorMarkdownNow(editor)')
     expect(source).toContain('const openFindReplace = useCallback')
     expect(source).toContain('if (!mode) return')
-    expect(source).toContain('onOpenFindReplace={focusNotesFilterFromShortcut}')
+    expect(source).toContain('onOpenFindReplace={focusNotesFilter}')
     expect(source).toContain('setFindReplaceOpen(false)')
     expect(source).toContain('<FindReplacePanel')
     expect(source).not.toContain('replaceMode={findReplaceMode')
@@ -322,6 +407,15 @@ describe('VaultApp find replace wiring', () => {
 })
 
 describe('VaultApp vault manager wiring', () => {
+  it('centralizes transient menu cleanup for settings and active-note navigation', () => {
+    expect(source).toContain('const closeTransientFloatingUi = useCallback(() => {')
+    expect(source).toContain("setOpenVaultActionMenuKey('')")
+    expect(source).toContain('setVaultSwitcherOpen(false)')
+    expect(source).toContain('setAisleEditModalOpen(false)')
+    expect(source).toContain('closeTransientFloatingUi()')
+    expect(source).toMatch(/const openUtilityView = useCallback\(\(targetViewMode: UtilityViewMode = 'settings'\) => {\s*closeTransientFloatingUi\(\)\s*setAisleEditModalOpen\(false\)\s*setViewMode\(targetViewMode\)/)
+  })
+
   it('renames the Data storage tab to Vaults while keeping the storage section id', () => {
     expect(source).toContain("{ id: 'storage', label: 'Vaults' }")
     expect(source).toContain("setDataSettingsSection('storage')")
@@ -336,7 +430,9 @@ describe('VaultApp vault manager wiring', () => {
     expect(source).toContain('New Vault')
     expect(source).toContain('function VaultNameDialog({')
     expect(source).toContain("const actionLabel = dialog.mode === 'create' ? 'Choose location' : 'Rename'")
-    expect(source).toMatch(/<button type="submit" className="vault-settings-action" disabled=\{!canSubmit\}>\s*\{actionLabel\}\s*<\/button>\s*<button type="button" className="vault-settings-action" onClick=\{onCancel\}>\s*Cancel\s*<\/button>/)
+    expect(source).toContain('<footer className="modal-card-footer modal-card-split-actions">')
+    expect(source).toContain('className="modal-card-primary-actions"')
+    expect(source).toMatch(/<button type="button" className="vault-settings-action" onClick=\{onCancel\}>\s*Cancel\s*<\/button>\s*<div className="modal-card-primary-actions">\s*<button type="submit" className="vault-settings-action" disabled=\{!canSubmit\}>\s*\{actionLabel\}\s*<\/button>/)
     expect(source).toContain("setVaultNameDialog({ mode: 'create', initialName: 'New Vault' })")
     expect(source).toContain("setVaultNameDialog({ mode: 'rename', initialName: vault.vaultName, vault })")
     expect(source).toContain('<VaultNameDialog')
@@ -366,6 +462,8 @@ describe('VaultApp vault manager wiring', () => {
     expect(source).toContain('Open AisleNote vault')
     expect(source).toContain('Choose an existing AisleNote vault.')
     expect(appCss).toContain('.vault-frontmatter-modal.vault-name-modal')
+    expect(appCss).toContain('.vault-frontmatter-modal .modal-card-footer.modal-card-split-actions')
+    expect(appCss).toContain('.vault-frontmatter-modal .modal-card-primary-actions')
     expect(source).not.toContain('window.prompt(')
     expect(source).not.toContain('Open Vault Folder')
     expect(source).not.toContain('renameCurrentVaultFromSettings')
@@ -417,8 +515,13 @@ describe('VaultApp vault manager wiring', () => {
     expect(sidebarFooter).not.toContain('vault-sidebar-open-button')
     expect(sidebarFooter).not.toContain('<strong>')
     expect(sidebarFooter).not.toContain('iconId={vault.available ?')
+    const footerRule = appCss.slice(
+      appCss.indexOf('.vault-sidebar-footer {'),
+      appCss.indexOf('.vault-sidebar-footer.is-collapsed'),
+    )
     expect(appCss).toContain('.vault-sidebar-switcher-name {\n  color: var(--app-text-heading);\n  font-weight: 400;\n}')
     expect(appCss).toContain('.vault-sidebar-footer')
+    expect(footerRule).not.toContain('box-shadow')
     expect(appCss).toContain('.vault-sidebar-switcher-popover')
     expect(appCss).toContain('.vault-sidebar-switcher-actions')
     expect(appCss).toContain('.vault-sidebar-switcher-new')

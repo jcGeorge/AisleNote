@@ -9,7 +9,7 @@ describe('@ menu copy routing', () => {
   it('routes mention copy actions through focused-aisle vault replacement helpers', () => {
     expect(appSource).toContain("source: 'mention'")
     expect(appSource).toContain("actions: ['note-link', 'note-preview', 'independent-copy', 'synced-copy']")
-    expect(appSource).toContain('anchor: null')
+    expect(appSource).toContain('anchor: getAisleCenteredNoteActionPickerAnchor(workspaceRootRef.current, renderedActiveAisleId, anchor)')
     expect(appSource).toContain('replaceFocusedAisleFromTargetNote(previous')
     expect(appSource).toContain('focusedAisleId: renderedActiveAisleId')
     expect(appSource).toContain("source === 'whole-note-copy'")

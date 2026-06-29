@@ -98,13 +98,14 @@
   --settings-range-thumb-bg: var(--app-primary);
   --settings-range-thumb-hover-bg: var(--app-primary-hover);
   --settings-range-thumb-hover-border: var(--app-primary-border);
-  --settings-switch-bg: var(--app-panel);
-  --settings-switch-border: #5f759f;
-  --settings-switch-thumb-bg: color-mix(in srgb, var(--settings-switch-bg) 72%, var(--settings-switch-border));
+  --settings-switch-bg: #1b3155;
+  --settings-switch-border: #8aa4d0;
+  --settings-switch-thumb-bg: #f2f7ff;
   --settings-switch-focus-border: var(--app-primary-border);
   --settings-switch-focus-shadow: 0 0 0 0.2rem rgba(95, 137, 220, 0.2);
   --settings-switch-checked-bg: var(--app-primary);
-  --settings-switch-checked-border: var(--app-primary);
+  --settings-switch-checked-border: var(--app-primary-border);
+  --settings-switch-checked-thumb-bg: #ffffff;
   --settings-switch-checked-focus-shadow: 0 0 0 0.2rem rgba(47, 103, 222, 0.2);
   --theme-switch-bg: var(--app-bg);
   --theme-switch-border: #375684;
@@ -390,12 +391,14 @@
   --settings-range-track-hover-bg: color-mix(in srgb, var(--settings-range-track-bg) 76%, var(--app-primary-border));
   --settings-range-thumb-hover-bg: var(--app-primary-hover);
   --settings-range-thumb-hover-border: var(--app-primary-border);
-  --settings-switch-bg: var(--app-panel);
-  --settings-switch-border: color-mix(in srgb, var(--custom-palette-border) 62%, var(--custom-palette-text));
+  --settings-switch-bg: color-mix(in srgb, var(--custom-palette-button) 84%, var(--custom-palette-text));
+  --settings-switch-border: color-mix(in srgb, var(--custom-palette-border) 42%, var(--custom-palette-text));
+  --settings-switch-thumb-bg: color-mix(in srgb, var(--custom-palette-text) 92%, var(--custom-palette-panel));
   --settings-switch-focus-border: var(--custom-palette-primary);
   --settings-switch-focus-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--custom-palette-primary) 20%, transparent);
   --settings-switch-checked-bg: var(--custom-palette-primary);
-  --settings-switch-checked-border: var(--custom-palette-primary);
+  --settings-switch-checked-border: color-mix(in srgb, var(--custom-palette-primary) 74%, var(--custom-palette-text));
+  --settings-switch-checked-thumb-bg: #ffffff;
   --settings-switch-checked-focus-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--custom-palette-primary) 20%, transparent);
   --theme-switch-bg: color-mix(in srgb, var(--custom-palette-panel) 84%, var(--custom-palette-page));
   --theme-switch-border: color-mix(in srgb, var(--custom-palette-border) 74%, var(--custom-palette-text));
@@ -568,4 +571,13 @@
   --link-prompt-btn-hover-bg: color-mix(in srgb, var(--custom-palette-panel) 54%, var(--custom-palette-primary));
 
   accent-color: var(--custom-palette-primary);
+}
+
+.app-shell.theme-dark.theme-palette-derived {
+  --settings-switch-bg: #1b3155;
+  --settings-switch-border: #8aa4d0;
+  --settings-switch-thumb-bg: #f2f7ff;
+  --settings-switch-checked-bg: var(--app-primary);
+  --settings-switch-checked-border: var(--app-primary-border);
+  --settings-switch-checked-thumb-bg: #ffffff;
 }

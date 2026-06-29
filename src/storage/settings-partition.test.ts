@@ -35,7 +35,6 @@ describe('portable app settings parsing', () => {
           openSettings: 'Mod+,',
           toggleNotesTrash: 'Mod+T',
           toggleNotesScratchpad: 'Mod+S',
-          toggleNotesFilter: '',
           newNote: 'Mod+N',
           newFolder: 'Mod+Shift+N',
           closeCurrentNote: 'Mod+W',
@@ -43,6 +42,7 @@ describe('portable app settings parsing', () => {
           cyclePinnedNoteTabPrev: 'Ctrl+Shift+Tab',
           reopenClosedNoteTab: 'Mod+Shift+T',
           formatHighlight: 'Mod+Shift+H',
+          pastePlainText: 'Mod+Shift+V',
         },
         newlineShortcuts: {
           shortcuts: {
@@ -54,6 +54,9 @@ describe('portable app settings parsing', () => {
       ui: {
         settingsSection: 'hotkeys',
         dataSettingsSection: 'transfer',
+        noteDropAutoExpandsFolders: false,
+        tableAddTargetMode: 'bottom-right',
+        tableDeleteTargetMode: 'bottom-right',
         tabRenameEnterBehavior: 'goes-to-note',
         tabColorIndicatorPlacement: 'bottom',
         noteFilter: {
@@ -222,7 +225,6 @@ describe('portable app settings parsing', () => {
             openSettings: 'Mod+,',
             toggleNotesTrash: 'Mod+T',
             toggleNotesScratchpad: 'Mod+S',
-            toggleNotesFilter: '',
             newNote: 'Mod+N',
             newFolder: 'Mod+Shift+N',
             closeCurrentNote: 'Mod+W',
@@ -230,6 +232,7 @@ describe('portable app settings parsing', () => {
             cyclePinnedNoteTabPrev: 'Ctrl+Shift+Tab',
             reopenClosedNoteTab: 'Mod+Shift+T',
             formatHighlight: 'Mod+Shift+H',
+            pastePlainText: 'Mod+Shift+V',
           },
           newlineShortcuts: {
             shortcuts: {
@@ -261,7 +264,6 @@ describe('portable app settings parsing', () => {
     expect(syncedSettings.hotkeys.shortcuts.toggleNotesTrash).toBe('Mod+T')
     expect(syncedSettings.hotkeys.shortcuts.openSettings).toBe('Mod+,')
     expect(syncedSettings.hotkeys.shortcuts.toggleNotesScratchpad).toBe('Mod+S')
-    expect(syncedSettings.hotkeys.shortcuts.toggleNotesFilter).toBe('')
     expect(syncedSettings.hotkeys.shortcuts.newNote).toBe('Mod+N')
     expect(syncedSettings.hotkeys.shortcuts.newFolder).toBe('Mod+Shift+N')
     expect(syncedSettings.hotkeys.shortcuts.closeCurrentNote).toBe('Mod+W')
@@ -269,6 +271,7 @@ describe('portable app settings parsing', () => {
     expect(syncedSettings.hotkeys.shortcuts.cyclePinnedNoteTabPrev).toBe('Ctrl+Shift+Tab')
     expect(syncedSettings.hotkeys.shortcuts.reopenClosedNoteTab).toBe('Mod+Shift+T')
     expect(syncedSettings.hotkeys.shortcuts.formatHighlight).toBe('Mod+Shift+H')
+    expect(syncedSettings.hotkeys.shortcuts.pastePlainText).toBe('Mod+Shift+V')
     expect(syncedSettings.hotkeys.shortcuts.cycleAislePrev).toBe('Mod+Alt+ArrowLeft')
     expect(syncedSettings.hotkeys.shortcuts.cycleAisleNext).toBe('Mod+Alt+ArrowRight')
     expect(syncedSettings.hotkeys.newlineShortcuts.menuOperations).toEqual(['blockQuote', 'strikethrough'])

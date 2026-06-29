@@ -10,6 +10,7 @@ import {
   deleteVaultItemsInState,
   findVaultFolder,
   findVaultNote,
+  focusVaultOpenTab,
   getClosedVaultTab,
   getFolderNotesRecursive,
   getVaultNotePathLabel,
@@ -48,7 +49,6 @@ function createState(): AppState {
       shortcuts: {
         toggleNotesTrash: '',
         toggleNotesScratchpad: '',
-        toggleNotesFilter: '',
         newNote: 'mod+n',
         newFolder: 'mod+shift+n',
         closeCurrentNote: 'mod+w',
@@ -57,6 +57,7 @@ function createState(): AppState {
         reopenClosedNoteTab: 'mod+shift+t',
         formatStrikethrough: '',
         formatHighlight: 'mod+shift+h',
+        pastePlainText: 'mod+shift+v',
         cycleAislePrev: '',
         cycleAisleNext: '',
       },
@@ -463,6 +464,26 @@ describe('vault tree helpers', () => {
 
     vault = openVaultTemporaryTab(vault, 'note-c')
     expect(vault.activeNoteId).toBe('note-c')
+    expect(vault.openTabs).toEqual([
+      { noteId: 'note-c', status: 'temporary' },
+      { noteId: 'note-b', status: 'retained' },
+    ])
+  })
+
+  it('focuses retained tabs without replacing the current temporary tab', () => {
+    let vault = createTabVault()
+
+    vault = openVaultTemporaryTab(vault, 'note-a')
+    vault = openVaultRetainedTab(vault, 'note-b')
+    vault = openVaultTemporaryTab(vault, 'note-c')
+    expect(vault.activeNoteId).toBe('note-c')
+    expect(vault.openTabs).toEqual([
+      { noteId: 'note-c', status: 'temporary' },
+      { noteId: 'note-b', status: 'retained' },
+    ])
+
+    vault = focusVaultOpenTab(vault, 'note-b')
+    expect(vault.activeNoteId).toBe('note-b')
     expect(vault.openTabs).toEqual([
       { noteId: 'note-c', status: 'temporary' },
       { noteId: 'note-b', status: 'retained' },

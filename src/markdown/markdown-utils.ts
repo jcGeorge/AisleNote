@@ -8,6 +8,8 @@ const INDENT_PREFIX_PATTERN = /^(?:\u2060\u2003\u2003|\u2003\u2003|\u00A0{1,4}| 
 const EXPORT_TAB_SPACES = '    '
 const TAB_BLOCK_OPEN_LINE_PATTERN = /^\s*<div\s+tab-block=(["'])([1-9]\d*)\1\s*>\s*$/i
 const TAB_BLOCK_CLOSE_LINE_PATTERN = /^\s*<\/div>\s*$/i
+const OPEN_SPAN_TAG_PATTERN = /<span\b[^>]*>/gi
+const CLOSE_SPAN_TAG_PATTERN = /<\/span\s*>/gi
 
 export function getIndentPrefixLength(text: string): number {
   const match = text.match(INDENT_PREFIX_PATTERN)
@@ -363,8 +365,17 @@ export function encodeBlockIndentTokensForPersistence(markdown: string): string 
   return outputLines.join('\n')
 }
 
+export function unwrapMarkdownSpanTags(markdown: string): string {
+  return transformOutsideFencedCode(String(markdown ?? ''), (line) =>
+    line
+      .replace(OPEN_SPAN_TAG_PATTERN, '')
+      .replace(CLOSE_SPAN_TAG_PATTERN, ''),
+  )
+}
+
 export function normalizeMarkdownForPersistence(markdown: string): string {
-  const internalBlockIndents = decodeBlockIndentHtmlForInternalMarkdown(markdown)
+  const spansUnwrapped = unwrapMarkdownSpanTags(markdown)
+  const internalBlockIndents = decodeBlockIndentHtmlForInternalMarkdown(spansUnwrapped)
   const escapedLinksNormalized = normalizeEscapedMarkdownLinks(internalBlockIndents)
   const annotationMarkersNormalized = normalizeEscapedAnnotationLineMarkers(escapedLinksNormalized)
   const blankNormalized = normalizeBlankLineRuns(annotationMarkersNormalized)

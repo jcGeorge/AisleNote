@@ -11,7 +11,8 @@ describe('notes/scratchpad toggle intent', () => {
     ['main', false, 'open-scratchpad'],
     ['main', true, 'open-note'],
     ['trash', false, 'open-note'],
-    ['settings', false, 'open-note'],
+    ['settings', false, 'return-current'],
+    ['settings', true, 'return-current'],
     ['messages', false, 'open-note'],
     ['about', false, 'open-note'],
   ] satisfies Array<[ViewMode, boolean, ReturnType<typeof getNotesScratchpadToggleIntent>]>)(
@@ -34,7 +35,7 @@ describe('notes/scratchpad toggle intent', () => {
     expect(state).toEqual({ viewMode: 'main', scratchpadActive: true })
   })
 
-  it('returns from non-main pages to notes before opening scratchpad', () => {
+  it('returns from settings to the current notes target before opening scratchpad', () => {
     let state: NotesScratchpadToggleState = { viewMode: 'settings', scratchpadActive: false }
 
     state = getNextNotesScratchpadToggleState(state)
@@ -42,5 +43,15 @@ describe('notes/scratchpad toggle intent', () => {
 
     state = getNextNotesScratchpadToggleState(state)
     expect(state).toEqual({ viewMode: 'main', scratchpadActive: true })
+  })
+
+  it('returns from settings to the current scratchpad target before closing scratchpad', () => {
+    let state: NotesScratchpadToggleState = { viewMode: 'settings', scratchpadActive: true }
+
+    state = getNextNotesScratchpadToggleState(state)
+    expect(state).toEqual({ viewMode: 'main', scratchpadActive: true })
+
+    state = getNextNotesScratchpadToggleState(state)
+    expect(state).toEqual({ viewMode: 'main', scratchpadActive: false })
   })
 })

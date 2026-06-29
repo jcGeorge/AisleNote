@@ -1,0 +1,180 @@
+@page {
+  margin: 0.6in;
+}
+
+html.aislenote-print-mode,
+body.aislenote-print-mode {
+  color-scheme: light !important;
+  background: #ffffff !important;
+  color: #111111 !important;
+}
+
+body.aislenote-print-mode {
+  min-height: 100vh;
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.aislenote-print-root,
+.aislenote-print-root * {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.aislenote-print-root {
+  --editor-text: #111111;
+  --editor-muted-text: #555555;
+  --editor-heading-text: #111111;
+  --editor-blockquote-text: #222222;
+  --editor-blockquote-border: #888888;
+  --editor-blockquote-bg: transparent;
+  --editor-code-bg: transparent;
+  --editor-pre-bg: transparent;
+  --editor-pre-border: #c9c9c9;
+  --editor-table-grid-border: #b8b8b8;
+  --editor-table-cell-bg: transparent;
+  --editor-table-cell-border: #b8b8b8;
+  --editor-hr-line: #777777;
+  --editor-hr-opacity: 1;
+  --editor-link-text: #0645ad;
+  --editor-highlight-bg: transparent;
+  --editor-highlight-text: #111111;
+  --editor-annotation-text: #222222;
+  --editor-block-indent-offset: 1.5rem;
+
+  box-sizing: border-box;
+  width: min(100%, 7.5in);
+  margin: 0 auto;
+  padding: 0.5in;
+  background: #ffffff !important;
+  color: #111111 !important;
+  font-size: 11pt;
+  line-height: 1.45;
+}
+
+.aislenote-print-loading {
+  margin: 0;
+  color: #111111 !important;
+}
+
+.aislenote-print-markdown {
+  background: #ffffff !important;
+  color: #111111 !important;
+}
+
+.aislenote-print-markdown + .aislenote-print-markdown {
+  margin-top: 1.25rem;
+}
+
+.aislenote-print-markdown a {
+  color: #0645ad !important;
+  text-decoration: underline;
+}
+
+.aislenote-print-markdown p,
+.aislenote-print-markdown li,
+.aislenote-print-markdown td,
+.aislenote-print-markdown th,
+.aislenote-print-markdown blockquote {
+  color: #111111 !important;
+}
+
+.aislenote-print-markdown h1,
+.aislenote-print-markdown h2,
+.aislenote-print-markdown h3,
+.aislenote-print-markdown h4,
+.aislenote-print-markdown h5,
+.aislenote-print-markdown h6 {
+  color: #111111 !important;
+  break-after: avoid;
+}
+
+.aislenote-print-markdown blockquote {
+  margin: 0.75rem 0;
+  padding: 0.05rem 0 0.05rem 0.75rem;
+  border-left: 0.2rem solid #888888 !important;
+  background: transparent !important;
+}
+
+.aislenote-print-markdown pre,
+.aislenote-print-markdown code {
+  background: transparent !important;
+  color: #111111 !important;
+}
+
+.aislenote-print-markdown pre {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  border: 1px solid #c9c9c9 !important;
+  break-inside: avoid;
+}
+
+.aislenote-print-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  break-inside: auto;
+}
+
+.aislenote-print-markdown tr {
+  break-inside: avoid;
+}
+
+.aislenote-print-markdown th,
+.aislenote-print-markdown td {
+  padding: 0.25rem 0.4rem;
+  border: 1px solid #b8b8b8 !important;
+  background: transparent !important;
+}
+
+.aislenote-print-markdown hr {
+  height: 0;
+  border: 0;
+  border-top: 1px solid #777777;
+  background: transparent !important;
+}
+
+.aislenote-print-markdown img {
+  max-width: 100%;
+  height: auto;
+  break-inside: avoid;
+}
+
+.aislenote-print-markdown input[type='checkbox'] {
+  accent-color: #111111;
+}
+
+.aislenote-print-markdown .aislenote-rendered-markdown-highlight {
+  background: transparent !important;
+  color: #111111 !important;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 0.12em;
+  text-underline-offset: 0.12em;
+}
+
+.aislenote-print-markdown .aislenote-tag-token {
+  background: transparent !important;
+  color: #111111 !important;
+  border: 1px solid #b8b8b8;
+}
+
+.aislenote-print-widget-fallback {
+  display: inline;
+  color: #555555;
+  font-style: italic;
+}
+
+@media print {
+  html.aislenote-print-mode,
+  body.aislenote-print-mode,
+  .aislenote-print-root {
+    width: auto;
+    min-height: auto;
+    margin: 0;
+    padding: 0;
+    background: #ffffff !important;
+    color: #111111 !important;
+    print-color-adjust: economy;
+    -webkit-print-color-adjust: economy;
+  }
+}

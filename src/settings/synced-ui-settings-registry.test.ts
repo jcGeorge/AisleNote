@@ -28,6 +28,7 @@ describe('synced UI settings registry', () => {
       tableOfContentsScope: 'all-aisles',
       tabColorIndicatorPlacement: 'bottom',
       toolbarEditorShowNames: false,
+      noteDropAutoExpandsFolders: false,
     })
     expect(DEFAULT_SIMPLE_SYNCED_UI_SETTINGS).not.toHaveProperty('newAislePlacement')
   })
@@ -47,6 +48,7 @@ describe('synced UI settings registry', () => {
       newAislePlacement: 'left-of-focus',
       removeNoteReferencesOnTrash: 'false',
       trashDeleteForRealRequiresConfirmation: false,
+      noteDropAutoExpandsFolders: true,
     })
 
     expect(normalized).toMatchObject({
@@ -62,6 +64,7 @@ describe('synced UI settings registry', () => {
       tabRenameEnterBehavior: 'creates-another-tab',
       removeNoteReferencesOnTrash: true,
       trashDeleteForRealRequiresConfirmation: false,
+      noteDropAutoExpandsFolders: true,
     })
     expect(normalized).not.toHaveProperty('newAislePlacement')
     expect(normalized).not.toHaveProperty('showParentHomeTab')
@@ -73,6 +76,7 @@ describe('synced UI settings registry', () => {
     expect(normalizeRegisteredSyncedUiSetting('tabRenameEnterBehavior', 'bad')).toBe('goes-to-note')
     expect(normalizeRegisteredSyncedUiSetting('tabColorIndicatorPlacement', 'bad')).toBe('bottom')
     expect(normalizeRegisteredSyncedUiSetting('trashDeleteForRealRequiresConfirmation', 'bad')).toBe(true)
+    expect(normalizeRegisteredSyncedUiSetting('noteDropAutoExpandsFolders', 'bad')).toBe(false)
   })
 
   it('picks registered settings and boolean drafts from a source object', () => {
@@ -86,6 +90,7 @@ describe('synced UI settings registry', () => {
     })
     expect(getSyncedUiBooleanSettings({ noteMentionCopyRequiresConfirmation: false })).toMatchObject({
       noteMentionCopyRequiresConfirmation: false,
+      noteDropAutoExpandsFolders: false,
       removeNoteReferencesOnTrash: true,
       trashDeleteForRealRequiresConfirmation: true,
     })

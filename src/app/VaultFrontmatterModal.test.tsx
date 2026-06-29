@@ -8,6 +8,7 @@ import type { VaultFrontmatterModalState } from './VaultApp'
 let VaultFrontmatterModal: typeof import('./VaultApp').VaultFrontmatterModal
 const vaultAppSource = readFileSync(new URL('./VaultApp.tsx', import.meta.url), 'utf8')
 const overlaysCss = readFileSync(new URL('../styles/overlays.css', import.meta.url), 'utf8')
+const appCss = readFileSync(new URL('../App.css', import.meta.url), 'utf8')
 
 beforeAll(async () => {
   if (typeof globalThis.Element === 'undefined') {
@@ -79,6 +80,12 @@ function getControlTag(html: string, className: string): string {
   return html.match(new RegExp(`<[^>]+${className}[^>]*>`))?.[0] ?? ''
 }
 
+function getCssRule(css: string, selector: string): string {
+  const start = css.indexOf(`${selector} {`)
+  if (start < 0) return ''
+  return css.slice(start, css.indexOf('}', start) + 1)
+}
+
 describe('VaultFrontmatterModal', () => {
   it('renders structured frontmatter rows instead of a raw YAML textarea', () => {
     const html = renderModal()
@@ -88,6 +95,35 @@ describe('VaultFrontmatterModal', () => {
     expect(html).toContain('aria-label="frontmatter key"')
     expect(html).toContain('aria-label="frontmatter type"')
     expect(html).not.toContain('<textarea')
+  })
+
+  it('renders as a modeless note-content overlay dialog', () => {
+    const html = renderModal()
+
+    expect(html).toContain('frontmatter-note-modal-backdrop')
+    expect(html).toContain('role="dialog"')
+    expect(html).not.toContain('aria-modal="true"')
+    expect(appCss).toContain('.note-content-overlay-region .frontmatter-note-modal-backdrop')
+    expect(appCss).toContain('.note-content-overlay-region .vault-frontmatter-modal.frontmatter-note-modal')
+    expect(appCss).toMatch(
+      /\.note-content-overlay-region \.frontmatter-note-modal-backdrop \{[\s\S]*?background: color-mix\(in srgb, var\(--app-bg\) 46%, transparent\);/,
+    )
+  })
+
+  it('uses a translucent frontmatter surface tint for other modal backdrops', () => {
+    const vaultBackdropRule = getCssRule(appCss, '.vault-modal-backdrop')
+    const bootstrapVaultBackdropRule = getCssRule(appCss, '.modal-backdrop.vault-modal-backdrop')
+    const deleteBackdropRule = getCssRule(overlaysCss, '.delete-modal-backdrop')
+
+    expect(vaultBackdropRule).toContain('background: color-mix(in srgb, var(--modal-bg) 72%, transparent);')
+    expect(vaultBackdropRule).toContain('background-color: color-mix(in srgb, var(--modal-bg) 72%, transparent);')
+    expect(vaultBackdropRule).toContain('opacity: 1;')
+    expect(vaultBackdropRule).not.toContain('rgba(4, 9, 16, 0.58)')
+    expect(bootstrapVaultBackdropRule).toContain('--bs-backdrop-bg: transparent;')
+    expect(bootstrapVaultBackdropRule).toContain('background-color: color-mix(in srgb, var(--modal-bg) 72%, transparent);')
+    expect(deleteBackdropRule).toContain('background: color-mix(in srgb, var(--modal-bg) 72%, transparent);')
+    expect(deleteBackdropRule).toContain('background-color: color-mix(in srgb, var(--modal-bg) 72%, transparent);')
+    expect(deleteBackdropRule).not.toContain('rgba(4, 9, 16, 0.58)')
   })
 
   it('locks template-owned key and type while keeping normal values editable', () => {

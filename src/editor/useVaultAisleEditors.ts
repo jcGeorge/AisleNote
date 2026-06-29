@@ -43,7 +43,6 @@ import {
   restoreEditorDisplay,
   setEditorMarkdownForDisplay,
 } from './editor-markdown-display'
-import { AISLENOTE_TOAST_HTML_RENDERER } from './toast-inline-html-renderer'
 import { importBlobAsAssetUrl, importImageBlobAsAssetUrl } from '../markdown/image-asset-registry'
 import { installImageDisplayMetadataSync } from './image-dom-metadata'
 import { withDefaultInsertedImageDisplayWidth } from './image-insertion'
@@ -62,7 +61,7 @@ import {
 import {
   finishEditorOperation,
   insertEditorTextOperation,
-  replaceSelectedTextWithTableOperation,
+  insertTableOperation,
   runEditorCommandOperation,
   type EditorOperationRuntime,
 } from './editor-operation-runner'
@@ -71,7 +70,13 @@ import {
   type ClipboardMarkdownReadResult,
 } from './clipboard-paste-markdown'
 import { buildMediaMarkdownLink, insertAssetLinksIntoWysiwygView } from './media-file-insertion'
-import { insertVisualClipboardMarkdownIntoView, insertVisualClipboardTextIntoView } from './visual-clipboard'
+import {
+  insertClipboardDataIntoView,
+  insertVisualClipboardMarkdownIntoView,
+  insertVisualClipboardTextIntoView,
+  serializeProseMirrorSelectionForClipboard,
+  writeEditorClipboardData,
+} from './visual-clipboard'
 import {
   insertTableSelectionClipboardPayloadIntoView,
   readTableSelectionClipboardPayloadFromClipboard,
@@ -1306,7 +1311,27 @@ export function useVaultAisleEditors({
         ].filter(Boolean).slice(0, TOAST_AISLE_EDITOR_RECENT_RETAIN_LIMIT))
         setActiveEditor(aisle.id)
       }
+      const handleCopyCut = (event: ClipboardEvent) => {
+        if (event.defaultPrevented) return
+        if (!getElementFromEventTarget(event.target)?.closest('.ProseMirror[contenteditable="true"]')) return
+        const view = getWysiwygView(editor)
+        const serialization = serializeProseMirrorSelectionForClipboard(view)
+        if (!serialization || !writeEditorClipboardData(event.clipboardData, serialization)) return
+        event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation()
+        if (event.type === 'cut' && editor) {
+          markEditorUserEditIntent(editorKey)
+          view.dispatch(view.state.tr.deleteSelection().scrollIntoView())
+          editor.focus()
+          commitActiveEditorMarkdownNow(editor)
+          scheduleToolbarFormatStateSync()
+        }
+      }
       const handlePaste = (event: ClipboardEvent) => {
+        if (event.defaultPrevented) return
+        if (!getElementFromEventTarget(event.target)?.closest('.ProseMirror[contenteditable="true"]')) return
+
         const frontmatterPayload = readFrontmatterClipboardPayloadFromDataTransfer(event.clipboardData, {
           allowYamlFallback: false,
         })
@@ -1318,8 +1343,19 @@ export function useVaultAisleEditors({
         }
 
         const payload = readVaultStructureClipboardPayloadFromDataTransfer(event.clipboardData)
-        if (!payload || !onVaultStructurePaste?.(payload, aisle.id)) return
+        if (payload && onVaultStructurePaste?.(payload, aisle.id)) {
+          markEditorUserEditIntent(editorKey)
+          event.preventDefault()
+          event.stopPropagation()
+          event.stopImmediatePropagation()
+          return
+        }
+
+        const view = getWysiwygView(editor)
+        if (!editor || !insertClipboardDataIntoView(view, event.clipboardData)) return
         markEditorUserEditIntent(editorKey)
+        commitActiveEditorMarkdownNow(editor)
+        scheduleToolbarFormatStateSync()
         event.preventDefault()
         event.stopPropagation()
         event.stopImmediatePropagation()
@@ -1416,6 +1452,8 @@ export function useVaultAisleEditors({
       }
       root.addEventListener('focusin', handleFocus)
       root.addEventListener('pointerdown', handlePointerDown, true)
+      root.addEventListener('copy', handleCopyCut, true)
+      root.addEventListener('cut', handleCopyCut, true)
       root.addEventListener('paste', handlePaste, true)
       root.addEventListener('keydown', handleKeyDown, true)
       root.addEventListener('beforeinput', handleBeforeInput, true)
@@ -1426,6 +1464,8 @@ export function useVaultAisleEditors({
       const cleanupFns: Array<() => void> = [
         () => root.removeEventListener('focusin', handleFocus),
         () => root.removeEventListener('pointerdown', handlePointerDown, true),
+        () => root.removeEventListener('copy', handleCopyCut, true),
+        () => root.removeEventListener('cut', handleCopyCut, true),
         () => root.removeEventListener('paste', handlePaste, true),
         () => root.removeEventListener('keydown', handleKeyDown, true),
         () => root.removeEventListener('beforeinput', handleBeforeInput, true),
@@ -1442,7 +1482,6 @@ export function useVaultAisleEditors({
           initialEditType: 'wysiwyg',
           previewStyle: 'tab',
           hideModeSwitch: true,
-          customHTMLRenderer: AISLENOTE_TOAST_HTML_RENDERER,
           customHTMLSanitizer: sanitizeEditorHtml,
           toolbarItems: EDITOR_TOOLBAR_ITEMS,
           height: '100%',
@@ -1679,17 +1718,10 @@ export function useVaultAisleEditors({
 
       if (command === 'addTable' || command === 'table') {
         markEditorUserEditIntentForEditor(editor)
-        const tableSelectionResult = replaceSelectedTextWithTableOperation(editorOperationRuntime, {
-          commitMode: 'none',
-          syncToolbar: false,
+        insertTableOperation(editorOperationRuntime, payload ?? { rowCount: 2, columnCount: 2 }, {
+          commitMode: 'deferred',
+          syncToolbar: true,
         })
-        if (!tableSelectionResult.handled) {
-          runEditorCommandOperation(editorOperationRuntime, 'addTable', payload ?? { rowCount: 2, columnCount: 2 }, {
-            commitMode: 'none',
-            syncToolbar: false,
-          })
-        }
-        finishEditorOperation(editorOperationRuntime, editor, { commitMode: 'deferred', syncToolbar: true })
         return true
       }
 

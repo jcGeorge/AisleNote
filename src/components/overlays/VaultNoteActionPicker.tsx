@@ -23,6 +23,13 @@ export type VaultNoteActionPickerAnchor = {
   left: number
 }
 
+export type VaultNoteActionPickerViewportRect = {
+  top: number
+  left: number
+  width: number
+  height: number
+}
+
 export type VaultNoteActionPickerAisleOption = {
   id: string
   label: string
@@ -44,8 +51,8 @@ export type VaultNoteActionPickerKeyboardIntent =
   | 'run-action'
 
 const ACTION_LABELS: Record<VaultNoteActionPickerAction, string> = {
-  'note-link': 'note link',
-  'note-preview': 'note preview',
+  'note-link': 'link',
+  'note-preview': 'preview',
   'independent-copy': 'independent copy',
   'synced-copy': 'synced copy',
 }
@@ -99,6 +106,30 @@ function consumeNavigationEvent(event: Pick<KeyboardEvent | ReactKeyboardEvent<H
   ;(nativeEvent as { stopImmediatePropagation?: () => void }).stopImmediatePropagation?.()
 }
 
+function clampPanelCoordinate(value: number, min: number, max: number): number {
+  if (max < min) return min
+  return Math.max(min, Math.min(max, value))
+}
+
+function getAnchoredPanelStyle(
+  anchor: VaultNoteActionPickerAnchor,
+  viewportRect: VaultNoteActionPickerViewportRect | null | undefined,
+): CSSProperties {
+  if (!viewportRect || viewportRect.width <= 0 || viewportRect.height <= 0) {
+    return { top: `${anchor.top}px`, left: `${anchor.left}px` }
+  }
+
+  const panelWidth = Math.min(520, Math.max(0, viewportRect.width - 28))
+  const minLeft = 14 + panelWidth / 2
+  const maxLeft = viewportRect.width - 14 - panelWidth / 2
+  const minTop = 14
+  const maxTop = Math.max(minTop, viewportRect.height - 14)
+  return {
+    top: `${clampPanelCoordinate(anchor.top - viewportRect.top, minTop, maxTop)}px`,
+    left: `${clampPanelCoordinate(anchor.left - viewportRect.left, minLeft, maxLeft)}px`,
+  }
+}
+
 export function VaultNoteActionPicker({
   title,
   entries,
@@ -107,6 +138,7 @@ export function VaultNoteActionPicker({
   showHeader = true,
   actions,
   anchor,
+  viewportRect,
   initialSelectedNoteId = '',
   urlValue = '',
   urlEnabled = false,
@@ -124,6 +156,7 @@ export function VaultNoteActionPicker({
   showHeader?: boolean
   actions: VaultNoteActionPickerAction[]
   anchor?: VaultNoteActionPickerAnchor | null
+  viewportRect?: VaultNoteActionPickerViewportRect | null
   initialSelectedNoteId?: string
   urlValue?: string
   urlEnabled?: boolean
@@ -194,8 +227,16 @@ export function VaultNoteActionPicker({
     setSelectedPreviewAisleId(fallbackAisleId)
   }, [previewAisleNoteId, previewAisleOptions, selectedPreviewAisleId])
 
+  const layerStyle: CSSProperties | undefined = viewportRect && viewportRect.width > 0 && viewportRect.height > 0
+    ? {
+        top: `${viewportRect.top}px`,
+        left: `${viewportRect.left}px`,
+        width: `${viewportRect.width}px`,
+        height: `${viewportRect.height}px`,
+      }
+    : undefined
   const panelStyle: CSSProperties | undefined = anchor
-    ? { top: `${anchor.top}px`, left: `${anchor.left}px` }
+    ? getAnchoredPanelStyle(anchor, viewportRect)
     : undefined
 
   const chooseHighlighted = useCallback(() => {
@@ -309,9 +350,13 @@ export function VaultNoteActionPicker({
   }
 
   return (
-    <div className="vault-note-action-layer" onPointerDown={(event) => {
-      if (event.target === event.currentTarget) onClose()
-    }}>
+    <div
+      className={`vault-note-action-layer ${viewportRect ? 'is-note-scoped' : ''}`}
+      style={layerStyle}
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
       <section
         className={`vault-note-action-picker ${anchor ? 'is-anchored' : 'is-modal'}`}
         role="dialog"
@@ -400,9 +445,9 @@ export function VaultNoteActionPicker({
         </div>
         {selectedEntry && selectedActions.length > 0 && (
           <div className="vault-note-action-choices" aria-label={`Actions for ${selectedEntry.noteName}`}>
-            <div>
+            <div className="vault-note-action-selected-note">
               <strong>{selectedEntry.noteName}</strong>
-              <small>{selectedEntry.label}</small>
+              <small className="vault-note-action-selected-path">{selectedEntry.folderPath || 'Vault'}</small>
             </div>
             <div className="vault-note-action-choice-row">
               {selectedActions.map((action, index) => (

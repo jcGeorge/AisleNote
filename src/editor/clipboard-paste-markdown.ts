@@ -7,6 +7,7 @@ import { importMediaFilesAsMarkdown, type ImportAssetBlob } from './media-file-i
 import { withDefaultInsertedImageDisplayWidth } from './image-insertion'
 import {
   convertClipboardHtmlToVisualMarkdown,
+  isLayoutSensitiveClipboardText,
   normalizeVisualClipboardText,
   AISLENOTE_MARKDOWN_CLIPBOARD_MIME,
 } from './visual-clipboard'
@@ -195,6 +196,11 @@ export async function readClipboardMarkdown({
       }
       const html = await getFirstItemText(items, HTML_MIME)
       const plainText = await getFirstItemText(items, PLAIN_TEXT_MIME)
+      if (isLayoutSensitiveClipboardText(plainText)) {
+        const textResult = await convertTextResult(plainText, convertPlainTextToMarkdown)
+        if (textResult) return textResult
+      }
+
       if (html && html.trim().length > 0) {
         try {
           const converted = toResult(await convertHtmlToMarkdown(html), 'html')

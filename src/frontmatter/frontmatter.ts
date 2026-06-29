@@ -24,6 +24,10 @@ export type ParseFrontmatterYamlResult =
   | { ok: true; data: FrontmatterData | null }
   | { ok: false; message: string }
 
+export type FrontmatterTemplateImportResult =
+  | { ok: true; fields: FrontmatterTemplateField[] }
+  | { ok: false; message: string }
+
 export type MarkdownFrontmatterExtraction = {
   frontmatter: FrontmatterData | null
   markdown: string
@@ -231,6 +235,7 @@ export function coerceFrontmatterString(value: unknown): string {
 }
 
 const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/
+const US_DATE_ONLY_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
 const DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})(?:$|[T\s])/
 const LOCAL_DATETIME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::\d{2}(?:\.\d{1,3})?)?$/
 
@@ -255,6 +260,31 @@ function parseDateOnlyParts(value: string): { year: number; month: number; day: 
   return { year, month, day }
 }
 
+function parseUsDateOnlyParts(value: string): { year: number; month: number; day: number } | null {
+  const match = value.match(US_DATE_ONLY_RE)
+  if (!match) return null
+  const month = Number.parseInt(match[1] ?? '', 10)
+  const day = Number.parseInt(match[2] ?? '', 10)
+  const year = Number.parseInt(match[3] ?? '', 10)
+  const date = new Date(year, month - 1, day)
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null
+  }
+  return { year, month, day }
+}
+
+function parseDateInputParts(value: string): { year: number; month: number; day: number } | null {
+  return parseDateOnlyParts(value) ?? parseUsDateOnlyParts(value)
+}
+
+function formatDateParts(parts: { year: number; month: number; day: number }): string {
+  return `${parts.year}-${padDatePart(parts.month)}-${padDatePart(parts.day)}`
+}
+
 function formatLocalDate(value: Date): string {
   return `${value.getFullYear()}-${padDatePart(value.getMonth() + 1)}-${padDatePart(value.getDate())}`
 }
@@ -264,7 +294,7 @@ function formatLocalDateTime(value: Date): string {
 }
 
 function dateAtLocalDefaultTime(dateValue: string): Date | null {
-  const parts = parseDateOnlyParts(dateValue)
+  const parts = parseDateInputParts(dateValue)
   if (!parts) return null
   return new Date(parts.year, parts.month - 1, parts.day, 15, 0, 0, 0)
 }
@@ -282,8 +312,8 @@ export function getFrontmatterDatePickerValue(value: unknown): string {
   }
   const rawValue = coerceFrontmatterString(value).trim()
   if (!rawValue) return ''
-  const dateOnly = parseDateOnlyParts(rawValue)
-  if (dateOnly) return rawValue
+  const dateOnly = parseDateInputParts(rawValue)
+  if (dateOnly) return formatDateParts(dateOnly)
   const prefix = rawValue.match(DATE_PREFIX_RE)?.[1] ?? ''
   return prefix && parseDateOnlyParts(prefix) ? prefix : ''
 }
@@ -295,8 +325,8 @@ export function getFrontmatterDatetimePickerValue(value: unknown): string {
   }
   const rawValue = coerceFrontmatterString(value).trim()
   if (!rawValue) return ''
-  const dateOnly = parseDateOnlyParts(rawValue)
-  if (dateOnly) return `${rawValue}T15:00`
+  const dateOnly = parseDateInputParts(rawValue)
+  if (dateOnly) return `${formatDateParts(dateOnly)}T15:00`
 
   const localMatch = rawValue.match(LOCAL_DATETIME_RE)
   if (localMatch) {
@@ -326,6 +356,61 @@ export function getFrontmatterDraftValueForType(
     return datetimeValue || (getFrontmatterDatePickerValue(value) ? getFrontmatterDefaultDatetimePickerValue(value) : '')
   }
   return coerceFrontmatterString(value)
+}
+
+function inferImportedFrontmatterFieldType(value: unknown): FrontmatterFieldType {
+  if (typeof value === 'number' && Number.isFinite(value)) return 'number'
+  if (typeof value === 'boolean') return 'boolean'
+  if (Array.isArray(value)) return 'list'
+  if (value instanceof Date) return 'datetime'
+  if (typeof value === 'string') {
+    const rawValue = value.trim()
+    if (rawValue && parseDateInputParts(rawValue)) return 'date'
+    if (rawValue && getFrontmatterDatetimePickerValue(rawValue)) return 'datetime'
+    if (rawValue && getFrontmatterDatePickerValue(rawValue)) return 'date'
+  }
+  return 'text'
+}
+
+function getImportedFrontmatterDefaultValue(type: FrontmatterFieldType, value: unknown): string {
+  if (type === 'boolean') return parseBoolean(value) ? 'true' : 'false'
+  return getFrontmatterDraftValueForType(type, value)
+}
+
+function parseFrontmatterTemplateImportData(raw: string): ParseFrontmatterYamlResult {
+  const trimmed = raw.trim()
+  if (!trimmed) return { ok: true, data: null }
+  if (!getFrontmatterOpenRegex().test(trimmed)) return parseFrontmatterYaml(trimmed)
+
+  const split = splitMarkdownFrontmatter(trimmed)
+  if (split.status === 'invalid') {
+    return { ok: false, message: split.error ?? 'Frontmatter YAML is invalid.' }
+  }
+  return { ok: true, data: split.frontmatter }
+}
+
+export function parseFrontmatterTemplateImport(raw: string): FrontmatterTemplateImportResult {
+  const parsed = parseFrontmatterTemplateImportData(raw)
+  if (!parsed.ok) return { ok: false, message: parsed.message }
+  if (!parsed.data || Object.keys(parsed.data).length === 0) {
+    return { ok: false, message: 'No frontmatter fields found.' }
+  }
+
+  const fields = Object.entries(parsed.data).flatMap(([rawKey, value], index): FrontmatterTemplateField[] => {
+    const key = rawKey.trim()
+    if (!key) return []
+    const type = inferImportedFrontmatterFieldType(value)
+    return [{
+      id: stableId('fm-field', key, index),
+      key,
+      type,
+      defaultValue: getImportedFrontmatterDefaultValue(type, value),
+      computed: 'none',
+    }]
+  })
+
+  if (fields.length === 0) return { ok: false, message: 'No frontmatter fields found.' }
+  return { ok: true, fields }
 }
 
 function parseBoolean(value: unknown): boolean {
@@ -395,14 +480,60 @@ export function resolveFrontmatterFixedListValues(
   return normalizedOptions.filter((option) => fallbackValues.has(option))
 }
 
-function isCompatibleValue(type: FrontmatterFieldType, value: unknown): boolean {
-  if (value == null || value === '') return false
-  if (type === 'text' || type === 'date' || type === 'datetime') return typeof value === 'string' || value instanceof Date
-  if (type === 'number') return typeof value === 'number' && Number.isFinite(value)
-  if (type === 'boolean') return typeof value === 'boolean'
-  if (type === 'list') return Array.isArray(value)
-  if (type === 'fixedList') return typeof value === 'string' || Array.isArray(value)
-  return false
+type ExistingFrontmatterValueResolution =
+  | { ok: true; value: unknown }
+  | { ok: false }
+
+function tryResolveExistingNumberValue(value: unknown): ExistingFrontmatterValueResolution {
+  if (typeof value === 'number' && Number.isFinite(value)) return { ok: true, value }
+  if (typeof value !== 'string') return { ok: false }
+  const trimmed = value.trim()
+  if (!trimmed) return { ok: false }
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? { ok: true, value: parsed } : { ok: false }
+}
+
+function tryResolveExistingBooleanValue(value: unknown): ExistingFrontmatterValueResolution {
+  if (typeof value === 'boolean') return { ok: true, value }
+  if (typeof value === 'number' && (value === 0 || value === 1)) return { ok: true, value: Boolean(value) }
+  if (typeof value !== 'string') return { ok: false }
+  const normalized = value.trim().toLowerCase()
+  if (['true', 'yes', 'on', '1', 'false', 'no', 'off', '0'].includes(normalized)) {
+    return { ok: true, value: parseBoolean(value) }
+  }
+  return { ok: false }
+}
+
+function tryResolveExistingListValue(value: unknown): ExistingFrontmatterValueResolution {
+  if (Array.isArray(value)) return { ok: true, value: parseList(value) }
+  if (typeof value !== 'string') return { ok: false }
+  const parsed = parseList(value)
+  return parsed.length > 0 ? { ok: true, value: parsed } : { ok: false }
+}
+
+function tryResolveExistingFieldValue(
+  field: FrontmatterTemplateField,
+  value: unknown,
+): ExistingFrontmatterValueResolution {
+  if (field.type === 'text') return { ok: true, value: coerceFrontmatterString(value) }
+  if (field.type === 'number') return tryResolveExistingNumberValue(value)
+  if (field.type === 'boolean') return tryResolveExistingBooleanValue(value)
+  if (field.type === 'date') {
+    const pickerValue = getFrontmatterDatePickerValue(value)
+    return pickerValue ? { ok: true, value: pickerValue } : { ok: false }
+  }
+  if (field.type === 'datetime') {
+    const pickerValue = getFrontmatterDatetimePickerValue(value)
+    return pickerValue ? { ok: true, value: coerceFrontmatterFieldValue('datetime', pickerValue) } : { ok: false }
+  }
+  if (field.type === 'list') return tryResolveExistingListValue(value)
+  if (field.type === 'fixedList') {
+    const selectedValues = resolveFrontmatterFixedListValues(field.options, value)
+    if (selectedValues.length > 0 || (Array.isArray(value) && value.length === 0)) {
+      return { ok: true, value: selectedValues }
+    }
+  }
+  return { ok: false }
 }
 
 export function isFrontmatterReferenceComputedValue(computed: FrontmatterComputedValue) {
@@ -462,15 +593,19 @@ function resolveFieldValue(
   existing: FrontmatterData,
   context: FrontmatterTemplateContext,
 ): unknown {
-  const currentValue = existing[field.key]
   const computedValue = getComputedValue(field.computed, context)
   if (computedValue !== undefined) {
     return isFrontmatterReferenceComputedValue(field.computed) ? computedValue : coerceFrontmatterFieldValue(field.type, computedValue)
   }
+  const hasCurrentValue = Object.prototype.hasOwnProperty.call(existing, field.key)
+  const currentValue = existing[field.key]
+  if (hasCurrentValue) {
+    const existingValue = tryResolveExistingFieldValue(field, currentValue)
+    if (existingValue.ok) return existingValue.value
+  }
   if (field.type === 'fixedList') {
     return resolveFrontmatterFixedListValues(field.options, currentValue, field.defaultValue)
   }
-  if (isCompatibleValue(field.type, currentValue)) return coerceFrontmatterFieldValue(field.type, currentValue)
   return coerceFrontmatterFieldValue(field.type, field.defaultValue)
 }
 

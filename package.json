@@ -29,6 +29,7 @@
     "dev:electron:mac": "npm run electron:dev:mac",
     "dev:electron:windows": "npm run electron:dev:windows",
     "editor:benchmark": "node scripts/run-editor-benchmark.mjs",
+    "icons:generate": "node scripts/generate-icons.mjs",
     "cap:add:ios": "npx cap add ios",
     "cap:add:android": "npx cap add android",
     "cap:sync": "npm run build && npx cap sync",

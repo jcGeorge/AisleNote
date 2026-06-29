@@ -3,6 +3,7 @@ import { EditorState, TextSelection } from 'prosemirror-state'
 import { describe, expect, it, vi } from 'vitest'
 import {
   insertClipboardDataIntoView,
+  isLayoutSensitiveClipboardText,
   serializeProseMirrorSelectionForClipboard,
   AISLENOTE_MARKDOWN_CLIPBOARD_MIME,
   writeEditorClipboardData,
@@ -63,6 +64,72 @@ function createView(blocks: any[], anchor = 1, head = anchor) {
   }
 }
 
+function withFakeParsedHtmlText<T>(text: string, run: () => T): T {
+  const previousDOMParser = (globalThis as any).DOMParser
+  const previousElement = (globalThis as any).Element
+  const previousNode = (globalThis as any).Node
+  class FakeTextNode {
+    nodeType = 3
+    textContent: string
+
+    constructor(value: string) {
+      this.textContent = value
+    }
+  }
+  class FakeElement {
+    nodeType = 1
+    tagName: string
+    childNodes: Array<FakeElement | FakeTextNode>
+
+    constructor(tagName: string, childNodes: Array<FakeElement | FakeTextNode> = []) {
+      this.tagName = tagName
+      this.childNodes = childNodes
+    }
+
+    get children() {
+      return this.childNodes.filter((child): child is FakeElement => child instanceof FakeElement)
+    }
+
+    get textContent() {
+      return this.childNodes.map((child) => child.textContent ?? '').join('')
+    }
+
+    getAttribute() {
+      return ''
+    }
+
+    querySelectorAll() {
+      return []
+    }
+  }
+  ;(globalThis as any).DOMParser = class {
+    parseFromString() {
+      return {
+        body: new FakeElement('body', [
+          new FakeElement('p', [
+            new FakeElement('span', [
+              new FakeTextNode(text),
+            ]),
+          ]),
+        ]),
+      }
+    }
+  }
+  ;(globalThis as any).Element = FakeElement
+  ;(globalThis as any).Node = { TEXT_NODE: 3 }
+
+  try {
+    return run()
+  } finally {
+    if (previousDOMParser === undefined) delete (globalThis as any).DOMParser
+    else (globalThis as any).DOMParser = previousDOMParser
+    if (previousElement === undefined) delete (globalThis as any).Element
+    else (globalThis as any).Element = previousElement
+    if (previousNode === undefined) delete (globalThis as any).Node
+    else (globalThis as any).Node = previousNode
+  }
+}
+
 describe('visual clipboard helpers', () => {
   it('serializes selected visible rows with exact blank-line spacing', () => {
     const doc = schema.nodes.doc.create(null, [
@@ -95,6 +162,7 @@ describe('visual clipboard helpers', () => {
     })).toBe(true)
     expect(store.get('text/plain')).toBe('label')
     expect(store.get(AISLENOTE_MARKDOWN_CLIPBOARD_MIME)).toBe('[label](<note--abc123>)')
+    expect(store.has('text/html')).toBe(false)
   })
 
   it('pastes app-private markdown links as link marks instead of literal markdown text', () => {
@@ -118,6 +186,50 @@ describe('visual clipboard helpers', () => {
     expect(insertClipboardDataIntoView(view, data)).toBe(true)
     expect(Array.from({ length: view.state.doc.childCount }, (_unused, index) => view.state.doc.child(index).textContent))
       .toEqual(['okay', '', 'so'])
+  })
+
+  it('detects plain text that needs exact layout preservation', () => {
+    expect(isLayoutSensitiveClipboardText('Matthew 4:19\tFollow me')).toBe(true)
+    expect(isLayoutSensitiveClipboardText('Matthew 4:19  Follow me')).toBe(true)
+    expect(isLayoutSensitiveClipboardText('  indented')).toBe(true)
+    expect(isLayoutSensitiveClipboardText('Matthew 4:19\nMatthew 8:19')).toBe(true)
+    expect(isLayoutSensitiveClipboardText('plain sentence')).toBe(false)
+  })
+
+  it('uses layout-sensitive plain text before rich HTML when both clipboard formats are present', () => {
+    const view = createView([paragraph('')])
+    const plainText = 'Matthew 4:19\tAnd he says unto them\nMatthew 8:19\tAnd a certain scribe came'
+    const data = {
+      getData: (type: string) => {
+        if (type === 'text/plain') return plainText
+        if (type === 'text/html') return '<p><span style="color: #bbbebf;">Matthew 4:19 And he says unto them Matthew 8:19 And a certain scribe came</span></p>'
+        return ''
+      },
+    }
+
+    withFakeParsedHtmlText('Matthew 4:19 And he says unto them Matthew 8:19 And a certain scribe came', () => {
+      expect(insertClipboardDataIntoView(view, data)).toBe(true)
+    })
+
+    expect(Array.from({ length: view.state.doc.childCount }, (_unused, index) => view.state.doc.child(index).textContent))
+      .toEqual([
+        'Matthew 4:19\tAnd he says unto them',
+        'Matthew 8:19\tAnd a certain scribe came',
+      ])
+  })
+
+  it('pastes styled span HTML as plain text when exact plain text is unavailable', () => {
+    const view = createView([paragraph('')])
+    const data = {
+      getData: (type: string) => type === 'text/html'
+        ? '<p><span style="color: #bbbebf;">Matthew 4:19 Follow me</span></p>'
+        : '',
+    }
+
+    withFakeParsedHtmlText('Matthew 4:19 Follow me', () => {
+      expect(insertClipboardDataIntoView(view, data)).toBe(true)
+    })
+    expect(view.state.doc.child(0).textContent).toBe('Matthew 4:19 Follow me')
   })
 
   it('keeps the HTML paste path app-owned in source instead of routing through Toast UI defaults', () => {
