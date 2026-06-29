@@ -232,6 +232,12 @@ import { createRandomId, createReservedIdAllocator } from '../state/navigation-i
 import { importMarkdownIntoExistingVault } from '../import/markdown-import'
 import { usePersistentAppState } from '../storage/usePersistentAppState'
 import { useStorageProfileController } from '../storage/useStorageProfileController'
+import {
+  readLocalJsonPreference,
+  readLocalStringPreference,
+  writeLocalJsonPreference,
+  writeLocalStringPreference,
+} from '../storage/local-preferences'
 import { useAppNotifications } from './useAppNotifications'
 import {
   APP_THEME_IDS,
@@ -388,26 +394,17 @@ function normalizeSidebarSearchHistoryEntry(query: string): string {
 }
 
 function loadSidebarSearchHistory(): string[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(SIDEBAR_SEARCH_HISTORY_STORAGE_KEY) ?? '[]') as unknown
+  return readLocalJsonPreference<string[]>(SIDEBAR_SEARCH_HISTORY_STORAGE_KEY, [], (parsed) => {
     if (!Array.isArray(parsed)) return []
     return parsed
       .map((entry) => (typeof entry === 'string' ? normalizeSidebarSearchHistoryEntry(entry) : ''))
       .filter(Boolean)
       .slice(0, SIDEBAR_SEARCH_HISTORY_LIMIT)
-  } catch {
-    return []
-  }
+  })
 }
 
 function saveSidebarSearchHistory(history: string[]) {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(SIDEBAR_SEARCH_HISTORY_STORAGE_KEY, JSON.stringify(history))
-  } catch {
-    // Local storage is best-effort UI state.
-  }
+  writeLocalJsonPreference(SIDEBAR_SEARCH_HISTORY_STORAGE_KEY, history)
 }
 
 function appendSidebarSearchHistoryEntry(history: string[], query: string): string[] {
@@ -597,41 +594,24 @@ function isUtilityViewMode(viewMode: ViewMode): viewMode is UtilityViewMode {
 }
 
 function loadVaultActiveToolbarLayoutId(): string {
-  try {
-    return window.localStorage?.getItem(ACTIVE_TOOLBAR_LAYOUT_STORAGE_KEY)?.trim() || DEFAULT_TOOLBAR_LAYOUT_ID
-  } catch {
-    return DEFAULT_TOOLBAR_LAYOUT_ID
-  }
+  return readLocalStringPreference(ACTIVE_TOOLBAR_LAYOUT_STORAGE_KEY, DEFAULT_TOOLBAR_LAYOUT_ID).trim() ||
+    DEFAULT_TOOLBAR_LAYOUT_ID
 }
 
 function saveVaultActiveToolbarLayoutId(layoutId: string): void {
-  try {
-    window.localStorage?.setItem(ACTIVE_TOOLBAR_LAYOUT_STORAGE_KEY, layoutId.trim() || DEFAULT_TOOLBAR_LAYOUT_ID)
-  } catch {
-    // Device-local toolbar choice should not block the app.
-  }
+  writeLocalStringPreference(ACTIVE_TOOLBAR_LAYOUT_STORAGE_KEY, layoutId.trim() || DEFAULT_TOOLBAR_LAYOUT_ID)
 }
 
 function loadTagAutocompleteRecentKeys(): string[] {
-  try {
-    if (typeof window === 'undefined') return []
-    const raw = window.localStorage?.getItem(TAG_AUTOCOMPLETE_RECENT_STORAGE_KEY)
-    return normalizeTagAutocompleteRecentKeys(raw ? JSON.parse(raw) : [])
-  } catch {
-    return []
-  }
+  return readLocalJsonPreference<string[]>(
+    TAG_AUTOCOMPLETE_RECENT_STORAGE_KEY,
+    [],
+    normalizeTagAutocompleteRecentKeys,
+  )
 }
 
 function saveTagAutocompleteRecentKeys(keys: string[]): void {
-  try {
-    if (typeof window === 'undefined') return
-    window.localStorage?.setItem(
-      TAG_AUTOCOMPLETE_RECENT_STORAGE_KEY,
-      JSON.stringify(normalizeTagAutocompleteRecentKeys(keys)),
-    )
-  } catch {
-    // Device-local tag suggestion recency should not block editing.
-  }
+  writeLocalJsonPreference(TAG_AUTOCOMPLETE_RECENT_STORAGE_KEY, keys, normalizeTagAutocompleteRecentKeys)
 }
 
 function createFrontmatterTemplateId(): string {
@@ -6415,9 +6395,6 @@ export function VaultApp() {
 
   const permanentlyDeleteDeletedItem = useCallback(
     (deletedItemId: string) => {
-      if (!window.confirm('Permanently delete this item? This cannot be undone.')) {
-        return
-      }
       setExpandedTrashItemId((previous) => (previous === deletedItemId ? '' : previous))
       mutateState((previous) =>
         pruneUnreferencedBodies({
@@ -6431,6 +6408,24 @@ export function VaultApp() {
     },
     [mutateState],
   )
+
+  const permanentlyDeleteAllDeletedItems = useCallback(() => {
+    if (!window.confirm('Permanently delete all trash?\nThis cannot be undone.')) {
+      return
+    }
+    setExpandedTrashItemId('')
+    mutateState((previous) =>
+      previous.vault.deletedItems.length === 0
+        ? previous
+        : pruneUnreferencedBodies({
+            ...previous,
+            vault: {
+              ...previous.vault,
+              deletedItems: [],
+            },
+          }),
+    )
+  }, [mutateState])
 
   const setActiveNote = useCallback(
     (noteId: string) => {
@@ -9360,6 +9355,15 @@ export function VaultApp() {
           <h2>Trash</h2>
           <p>{state.vault.deletedItems.length.toLocaleString()} deleted item{state.vault.deletedItems.length === 1 ? '' : 's'}</p>
         </div>
+        {state.vault.deletedItems.length > 0 ? (
+          <button
+            type="button"
+            className="vault-settings-action vault-trash-delete-all-btn"
+            onClick={permanentlyDeleteAllDeletedItems}
+          >
+            Delete all
+          </button>
+        ) : null}
       </header>
       {state.vault.deletedItems.length === 0 ? <p className="vault-settings-help">No deleted items.</p> : null}
       {state.vault.deletedItems.length > 0 ? (
@@ -9397,7 +9401,15 @@ export function VaultApp() {
                     </time>
                     <div className="vault-trash-actions" aria-label={`${title} actions`}>
                       <button type="button" onClick={() => restoreDeletedItem(entry.id)}>Restore</button>
-                      <button type="button" onClick={() => permanentlyDeleteDeletedItem(entry.id)}>Delete</button>
+                      <button
+                        type="button"
+                        className="vault-trash-delete-button"
+                        aria-label={`Permanently delete ${title}`}
+                        title={`Permanently delete ${title}`}
+                        onClick={() => permanentlyDeleteDeletedItem(entry.id)}
+                      >
+                        <AppIcon iconId="trash" className="vault-trash-delete-icon" />
+                      </button>
                     </div>
                   </div>
                   {expanded ? (

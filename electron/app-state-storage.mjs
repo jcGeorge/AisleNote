@@ -3,6 +3,7 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
+  renameSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -75,16 +76,49 @@ function ensureDir(directoryPath) {
   mkdirSync(directoryPath, { recursive: true })
 }
 
-function writeJson(rootPath, relativePath, value) {
-  const absolutePath = path.join(rootPath, ...relativePath.split('/'))
-  ensureDir(path.dirname(absolutePath))
-  writeFileSync(absolutePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+function createTextWriteStats() {
+  return {
+    filesChanged: 0,
+    filesSkipped: 0,
+  }
 }
 
-function writeText(rootPath, relativePath, value) {
-  const absolutePath = path.join(rootPath, ...relativePath.split('/'))
+function writeTextFileAtomic(absolutePath, contents) {
   ensureDir(path.dirname(absolutePath))
-  writeFileSync(absolutePath, String(value ?? ''), 'utf8')
+  const tempPath = path.join(path.dirname(absolutePath), `.${path.basename(absolutePath)}.${process.pid}.${Date.now()}.tmp`)
+  try {
+    writeFileSync(tempPath, contents, 'utf8')
+    renameSync(tempPath, absolutePath)
+  } catch (error) {
+    rmSync(tempPath, { force: true })
+    throw error
+  }
+}
+
+function writeTextFileIfChanged(absolutePath, contents, stats = null) {
+  let unchanged = false
+  try {
+    unchanged = existsSync(absolutePath) && readFileSync(absolutePath, 'utf8') === contents
+  } catch {
+    unchanged = false
+  }
+  if (unchanged) {
+    if (stats) stats.filesSkipped += 1
+    return false
+  }
+  writeTextFileAtomic(absolutePath, contents)
+  if (stats) stats.filesChanged += 1
+  return true
+}
+
+function writeJson(rootPath, relativePath, value, stats = null) {
+  const absolutePath = path.join(rootPath, ...relativePath.split('/'))
+  writeTextFileIfChanged(absolutePath, `${JSON.stringify(value, null, 2)}\n`, stats)
+}
+
+function writeText(rootPath, relativePath, value, stats = null) {
+  const absolutePath = path.join(rootPath, ...relativePath.split('/'))
+  writeTextFileIfChanged(absolutePath, String(value ?? ''), stats)
 }
 
 function readJson(rootPath, relativePath) {
@@ -514,13 +548,13 @@ function buildNoteRegistry(appState, noteFileRecords) {
   }
 }
 
-function writeVisibleVaultFiles(rootPath, appState, noteFileRecords) {
+function writeVisibleVaultFiles(rootPath, appState, noteFileRecords, stats = null) {
   const aisleBodyMap = getAisleBodyMap(appState)
   const written = new Set()
   for (const noteRecord of noteFileRecords) {
     for (const aisleFile of noteRecord.aisleFiles) {
       const markdownFile = composeMarkdownFile(aisleBodyMap.get(aisleFile.aisleBodyId))
-      writeText(rootPath, aisleFile.file, markdownFile)
+      writeText(rootPath, aisleFile.file, markdownFile, stats)
       written.add(aisleFile.file)
     }
   }
@@ -990,7 +1024,8 @@ export function saveAppState(profileRootPath, serializedState, options = {}) {
       settings: appState?.vault?.settings ?? { autoRemoveDeletedDays: 7 },
     }
     const registry = buildNoteRegistry(appState, noteFileRecords)
-    const writtenMarkdownFiles = writeVisibleVaultFiles(rootPath, appState, noteFileRecords)
+    const textWriteStats = createTextWriteStats()
+    const writtenMarkdownFiles = writeVisibleVaultFiles(rootPath, appState, noteFileRecords, textWriteStats)
     const expectedFiles = new Set([
       MANIFEST_FILE,
       VAULT_INDEX_FILE,
@@ -1004,31 +1039,36 @@ export function saveAppState(profileRootPath, serializedState, options = {}) {
       ...writtenMarkdownFiles,
     ])
     const pruneResult = pruneGeneratedVaultFiles(rootPath, expectedFiles)
-    writeJson(rootPath, MANIFEST_FILE, buildManifest(options.vaultId ?? appState?.vaultId ?? null, options.syncMetadata ?? null))
-    writeJson(rootPath, VAULT_INDEX_FILE, vaultIndex)
+    writeJson(
+      rootPath,
+      MANIFEST_FILE,
+      buildManifest(options.vaultId ?? appState?.vaultId ?? null, options.syncMetadata ?? null),
+      textWriteStats,
+    )
+    writeJson(rootPath, VAULT_INDEX_FILE, vaultIndex, textWriteStats)
     writeJson(rootPath, NAVIGATION_STATE_FILE, {
       schemaVersion: SCHEMA_VERSION,
       activeNoteId: appState?.vault?.activeNoteId ?? '',
       viewMode: 'main',
-    })
-    writeJson(rootPath, NOTE_REGISTRY_FILE, registry)
+    }, textWriteStats)
+    writeJson(rootPath, NOTE_REGISTRY_FILE, registry, textWriteStats)
     writeJson(rootPath, TRASH_INDEX_FILE, {
       schemaVersion: SCHEMA_VERSION,
       deletedItems: ensureArray(appState?.vault?.deletedItems),
-    })
+    }, textWriteStats)
     writeJson(rootPath, FRONTMATTER_SETTINGS_FILE, {
       schemaVersion: SCHEMA_VERSION,
       frontmatter: appState?.frontmatter ?? { templates: [], settingsTemplateId: '', lastAppliedTemplateId: '' },
-    })
-    writeJson(rootPath, EDITOR_STATE_FILE, buildEditorState(appState))
+    }, textWriteStats)
+    writeJson(rootPath, EDITOR_STATE_FILE, buildEditorState(appState), textWriteStats)
     writeJson(rootPath, MESSAGES_FILE, {
       schemaVersion: SCHEMA_VERSION,
       messages: ensureArray(appState?.messages),
-    })
+    }, textWriteStats)
     writeJson(rootPath, SYNC_STATE_FILE, {
       schemaVersion: SCHEMA_VERSION,
       syncMetadata: options.syncMetadata ?? null,
-    })
+    }, textWriteStats)
     if (options.assetSourceRoot) {
       copyAssets(options.assetSourceRoot, rootPath)
     }
@@ -1072,8 +1112,8 @@ export function saveAppState(profileRootPath, serializedState, options = {}) {
           assetsReused: 0,
           assetBytesReferenced: 0,
           assetBytesReadFromDisk: 0,
-          filesChanged: expectedFiles.size,
-          filesSkipped: 0,
+          filesChanged: textWriteStats.filesChanged,
+          filesSkipped: textWriteStats.filesSkipped,
           filesPruned: pruneResult.filesPruned,
           directoriesPruned: pruneResult.directoriesPruned,
           aisleStorageCacheHits: 0,
@@ -1232,14 +1272,13 @@ export function writeAssetToProfile(profileRootPath, bytes, extension) {
 
 export function writeAppSettingsForState(userSettingsRoot, serializedState) {
   const settingsPath = getUserSettingsFilePath(userSettingsRoot)
-  ensureDir(path.dirname(settingsPath))
   let appState = {}
   try {
     appState = JSON.parse(serializedState)
   } catch {
     appState = {}
   }
-  writeFileSync(settingsPath, stringifyPortableAppSettings(appState), 'utf8')
+  writeTextFileIfChanged(settingsPath, stringifyPortableAppSettings(appState))
 }
 
 export function resolveNoteLocationRevealPath(profileRootPath, payload = {}) {

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -221,6 +221,33 @@ function expectVisiblePath(relativePath) {
   }
 }
 
+function snapshotMtimes(root, storageEntries) {
+  return Object.fromEntries(storageEntries.map((entry) => [
+    entry.relativePath,
+    statSync(pathFromRoot(root, entry.relativePath)).mtimeMs,
+  ]))
+}
+
+function setStorageEntryTimes(root, storageEntries, timestamp) {
+  storageEntries.forEach((entry) => {
+    utimesSync(pathFromRoot(root, entry.relativePath), timestamp, timestamp)
+  })
+}
+
+function listAtomicTempFiles(root, currentPath = root, files = []) {
+  for (const entry of readdirSync(currentPath, { withFileTypes: true })) {
+    const absolutePath = path.join(currentPath, entry.name)
+    if (entry.isDirectory()) {
+      listAtomicTempFiles(root, absolutePath, files)
+      continue
+    }
+    if (entry.isFile() && /^\..+\.\d+\.\d+\.tmp$/.test(entry.name)) {
+      files.push(path.relative(root, absolutePath))
+    }
+  }
+  return files
+}
+
 describe('schema 2 app-state storage', () => {
   it('saves and loads root notes, nested folders, duplicate names, multi-aisle folders, frontmatter, scratchpad, and trash', () => {
     const root = tempRoot()
@@ -265,6 +292,40 @@ describe('schema 2 app-state storage', () => {
     expect(reloaded.noteAisleBodies.find((body) => body.id === 'aisle-body-root').frontmatter).toEqual({ status: 'open' })
     expect(reloaded.noteAisleBodies.find((body) => body.id === 'aisle-body-deleted').markdown).toBe('deleted markdown')
     expect(reloaded.noteAisleBodies.find((body) => body.id === 'aisle-body-scratch').markdown).toBe('scratch markdown')
+  })
+
+  it('skips unchanged generated text files on repeated saves', () => {
+    const root = tempRoot()
+    const state = appState()
+    const firstSave = saveAppState(root, JSON.stringify(state))
+    expect(firstSave.ok).toBe(true)
+
+    const oldTimestamp = new Date('2026-01-01T00:00:00.000Z')
+    setStorageEntryTimes(root, firstSave.storageFiles.entries, oldTimestamp)
+    const beforeMtimes = snapshotMtimes(root, firstSave.storageFiles.entries)
+
+    const secondSave = saveAppState(root, JSON.stringify(state))
+    expect(secondSave.ok).toBe(true)
+    expect(secondSave.saveMetrics.counts.generatedFiles).toBe(firstSave.saveMetrics.counts.generatedFiles)
+    expect(secondSave.saveMetrics.counts.jsonFiles).toBe(firstSave.saveMetrics.counts.jsonFiles)
+    expect(secondSave.saveMetrics.counts.mdFiles).toBe(firstSave.saveMetrics.counts.mdFiles)
+    expect(secondSave.saveMetrics.counts.filesChanged).toBe(0)
+    expect(secondSave.saveMetrics.counts.filesSkipped).toBe(secondSave.saveMetrics.counts.generatedFiles)
+    expect(snapshotMtimes(root, firstSave.storageFiles.entries)).toEqual(beforeMtimes)
+
+    const inbox = findVaultIndexNote(root, 'note-root')
+    expect(statSync(pathFromRoot(root, inbox.file)).mtimeMs).toBe(beforeMtimes[inbox.file])
+    expect(statSync(pathFromRoot(root, '.aislenote/vault-index.json')).mtimeMs)
+      .toBe(beforeMtimes['.aislenote/vault-index.json'])
+  })
+
+  it('leaves no atomic temp files after successful text saves', () => {
+    const root = tempRoot()
+    const state = appState()
+    const saveResult = saveAppState(root, JSON.stringify(state), { userSettingsRoot: path.join(root, 'user-data') })
+
+    expect(saveResult.ok).toBe(true)
+    expect(listAtomicTempFiles(root)).toEqual([])
   })
 
   it('loads older vault indexes without open tab state or trash settings', () => {

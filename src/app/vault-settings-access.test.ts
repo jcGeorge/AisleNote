@@ -89,7 +89,12 @@ describe('vault settings access', () => {
   it('removes obsolete permanent delete setting from active vault settings', () => {
     expect(vaultAppSource).not.toContain('Confirm permanent delete')
     expect(vaultAppSource).not.toContain('trashDeleteForRealRequiresConfirmation')
-    expect(vaultAppSource).toContain("window.confirm('Permanently delete this item? This cannot be undone.')")
+    expect(vaultAppSource).not.toContain("window.confirm('Permanently delete this item? This cannot be undone.')")
+    expect(vaultAppSource).toContain("window.confirm('Permanently delete all trash?\\nThis cannot be undone.')")
+    expect(vaultAppSource).toContain('className="vault-settings-action vault-trash-delete-all-btn"')
+    expect(vaultAppSource).toContain('className="vault-trash-delete-button"')
+    expect(vaultAppSource).toContain('iconId="trash" className="vault-trash-delete-icon"')
+    expect(appCssSource).toContain('.vault-trash-delete-all-btn {\n  flex: 0 0 auto;\n  border-color: var(--modal-primary-border);')
   })
 
   it('uses restored vault misc and frontmatter settings controls', () => {
