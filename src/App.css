@@ -968,19 +968,19 @@
 
 .vault-sidebar-search-result-group {
   display: grid;
-  gap: 4px;
-  margin: 0 0 8px;
+  gap: 2px;
+  margin: 0 0 4px;
 }
 
 .vault-sidebar-search-folder-section {
   display: grid;
-  gap: 4px;
-  margin: 0 0 10px;
+  gap: 2px;
+  margin: 0 0 6px;
 }
 
 .vault-sidebar-search-folder-heading {
   min-width: 0;
-  padding: 6px 2px 2px;
+  padding: 4px 2px 1px;
   color: var(--app-text-subtle);
   font-size: inherit;
   font-style: italic;
@@ -993,7 +993,7 @@
 .vault-sidebar-search-result-heading {
   display: grid;
   gap: 1px;
-  padding: 4px 2px 2px;
+  padding: 2px 2px 1px;
   color: var(--app-text-heading);
   font-weight: 400;
 }
@@ -1016,11 +1016,18 @@
 .vault-sidebar-search-result-heading-button {
   width: 100%;
   border: 0;
+  border-radius: 6px;
   background: transparent;
   font: inherit;
   text-align: left;
   cursor: pointer;
   appearance: none;
+}
+
+.vault-sidebar-search-result-heading-button:hover,
+.vault-sidebar-search-result-heading-button:focus-visible {
+  background: var(--vault-control-hover-bg);
+  color: var(--app-text-heading);
 }
 
 .vault-sidebar-search-result-heading-button:focus-visible {
@@ -1031,11 +1038,11 @@
 .vault-sidebar-search-result {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 7px;
+  gap: 6px;
   align-items: baseline;
   width: 100%;
-  min-height: 32px;
-  padding: 6px 7px;
+  min-height: 27px;
+  padding: 3px 6px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
