@@ -93,7 +93,8 @@
 .delete-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: color-mix(in srgb, var(--app-bg) 46%, transparent);
+  background: color-mix(in srgb, var(--modal-bg) 72%, transparent);
+  background-color: color-mix(in srgb, var(--modal-bg) 72%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -337,10 +338,29 @@ select.settings-select-input {
 }
 
 .frontmatter-derived-switch input {
-  width: 2.2rem;
-  height: 1.15rem;
+  width: 1rem;
+  height: 1rem;
   margin: 0;
-  accent-color: var(--modal-primary-bg);
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--settings-control-border);
+  border-radius: 0.18rem;
+  background-color: var(--settings-control-bg);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 0.72rem 0.72rem;
+  cursor: pointer;
+}
+
+.frontmatter-derived-switch input:checked {
+  border-color: var(--modal-primary-border);
+  background-color: var(--modal-primary-bg);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='white' d='M6.3 11.6 2.7 8l1.4-1.4 2.2 2.2 5.6-5.6L13.3 4.6z'/%3E%3C/svg%3E");
+}
+
+.frontmatter-derived-switch input:focus-visible {
+  outline: 2px solid var(--settings-control-focus-border);
+  outline-offset: 2px;
 }
 
 .frontmatter-template-suggestion-banner {
@@ -530,8 +550,21 @@ select.settings-select-input {
   width: 1rem;
   height: 1rem;
   margin: 0;
-  accent-color: var(--modal-primary-bg);
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--settings-control-border);
+  border-radius: 0.18rem;
+  background-color: var(--settings-control-bg);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 0.72rem 0.72rem;
   pointer-events: none;
+}
+
+.frontmatter-derived-indicator input:checked {
+  border-color: var(--modal-primary-border);
+  background-color: var(--modal-primary-bg);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='white' d='M6.3 11.6 2.7 8l1.4-1.4 2.2 2.2 5.6-5.6L13.3 4.6z'/%3E%3C/svg%3E");
 }
 
 .frontmatter-empty-state {

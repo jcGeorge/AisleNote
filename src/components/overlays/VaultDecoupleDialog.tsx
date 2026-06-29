@@ -86,7 +86,9 @@ export function VaultDecoupleDialog({
         {error ? <p className="vault-decouple-error">{error}</p> : null}
         <footer className="vault-decouple-actions">
           <button type="button" onClick={onCancel}>Cancel</button>
-          <button type="button" className="is-primary" onClick={onApply}>Apply</button>
+          <div className="vault-decouple-primary-actions">
+            <button type="button" className="is-primary" onClick={onApply}>Apply</button>
+          </div>
         </footer>
       </section>
     </div>

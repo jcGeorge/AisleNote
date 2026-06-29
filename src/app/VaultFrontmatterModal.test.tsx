@@ -110,13 +110,19 @@ describe('VaultFrontmatterModal', () => {
     )
   })
 
-  it('uses the frontmatter note backdrop tint for other modal backdrops', () => {
+  it('uses a translucent frontmatter surface tint for other modal backdrops', () => {
     const vaultBackdropRule = getCssRule(appCss, '.vault-modal-backdrop')
+    const bootstrapVaultBackdropRule = getCssRule(appCss, '.modal-backdrop.vault-modal-backdrop')
     const deleteBackdropRule = getCssRule(overlaysCss, '.delete-modal-backdrop')
 
-    expect(vaultBackdropRule).toContain('background: color-mix(in srgb, var(--app-bg) 46%, transparent);')
+    expect(vaultBackdropRule).toContain('background: color-mix(in srgb, var(--modal-bg) 72%, transparent);')
+    expect(vaultBackdropRule).toContain('background-color: color-mix(in srgb, var(--modal-bg) 72%, transparent);')
+    expect(vaultBackdropRule).toContain('opacity: 1;')
     expect(vaultBackdropRule).not.toContain('rgba(4, 9, 16, 0.58)')
-    expect(deleteBackdropRule).toContain('background: color-mix(in srgb, var(--app-bg) 46%, transparent);')
+    expect(bootstrapVaultBackdropRule).toContain('--bs-backdrop-bg: transparent;')
+    expect(bootstrapVaultBackdropRule).toContain('background-color: color-mix(in srgb, var(--modal-bg) 72%, transparent);')
+    expect(deleteBackdropRule).toContain('background: color-mix(in srgb, var(--modal-bg) 72%, transparent);')
+    expect(deleteBackdropRule).toContain('background-color: color-mix(in srgb, var(--modal-bg) 72%, transparent);')
     expect(deleteBackdropRule).not.toContain('rgba(4, 9, 16, 0.58)')
   })
 

@@ -2135,7 +2135,15 @@
   inset: 0;
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--app-bg) 46%, transparent);
+  background: color-mix(in srgb, var(--modal-bg) 72%, transparent);
+  background-color: color-mix(in srgb, var(--modal-bg) 72%, transparent);
+  opacity: 1;
+}
+
+.modal-backdrop.vault-modal-backdrop {
+  --bs-backdrop-bg: transparent;
+  background: color-mix(in srgb, var(--modal-bg) 72%, transparent);
+  background-color: color-mix(in srgb, var(--modal-bg) 72%, transparent);
 }
 
 .vault-frontmatter-modal {
@@ -2192,6 +2200,19 @@
 
 .vault-frontmatter-modal.vault-name-modal {
   width: min(420px, calc(100vw - 32px));
+}
+
+.vault-frontmatter-modal .modal-card-footer.modal-card-split-actions {
+  justify-content: space-between;
+}
+
+.vault-frontmatter-modal .modal-card-primary-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-left: auto;
+  flex-wrap: wrap;
 }
 
 .vault-frontmatter-modal .modal-card-header,
@@ -2623,8 +2644,16 @@
 
 .vault-decouple-actions {
   display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vault-decouple-primary-actions {
+  display: inline-flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  margin-left: auto;
 }
 
 .vault-decouple-keep-data {

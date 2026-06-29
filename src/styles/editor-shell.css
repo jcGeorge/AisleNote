@@ -1741,7 +1741,8 @@
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background: color-mix(in srgb, var(--app-bg) 46%, transparent);
+  background: color-mix(in srgb, var(--modal-bg) 72%, transparent);
+  background-color: color-mix(in srgb, var(--modal-bg) 72%, transparent);
 }
 
 .aisle-edit-modal {

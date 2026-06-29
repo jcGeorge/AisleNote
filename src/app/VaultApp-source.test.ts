@@ -52,6 +52,21 @@ describe('VaultApp frontmatter modal routing', () => {
     expect(source).not.toContain('includeExisting: false')
   })
 
+  it('prompts for template field removals only when used derived rows are affected', () => {
+    expect(source).toContain('getFrontmatterTemplateFieldRemovalUsage(stateRef.current, nextFrontmatter)')
+    expect(source).toContain('setFrontmatterTemplateFieldRemovalDecision({ nextFrontmatter, usage })')
+    expect(source).toContain('propagateFrontmatterTemplateChangesInState(previous, nextFrontmatter)')
+    expect(source).toContain('FrontmatterTemplateFieldRemovalDecisionDialog')
+    expect(source).toContain('Keep rows in notes')
+    expect(source).toContain('Delete from notes')
+    expect(source).toMatch(
+      /<button type="button" className="vault-settings-action" onClick=\{onDeleteValues\}>\s*Delete from notes\s*<\/button>\s*<button type="button" className="vault-settings-action modal-primary-btn" onClick=\{onKeepValues\}>\s*Keep rows in notes\s*<\/button>/,
+    )
+    expect(source).toContain('materializeRemovedTemplateFieldValuesInState(previous, nextFrontmatter)')
+    expect(source).toContain('removeRemovedTemplateFieldValuesInState(previous, nextFrontmatter)')
+    expect(source).toContain('previous.frontmatter')
+  })
+
   it('routes frontmatter modal copy and aisle paste through the frontmatter clipboard helpers', () => {
     expect(source).toContain("from '../frontmatter/frontmatter-clipboard'")
     expect(source).toContain('const copyFrontmatterFromModal = useCallback')
@@ -415,7 +430,9 @@ describe('VaultApp vault manager wiring', () => {
     expect(source).toContain('New Vault')
     expect(source).toContain('function VaultNameDialog({')
     expect(source).toContain("const actionLabel = dialog.mode === 'create' ? 'Choose location' : 'Rename'")
-    expect(source).toMatch(/<button type="submit" className="vault-settings-action" disabled=\{!canSubmit\}>\s*\{actionLabel\}\s*<\/button>\s*<button type="button" className="vault-settings-action" onClick=\{onCancel\}>\s*Cancel\s*<\/button>/)
+    expect(source).toContain('<footer className="modal-card-footer modal-card-split-actions">')
+    expect(source).toContain('className="modal-card-primary-actions"')
+    expect(source).toMatch(/<button type="button" className="vault-settings-action" onClick=\{onCancel\}>\s*Cancel\s*<\/button>\s*<div className="modal-card-primary-actions">\s*<button type="submit" className="vault-settings-action" disabled=\{!canSubmit\}>\s*\{actionLabel\}\s*<\/button>/)
     expect(source).toContain("setVaultNameDialog({ mode: 'create', initialName: 'New Vault' })")
     expect(source).toContain("setVaultNameDialog({ mode: 'rename', initialName: vault.vaultName, vault })")
     expect(source).toContain('<VaultNameDialog')
@@ -445,6 +462,8 @@ describe('VaultApp vault manager wiring', () => {
     expect(source).toContain('Open AisleNote vault')
     expect(source).toContain('Choose an existing AisleNote vault.')
     expect(appCss).toContain('.vault-frontmatter-modal.vault-name-modal')
+    expect(appCss).toContain('.vault-frontmatter-modal .modal-card-footer.modal-card-split-actions')
+    expect(appCss).toContain('.vault-frontmatter-modal .modal-card-primary-actions')
     expect(source).not.toContain('window.prompt(')
     expect(source).not.toContain('Open Vault Folder')
     expect(source).not.toContain('renameCurrentVaultFromSettings')
