@@ -605,6 +605,7 @@
 }
 
 .vault-sidebar-search {
+  container: vault-sidebar-search / inline-size;
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
@@ -871,17 +872,98 @@
   height: 13px;
 }
 
+.vault-sidebar-search-display-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 24px;
+  padding: 0 2px;
+  color: var(--app-text-subtle);
+}
+
+.vault-sidebar-search-display-controls {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.vault-sidebar-search-display-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  color: var(--app-text-subtle);
+  font-size: inherit;
+  font-weight: 400;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.vault-sidebar-search-display-toggle-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-sidebar-search-display-toggle-icon {
+  display: none;
+  flex: 0 0 auto;
+  align-self: center;
+  width: 18px;
+  height: 18px;
+}
+
+.vault-sidebar-search-display-switch.form-switch {
+  padding-left: 0;
+}
+
+.vault-sidebar-search-display-switch .form-check-input {
+  width: 2rem;
+  min-width: 2rem;
+  height: 1.05rem;
+  min-height: 1.05rem;
+  background-size: 0.9rem 0.9rem;
+}
+
+.vault-sidebar-search-result-count {
+  margin-left: auto;
+  color: var(--app-text-subtle);
+  font-size: inherit;
+  font-weight: 400;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+@container vault-sidebar-search (max-width: 235px) {
+  .vault-sidebar-search-display-row {
+    gap: 16px;
+  }
+
+  .vault-sidebar-search-display-controls {
+    gap: 16px;
+  }
+
+  .vault-sidebar-search-display-toggle {
+    gap: 4px;
+  }
+
+  .vault-sidebar-search-display-toggle-text {
+    display: none;
+  }
+
+  .vault-sidebar-search-display-toggle-icon {
+    display: block;
+  }
+}
+
 .vault-sidebar-search-results {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   padding: 0 0 60px;
-}
-
-.vault-sidebar-search-summary {
-  padding: 2px 2px 6px;
-  color: var(--app-text-subtle);
-  font-size: 0.78rem;
 }
 
 .vault-sidebar-search-result-group {

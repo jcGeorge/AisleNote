@@ -1,15 +1,15 @@
-export type FindReplaceShortcutMode = 'find' | 'replace'
+export type SearchShortcutTarget = 'note' | 'sidebar'
 
-type FindReplaceShortcutEvent = Pick<KeyboardEvent, 'key' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>
+type SearchShortcutEvent = Pick<KeyboardEvent, 'key' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>
 
-export function getFindReplaceShortcutMode(
-  event: FindReplaceShortcutEvent,
+export function getSearchShortcutTarget(
+  event: SearchShortcutEvent,
   isMacPlatform: boolean,
-): FindReplaceShortcutMode | null {
+): SearchShortcutTarget | null {
   if (event.altKey || event.key.toLowerCase() !== 'f') return null
   const hasPlatformModifier = isMacPlatform
     ? event.metaKey && !event.ctrlKey
     : event.ctrlKey && !event.metaKey
   if (!hasPlatformModifier) return null
-  return event.shiftKey ? 'replace' : 'find'
+  return event.shiftKey ? 'sidebar' : 'note'
 }

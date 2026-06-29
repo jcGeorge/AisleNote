@@ -118,7 +118,9 @@ describe('SidebarSearchPanel', () => {
     expect(html).toContain('data-app-icon="search"')
     expect(html).not.toContain('vault-sidebar-search-chip')
     expect(html).not.toContain('#Calvin')
-    expect(html).toContain('1 result')
+    expect(html).toContain('aria-label="1 search result"')
+    expect(html).toContain('vault-sidebar-search-result-count')
+    expect(html).not.toContain('1 result')
     expect(html).toContain('Calvin sermon')
     expect(html).toContain('Theology')
     expect(html).toContain('2)')
@@ -146,7 +148,9 @@ describe('SidebarSearchPanel', () => {
       />,
     )
 
-    expect(html).toContain('3 results')
+    expect(html).toContain('aria-label="3 search results"')
+    expect(html).toContain('>3</div>')
+    expect(html).not.toContain('3 results')
     expect(html).toContain('vault-sidebar-search-folder-heading')
     expect(html.match(/Theology/g)?.length).toBe(1)
     expect(html).toContain('Calvin sermon')
@@ -175,8 +179,49 @@ describe('SidebarSearchPanel', () => {
       />,
     )
 
-    expect(html).toContain('0 results')
+    expect(html).toContain('aria-label="0 search results"')
+    expect(html).toContain('>0</div>')
+    expect(html).not.toContain('0 results')
     expect(html).toContain('No matching notes')
+  })
+
+  it('renders persisted display switches and hides folder or aisle match rows when disabled', () => {
+    const html = renderToStaticMarkup(
+      <SidebarSearchPanel
+        query="cool"
+        active
+        metadataSearchActive={false}
+        suggestions={[]}
+        searchOptions={searchOptions}
+        searchHistory={[]}
+        resultGroups={textResultGroups}
+        showFolderNames={false}
+        showAisleMatches={false}
+        onQueryChange={noop}
+        onSelectSuggestion={noop}
+        onSelectSearchOption={noop}
+        onSelectHistory={noop}
+        onClearHistory={noop}
+        onShowFolderNamesChange={noop}
+        onShowAisleMatchesChange={noop}
+        onClear={noop}
+        onOpenResult={noop}
+      />,
+    )
+
+    expect(html).toContain('Show folders in search results')
+    expect(html).toContain('Show aisle matches in search results')
+    expect(html).toContain('data-app-icon="folder"')
+    expect(html).toContain('data-app-icon="aisleRight"')
+    expect(html).toContain('Calvin sermon')
+    expect(html).toContain('Grace notes')
+    expect(html).toContain('Loose note')
+    expect(html).not.toContain('Theology')
+    expect(html).not.toContain('Local vault')
+    expect(html).not.toContain('grace sermon body')
+    expect(html).not.toContain('cooler study notes')
+    expect(html).not.toContain('cool loose note')
+    expect(html).not.toContain('vault-sidebar-search-result-meta')
   })
 
   it('clears active searches before closing search mode on Escape', () => {
@@ -210,7 +255,7 @@ describe('SidebarSearchPanel', () => {
     expect(source).toContain('onClick={() => onOpenResult(firstResult)}')
     expect(source).toContain("onOpenResult(firstResult, 'retained')")
     expect(source).toContain('<SearchResultGroupHeading group={group} onOpenResult={onOpenResult} />')
-    expect(source).toContain('<SearchResultGroupHeading group={group} showFolderPath onOpenResult={onOpenResult} />')
+    expect(source).toContain('showFolderPath={showFolderNames && !textOnlySearchActive}')
     expect(source).toContain('vault-sidebar-search-result-heading-button')
   })
 

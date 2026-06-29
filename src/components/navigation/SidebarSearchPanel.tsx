@@ -18,11 +18,15 @@ type SidebarSearchPanelProps = {
   searchOptions: SidebarSearchOption[]
   searchHistory: string[]
   resultGroups: SidebarSearchResultGroup[]
+  showFolderNames?: boolean
+  showAisleMatches?: boolean
   onQueryChange: (query: string) => void
   onSelectSuggestion: (suggestion: SidebarSearchSuggestion) => void
   onSelectSearchOption: (option: SidebarSearchOption) => void
   onSelectHistory: (query: string) => void
   onClearHistory: () => void
+  onShowFolderNamesChange?: (showFolderNames: boolean) => void
+  onShowAisleMatchesChange?: (showAisleMatches: boolean) => void
   onClear: () => void
   onClearButtonClick?: () => void
   onCloseMode?: () => void
@@ -111,6 +115,37 @@ function SearchResultButton({
   )
 }
 
+function SidebarSearchDisplaySwitch({
+  label,
+  iconId,
+  checked,
+  onChange,
+  ariaLabel,
+}: {
+  label: string
+  iconId: 'folder' | 'aisleRight'
+  checked: boolean
+  onChange: (checked: boolean) => void
+  ariaLabel: string
+}) {
+  return (
+    <label className="vault-sidebar-search-display-toggle">
+      <span className="vault-sidebar-search-display-toggle-text">{label}</span>
+      <AppIcon iconId={iconId} className="vault-sidebar-search-display-toggle-icon" />
+      <span className="form-check form-switch settings-switch vault-sidebar-search-display-switch">
+        <input
+          className="form-check-input"
+          type="checkbox"
+          role="switch"
+          checked={checked}
+          aria-label={ariaLabel}
+          onChange={(event) => onChange(event.target.checked)}
+        />
+      </span>
+    </label>
+  )
+}
+
 function SearchResultGroupHeading({
   group,
   showFolderPath = false,
@@ -169,11 +204,15 @@ export function SidebarSearchPanel({
   searchOptions,
   searchHistory,
   resultGroups,
+  showFolderNames = true,
+  showAisleMatches = true,
   onQueryChange,
   onSelectSuggestion,
   onSelectSearchOption,
   onSelectHistory,
   onClearHistory,
+  onShowFolderNamesChange = () => undefined,
+  onShowAisleMatchesChange = () => undefined,
   onClear,
   onClearButtonClick,
   onCloseMode,
@@ -184,6 +223,7 @@ export function SidebarSearchPanel({
   const canClear = query.trim().length > 0
   const textOnlySearchActive = query.trim().length > 0 && !metadataSearchActive
   const folderSections = textOnlySearchActive ? getFolderResultSections(resultGroups) : []
+  const resultCountLabel = resultCount === 1 ? '1 search result' : `${resultCount} search results`
   const showSearchMenu = focused && query.trim().length <= 0
   const showSuggestions = focused && suggestions.length > 0
 
@@ -293,11 +333,32 @@ export function SidebarSearchPanel({
       </div>
 
       {active ? (
-        <div className="vault-sidebar-search-results" aria-label="Search results">
-          <div className="vault-sidebar-search-summary">
-            {resultCount === 1 ? '1 result' : `${resultCount} results`}
+        <div className="vault-sidebar-search-display-row" aria-label="Search result display">
+          <div className="vault-sidebar-search-display-controls">
+            <SidebarSearchDisplaySwitch
+              label="folder"
+              iconId="folder"
+              checked={showFolderNames}
+              ariaLabel="Show folders in search results"
+              onChange={onShowFolderNamesChange}
+            />
+            <SidebarSearchDisplaySwitch
+              label="aisle"
+              iconId="aisleRight"
+              checked={showAisleMatches}
+              ariaLabel="Show aisle matches in search results"
+              onChange={onShowAisleMatchesChange}
+            />
           </div>
-          {resultGroups.length > 0 && textOnlySearchActive ? (
+          <div className="vault-sidebar-search-result-count" aria-label={resultCountLabel}>
+            {resultCount}
+          </div>
+        </div>
+      ) : null}
+
+      {active ? (
+        <div className="vault-sidebar-search-results" aria-label="Search results">
+          {resultGroups.length > 0 && textOnlySearchActive && showFolderNames ? (
             folderSections.map((section) => (
               <section key={section.key} className="vault-sidebar-search-folder-section">
                 <div className="vault-sidebar-search-folder-heading">
@@ -306,14 +367,16 @@ export function SidebarSearchPanel({
                 {section.groups.map((group) => (
                   <section key={group.key} className="vault-sidebar-search-result-group">
                     <SearchResultGroupHeading group={group} onOpenResult={onOpenResult} />
-                    {group.results.map((result) => (
-                      <SearchResultButton
-                        key={result.key}
-                        group={group}
-                        result={result}
-                        onOpenResult={onOpenResult}
-                      />
-                    ))}
+                    {showAisleMatches
+                      ? group.results.map((result) => (
+                          <SearchResultButton
+                            key={result.key}
+                            group={group}
+                            result={result}
+                            onOpenResult={onOpenResult}
+                          />
+                        ))
+                      : null}
                   </section>
                 ))}
               </section>
@@ -321,15 +384,21 @@ export function SidebarSearchPanel({
           ) : resultGroups.length > 0 ? (
             resultGroups.map((group) => (
               <section key={group.key} className="vault-sidebar-search-result-group">
-                <SearchResultGroupHeading group={group} showFolderPath onOpenResult={onOpenResult} />
-                {group.results.map((result) => (
-                  <SearchResultButton
-                    key={result.key}
-                    group={group}
-                    result={result}
-                    onOpenResult={onOpenResult}
-                  />
-                ))}
+                <SearchResultGroupHeading
+                  group={group}
+                  showFolderPath={showFolderNames && !textOnlySearchActive}
+                  onOpenResult={onOpenResult}
+                />
+                {showAisleMatches
+                  ? group.results.map((result) => (
+                      <SearchResultButton
+                        key={result.key}
+                        group={group}
+                        result={result}
+                        onOpenResult={onOpenResult}
+                      />
+                    ))
+                  : null}
               </section>
             ))
           ) : (

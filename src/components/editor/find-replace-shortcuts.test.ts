@@ -1,40 +1,57 @@
 import { describe, expect, it } from 'vitest'
-import { getFindReplaceShortcutMode } from './find-replace-shortcuts'
+import { getSearchShortcutTarget } from './find-replace-shortcuts'
 
-describe('getFindReplaceShortcutMode', () => {
-  it('recognizes platform find shortcuts', () => {
-    expect(getFindReplaceShortcutMode({
+describe('getSearchShortcutTarget', () => {
+  it('routes platform find shortcuts to note search', () => {
+    expect(getSearchShortcutTarget({
       key: 'f',
       metaKey: true,
       ctrlKey: false,
       shiftKey: false,
       altKey: false,
-    } as KeyboardEvent, true)).toBe('find')
-    expect(getFindReplaceShortcutMode({
+    } as KeyboardEvent, true)).toBe('note')
+    expect(getSearchShortcutTarget({
       key: 'f',
       metaKey: false,
       ctrlKey: true,
       shiftKey: false,
       altKey: false,
-    } as KeyboardEvent, false)).toBe('find')
+    } as KeyboardEvent, false)).toBe('note')
+  })
+
+  it('routes shifted platform find shortcuts to sidebar search', () => {
+    expect(getSearchShortcutTarget({
+      key: 'f',
+      metaKey: true,
+      ctrlKey: false,
+      shiftKey: true,
+      altKey: false,
+    } as KeyboardEvent, true)).toBe('sidebar')
+    expect(getSearchShortcutTarget({
+      key: 'f',
+      metaKey: false,
+      ctrlKey: true,
+      shiftKey: true,
+      altKey: false,
+    } as KeyboardEvent, false)).toBe('sidebar')
   })
 
   it('ignores alternate modifier combinations', () => {
-    expect(getFindReplaceShortcutMode({
+    expect(getSearchShortcutTarget({
       key: 'f',
       metaKey: true,
       ctrlKey: false,
       shiftKey: false,
       altKey: true,
     } as KeyboardEvent, true)).toBeNull()
-    expect(getFindReplaceShortcutMode({
+    expect(getSearchShortcutTarget({
       key: 'f',
       metaKey: false,
       ctrlKey: true,
       shiftKey: false,
       altKey: false,
     } as KeyboardEvent, true)).toBeNull()
-    expect(getFindReplaceShortcutMode({
+    expect(getSearchShortcutTarget({
       key: 'f',
       metaKey: true,
       ctrlKey: false,

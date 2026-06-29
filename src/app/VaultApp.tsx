@@ -133,7 +133,7 @@ import { ShortcutMenu } from '../components/editor/ShortcutMenu'
 import { EditorToolbarPopovers } from '../components/editor/EditorToolbarPopovers'
 import { TagAutocompleteMenu } from '../components/editor/TagAutocompleteMenu'
 import { FindReplacePanel } from '../components/editor/FindReplacePanel'
-import { getFindReplaceShortcutMode } from '../components/editor/find-replace-shortcuts'
+import { getSearchShortcutTarget } from '../components/editor/find-replace-shortcuts'
 import { TableControlsOverlay } from '../components/editor/TableControlsOverlay'
 import { ListReorderControlsOverlay } from '../components/editor/ListReorderControlsOverlay'
 import { ImageToolsOverlay } from '../components/editor/ImageToolsOverlay'
@@ -380,6 +380,7 @@ const VAULT_TREE_VIRTUAL_ROW_HEIGHT = 28
 const VAULT_TREE_VIRTUAL_OVERSCAN = 12
 
 const SIDEBAR_SEARCH_HISTORY_STORAGE_KEY = 'aislenote:sidebar-search-history:v1'
+const SIDEBAR_SEARCH_DISPLAY_STORAGE_KEY = 'aislenote:sidebar-search-display:v1'
 const SIDEBAR_SEARCH_HISTORY_LIMIT = 10
 const SIDEBAR_SEARCH_OPTIONS: SidebarSearchOption[] = [
   { tokenText: 'tag:name', description: 'search tags', insertText: 'tag:' },
@@ -388,6 +389,31 @@ const SIDEBAR_SEARCH_OPTIONS: SidebarSearchOption[] = [
   { tokenText: 'synced:"note name"', description: 'search synced aisles', insertText: 'synced:"' },
   { tokenText: 'duplicate:"note name"', description: 'search duplicate aisles', insertText: 'duplicate:"' },
 ]
+
+type SidebarSearchDisplaySettings = {
+  showFolderNames: boolean
+  showAisleMatches: boolean
+}
+
+const DEFAULT_SIDEBAR_SEARCH_DISPLAY_SETTINGS: SidebarSearchDisplaySettings = {
+  showFolderNames: true,
+  showAisleMatches: true,
+}
+
+function normalizeSidebarSearchDisplaySettings(value: unknown): SidebarSearchDisplaySettings {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return DEFAULT_SIDEBAR_SEARCH_DISPLAY_SETTINGS
+  const settings = value as Partial<Record<keyof SidebarSearchDisplaySettings, unknown>>
+  return {
+    showFolderNames:
+      typeof settings.showFolderNames === 'boolean'
+        ? settings.showFolderNames
+        : DEFAULT_SIDEBAR_SEARCH_DISPLAY_SETTINGS.showFolderNames,
+    showAisleMatches:
+      typeof settings.showAisleMatches === 'boolean'
+        ? settings.showAisleMatches
+        : DEFAULT_SIDEBAR_SEARCH_DISPLAY_SETTINGS.showAisleMatches,
+  }
+}
 
 function normalizeSidebarSearchHistoryEntry(query: string): string {
   return query.trim().replace(/\s+/g, ' ')
@@ -405,6 +431,18 @@ function loadSidebarSearchHistory(): string[] {
 
 function saveSidebarSearchHistory(history: string[]) {
   writeLocalJsonPreference(SIDEBAR_SEARCH_HISTORY_STORAGE_KEY, history)
+}
+
+function loadSidebarSearchDisplaySettings(): SidebarSearchDisplaySettings {
+  return readLocalJsonPreference<SidebarSearchDisplaySettings>(
+    SIDEBAR_SEARCH_DISPLAY_STORAGE_KEY,
+    DEFAULT_SIDEBAR_SEARCH_DISPLAY_SETTINGS,
+    normalizeSidebarSearchDisplaySettings,
+  )
+}
+
+function saveSidebarSearchDisplaySettings(settings: SidebarSearchDisplaySettings): void {
+  writeLocalJsonPreference(SIDEBAR_SEARCH_DISPLAY_STORAGE_KEY, settings, normalizeSidebarSearchDisplaySettings)
 }
 
 function appendSidebarSearchHistoryEntry(history: string[], query: string): string[] {
@@ -3483,6 +3521,7 @@ export function VaultApp() {
   const [toolbarEditorLayoutId, setToolbarEditorLayoutId] = useState(activeToolbarLayoutId)
   const [query, setQuery] = useState('')
   const [sidebarSearchHistory, setSidebarSearchHistory] = useState(loadSidebarSearchHistory)
+  const [sidebarSearchDisplaySettings, setSidebarSearchDisplaySettings] = useState(loadSidebarSearchDisplaySettings)
   const [sidebarSearchMode, setSidebarSearchMode] = useState(false)
   const [scratchpadActive, setScratchpadActive] = useState(false)
   const [activeAisleId, setActiveAisleId] = useState('')
@@ -5747,22 +5786,6 @@ export function VaultApp() {
     ],
   )
 
-  useEffect(() => {
-    const handleFindReplaceShortcut = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || viewMode !== 'main' || !activeModel) return
-      const mode = getFindReplaceShortcutMode(event, isMacPlatform)
-      if (!mode) return
-      event.preventDefault()
-      event.stopPropagation()
-      event.stopImmediatePropagation()
-      openFindReplace()
-    }
-    window.addEventListener('keydown', handleFindReplaceShortcut, true)
-    return () => {
-      window.removeEventListener('keydown', handleFindReplaceShortcut, true)
-    }
-  }, [activeModel, isMacPlatform, openFindReplace, viewMode])
-
   const focusBoundaryFlushTimerRef = useRef<number | null>(null)
 
   const clearVaultFocusBoundaryFlush = useCallback(() => {
@@ -5892,6 +5915,22 @@ export function VaultApp() {
   const clearSidebarSearchHistory = useCallback(() => {
     setSidebarSearchHistory([])
     saveSidebarSearchHistory([])
+  }, [])
+
+  const setSidebarSearchShowFolderNames = useCallback((showFolderNames: boolean) => {
+    setSidebarSearchDisplaySettings((current) => {
+      const next = { ...current, showFolderNames }
+      saveSidebarSearchDisplaySettings(next)
+      return next
+    })
+  }, [])
+
+  const setSidebarSearchShowAisleMatches = useCallback((showAisleMatches: boolean) => {
+    setSidebarSearchDisplaySettings((current) => {
+      const next = { ...current, showAisleMatches }
+      saveSidebarSearchDisplaySettings(next)
+      return next
+    })
   }, [])
 
   const clearSidebarSearch = useCallback(() => {
@@ -6632,6 +6671,26 @@ export function VaultApp() {
       searchInputRef.current?.select()
     }, 0)
   }, [mutateState, vaultEditors, toolbarState])
+
+  useEffect(() => {
+    const handleSearchShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || viewMode !== 'main' || !activeModel) return
+      const target = getSearchShortcutTarget(event, isMacPlatform)
+      if (!target) return
+      event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation()
+      if (target === 'sidebar') {
+        focusNotesFilter()
+        return
+      }
+      openFindReplace()
+    }
+    window.addEventListener('keydown', handleSearchShortcut, true)
+    return () => {
+      window.removeEventListener('keydown', handleSearchShortcut, true)
+    }
+  }, [activeModel, focusNotesFilter, isMacPlatform, openFindReplace, viewMode])
 
   const toggleSidebarSearchModeFromButton = useCallback(() => {
     if (sidebarSearchVisible) {
@@ -9586,11 +9645,15 @@ export function VaultApp() {
             searchOptions={SIDEBAR_SEARCH_OPTIONS}
             searchHistory={sidebarSearchHistory}
             resultGroups={sidebarSearchResultGroups}
+            showFolderNames={sidebarSearchDisplaySettings.showFolderNames}
+            showAisleMatches={sidebarSearchDisplaySettings.showAisleMatches}
             onQueryChange={updateSidebarSearchQuery}
             onSelectSuggestion={selectSidebarSearchSuggestion}
             onSelectSearchOption={selectSidebarSearchOption}
             onSelectHistory={selectSidebarSearchHistory}
             onClearHistory={clearSidebarSearchHistory}
+            onShowFolderNamesChange={setSidebarSearchShowFolderNames}
+            onShowAisleMatchesChange={setSidebarSearchShowAisleMatches}
             onClear={clearSidebarSearch}
             onClearButtonClick={closeSidebarSearchMode}
             onCloseMode={closeSidebarSearchMode}
