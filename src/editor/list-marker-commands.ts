@@ -472,11 +472,16 @@ export function applyBulletListMarkerCommand(editor: Editor, marker: BulletListM
   return setSelectedBulletListsMarker(view, marker)
 }
 
-export function applyStructuralListIndent(editor: Editor, outdent: boolean): boolean {
+export function applyStructuralListIndent(
+  editor: Editor,
+  outdent: boolean,
+  options: { beforeExecute?: () => void } = {},
+): boolean {
   const view = getWysiwygView(editor)
-  if (!selectionTouchesListItem(view)) return false
   const selectedListKind = getOnlySelectedListKind(view)
+  if (!selectedListKind) return false
   editor.focus()
+  options.beforeExecute?.()
   getCommandCapableEditor(editor).exec(outdent ? 'outdent' : 'indent')
   if (!outdent && selectedListKind === 'dashList') {
     setSelectedBulletListsMarker(getWysiwygView(editor), 'dash')

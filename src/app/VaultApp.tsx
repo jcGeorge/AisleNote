@@ -65,6 +65,7 @@ import {
   getFrontmatterDraftValueForType,
   isFrontmatterComputedValueCompatibleWithFieldType,
   normalizeFrontmatterFixedListOptions,
+  parseFrontmatterImportData,
   parseFrontmatterTemplateImport,
   resolveFrontmatterFixedListValues,
   stringifyFrontmatterYaml,
@@ -76,6 +77,7 @@ import {
   buildFrontmatterRowsForAisle,
   disableInvalidComputedFrontmatterRows,
   getFrontmatterTemplateFieldRemovalUsage,
+  hasFrontmatterDataForAisle,
   makeFrontmatterRowsManual,
   normalizeFrontmatterDraftRows,
   propagateFrontmatterTemplateChangesInState,
@@ -87,10 +89,7 @@ import {
 } from '../frontmatter/frontmatter-state'
 import {
   buildFrontmatterClipboardPayload,
-  buildFrontmatterClipboardPasteForAisle,
-  readFrontmatterClipboardPayloadFromNavigator,
   writeFrontmatterClipboardPayload,
-  type FrontmatterClipboardPayload,
 } from '../frontmatter/frontmatter-clipboard'
 import {
   buildNoteLocationKey,
@@ -741,6 +740,15 @@ export type VaultFrontmatterModalState = {
   isTemplateSuggestionDraft: boolean
 }
 
+type VaultFrontmatterModalImportResult = {
+  modal: VaultFrontmatterModalState
+  warnings: string[]
+}
+
+type VaultFrontmatterModalSaveOptions = {
+  close?: boolean
+}
+
 type FrontmatterTemplateImportTarget = {
   templateId: string
   templateName: string
@@ -863,22 +871,91 @@ function getAisleCenteredNoteActionPickerAnchor(
 
 function getFrontmatterNoteModalStyle(
   workspaceRoot: HTMLElement | null,
-  aisleId: string,
   noteContentViewportRect: VaultNoteActionPickerViewportRect | null,
 ): CSSProperties | undefined {
   const contentRect = noteContentViewportRect ?? getNoteContentViewportRect(workspaceRoot)
-  if (!contentRect || contentRect.width <= 0) return undefined
+  const workspaceRect = workspaceRoot?.getBoundingClientRect() ?? null
+  const visibleWidth = Math.round(workspaceRoot?.clientWidth || workspaceRect?.width || contentRect?.width || 0)
+  if (visibleWidth <= 0) return undefined
 
-  const aisleViewportLeft = getCenteredAisleViewportLeft(workspaceRoot, aisleId)
-  const rawLeft = aisleViewportLeft === null ? contentRect.width / 2 : aisleViewportLeft - contentRect.left
-  const modalWidth = Math.min(FRONTMATTER_NOTE_MODAL_MAX_WIDTH, Math.max(0, contentRect.width - FRONTMATTER_NOTE_MODAL_CONTENT_GUTTER * 2))
-  const minLeft = FRONTMATTER_NOTE_MODAL_CONTENT_GUTTER + modalWidth / 2
-  const maxLeft = contentRect.width - FRONTMATTER_NOTE_MODAL_CONTENT_GUTTER - modalWidth / 2
+  const overlayLeft = contentRect?.left ?? Math.round(workspaceRect?.left ?? 0)
+  const visibleLeft = Math.round(workspaceRect?.left ?? overlayLeft)
+  const visibleLeftInOverlay = visibleLeft - overlayLeft
+  const modalWidth = Math.min(
+    FRONTMATTER_NOTE_MODAL_MAX_WIDTH,
+    Math.max(0, visibleWidth - FRONTMATTER_NOTE_MODAL_CONTENT_GUTTER * 2),
+  )
+  const rawLeft = visibleLeftInOverlay + visibleWidth / 2
+  const minLeft = visibleLeftInOverlay + FRONTMATTER_NOTE_MODAL_CONTENT_GUTTER + modalWidth / 2
+  const maxLeft = visibleLeftInOverlay + visibleWidth - FRONTMATTER_NOTE_MODAL_CONTENT_GUTTER - modalWidth / 2
   const left = clampOverlayCoordinate(rawLeft, minLeft, maxLeft)
   return {
     '--frontmatter-note-modal-left': `${left}px`,
     '--frontmatter-note-modal-width': `${modalWidth}px`,
   } as CSSProperties
+}
+
+function getFrontmatterModalDirtySnapshot(
+  draft: Pick<VaultFrontmatterModalState, 'rows' | 'selectedTemplateId' | 'templateDerived'>,
+): string {
+  return JSON.stringify({
+    selectedTemplateId: draft.selectedTemplateId || '',
+    templateDerived: Boolean(draft.templateDerived),
+    rows: draft.rows.map((row) => ({
+      key: row.key,
+      type: row.type,
+      value: row.value,
+      computed: row.computed,
+      computedEnabled: Boolean(row.computedEnabled ?? row.computed !== 'none'),
+      computedLocked: Boolean(row.computedLocked),
+      locked: Boolean(row.locked),
+      templateFieldId: row.templateFieldId ?? '',
+      derived: Boolean(row.derived),
+      fixedListOptions: normalizeFrontmatterFixedListOptions(row.fixedListOptions),
+    })),
+  })
+}
+
+function isFrontmatterModalDirtyAgainstSavedDraft(
+  modal: VaultFrontmatterModalState,
+  savedDraft: Pick<VaultFrontmatterModalState, 'rows' | 'selectedTemplateId' | 'templateDerived'>,
+): boolean {
+  if (modal.isTemplateSuggestionDraft) return true
+  return getFrontmatterModalDirtySnapshot(modal) !== getFrontmatterModalDirtySnapshot(savedDraft)
+}
+
+function getFrontmatterTemplateDirtySnapshot(frontmatter: AppState['frontmatter']): string {
+  return JSON.stringify({
+    templates: frontmatter.templates,
+    lastAppliedTemplateId: frontmatter.lastAppliedTemplateId,
+  })
+}
+
+function isFrontmatterTemplateDraftDirty(
+  draft: AppState['frontmatter'],
+  saved: AppState['frontmatter'],
+): boolean {
+  return getFrontmatterTemplateDirtySnapshot(draft) !== getFrontmatterTemplateDirtySnapshot(saved)
+}
+
+function getFrontmatterTemplateSelectionAfterStateSync(
+  draft: AppState['frontmatter'],
+  saved: AppState['frontmatter'],
+): string {
+  return saved.templates.some((template) => template.id === draft.settingsTemplateId)
+    ? draft.settingsTemplateId
+    : saved.settingsTemplateId
+}
+
+function getDuplicateFrontmatterTemplateName(name: string, templates: FrontmatterTemplate[]): string {
+  const baseName = `${name.trim() || 'template'} copy`
+  const existingNames = new Set(templates.map((template) => template.name.trim()).filter(Boolean))
+  if (!existingNames.has(baseName)) return baseName
+  let index = 2
+  while (existingNames.has(`${baseName} ${index}`)) {
+    index += 1
+  }
+  return `${baseName} ${index}`
 }
 
 function readFrontmatterListDropRects(container: HTMLElement | null, rowSelector: string): FrontmatterListDropRect[] {
@@ -2085,38 +2162,52 @@ function VaultAisleContextMenu({
 export function VaultFrontmatterModal({
   modal,
   modalStyle,
+  hasUnsavedChanges,
   templates,
   onCancel,
   onChange,
   onSave,
+  onCopyBlocked,
   onSelectAisle,
   onSelectTemplate,
   onToggleTemplateDerived,
   onEditTemplate,
   onFilterTemplate,
+  onImportFrontmatterText,
   onCopyFrontmatter,
 }: {
   modal: VaultFrontmatterModalState | null
   modalStyle?: CSSProperties
+  hasUnsavedChanges?: boolean
   templates: FrontmatterTemplate[]
   onCancel: () => void
   onChange: (modal: VaultFrontmatterModalState) => void
-  onSave: (modal: VaultFrontmatterModalState) => string[] | string | null
+  onSave: (modal: VaultFrontmatterModalState, options?: VaultFrontmatterModalSaveOptions) => string[] | string | null
+  onCopyBlocked: () => void
   onSelectAisle: (modal: VaultFrontmatterModalState, aisleId: string) => VaultFrontmatterModalState | string | null
   onSelectTemplate: (modal: VaultFrontmatterModalState, templateId: string) => VaultFrontmatterModalState
   onToggleTemplateDerived: (modal: VaultFrontmatterModalState, templateDerived: boolean) => VaultFrontmatterModalState
   onEditTemplate: (templateId: string) => void
   onFilterTemplate: (modal: VaultFrontmatterModalState) => void
+  onImportFrontmatterText: (modal: VaultFrontmatterModalState, raw: string) => VaultFrontmatterModalImportResult | string
   onCopyFrontmatter: (modal: VaultFrontmatterModalState) => Promise<string | null>
 }) {
   const [error, setError] = useState('')
   const [warnings, setWarnings] = useState<string[]>([])
+  const [frontmatterImportOpen, setFrontmatterImportOpen] = useState(false)
+  const [frontmatterImportDraft, setFrontmatterImportDraft] = useState('')
+  const [frontmatterImportStatus, setFrontmatterImportStatus] = useState('')
   const frontmatterRowListRef = useRef<HTMLDivElement | null>(null)
   const frontmatterRowRectsRef = useRef<FrontmatterListDropRect[]>([])
   const frontmatterRowDragIdRef = useRef('')
   const frontmatterRowDropIndexRef = useRef<number | null>(null)
   const [draggingFrontmatterRowId, setDraggingFrontmatterRowId] = useState('')
   const [frontmatterRowDropIndex, setFrontmatterRowDropIndex] = useState<number | null>(null)
+  const closeFrontmatterImport = () => {
+    setFrontmatterImportOpen(false)
+    setFrontmatterImportDraft('')
+    setFrontmatterImportStatus('')
+  }
   const clearFrontmatterRowDrag = () => {
     frontmatterRowRectsRef.current = []
     frontmatterRowDragIdRef.current = ''
@@ -2129,6 +2220,7 @@ export function VaultFrontmatterModal({
     if (!modal) return
     setError('')
     setWarnings([])
+    closeFrontmatterImport()
     clearFrontmatterRowDrag()
   }, [modal?.noteBodyId, modal?.aisleBodyId])
 
@@ -2186,6 +2278,10 @@ export function VaultFrontmatterModal({
     updateRows((rows) => reorderFrontmatterItemsByTargetIndex(rows, sourceRowId, targetIndex))
   }
   const copyFrontmatter = () => {
+    if (hasUnsavedChanges) {
+      onCopyBlocked()
+      return
+    }
     void onCopyFrontmatter(modal).then((message) => {
       if (message) {
         setError(message)
@@ -2198,6 +2294,30 @@ export function VaultFrontmatterModal({
       setError('Clipboard copy is unavailable here.')
       setWarnings([])
     })
+  }
+  const saveFrontmatter = (options: VaultFrontmatterModalSaveOptions) => {
+    const result = onSave(modal, options)
+    if (typeof result === 'string') {
+      setError(result)
+      setWarnings([])
+    } else if (Array.isArray(result)) {
+      setError('')
+      setWarnings(result)
+    } else {
+      setError('')
+      setWarnings([])
+    }
+  }
+  const importFrontmatter = () => {
+    const result = onImportFrontmatterText(modal, frontmatterImportDraft)
+    if (typeof result === 'string') {
+      setFrontmatterImportStatus(result)
+      return
+    }
+    closeFrontmatterImport()
+    setError('')
+    setWarnings(result.warnings)
+    onChange(result.modal)
   }
   const createRowKey = () => {
     const existingKeys = new Set(modal.rows.map((row) => row.key.trim()).filter(Boolean))
@@ -2366,13 +2486,13 @@ export function VaultFrontmatterModal({
     <div
       className="modal-backdrop vault-modal-backdrop frontmatter-note-modal-backdrop"
       role="presentation"
+      style={modalStyle}
       onMouseDown={onCancel}
     >
       <section
         className="modal-card vault-frontmatter-modal frontmatter-note-modal"
         role="dialog"
         aria-label="Frontmatter"
-        style={modalStyle}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="modal-card-header">
@@ -2380,13 +2500,27 @@ export function VaultFrontmatterModal({
           <div className="frontmatter-modal-header-actions">
             <button
               type="button"
-              className="btn btn-sm settings-action-btn frontmatter-copy-btn"
+              className="btn btn-sm settings-action-btn frontmatter-import-btn"
+              onClick={(event) => {
+                setFrontmatterImportOpen(true)
+                setFrontmatterImportDraft('')
+                setFrontmatterImportStatus('')
+                if (event.detail > 0) event.currentTarget.blur()
+              }}
+            >
+              Import fm
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm settings-action-btn frontmatter-copy-btn ${hasUnsavedChanges ? 'is-disabled' : ''}`.trim()}
+              aria-disabled={hasUnsavedChanges ? 'true' : undefined}
+              data-app-tooltip={hasUnsavedChanges ? 'Save changes before copying frontmatter.' : undefined}
               onClick={(event) => {
                 copyFrontmatter()
                 if (event.detail > 0) event.currentTarget.blur()
               }}
             >
-              Copy FM
+              Copy fm
             </button>
             {selectedTemplate && modal.templateDerived && !modal.isTemplateSuggestionDraft ? (
               <button
@@ -2445,7 +2579,7 @@ export function VaultFrontmatterModal({
               Edit template
             </button>
             <label className="frontmatter-derived-switch">
-              <span>derived</span>
+              <span>Derived</span>
               <input
                 type="checkbox"
                 role="switch"
@@ -2457,7 +2591,7 @@ export function VaultFrontmatterModal({
             </label>
             <button
               type="button"
-              className="btn btn-sm settings-action-btn"
+              className="btn btn-sm settings-action-btn modal-primary-btn frontmatter-add-row-btn"
               onClick={() =>
                 updateRows((rows) => [
                   ...rows,
@@ -2478,11 +2612,6 @@ export function VaultFrontmatterModal({
               Add row
             </button>
           </div>
-          {modal.isTemplateSuggestionDraft && selectedTemplate ? (
-            <div className="frontmatter-template-suggestion-banner" role="note">
-              Suggested from "{selectedTemplate.name}". These rows are not saved on this aisle yet.
-            </div>
-          ) : null}
           <div
             ref={frontmatterRowListRef}
             className="frontmatter-row-editor"
@@ -2631,26 +2760,85 @@ export function VaultFrontmatterModal({
           <button type="button" className="btn btn-sm settings-action-btn" onClick={onCancel}>
             Cancel
           </button>
+          {hasUnsavedChanges ? (
+            <span className="frontmatter-note-unsaved-status">You have unsaved changes</span>
+          ) : null}
           <div className="modal-card-primary-actions">
             <button
               type="button"
               className="btn btn-sm settings-action-btn"
-              onClick={() => {
-                const result = onSave(modal)
-                if (typeof result === 'string') {
-                  setError(result)
-                  setWarnings([])
-                } else if (Array.isArray(result)) {
-                  setError('')
-                  setWarnings(result)
-                }
-              }}
+              disabled={!hasUnsavedChanges}
+              onClick={() => saveFrontmatter({ close: false })}
             >
-              {modal.isTemplateSuggestionDraft && modal.selectedTemplateId ? 'Add frontmatter' : 'Save'}
+              Save
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm settings-action-btn modal-primary-btn"
+              disabled={!hasUnsavedChanges}
+              onClick={() => saveFrontmatter({ close: true })}
+            >
+              {modal.isTemplateSuggestionDraft && modal.selectedTemplateId ? 'Add frontmatter' : 'Save & Exit'}
             </button>
           </div>
         </footer>
       </section>
+      {frontmatterImportOpen ? (
+        <div
+          className="frontmatter-note-import-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            event.stopPropagation()
+            closeFrontmatterImport()
+          }}
+        >
+          <section
+            className="modal-card vault-frontmatter-modal frontmatter-note-import-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Import frontmatter"
+            onMouseDown={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') closeFrontmatterImport()
+            }}
+          >
+            <div className="vault-frontmatter-body">
+              <div className="frontmatter-note-import-message-row">
+                <p className="frontmatter-template-import-message">This will replace the current frontmatter rows.</p>
+                <button
+                  type="button"
+                  className="app-close-button"
+                  aria-label="Close import frontmatter dialog"
+                  onClick={closeFrontmatterImport}
+                >
+                  <AppIcon iconId="x" className="app-close-button-icon" />
+                </button>
+              </div>
+              <textarea
+                className="settings-text-input frontmatter-template-import-textarea frontmatter-note-import-textarea"
+                value={frontmatterImportDraft}
+                spellCheck={false}
+                aria-label="Frontmatter import content"
+                onChange={(event) => {
+                  setFrontmatterImportDraft(event.target.value)
+                  setFrontmatterImportStatus('')
+                }}
+              />
+              {frontmatterImportStatus ? (
+                <p className="frontmatter-template-import-status">{frontmatterImportStatus}</p>
+              ) : null}
+            </div>
+            <footer className="modal-card-footer frontmatter-note-import-actions">
+              <button type="button" className="btn btn-sm settings-action-btn" onClick={closeFrontmatterImport}>
+                Cancel
+              </button>
+              <button type="button" className="btn btn-sm settings-action-btn modal-primary-btn" onClick={importFrontmatter}>
+                Import
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -3860,6 +4048,19 @@ export function VaultApp() {
     viewMode === 'main' && activeModel && activeModel.kind !== 'scratchpad'
       ? frontmatterModalSessions[activeModel.noteId] ?? null
       : null
+  const visibleFrontmatterModalSavedDraft = visibleFrontmatterModal
+    ? buildFrontmatterModalDraftForAisle(
+        state,
+        visibleFrontmatterModal.noteBodyId,
+        visibleFrontmatterModal.aisleBodyId,
+        visibleFrontmatterModal.location,
+      )
+    : null
+  const visibleFrontmatterModalDirty = Boolean(
+    visibleFrontmatterModal &&
+      visibleFrontmatterModalSavedDraft &&
+      isFrontmatterModalDirtyAgainstSavedDraft(visibleFrontmatterModal, visibleFrontmatterModalSavedDraft),
+  )
   const updateFrontmatterModalSession = useCallback((modal: VaultFrontmatterModalState) => {
     setFrontmatterModalSessions((currentSessions) => ({
       ...currentSessions,
@@ -4286,8 +4487,13 @@ export function VaultApp() {
   }, [state.ui.dataSettingsSection, state.ui.settingsSection])
 
   useEffect(() => {
-    if (JSON.stringify(frontmatterDraft) === JSON.stringify(frontmatterStateSnapshotRef.current)) {
-      setFrontmatterDraft(state.frontmatter)
+    const previousFrontmatter = frontmatterStateSnapshotRef.current
+    if (state.frontmatter === previousFrontmatter) return
+    if (!isFrontmatterTemplateDraftDirty(frontmatterDraft, previousFrontmatter)) {
+      setFrontmatterDraft({
+        ...state.frontmatter,
+        settingsTemplateId: getFrontmatterTemplateSelectionAfterStateSync(frontmatterDraft, state.frontmatter),
+      })
       setFrontmatterFixedListOptionDrafts({})
       frontmatterTemplateFieldRectsRef.current = []
       frontmatterTemplateFieldDragIdRef.current = ''
@@ -4708,85 +4914,6 @@ export function VaultApp() {
     [mutateState],
   )
 
-  const applyFrontmatterClipboardPaste = useCallback(
-    (payload: FrontmatterClipboardPayload, aisleId: string) => {
-      const startedAt = getVaultAppPerfNow()
-      let resultStatus = 'applied'
-      let noteId = ''
-      let noteBodyId = ''
-      let aisleBodyId = ''
-      let warningCount = 0
-      if (scratchpadActiveRef.current) {
-        resultStatus = 'scratchpad-ignored'
-        recordVaultFrontmatterTiming(
-          'frontmatter-clipboard-apply',
-          getVaultAppPerfNow() - startedAt,
-          {
-            result: resultStatus,
-            aisleId,
-          },
-          0,
-        )
-        return true
-      }
-      let blockedMessage = ''
-      let warningMessages: string[] = []
-      mutateState((previous) => {
-        const notePath = findVaultNote(previous.vault.items, previous.vault.activeNoteId)
-        const noteBody = notePath ? previous.noteBodies.find((body) => body.id === notePath.note.noteBodyId) ?? null : null
-        const aisle = noteBody?.aisles.find((candidate) => candidate.id === aisleId) ?? null
-        noteId = notePath?.note.id ?? ''
-        noteBodyId = noteBody?.id ?? ''
-        aisleBodyId = aisle?.aisleBodyId ?? ''
-        if (!notePath || !noteBody || !aisle) {
-          resultStatus = 'blocked-missing-note'
-          blockedMessage = 'Open a note before pasting frontmatter.'
-          return previous
-        }
-
-        const result = buildFrontmatterClipboardPasteForAisle(
-          previous,
-          noteBody.id,
-          aisle.aisleBodyId,
-          { noteId: notePath.note.id },
-          payload,
-        )
-        if (result.status === 'blocked') {
-          resultStatus = 'blocked'
-          blockedMessage = result.message
-          return previous
-        }
-
-        warningMessages = result.warnings
-        warningCount = result.warnings.length
-        resultStatus = warningCount > 0 ? 'applied-with-warnings' : 'applied'
-        return updateAisleBodyFrontmatterInState(previous, aisle.aisleBodyId, result.frontmatter, result.saveOptions)
-      })
-      recordVaultFrontmatterTiming(
-        'frontmatter-clipboard-apply',
-        getVaultAppPerfNow() - startedAt,
-        {
-          result: resultStatus,
-          noteId,
-          noteBodyId,
-          aisleId,
-          aisleBodyId,
-          warningCount,
-        },
-        0,
-      )
-      if (blockedMessage) {
-        window.alert(blockedMessage)
-        return true
-      }
-      if (warningMessages.length > 0) {
-        pushAppToast(warningMessages.join('\n'), 'warning', 9000)
-      }
-      return true
-    },
-    [mutateState, pushAppToast],
-  )
-
   const insertAisleFromNewlineShortcut = useCallback((side: 'left' | 'right', aisleId: string, markdown: string) => {
     addAisleFromNewlineRef.current?.(side, aisleId, markdown)
   }, [])
@@ -4860,7 +4987,6 @@ export function VaultApp() {
     getAppState: () => stateRef.current,
     onOpenNoteReference: openNoteReferenceFromEditor,
     onVaultStructurePaste: applyVaultStructureClipboardPaste,
-    onFrontmatterPaste: applyFrontmatterClipboardPaste,
     hotkeys: state.hotkeys,
     isMacPlatform,
     onOpenShortcutMenu: openShortcutMenuFromEditor,
@@ -7022,33 +7148,6 @@ export function VaultApp() {
     [applyVaultStructureClipboardPaste],
   )
 
-  const pasteFrontmatterClipboard = useCallback(
-    async (aisleId: string) => {
-      const startedAt = getVaultAppPerfNow()
-      let resultStatus = 'empty'
-      try {
-        const payload = await readFrontmatterClipboardPayloadFromNavigator(undefined, { allowYamlFallback: false })
-        resultStatus = payload ? 'frontmatter-payload' : 'empty'
-        return payload ? applyFrontmatterClipboardPaste(payload, aisleId) : false
-      } catch {
-        resultStatus = 'error'
-        pushAppToast('Clipboard paste is unavailable here.', 'warning')
-        return false
-      } finally {
-        recordVaultFrontmatterTiming(
-          'frontmatter-clipboard-read',
-          getVaultAppPerfNow() - startedAt,
-          {
-            result: resultStatus,
-            aisleId,
-          },
-          0,
-        )
-      }
-    },
-    [applyFrontmatterClipboardPaste, pushAppToast],
-  )
-
   const insertVaultNoteReference = useCallback(
     (target: NoteLocation, kind: 'note-link' | 'note-preview', options: VaultNoteActionPickerActionOptions = {}) => {
       const token = buildVaultNoteReferenceInsertionText(stateRef.current, target, kind, options)
@@ -7295,12 +7394,13 @@ export function VaultApp() {
     (modal: VaultFrontmatterModalState, templateId: string): VaultFrontmatterModalState => {
       const template = state.frontmatter.templates.find((candidate) => candidate.id === templateId) ?? null
       if (!template) {
+        const savedFrontmatterExists = hasFrontmatterDataForAisle(state, modal.noteBodyId, modal.aisleBodyId)
         return {
           ...modal,
           selectedTemplateId: '',
           templateDerived: false,
           isTemplateSuggestionDraft: false,
-          rows: makeFrontmatterRowsManual(modal.rows),
+          rows: savedFrontmatterExists ? makeFrontmatterRowsManual(modal.rows) : [],
         }
       }
       return {
@@ -7428,8 +7528,70 @@ export function VaultApp() {
     [stateRef, updateFrontmatterModalSession],
   )
 
+  const importFrontmatterTextToModal = useCallback(
+    (modal: VaultFrontmatterModalState, raw: string): VaultFrontmatterModalImportResult | string => {
+      const startedAt = getVaultAppPerfNow()
+      let resultStatus = 'empty'
+      let importedRowCount = 0
+      try {
+        const parsed = parseFrontmatterImportData(raw)
+        if (!parsed.ok) {
+          resultStatus = 'blocked'
+          return parsed.message
+        }
+        if (!parsed.data || Object.keys(parsed.data).length === 0) {
+          resultStatus = 'empty'
+          return 'No frontmatter fields found.'
+        }
+
+        const importedDraftState = updateAisleBodyFrontmatterInState(
+          stateRef.current,
+          modal.aisleBodyId,
+          parsed.data,
+          {
+            templateId: null,
+            templateDerived: false,
+            templateFieldOrigins: {},
+          },
+        )
+        const importedDraft = buildFrontmatterModalDraftForAisle(
+          importedDraftState,
+          modal.noteBodyId,
+          modal.aisleBodyId,
+          modal.location,
+        )
+        importedRowCount = importedDraft.rows.length
+        resultStatus = 'imported'
+        return {
+          modal: {
+            ...modal,
+            ...importedDraft,
+          },
+          warnings: [],
+        }
+      } catch (error) {
+        resultStatus = 'error'
+        throw error
+      } finally {
+        recordVaultFrontmatterTiming(
+          'frontmatter-text-import',
+          getVaultAppPerfNow() - startedAt,
+          {
+            result: resultStatus,
+            noteBodyId: modal.noteBodyId,
+            aisleId: modal.aisleId,
+            aisleBodyId: modal.aisleBodyId,
+            importedRowCount,
+          },
+          0,
+        )
+      }
+    },
+    [stateRef],
+  )
+
   const saveFrontmatter = useCallback(
-    (modal: VaultFrontmatterModalState) => {
+    (modal: VaultFrontmatterModalState, options: VaultFrontmatterModalSaveOptions = { close: true }) => {
       const startedAt = getVaultAppPerfNow()
       let resultStatus = 'saved'
       let warningCount = 0
@@ -7458,16 +7620,31 @@ export function VaultApp() {
           warningCount = result.warnings.length
           return result.warnings
         }
-        mutateState((previous) =>
-          updateAisleBodyFrontmatterInState(previous, modal.aisleBodyId, result.frontmatter, {
-            templateId: modal.selectedTemplateId || null,
-            templateDerived: modal.templateDerived,
-            templateFieldOrigins: result.templateFieldOrigins,
-            templateRemovedFieldIds: result.templateRemovedFieldIds,
-            computedFields: result.computedFields,
-          }),
+        const saveOptions = {
+          templateId: modal.selectedTemplateId || null,
+          templateDerived: modal.templateDerived,
+          templateFieldOrigins: result.templateFieldOrigins,
+          templateRemovedFieldIds: result.templateRemovedFieldIds,
+          computedFields: result.computedFields,
+        }
+        const savedStateForModal = updateAisleBodyFrontmatterInState(stateRef.current, modal.aisleBodyId, result.frontmatter, saveOptions)
+        const savedDraft = buildFrontmatterModalDraftForAisle(
+          savedStateForModal,
+          modal.noteBodyId,
+          modal.aisleBodyId,
+          modal.location,
         )
-        closeFrontmatterModalSession(modal.location.noteId)
+        mutateState((previous) =>
+          updateAisleBodyFrontmatterInState(previous, modal.aisleBodyId, result.frontmatter, saveOptions),
+        )
+        if (options.close !== false) {
+          closeFrontmatterModalSession(modal.location.noteId)
+        } else {
+          updateFrontmatterModalSession({
+            ...modal,
+            ...savedDraft,
+          })
+        }
         return null
       } finally {
         recordVaultFrontmatterTiming(
@@ -7742,11 +7919,7 @@ export function VaultApp() {
       aisleId: string,
     ) => {
       if (action === 'paste' && destination === 'here') {
-        void pasteFrontmatterClipboard(aisleId)
-          .then((handled) => {
-            if (handled) return true
-            return pasteVaultStructureClipboard(aisleId)
-          })
+        void pasteVaultStructureClipboard(aisleId)
           .then((handled) => {
             if (!handled) vaultEditors.runClipboardAction(action)
           })
@@ -7766,7 +7939,7 @@ export function VaultApp() {
         })
         .catch(() => undefined)
     },
-    [addAisle, vaultEditors, pasteFrontmatterClipboard, pasteVaultStructureClipboard],
+    [addAisle, vaultEditors, pasteVaultStructureClipboard],
   )
 
   const insertEditorContextAisle = useCallback(
@@ -7936,16 +8109,23 @@ export function VaultApp() {
     <>
       <VaultFrontmatterModal
         modal={visibleFrontmatterModal}
-        modalStyle={visibleFrontmatterModal ? getFrontmatterNoteModalStyle(workspaceRootRef.current, visibleFrontmatterModal.aisleId, noteContentViewportRect) : undefined}
+        modalStyle={
+          visibleFrontmatterModal
+            ? getFrontmatterNoteModalStyle(workspaceRootRef.current, noteContentViewportRect)
+            : undefined
+        }
         templates={state.frontmatter.templates}
+        hasUnsavedChanges={visibleFrontmatterModalDirty}
         onCancel={() => closeFrontmatterModalSession()}
         onChange={updateFrontmatterModalSession}
         onSave={saveFrontmatter}
+        onCopyBlocked={() => pushAppToast('Save changes before copying frontmatter.', 'warning')}
         onSelectAisle={selectFrontmatterAisle}
         onSelectTemplate={selectFrontmatterTemplate}
         onToggleTemplateDerived={toggleFrontmatterTemplateDerived}
         onEditTemplate={editFrontmatterTemplateFromModal}
         onFilterTemplate={filterFrontmatterTemplateFromModal}
+        onImportFrontmatterText={importFrontmatterTextToModal}
         onCopyFrontmatter={copyFrontmatterFromModal}
       />
       <AisleEditModal
@@ -8489,7 +8669,7 @@ export function VaultApp() {
     const templates = frontmatterDraft.templates
     const activeTemplate =
       templates.find((template) => template.id === frontmatterDraft.settingsTemplateId) ?? templates[0] ?? null
-    const frontmatterDraftDirty = JSON.stringify(frontmatterDraft) !== JSON.stringify(state.frontmatter)
+    const frontmatterDraftDirty = isFrontmatterTemplateDraftDirty(frontmatterDraft, state.frontmatter)
 
     const updateFrontmatterDraft = (update: (frontmatter: AppState['frontmatter']) => AppState['frontmatter']) => {
       setFrontmatterDraft((previous) => update(previous))
@@ -8522,6 +8702,32 @@ export function VaultApp() {
         id: createFrontmatterTemplateId(),
         name: 'new template',
         fields: [],
+      }
+      clearFrontmatterTemplateFieldDrag()
+      setFrontmatterTemplateDeleteTargetId('')
+      setFrontmatterTemplateImportTarget(null)
+      setFrontmatterTemplateFieldRemovalDecision(null)
+      updateFrontmatterDraft((frontmatter) => ({
+        ...frontmatter,
+        templates: [...frontmatter.templates, template],
+        settingsTemplateId: template.id,
+      }))
+    }
+
+    const duplicateFrontmatterTemplate = () => {
+      if (!activeTemplate) return
+      if (frontmatterDraftDirty) {
+        pushAppToast('Save changes before duplicating frontmatter template.', 'warning')
+        return
+      }
+      const template: FrontmatterTemplate = {
+        id: createFrontmatterTemplateId(),
+        name: getDuplicateFrontmatterTemplateName(activeTemplate.name, templates),
+        fields: activeTemplate.fields.map((field) => ({
+          ...field,
+          id: createFrontmatterTemplateId(),
+          options: field.options ? [...field.options] : undefined,
+        })),
       }
       clearFrontmatterTemplateFieldDrag()
       setFrontmatterTemplateDeleteTargetId('')
@@ -8965,7 +9171,7 @@ export function VaultApp() {
                   disabled={!activeTemplate}
                   onClick={openFrontmatterTemplateImport}
                 >
-                  Import frontmatter
+                  Import fm
                 </button>
                 <button
                   type="button"
@@ -8973,6 +9179,16 @@ export function VaultApp() {
                   onClick={createFrontmatterTemplate}
                 >
                   New template
+                </button>
+                <button
+                  type="button"
+                  className={`vault-settings-action ${frontmatterDraftDirty ? 'is-disabled' : ''}`.trim()}
+                  disabled={!activeTemplate}
+                  aria-disabled={frontmatterDraftDirty ? 'true' : undefined}
+                  data-app-tooltip={frontmatterDraftDirty ? 'Save changes before duplicating frontmatter template.' : undefined}
+                  onClick={duplicateFrontmatterTemplate}
+                >
+                  Duplicate fm
                 </button>
                 <button
                   type="button"

@@ -5,6 +5,7 @@ import {
   buildFrontmatterModalDraftForAisle,
   disableInvalidComputedFrontmatterRows,
   getFrontmatterTemplateFieldRemovalUsage,
+  hasFrontmatterDataForAisle,
   normalizeFrontmatterDraftRows,
   propagateFrontmatterTemplateChangesInState,
   reorderFrontmatterItemsByTargetIndex,
@@ -555,6 +556,22 @@ describe('frontmatter structured row state', () => {
     expect(draft.templateDerived).toBe(true)
     expect(draft.isTemplateSuggestionDraft).toBe(true)
     expect(draft.rows.map((row) => row.key)).toEqual(['status', 'created', 'title', 'folder', 'path', 'linked', 'tags'])
+  })
+
+  it('detects whether an aisle has saved frontmatter data', () => {
+    const state = createState()
+    const blankState: AppState = {
+      ...state,
+      noteAisleBodies: state.noteAisleBodies.map((body) => ({
+        ...body,
+        frontmatter: null,
+        frontmatterStatus: 'none',
+        frontmatterMeta: undefined,
+      })),
+    }
+
+    expect(hasFrontmatterDataForAisle(state, 'body-1', 'aisle-body-1')).toBe(true)
+    expect(hasFrontmatterDataForAisle(blankState, 'body-1', 'aisle-body-1')).toBe(false)
   })
 
   it('rejects duplicate row keys', () => {

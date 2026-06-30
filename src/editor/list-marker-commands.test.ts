@@ -268,6 +268,27 @@ describe('toolbar list command detection', () => {
     expect(execCalls).toEqual(['indent', 'outdent'])
   })
 
+  it('does not run structural list indentation for mixed list and paragraph selections', () => {
+    const doc = listCommandSchema.nodes.doc.create(null, [
+      listCommandSchema.nodes.bulletList.create(null, pmListItem('one')),
+      pmParagraph('two'),
+    ])
+    const one = getTextRange(doc, 'one')
+    const two = getTextRange(doc, 'two')
+    const view = createViewWithSelection(doc, one.from, two.to)
+    const editor = {
+      focus: vi.fn(),
+      exec: vi.fn(),
+      wwEditor: {
+        view,
+      },
+    }
+
+    expect(applyStructuralListIndent(editor as any, false)).toBe(false)
+    expect(editor.focus).not.toHaveBeenCalled()
+    expect(editor.exec).not.toHaveBeenCalled()
+  })
+
   it('preserves dash markers when structurally indenting dash list items', () => {
     const transaction = {
       setNodeMarkup: vi.fn(() => transaction),

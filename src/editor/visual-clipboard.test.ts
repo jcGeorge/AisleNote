@@ -188,12 +188,52 @@ describe('visual clipboard helpers', () => {
       .toEqual(['okay', '', 'so'])
   })
 
+  it('pastes single-line plain text inline at the current caret', () => {
+    const view = createView([paragraph('Hello ')], 1 + 'Hello '.length)
+    const data = {
+      getData: (type: string) => type === 'text/plain' ? 'world' : '',
+    }
+
+    expect(insertClipboardDataIntoView(view, data)).toBe(true)
+    expect(view.state.doc.childCount).toBe(1)
+    expect(view.state.doc.child(0).textContent).toBe('Hello world')
+  })
+
+  it('pastes single-line plain text with one terminal newline inline', () => {
+    const view = createView([paragraph('Hello ')], 1 + 'Hello '.length)
+    const data = {
+      getData: (type: string) => type === 'text/plain' ? 'world\n' : '',
+    }
+
+    expect(insertClipboardDataIntoView(view, data)).toBe(true)
+    expect(view.state.doc.childCount).toBe(1)
+    expect(view.state.doc.child(0).textContent).toBe('Hello world')
+  })
+
   it('detects plain text that needs exact layout preservation', () => {
     expect(isLayoutSensitiveClipboardText('Matthew 4:19\tFollow me')).toBe(true)
-    expect(isLayoutSensitiveClipboardText('Matthew 4:19  Follow me')).toBe(true)
+    expect(isLayoutSensitiveClipboardText('Matthew 4:19  Follow me')).toBe(false)
     expect(isLayoutSensitiveClipboardText('  indented')).toBe(true)
     expect(isLayoutSensitiveClipboardText('Matthew 4:19\nMatthew 8:19')).toBe(true)
     expect(isLayoutSensitiveClipboardText('plain sentence')).toBe(false)
+  })
+
+  it('uses single-line plain text before rich HTML so paste stays inline', () => {
+    const view = createView([paragraph('Hello ')], 1 + 'Hello '.length)
+    const data = {
+      getData: (type: string) => {
+        if (type === 'text/plain') return 'world'
+        if (type === 'text/html') return '<p><span>world</span></p>'
+        return ''
+      },
+    }
+
+    withFakeParsedHtmlText('world', () => {
+      expect(insertClipboardDataIntoView(view, data)).toBe(true)
+    })
+
+    expect(view.state.doc.childCount).toBe(1)
+    expect(view.state.doc.child(0).textContent).toBe('Hello world')
   })
 
   it('uses layout-sensitive plain text before rich HTML when both clipboard formats are present', () => {

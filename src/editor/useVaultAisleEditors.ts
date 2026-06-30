@@ -85,20 +85,22 @@ import {
   readVaultStructureClipboardPayloadFromDataTransfer,
   type VaultStructureClipboardPayload,
 } from '../notes/vault-structure-clipboard'
-import {
-  readFrontmatterClipboardPayloadFromDataTransfer,
-  readFrontmatterClipboardPayloadFromNavigator,
-  type FrontmatterClipboardPayload,
-} from '../frontmatter/frontmatter-clipboard'
 import { applyEditorNewlineOperation } from './newline-operations'
-import { applyListToolbarCommand, type ToolbarListCommand } from './list-marker-commands'
+import { applyListToolbarCommand, applyStructuralListIndent, type ToolbarListCommand } from './list-marker-commands'
 import { getNewlineShortcutIdForEvent, normalizeHotkeySettings } from '../hotkeys/shortcuts'
 import { openExternalWebUrl } from '../notes/external-links'
 import { getEditorKeyboardHistoryDirection } from './editor-input-intents'
 import {
+  buildCollapsedParagraphTabIndentOperationPlan,
+  buildSelectionCodeBlockTabIndentOperationPlan,
   buildSelectionBlockIndentOperationPlan,
   buildSelectionRemoveBlockIndentOperationPlan,
+  buildSelectionTabBlockIndentOperationPlan,
 } from './multiline-format-operations'
+import {
+  getActiveTableContext,
+  moveTableCellSelectionByTab,
+} from './table-editing'
 import {
   getHeadingOutlineFromDoc,
   getHeadingOutlineFromMarkdown,
@@ -197,7 +199,6 @@ type UseVaultAisleEditorsOptions = {
   getAppState?: () => AppState
   onOpenNoteReference?: (target: NoteLocation) => void
   onVaultStructurePaste?: (payload: VaultStructureClipboardPayload, aisleId: string) => boolean
-  onFrontmatterPaste?: (payload: FrontmatterClipboardPayload, aisleId: string) => boolean
   hotkeys: AppState['hotkeys']
   isMacPlatform: boolean
   onOpenShortcutMenu?: (request: { aisleId: string; anchor: { top: number; left: number } }) => void
@@ -282,11 +283,65 @@ function areStringSetsEqual(left: Set<string>, right: Set<string>): boolean {
   return true
 }
 
-function runSelectionBlockIndent(editor: Editor, remove: boolean, runtime: EditorOperationRuntime): boolean {
+function runSelectionBlockIndent(
+  editor: Editor,
+  remove: boolean,
+  runtime: EditorOperationRuntime,
+  options: { beforeDispatch?: () => void } = {},
+): boolean {
   const view = getWysiwygView(editor)
   if (!view) return false
   const plan = remove ? buildSelectionRemoveBlockIndentOperationPlan(view) : buildSelectionBlockIndentOperationPlan(view)
   if (!plan) return false
+  options.beforeDispatch?.()
+  view.dispatch(plan.transaction.scrollIntoView())
+  finishEditorOperation(runtime, editor, { syncToolbar: true })
+  return true
+}
+
+function runSelectionCodeBlockTabIndent(
+  editor: Editor,
+  outdent: boolean,
+  runtime: EditorOperationRuntime,
+  options: { beforeDispatch?: () => void } = {},
+): boolean {
+  const view = getWysiwygView(editor)
+  if (!view) return false
+  const plan = buildSelectionCodeBlockTabIndentOperationPlan(view, outdent)
+  if (!plan) return false
+  options.beforeDispatch?.()
+  view.dispatch(plan.transaction.scrollIntoView())
+  finishEditorOperation(runtime, editor, { syncToolbar: true })
+  return true
+}
+
+function runCollapsedParagraphTabIndent(
+  editor: Editor,
+  outdent: boolean,
+  runtime: EditorOperationRuntime,
+  options: { beforeDispatch?: () => void } = {},
+): boolean {
+  const view = getWysiwygView(editor)
+  if (!view) return false
+  const plan = buildCollapsedParagraphTabIndentOperationPlan(view, outdent)
+  if (!plan) return false
+  options.beforeDispatch?.()
+  view.dispatch(plan.transaction.scrollIntoView())
+  finishEditorOperation(runtime, editor, { syncToolbar: true })
+  return true
+}
+
+function runSelectionTabBlockIndent(
+  editor: Editor,
+  remove: boolean,
+  runtime: EditorOperationRuntime,
+  options: { beforeDispatch?: () => void } = {},
+): boolean {
+  const view = getWysiwygView(editor)
+  if (!view) return false
+  const plan = buildSelectionTabBlockIndentOperationPlan(view, remove)
+  if (!plan) return false
+  options.beforeDispatch?.()
   view.dispatch(plan.transaction.scrollIntoView())
   finishEditorOperation(runtime, editor, { syncToolbar: true })
   return true
@@ -426,7 +481,6 @@ export function useVaultAisleEditors({
   getAppState,
   onOpenNoteReference,
   onVaultStructurePaste,
-  onFrontmatterPaste,
   hotkeys,
   isMacPlatform,
   onOpenShortcutMenu,
@@ -466,7 +520,6 @@ export function useVaultAisleEditors({
   const isMacPlatformRef = useRef(isMacPlatform)
   const getAppStateRef = useRef(getAppState)
   const onOpenNoteReferenceRef = useRef(onOpenNoteReference)
-  const onFrontmatterPasteRef = useRef(onFrontmatterPaste)
   const onOpenShortcutMenuRef = useRef(onOpenShortcutMenu)
   const onOpenTableOfContentsRef = useRef(onOpenTableOfContents)
   const onOpenUrlLinkPromptRef = useRef(onOpenUrlLinkPrompt)
@@ -482,7 +535,6 @@ export function useVaultAisleEditors({
   isMacPlatformRef.current = isMacPlatform
   getAppStateRef.current = getAppState
   onOpenNoteReferenceRef.current = onOpenNoteReference
-  onFrontmatterPasteRef.current = onFrontmatterPaste
   onOpenShortcutMenuRef.current = onOpenShortcutMenu
   onOpenTableOfContentsRef.current = onOpenTableOfContents
   onOpenUrlLinkPromptRef.current = onOpenUrlLinkPrompt
@@ -1332,16 +1384,6 @@ export function useVaultAisleEditors({
         if (event.defaultPrevented) return
         if (!getElementFromEventTarget(event.target)?.closest('.ProseMirror[contenteditable="true"]')) return
 
-        const frontmatterPayload = readFrontmatterClipboardPayloadFromDataTransfer(event.clipboardData, {
-          allowYamlFallback: false,
-        })
-        if (frontmatterPayload && onFrontmatterPasteRef.current?.(frontmatterPayload, aisle.id)) {
-          event.preventDefault()
-          event.stopPropagation()
-          event.stopImmediatePropagation()
-          return
-        }
-
         const payload = readVaultStructureClipboardPayloadFromDataTransfer(event.clipboardData)
         if (payload && onVaultStructurePaste?.(payload, aisle.id)) {
           markEditorUserEditIntent(editorKey)
@@ -1382,6 +1424,58 @@ export function useVaultAisleEditors({
             const prompt = getUrlLinkPromptState()
             if (prompt) onOpenUrlLinkPromptRef.current?.(prompt)
           }
+          return
+        }
+
+        if (event.key === 'Tab' && !event.altKey && !event.ctrlKey && !event.metaKey && editor) {
+          const view = getWysiwygView(editor)
+          if (!view) return
+          const outdent = Boolean(event.shiftKey)
+          const consumeTab = () => {
+            event.preventDefault()
+            event.stopPropagation()
+            event.stopImmediatePropagation()
+            setActiveEditor(aisle.id)
+          }
+
+          if (getActiveTableContext(view)) {
+            const result = moveTableCellSelectionByTab(view, outdent ? 'backward' : 'forward', {
+              beforeChange: () => markEditorUserEditIntent(editorKey),
+            })
+            if (result.handled) {
+              consumeTab()
+              if (result.changed) finishEditorOperation(editorOperationRuntime, editor, { syncToolbar: true })
+              else scheduleToolbarFormatStateSync()
+              return
+            }
+          }
+
+          const beforeEditorTabMutation = () => {
+            consumeTab()
+            markEditorUserEditIntent(editorKey)
+          }
+
+          if (runSelectionCodeBlockTabIndent(editor, outdent, editorOperationRuntime, { beforeDispatch: beforeEditorTabMutation })) {
+            return
+          }
+
+          if (
+            applyStructuralListIndent(editor, outdent, {
+              beforeExecute: beforeEditorTabMutation,
+            })
+          ) {
+            finishEditorOperation(editorOperationRuntime, editor, { syncToolbar: true })
+            return
+          }
+
+          if (runCollapsedParagraphTabIndent(editor, outdent, editorOperationRuntime, { beforeDispatch: beforeEditorTabMutation })) {
+            return
+          }
+
+          if (runSelectionTabBlockIndent(editor, outdent, editorOperationRuntime, { beforeDispatch: beforeEditorTabMutation })) {
+            return
+          }
+
           return
         }
 
@@ -1953,14 +2047,6 @@ export function useVaultAisleEditors({
       }
       void (async () => {
         if (action === 'paste') {
-          const frontmatterPayload = await readFrontmatterClipboardPayloadFromNavigator(undefined, {
-            allowYamlFallback: false,
-          })
-          const targetAisleId = activeEditorAisleIdRef.current
-          if (frontmatterPayload && targetAisleId && onFrontmatterPasteRef.current?.(frontmatterPayload, targetAisleId)) {
-            return
-          }
-
           const payload = await readTableSelectionClipboardPayloadFromClipboard()
           const view = getWysiwygView(editor)
           if (payload && insertTableSelectionClipboardPayloadIntoView(view, payload)) {

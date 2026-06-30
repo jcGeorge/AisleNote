@@ -6,6 +6,7 @@ import type { MultiLineEditState, MultiLineInlineFormat } from '../types/app'
 import {
   applyActiveInlineFormatsToStoredMarks,
   applyActiveInlineFormatsToInsertedText,
+  buildCollapsedParagraphTabIndentOperationPlan,
   buildMultiLineBlockIndentOperationPlan,
   buildMultiLineBlockQuoteOperationPlan,
   buildMultiLineCodeBlockOperationPlan,
@@ -14,10 +15,12 @@ import {
   buildMultiLineInlineMarkerOperationPlan,
   buildMultiLineRemoveBlockIndentOperationPlan,
   buildMultiLineRemoveBlockQuoteOperationPlan,
+  buildSelectionCodeBlockTabIndentOperationPlan,
   buildSelectionBlockIndentOperationPlan,
   buildSelectionBlockQuoteOperationPlan,
   buildSelectionRemoveBlockIndentOperationPlan,
   buildSelectionRemoveBlockQuoteOperationPlan,
+  buildSelectionTabBlockIndentOperationPlan,
   getActiveInlineFormatMarks,
   getMultiLineBlockQuoteMarkerShortcut,
   getMultiLineHeadingMarkerShortcut,
@@ -27,6 +30,7 @@ import {
   type MultiLineHeadingLevel,
 } from './multiline-format-operations'
 import { getEditorTextLineRanges } from './multiline-ranges'
+import { CODE_BLOCK_INDENT_TEXT } from './prosemirror-utils'
 
 const multilineFormatSchema = new Schema({
   nodes: {
@@ -540,6 +544,67 @@ describe('selection block indent operations', () => {
     expect(view.state.doc.child(0).textContent).toBe('quote')
   })
 
+  it('inserts a normal paragraph indent at a collapsed paragraph caret on Tab', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('one')]))
+    setCaretInTextLine(view, 0, 0)
+
+    const plan = buildCollapsedParagraphTabIndentOperationPlan(view, false)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.child(0).textContent).toBe(`${INDENT_TOKEN}one`)
+    expect(nextState.selection.from).toBe(1 + INDENT_TOKEN.length)
+    expect(buildSelectionTabBlockIndentOperationPlan(view, false)).toBeNull()
+  })
+
+  it('inserts normal paragraph indent after an existing block indent prefix', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph(`${BLOCK_INDENT_TOKEN}one`)]))
+    setCaretInTextLine(view, 0, 0)
+
+    const plan = buildCollapsedParagraphTabIndentOperationPlan(view, false)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.child(0).textContent).toBe(`${BLOCK_INDENT_TOKEN}${INDENT_TOKEN}one`)
+    expect(nextState.selection.from).toBe(1 + BLOCK_INDENT_TOKEN.length + INDENT_TOKEN.length)
+  })
+
+  it('inserts collapsed paragraph Tab indentation at the caret for inline note editing', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('one')]))
+    setCaretInTextLine(view, 0, 2)
+
+    const plan = buildCollapsedParagraphTabIndentOperationPlan(view, false)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.child(0).textContent).toBe(`on${INDENT_TOKEN}e`)
+    expect(nextState.selection.from).toBe(1 + INDENT_TOKEN.length + 2)
+  })
+
+  it('removes one normal paragraph indent at a collapsed paragraph caret on Shift+Tab', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph(`${BLOCK_INDENT_TOKEN}${INDENT_TOKEN}one`)]))
+    setCaretInTextLine(view, 0, BLOCK_INDENT_TOKEN.length + INDENT_TOKEN.length + 1)
+
+    const plan = buildCollapsedParagraphTabIndentOperationPlan(view, true)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.child(0).textContent).toBe(`${BLOCK_INDENT_TOKEN}one`)
+    expect(nextState.selection.from).toBe(1 + BLOCK_INDENT_TOKEN.length + 1)
+  })
+
+  it('does not remove visual block indentation from a collapsed paragraph Shift+Tab', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph(`${BLOCK_INDENT_TOKEN}one`)]))
+    setCaretInTextLine(view, 0, BLOCK_INDENT_TOKEN.length)
+
+    const plan = buildCollapsedParagraphTabIndentOperationPlan(view, true)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.child(0).textContent).toBe(`${BLOCK_INDENT_TOKEN}one`)
+    expect(buildSelectionTabBlockIndentOperationPlan(view, true)).toBeNull()
+  })
+
   it('applies and removes block indent tokens across multi-cursor rows', () => {
     const view = createView(multilineFormatSchema.nodes.doc.create(null, [paragraph('one'), paragraph('two')]))
     const applyPlan = buildMultiLineBlockIndentOperationPlan(view, multiLineState([0, 1], 3))
@@ -560,6 +625,82 @@ describe('selection block indent operations', () => {
     expect(removedState.doc.child(0).textContent).toBe('one')
     expect(removedState.doc.child(1).textContent).toBe('two')
     expect(removePlan?.nextState.columnOffsets).toEqual({ 0: 3, 1: 3 })
+  })
+})
+
+describe('selection code block tab indentation operations', () => {
+  it('inserts a code indent unit at a collapsed caret inside a code block', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [codeBlock('one')]))
+    setCaretInTextLine(view, 0, 1)
+
+    const plan = buildSelectionCodeBlockTabIndentOperationPlan(view, false)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.child(0).textContent).toBe(`o${CODE_BLOCK_INDENT_TEXT}ne`)
+  })
+
+  it('indents each selected code block line without using visual block indent tokens', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [codeBlock('keep\none\ntwo\nkeep')]))
+    selectTextLines(view, 1, 2)
+
+    const plan = buildSelectionCodeBlockTabIndentOperationPlan(view, false)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.child(0).textContent).toBe(`keep\n${CODE_BLOCK_INDENT_TEXT}one\n${CODE_BLOCK_INDENT_TEXT}two\nkeep`)
+  })
+
+  it('removes one leading tab from each selected code block line', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [codeBlock('\tone\n\ttwo')]))
+    selectTextLines(view, 0, 1)
+
+    const plan = buildSelectionCodeBlockTabIndentOperationPlan(view, true)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.child(0).textContent).toBe('one\ntwo')
+  })
+
+  it('removes up to one configured space indent unit from selected code block lines', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [codeBlock('  one\n    two\n      three')]))
+    selectTextLines(view, 0, 2)
+
+    const plan = buildSelectionCodeBlockTabIndentOperationPlan(view, true)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.child(0).textContent).toBe('one\ntwo\n  three')
+  })
+
+  it('leaves unindented code block lines unchanged while outdenting selected indented lines', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [codeBlock('one\n  two')]))
+    selectTextLines(view, 0, 1)
+
+    const plan = buildSelectionCodeBlockTabIndentOperationPlan(view, true)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.child(0).textContent).toBe('one\ntwo')
+  })
+
+  it('does not outdent when no selected code block lines have leading indentation', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [codeBlock('one\ntwo')]))
+    selectTextLines(view, 0, 1)
+
+    const plan = buildSelectionCodeBlockTabIndentOperationPlan(view, true)
+    expect(plan).not.toBeNull()
+    const nextState = view.apply(plan!.transaction)
+
+    expect(nextState.doc.child(0).textContent).toBe('one\ntwo')
+  })
+
+  it('does not handle mixed code and non-code selections', () => {
+    const view = createView(multilineFormatSchema.nodes.doc.create(null, [codeBlock('one'), paragraph('two')]))
+    selectTextLines(view, 0, 1)
+
+    expect(buildSelectionCodeBlockTabIndentOperationPlan(view, false)).toBeNull()
+    expect(buildSelectionTabBlockIndentOperationPlan(view, false)).toBeNull()
   })
 })
 

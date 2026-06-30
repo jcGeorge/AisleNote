@@ -1910,7 +1910,9 @@
   color: var(--app-danger-text, #dc3545);
 }
 
-.vault-settings-action:disabled {
+.vault-settings-action:disabled,
+.vault-settings-action[aria-disabled="true"],
+.vault-settings-action.is-disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
@@ -2298,11 +2300,13 @@
 
 .note-content-overlay-region .vault-frontmatter-modal.frontmatter-note-modal {
   position: absolute;
-  top: 50%;
+  top: 70px;
   left: var(--frontmatter-note-modal-left, 50%);
   width: var(--frontmatter-note-modal-width, min(960px, calc(100% - 32px)));
-  max-height: calc(100% - 32px);
-  transform: translate(-50%, -50%);
+  max-height: calc(100% - 210px);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(-50%);
 }
 
 .vault-frontmatter-modal.frontmatter-note-modal .modal-card-header,
@@ -2318,6 +2322,8 @@
 .vault-frontmatter-modal.frontmatter-note-modal .vault-frontmatter-body {
   background: var(--modal-bg);
   color: var(--modal-text);
+  min-height: 0;
+  overflow: auto;
 }
 
 .vault-frontmatter-modal.vault-name-modal {
@@ -2370,8 +2376,7 @@
 }
 
 .vault-frontmatter-body .frontmatter-note-toolbar {
-  grid-template-columns: repeat(auto-fit, minmax(128px, max-content));
-  justify-content: start;
+  justify-content: stretch;
 }
 
 .vault-frontmatter-body .frontmatter-derived-switch {
@@ -2396,6 +2401,7 @@
 .vault-frontmatter-body .frontmatter-row-editor {
   max-height: none;
   min-width: 800px;
+  overflow: visible;
 }
 
 .vault-frontmatter-body .frontmatter-row {

@@ -1165,6 +1165,7 @@ function dispatchTableCellSelection(
 export function moveTableCellSelectionByTab(
   view: any,
   direction: TableCellNavigationDirection,
+  options: { beforeChange?: () => void } = {},
 ): TableCellNavigationResult {
   const context = getActiveTableContext(view)
   const schema = view?.state?.schema
@@ -1197,6 +1198,7 @@ export function moveTableCellSelectionByTab(
 
     const nextBodyRows = [...bodyRows, createEmptyBodyRow(schema, context.columnCount)]
     const nextTable = buildTable(schema, tableNode, cloneRowAsType(schema, headRow, 'tableHeadCell'), nextBodyRows)
+    options.beforeChange?.()
     const handled = dispatchTableReplacement(view, context, nextTable, bodyRows.length + 1, 0)
     if (handled && typeof view.focus === 'function') {
       view.focus()
@@ -1226,6 +1228,7 @@ export function moveTableCellSelectionByTab(
   const nextHeadRow = createEmptyHeadRow(schema, context.columnCount)
   const nextBodyRows = [cloneRowAsType(schema, headRow, 'tableBodyCell'), ...bodyRows]
   const nextTable = buildTable(schema, tableNode, nextHeadRow, nextBodyRows)
+  options.beforeChange?.()
   const handled = dispatchTableReplacement(view, context, nextTable, 0, Math.max(0, context.columnCount - 1))
   if (handled && typeof view.focus === 'function') {
     view.focus()

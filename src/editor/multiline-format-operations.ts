@@ -1,4 +1,5 @@
 import { Fragment, type Node as ProseMirrorNode } from 'prosemirror-model'
+import { TextSelection } from 'prosemirror-state'
 import type { EditorTextLineRange, MultiLineEditState, MultiLineInlineFormat } from '../types/app'
 import {
   getMultiLineColumnOffset,
@@ -10,8 +11,11 @@ import { getEditorTextLineRanges, isCodeBlockTextLineRange } from './multiline-r
 import {
   BLOCK_INDENT_TOKEN,
   getBlockIndentPrefixLength,
+  getIndentPrefixLength,
+  INDENT_TOKEN,
   stripBlockIndentPrefix,
 } from '../markdown/markdown-utils'
+import { CODE_BLOCK_INDENT_TEXT } from './prosemirror-utils'
 
 export type MultiLineHeadingLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6
 
@@ -1186,6 +1190,150 @@ export function buildSelectionRemoveBlockIndentOperationPlan(view: any): Selecti
   return {
     transaction: applyBlockIndentTargets(view, targets, true),
   }
+}
+
+export function buildSelectionTabBlockIndentOperationPlan(view: any, remove: boolean): SelectionOperationPlan | null {
+  if (view?.state?.selection?.empty) return null
+  const context = getBlockFormatContextsForSelection(view)
+  if (!context) return null
+  const supported = remove
+    ? context.contexts.every((row) => row.kind === 'textBlock')
+    : context.contexts.every((row) => row.kind === 'textBlock' || row.kind === 'blockQuoteChild')
+  if (!supported) return null
+
+  if (!remove) {
+    const operationData = buildApplyBlockIndentOperationData(view, context)
+    return operationData ? { transaction: operationData.transaction } : null
+  }
+
+  const targets = getBlockIndentTargets(
+    context.blockRanges,
+    context.contexts.map((row) => row.blockIndex),
+    true,
+  )
+  return targets.length > 0 ? { transaction: applyBlockIndentTargets(view, targets, true) } : null
+}
+
+function setCollapsedSelection(transaction: any, position: number) {
+  try {
+    return transaction.setSelection(TextSelection.create(transaction.doc, position, position))
+  } catch {
+    return transaction
+  }
+}
+
+function getCollapsedParagraphIndentTarget(view: any): {
+  range: EditorTextLineRange
+  insertPos: number
+  visibleStart: number
+} | null {
+  const selection = view?.state?.selection
+  if (!selection?.empty) return null
+
+  const context = getBlockFormatContextsForSelection(view)
+  if (!context || context.contexts.length !== 1) return null
+
+  const row = context.contexts[0]
+  if (row.kind !== 'textBlock') return null
+
+  const range = context.blockRanges[row.blockIndex]
+  if (!range) return null
+
+  const visibleStart = range.start + getBlockIndentPrefixLength(range.text)
+  const insertPos = selection.from <= visibleStart
+    ? visibleStart
+    : Math.max(visibleStart, Math.min(selection.from, range.end))
+  return { range, insertPos, visibleStart }
+}
+
+export function buildCollapsedParagraphTabIndentOperationPlan(
+  view: any,
+  outdent: boolean,
+): SelectionOperationPlan | null {
+  const target = getCollapsedParagraphIndentTarget(view)
+  const selection = view?.state?.selection
+  if (!target || !selection) return null
+
+  if (!outdent) {
+    const transaction = view.state.tr.insertText(INDENT_TOKEN, target.insertPos, target.insertPos)
+    return {
+      transaction: setCollapsedSelection(transaction, target.insertPos + INDENT_TOKEN.length),
+    }
+  }
+
+  const removableLength = getIndentPrefixLength(target.range.text.slice(getBlockIndentPrefixLength(target.range.text)))
+  if (removableLength <= 0) {
+    return {
+      transaction: setCollapsedSelection(
+        view.state.tr.setMeta('addToHistory', false),
+        Math.max(target.visibleStart, Math.min(selection.from, target.range.end)),
+      ),
+    }
+  }
+
+  const removeFrom = target.visibleStart
+  const removeTo = removeFrom + removableLength
+  const transaction = view.state.tr.delete(removeFrom, removeTo)
+  const nextSelectionPosition = selection.from <= removeFrom
+    ? removeFrom
+    : selection.from <= removeTo
+      ? removeFrom
+      : selection.from - removableLength
+
+  return {
+    transaction: setCollapsedSelection(transaction, Math.max(removeFrom, nextSelectionPosition)),
+  }
+}
+
+function getCodeBlockIndentRemoveLength(text: string): number {
+  if (text.startsWith('\t')) return 1
+  const leadingSpaces = text.match(/^ +/)?.[0].length ?? 0
+  return Math.min(leadingSpaces, CODE_BLOCK_INDENT_TEXT.length)
+}
+
+export function buildSelectionCodeBlockTabIndentOperationPlan(
+  view: any,
+  outdent: boolean,
+): SelectionOperationPlan | null {
+  const context = getBlockFormatContextsForSelection(view)
+  const selection = view?.state?.selection
+  if (!context || !selection) return null
+
+  const codeContexts = context.contexts.filter((row): row is CodeBlockLineRowContext => row.kind === 'codeBlockLine')
+  if (codeContexts.length === 0 || codeContexts.length !== context.contexts.length) return null
+
+  const first = codeContexts[0]
+  if (!codeContexts.every((row) => row.codeStart === first.codeStart && row.codeEnd === first.codeEnd)) return null
+
+  if (!outdent && selection.empty) {
+    return {
+      transaction: view.state.tr.insertText(CODE_BLOCK_INDENT_TEXT, selection.from, selection.from),
+    }
+  }
+
+  const edits = codeContexts
+    .map((row) => {
+      const range = context.blockRanges[row.blockIndex]
+      if (!range) return null
+      if (!outdent) {
+        return { from: range.start, to: range.start, insert: true }
+      }
+      const removeLength = getCodeBlockIndentRemoveLength(row.text)
+      return removeLength > 0 ? { from: range.start, to: range.start + removeLength, insert: false } : null
+    })
+    .filter((edit): edit is { from: number; to: number; insert: boolean } => Boolean(edit))
+
+  if (edits.length === 0) {
+    return { transaction: view.state.tr.setMeta('addToHistory', false) }
+  }
+
+  let transaction = view.state.tr
+  for (const edit of [...edits].sort((a, b) => b.from - a.from)) {
+    transaction = edit.insert
+      ? transaction.insertText(CODE_BLOCK_INDENT_TEXT, edit.to, edit.to)
+      : transaction.delete(edit.from, edit.to)
+  }
+  return { transaction }
 }
 
 export function getMultiLineHeadingMarkerShortcut(
