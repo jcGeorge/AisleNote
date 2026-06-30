@@ -1581,7 +1581,6 @@
   color: var(--rail-control-hover-text);
 }
 
-.note-aisle-action-btn:focus,
 .note-aisle-action-btn:focus-visible,
 .note-aisle-action-btn:active,
 .note-aisle-action-btn[aria-pressed="true"],

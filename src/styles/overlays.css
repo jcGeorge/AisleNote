@@ -300,6 +300,7 @@ select.settings-select-input {
   background-size:
     var(--settings-select-caret-size) var(--settings-select-caret-size),
     var(--settings-select-caret-size) var(--settings-select-caret-size);
+  cursor: pointer;
 }
 
 .settings-select-input:focus {
@@ -1153,14 +1154,12 @@ select.settings-select-input {
 }
 
 .app-danger-btn:hover,
-.app-danger-btn:focus,
 .app-danger-btn:focus-visible {
   color: var(--app-danger-hover-text) !important;
   border-color: var(--app-danger-hover-border) !important;
   background: var(--app-danger-hover-bg) !important;
 }
 
-.app-danger-btn:focus,
 .app-danger-btn:focus-visible {
   box-shadow: var(--app-danger-focus-shadow) !important;
 }

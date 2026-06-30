@@ -635,10 +635,10 @@ describe('NoteWorkspace aisle mounting', () => {
     )
     const hoverRule = editorShellCss.slice(
       editorShellCss.indexOf('.note-aisle-action-btn:hover {'),
-      editorShellCss.indexOf('.note-aisle-action-btn:focus,'),
+      editorShellCss.indexOf('.note-aisle-action-btn:focus-visible,'),
     )
     const primaryRule = editorShellCss.slice(
-      editorShellCss.indexOf('.note-aisle-action-btn:focus,'),
+      editorShellCss.indexOf('.note-aisle-action-btn:focus-visible,'),
       editorShellCss.indexOf('.note-aisle-action-wrap {'),
     )
 
@@ -652,7 +652,7 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(hoverRule).toContain('background: var(--rail-control-hover-bg);')
     expect(hoverRule).toContain('color: var(--rail-control-hover-text);')
     expect(primaryRule).not.toContain('.note-aisle-pane.is-active .note-aisle-action-btn')
-    expect(primaryRule).toContain('.note-aisle-action-btn:focus')
+    expect(primaryRule).toContain('.note-aisle-action-btn:focus-visible')
     expect(primaryRule).toContain('.note-aisle-action-btn:active')
     expect(primaryRule).toContain('.note-aisle-action-btn[aria-pressed="true"]')
     expect(primaryRule).toContain('.note-aisle-action-btn[aria-expanded="true"]')

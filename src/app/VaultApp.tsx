@@ -9164,6 +9164,17 @@ export function VaultApp() {
                   }}
                 />
               </label>
+              <div className="frontmatter-template-header-actions">
+                <button
+                  type="button"
+                  className="vault-settings-action"
+                  onClick={createFrontmatterTemplate}
+                >
+                  New template
+                </button>
+              </div>
+            </div>
+            <div className="frontmatter-template-action-row">
               <div className="frontmatter-template-actions">
                 <button
                   type="button"
@@ -9172,13 +9183,6 @@ export function VaultApp() {
                   onClick={openFrontmatterTemplateImport}
                 >
                   Import fm
-                </button>
-                <button
-                  type="button"
-                  className="vault-settings-action"
-                  onClick={createFrontmatterTemplate}
-                >
-                  New template
                 </button>
                 <button
                   type="button"
@@ -9201,6 +9205,14 @@ export function VaultApp() {
                   Delete template
                 </button>
               </div>
+              <button
+                type="button"
+                className="vault-settings-action modal-primary-btn frontmatter-template-add-field-btn"
+                disabled={!activeTemplate}
+                onClick={addFrontmatterTemplateField}
+              >
+                Add row
+              </button>
             </div>
             <div className="settings-divider" />
             {activeTemplate ? (
@@ -9346,17 +9358,6 @@ export function VaultApp() {
                       </button>
                     </div>
                   ))}
-                  <div className="frontmatter-template-add-field-row">
-                    <button
-                      type="button"
-                      className="frontmatter-template-add-field-btn"
-                      aria-label="Add field"
-                      data-app-tooltip="Add field"
-                      onClick={addFrontmatterTemplateField}
-                    >
-                      <AppIcon iconId="plus" className="frontmatter-template-add-field-icon" />
-                    </button>
-                  </div>
                 </div>
               </>
             ) : (
@@ -9383,7 +9384,7 @@ export function VaultApp() {
               ) : null}
               <button
                 type="button"
-                className="vault-settings-action"
+                className="vault-settings-action modal-primary-btn"
                 disabled={!frontmatterDraftDirty}
                 onClick={saveFrontmatterTemplates}
               >

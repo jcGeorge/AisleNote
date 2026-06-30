@@ -161,7 +161,7 @@
   color: var(--settings-section-tab-hover-text);
 }
 
-.settings-section-tab:focus {
+.settings-section-tab:focus-visible {
   border-color: var(--settings-section-tab-active-border);
   background: var(--settings-section-tab-active-bg);
   color: var(--settings-section-tab-active-text);
@@ -199,7 +199,6 @@
   color: var(--settings-action-hover-text) !important;
 }
 
-.settings-action-btn:focus,
 .settings-action-btn:focus-visible {
   border-color: var(--settings-action-hover-border) !important;
   background: var(--settings-section-tab-active-bg) !important;
@@ -223,7 +222,6 @@
 }
 
 .settings-action-btn.modal-primary-btn:not(:disabled):not([aria-disabled="true"]):hover,
-.settings-action-btn.modal-primary-btn:not(:disabled):not([aria-disabled="true"]):focus,
 .settings-action-btn.modal-primary-btn:not(:disabled):not([aria-disabled="true"]):focus-visible {
   border-color: var(--modal-primary-hover-border) !important;
   background: var(--modal-primary-hover-bg) !important;
@@ -309,22 +307,46 @@
 }
 
 .frontmatter-template-select-field {
-  flex: 1 1 13rem;
+  flex: 0 1 20rem;
+  max-width: 20rem;
 }
 
 .frontmatter-template-name-field {
-  flex: 2 1 18rem;
+  flex: 0 1 20rem;
+  max-width: 20rem;
+}
+
+.frontmatter-template-header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  justify-content: flex-end;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.frontmatter-template-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
 }
 
 .frontmatter-template-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   flex-wrap: wrap;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   gap: 0.5rem;
-  margin-left: auto;
   min-width: 0;
+}
+
+.frontmatter-template-toolbar .vault-settings-action,
+.frontmatter-template-action-row .vault-settings-action {
+  margin-top: 0;
 }
 
 .frontmatter-template-field-row {
@@ -403,38 +425,9 @@
   height: 1rem;
 }
 
-.frontmatter-template-add-field-row {
-  display: grid;
-  grid-template-columns: 2.35rem minmax(0, 1fr);
-  gap: 0.4rem 0.55rem;
-  align-items: center;
-  min-height: 2.35rem;
-}
-
 .frontmatter-template-add-field-btn {
-  display: inline-grid;
-  place-items: center;
-  justify-self: center;
-  width: 2.35rem;
-  min-width: 2.35rem;
-  height: 2.35rem;
-  padding: 0;
-  border: 1px solid var(--settings-control-border);
-  border-radius: 0.42rem;
-  background: var(--settings-control-bg);
-  color: var(--settings-card-text);
-  cursor: pointer;
-}
-
-.frontmatter-template-add-field-btn:hover,
-.frontmatter-template-add-field-btn:focus-visible {
-  border-color: var(--settings-section-tab-active-border);
-  color: var(--settings-section-tab-active-text);
-}
-
-.frontmatter-template-add-field-icon {
-  width: 1rem;
-  height: 1rem;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .frontmatter-template-footer-actions {
@@ -1024,7 +1017,7 @@
   background: var(--theme-switch-option-hover-bg);
 }
 
-.settings-segmented-option:focus {
+.settings-segmented-option:focus-visible {
   background: var(--settings-segmented-option-selected-bg);
   color: var(--settings-segmented-option-selected-text);
 }
@@ -2049,7 +2042,7 @@
   background: var(--settings-shortcut-hover-bg);
 }
 
-.settings-shortcut-btn:focus {
+.settings-shortcut-btn:focus-visible {
   border-color: var(--settings-section-tab-active-border);
   background: var(--settings-section-tab-active-bg);
   color: var(--settings-section-tab-active-text);

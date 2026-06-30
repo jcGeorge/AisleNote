@@ -263,10 +263,10 @@
   color: var(--app-text-bright);
 }
 
-.vault-icon-button:focus,
-.vault-trash-actions button:focus,
-.vault-empty-state button:focus,
-.vault-settings-action:focus {
+.vault-icon-button:focus-visible,
+.vault-trash-actions button:focus-visible,
+.vault-empty-state button:focus-visible,
+.vault-settings-action:focus-visible {
   border-color: var(--vault-action-accent);
   background: var(--vault-sidebar-active-bg);
   color: var(--vault-sidebar-active-text);
@@ -289,7 +289,7 @@
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
-.vault-sidebar .vault-icon-button:focus {
+.vault-sidebar .vault-icon-button:focus-visible {
   border-color: transparent;
   background: var(--vault-sidebar-active-bg);
   color: var(--vault-sidebar-active-text);
@@ -514,7 +514,6 @@
 }
 
 .vault-sidebar .vault-sidebar-footer-action:hover,
-.vault-sidebar .vault-sidebar-footer-action:focus,
 .vault-sidebar .vault-sidebar-footer-action:focus-visible,
 .vault-sidebar .vault-sidebar-footer-action:active {
   border-color: transparent;
@@ -523,7 +522,7 @@
 }
 
 .vault-sidebar .vault-sidebar-footer-action:disabled:hover,
-.vault-sidebar .vault-sidebar-footer-action:disabled:focus,
+.vault-sidebar .vault-sidebar-footer-action:disabled:focus-visible,
 .vault-sidebar .vault-sidebar-footer-action:disabled:active {
   background: transparent;
   color: var(--vault-control-text);
@@ -1434,7 +1433,7 @@
   color: var(--app-text-bright);
 }
 
-.vault-utility-tabs button:focus {
+.vault-utility-tabs button:focus-visible {
   border-color: var(--vault-action-accent);
   background: var(--vault-sidebar-active-bg);
   color: var(--vault-sidebar-active-text);
@@ -1544,7 +1543,7 @@
   min-height: 32px;
   border: 1px solid var(--settings-control-border, var(--app-border));
   border-radius: 6px;
-  background: var(--settings-control-bg, var(--app-raised));
+  background-color: var(--settings-control-bg, var(--app-raised));
   color: var(--settings-control-text, var(--app-text));
   font: inherit;
 }
@@ -1944,7 +1943,6 @@
 }
 
 .vault-trash-delete-all-btn:hover,
-.vault-trash-delete-all-btn:focus,
 .vault-trash-delete-all-btn:focus-visible {
   border-color: var(--modal-primary-hover-border);
   background: var(--modal-primary-hover-bg);
