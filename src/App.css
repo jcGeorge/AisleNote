@@ -1030,6 +1030,22 @@
   color: var(--app-text-heading);
 }
 
+.vault-sidebar-search-result-heading.is-active,
+.vault-sidebar-search-result.is-active {
+  background: color-mix(in srgb, var(--vault-action-accent) 14%, transparent);
+  color: var(--app-text-heading);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vault-action-accent) 62%, transparent);
+}
+
+.vault-sidebar-search-result-heading-button.is-active:hover,
+.vault-sidebar-search-result-heading-button.is-active:focus-visible,
+.vault-sidebar-search-result.is-active:hover,
+.vault-sidebar-search-result.is-active:focus-visible {
+  background: color-mix(in srgb, var(--vault-action-accent) 18%, transparent);
+  color: var(--app-text-heading);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vault-action-accent) 68%, transparent);
+}
+
 .vault-sidebar-search-result-heading-button:focus-visible {
   outline: 1px solid var(--vault-action-accent);
   outline-offset: 2px;
@@ -1064,6 +1080,10 @@
   font-size: inherit;
   line-height: inherit;
   white-space: nowrap;
+}
+
+.vault-sidebar-search-result.is-active .vault-sidebar-search-result-meta {
+  color: inherit;
 }
 
 .vault-sidebar-search-result-snippet {

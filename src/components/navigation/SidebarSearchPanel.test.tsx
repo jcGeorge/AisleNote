@@ -224,13 +224,40 @@ describe('SidebarSearchPanel', () => {
     expect(html).not.toContain('vault-sidebar-search-result-meta')
   })
 
+  it('marks the active note and active aisle when they appear in search results', () => {
+    const html = renderToStaticMarkup(
+      <SidebarSearchPanel
+        query="fm:true"
+        active
+        metadataSearchActive
+        suggestions={[]}
+        searchOptions={searchOptions}
+        searchHistory={[]}
+        resultGroups={resultGroups}
+        activeNoteId="note-a"
+        activeAisleId="aisle-a"
+        onQueryChange={noop}
+        onSelectSuggestion={noop}
+        onSelectSearchOption={noop}
+        onSelectHistory={noop}
+        onClearHistory={noop}
+        onClear={noop}
+        onOpenResult={noop}
+      />,
+    )
+
+    expect(html).toContain('vault-sidebar-search-result-heading vault-sidebar-search-result-heading-button is-active')
+    expect(html).toContain('vault-sidebar-search-result is-active')
+    expect(html.match(/aria-current="true"/g)?.length).toBe(2)
+  })
+
   it('clears active searches before closing search mode on Escape', () => {
     expect(source).toContain("if (event.key !== 'Escape') return")
     expect(source).toContain('if (canClear) onClear()')
     expect(source).toContain('else onCloseMode?.()')
   })
 
-  it('lets the clear button close search mode without changing text-edit behavior', () => {
+  it('lets the clear button be wired independently from Escape behavior', () => {
     expect(source).toContain('onClearButtonClick?: () => void')
     expect(source).toContain('onClick={onClearButtonClick ?? onClear}')
   })
@@ -254,7 +281,8 @@ describe('SidebarSearchPanel', () => {
     expect(source).toContain('const firstResult = group.results[0]')
     expect(source).toContain('onClick={() => onOpenResult(firstResult)}')
     expect(source).toContain("onOpenResult(firstResult, 'retained')")
-    expect(source).toContain('<SearchResultGroupHeading group={group} onOpenResult={onOpenResult} />')
+    expect(source).toContain('active={isActiveGroup(group)}')
+    expect(source).toContain('active={isActiveResult(result)}')
     expect(source).toContain('showFolderPath={showFolderNames && !textOnlySearchActive}')
     expect(source).toContain('vault-sidebar-search-result-heading-button')
   })

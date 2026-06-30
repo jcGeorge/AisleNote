@@ -20,6 +20,8 @@ type SidebarSearchPanelProps = {
   resultGroups: SidebarSearchResultGroup[]
   showFolderNames?: boolean
   showAisleMatches?: boolean
+  activeNoteId?: string
+  activeAisleId?: string
   onQueryChange: (query: string) => void
   onSelectSuggestion: (suggestion: SidebarSearchSuggestion) => void
   onSelectSearchOption: (option: SidebarSearchOption) => void
@@ -78,16 +80,19 @@ function getFolderResultSections(resultGroups: SidebarSearchResultGroup[]): Side
 function SearchResultButton({
   group,
   result,
+  active,
   onOpenResult,
 }: {
   group: SidebarSearchResultGroup
   result: SidebarSearchResult
+  active: boolean
   onOpenResult: (result: SidebarSearchResult, mode?: SidebarSearchResultOpenMode) => void
 }) {
   return (
     <button
       type="button"
-      className="vault-sidebar-search-result"
+      className={`vault-sidebar-search-result${active ? ' is-active' : ''}`}
+      aria-current={active ? 'true' : undefined}
       onClick={() => onOpenResult(result)}
       onMouseDown={(event) => {
         if (event.button !== 1) return
@@ -149,10 +154,12 @@ function SidebarSearchDisplaySwitch({
 function SearchResultGroupHeading({
   group,
   showFolderPath = false,
+  active,
   onOpenResult,
 }: {
   group: SidebarSearchResultGroup
   showFolderPath?: boolean
+  active: boolean
   onOpenResult: (result: SidebarSearchResult, mode?: SidebarSearchResultOpenMode) => void
 }) {
   const firstResult = group.results[0]
@@ -164,13 +171,16 @@ function SearchResultGroupHeading({
   )
 
   if (!firstResult) {
-    return <div className="vault-sidebar-search-result-heading">{content}</div>
+    return <div className={`vault-sidebar-search-result-heading${active ? ' is-active' : ''}`}>{content}</div>
   }
 
   return (
     <button
       type="button"
-      className="vault-sidebar-search-result-heading vault-sidebar-search-result-heading-button"
+      className={`vault-sidebar-search-result-heading vault-sidebar-search-result-heading-button${
+        active ? ' is-active' : ''
+      }`}
+      aria-current={active ? 'true' : undefined}
       onClick={() => onOpenResult(firstResult)}
       onMouseDown={(event) => {
         if (event.button !== 1) return
@@ -206,6 +216,8 @@ export function SidebarSearchPanel({
   resultGroups,
   showFolderNames = true,
   showAisleMatches = true,
+  activeNoteId = '',
+  activeAisleId = '',
   onQueryChange,
   onSelectSuggestion,
   onSelectSearchOption,
@@ -226,6 +238,9 @@ export function SidebarSearchPanel({
   const resultCountLabel = resultCount === 1 ? '1 search result' : `${resultCount} search results`
   const showSearchMenu = focused && query.trim().length <= 0
   const showSuggestions = focused && suggestions.length > 0
+  const isActiveGroup = (group: SidebarSearchResultGroup) => Boolean(activeNoteId && group.noteId === activeNoteId)
+  const isActiveResult = (result: SidebarSearchResult) =>
+    Boolean(activeNoteId && activeAisleId && result.noteId === activeNoteId && result.aisleId === activeAisleId)
 
   return (
     <section className={`vault-sidebar-search ${active ? 'is-active' : ''}`} aria-label="Vault search">
@@ -366,13 +381,18 @@ export function SidebarSearchPanel({
                 </div>
                 {section.groups.map((group) => (
                   <section key={group.key} className="vault-sidebar-search-result-group">
-                    <SearchResultGroupHeading group={group} onOpenResult={onOpenResult} />
+                    <SearchResultGroupHeading
+                      group={group}
+                      active={isActiveGroup(group)}
+                      onOpenResult={onOpenResult}
+                    />
                     {showAisleMatches
                       ? group.results.map((result) => (
                           <SearchResultButton
                             key={result.key}
                             group={group}
                             result={result}
+                            active={isActiveResult(result)}
                             onOpenResult={onOpenResult}
                           />
                         ))
@@ -387,6 +407,7 @@ export function SidebarSearchPanel({
                 <SearchResultGroupHeading
                   group={group}
                   showFolderPath={showFolderNames && !textOnlySearchActive}
+                  active={isActiveGroup(group)}
                   onOpenResult={onOpenResult}
                 />
                 {showAisleMatches
@@ -395,6 +416,7 @@ export function SidebarSearchPanel({
                         key={result.key}
                         group={group}
                         result={result}
+                        active={isActiveResult(result)}
                         onOpenResult={onOpenResult}
                       />
                     ))

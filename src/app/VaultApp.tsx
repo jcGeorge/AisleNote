@@ -3820,6 +3820,8 @@ export function VaultApp() {
   const pushAppToast = useCallback((message: string, tone?: ToastTone, durationMs?: number) => {
     pushAppToastRef.current(message, tone, durationMs)
   }, [])
+  const sidebarSearchVisible = sidebarSearchMode
+  const vaultTreeFilterQuery = sidebarSearchVisible ? query : ''
   const sidebarRevealLabel = useMemo(
     () => getVaultSidebarRevealLabel(
       typeof window !== 'undefined'
@@ -3933,7 +3935,7 @@ export function VaultApp() {
     const observer = new ResizeObserver(updateVaultTreeViewport)
     observer.observe(element)
     return () => observer.disconnect()
-  }, [query, sidebarSearchMode, state.ui.sidebarCollapsed, updateVaultTreeViewport])
+  }, [sidebarSearchMode, state.ui.sidebarCollapsed, updateVaultTreeViewport, vaultTreeFilterQuery])
 
   useEffect(() => {
     const clearZoomHudTimeout = () => {
@@ -4098,8 +4100,8 @@ export function VaultApp() {
     [collapsedFolderIds, state.vault.items],
   )
   const vaultTreeFlatRows = useMemo(
-    () => flattenVisibleVaultTreeRows(state.vault.items, collapsedFolderIds, query),
-    [collapsedFolderIds, query, state.vault.items],
+    () => flattenVisibleVaultTreeRows(state.vault.items, collapsedFolderIds, vaultTreeFilterQuery),
+    [collapsedFolderIds, vaultTreeFilterQuery, state.vault.items],
   )
   const useVirtualizedVaultTree = vaultTreeFlatRows.length > VAULT_TREE_VIRTUALIZATION_THRESHOLD
   const vaultTreeVirtualWindow = useMemo(() => {
@@ -4146,7 +4148,7 @@ export function VaultApp() {
       stateRef,
     ],
   )
-  const sidebarSearchNeedsFullIndexes = sidebarSearchMode || query.trim().length > 0
+  const sidebarSearchNeedsFullIndexes = sidebarSearchMode
   const tagAutocompleteFilterIndex = useMemo(
     () => buildNoteFilterIndex(vaultIndexContext.state, 'tags', [], vaultIndexContext),
     [vaultIndexContext],
@@ -4164,26 +4166,30 @@ export function VaultApp() {
   )
   const sidebarSearchSelectedTokens = parsedSidebarSearch.tokens
   const sidebarSearchSuggestions = useMemo(
-    () => getSidebarSearchSuggestions(query, sidebarSearchIndexes, sidebarSearchSelectedTokens),
-    [query, sidebarSearchIndexes, sidebarSearchSelectedTokens],
+    () =>
+      sidebarSearchMode
+        ? getSidebarSearchSuggestions(query, sidebarSearchIndexes, sidebarSearchSelectedTokens)
+        : [],
+    [query, sidebarSearchIndexes, sidebarSearchMode, sidebarSearchSelectedTokens],
   )
   const sidebarSearchResultGroups = useMemo(
     () =>
-      buildSidebarSearchResultGroups({
-        state: vaultIndexContext.state,
-        query,
-        filter: null,
-        indexes: sidebarSearchIndexes,
-        context: vaultIndexContext,
-      }),
-    [vaultIndexContext, query, sidebarSearchIndexes],
+      sidebarSearchMode
+        ? buildSidebarSearchResultGroups({
+            state: vaultIndexContext.state,
+            query,
+            filter: null,
+            indexes: sidebarSearchIndexes,
+            context: vaultIndexContext,
+          })
+        : [],
+    [vaultIndexContext, query, sidebarSearchIndexes, sidebarSearchMode],
   )
   const sidebarSearchMetadataActive =
     sidebarSearchSelectedTokens.length > 0 ||
     parsedSidebarSearch.frontmatterTerms.length > 0 ||
     parsedSidebarSearch.presenceTerms.length > 0
   const sidebarSearchActive = query.trim().length > 0
-  const sidebarSearchVisible = sidebarSearchMode || sidebarSearchActive
   const noteActionEntries = useMemo(() => {
     if (!noteActionPicker) return []
     const activeNoteId = activeVaultModel?.noteId ?? state.vault.activeNoteId
@@ -6065,9 +6071,9 @@ export function VaultApp() {
   }, [query, recordSidebarSearchHistory])
 
   const closeSidebarSearchMode = useCallback(() => {
-    clearSidebarSearch()
+    recordSidebarSearchHistory(query)
     setSidebarSearchMode(false)
-  }, [clearSidebarSearch])
+  }, [query, recordSidebarSearchHistory])
 
   const createNoteAt = useCallback((targetParentFolderId?: string | null, targetIndex?: number) => {
     const createdRenameRef: { current: PendingCreatedTreeRename | null } = { current: null }
@@ -9864,6 +9870,8 @@ export function VaultApp() {
             resultGroups={sidebarSearchResultGroups}
             showFolderNames={sidebarSearchDisplaySettings.showFolderNames}
             showAisleMatches={sidebarSearchDisplaySettings.showAisleMatches}
+            activeNoteId={activeModelIsScratchpad ? '' : state.vault.activeNoteId}
+            activeAisleId={activeModelIsScratchpad ? '' : renderedActiveAisleId}
             onQueryChange={updateSidebarSearchQuery}
             onSelectSuggestion={selectSidebarSearchSuggestion}
             onSelectSearchOption={selectSidebarSearchOption}
@@ -9872,7 +9880,7 @@ export function VaultApp() {
             onShowFolderNamesChange={setSidebarSearchShowFolderNames}
             onShowAisleMatchesChange={setSidebarSearchShowAisleMatches}
             onClear={clearSidebarSearch}
-            onClearButtonClick={closeSidebarSearchMode}
+            onClearButtonClick={clearSidebarSearch}
             onCloseMode={closeSidebarSearchMode}
             onOpenResult={openSidebarSearchResult}
           />
@@ -9918,7 +9926,7 @@ export function VaultApp() {
                           createdRenameItemId={pendingCreatedTreeRenameRef.current?.itemId ?? ''}
                           dropTarget={treeDropTarget}
                           collapsedFolderIds={collapsedFolderIds}
-                          query={query}
+                          query={vaultTreeFilterQuery}
                           renderChildren={false}
                           onSelectNote={selectSidebarTreeNote}
                           onOpenNoteRetained={openSidebarTreeNoteRetained}
@@ -9955,7 +9963,7 @@ export function VaultApp() {
                       createdRenameItemId={pendingCreatedTreeRenameRef.current?.itemId ?? ''}
                       dropTarget={treeDropTarget}
                       collapsedFolderIds={collapsedFolderIds}
-                      query={query}
+                      query={vaultTreeFilterQuery}
                       onSelectNote={selectSidebarTreeNote}
                       onOpenNoteRetained={openSidebarTreeNoteRetained}
                       onSelectFolder={selectSidebarTreeFolder}
