@@ -10,6 +10,26 @@ const TAB_BLOCK_OPEN_LINE_PATTERN = /^\s*<div\s+tab-block=(["'])([1-9]\d*)\1\s*>
 const TAB_BLOCK_CLOSE_LINE_PATTERN = /^\s*<\/div>\s*$/i
 const OPEN_SPAN_TAG_PATTERN = /<span\b[^>]*>/gi
 const CLOSE_SPAN_TAG_PATTERN = /<\/span\s*>/gi
+const INLINE_MARKDOWN_LINK_RE = /!?\[((?:\\.|[^\]\\])*)\]\((<[^>\n]*>|(?:\\.|[^)\\\n])*)\)/g
+const REDUNDANT_ESCAPED_PUNCTUATION = new Set([
+  ',',
+  '.',
+  ';',
+  ':',
+  '?',
+  '/',
+  "'",
+  '"',
+  '(',
+  ')',
+  '{',
+  '}',
+  '=',
+  '$',
+  '%',
+  '&',
+  '@',
+])
 
 export function getIndentPrefixLength(text: string): number {
   const match = text.match(INDENT_PREFIX_PATTERN)
@@ -393,6 +413,133 @@ export function normalizeEscapedAnnotationLineMarkers(markdown: string): string 
       segment.replace(/^([ \t\u00a0]*)\\-\\-(?=$|[ \t\u00a0])/, '$1--'),
     ),
   )
+}
+
+type TextRange = {
+  from: number
+  to: number
+}
+
+function getInlineCodeRanges(line: string): TextRange[] {
+  const ranges: TextRange[] = []
+  let index = 0
+  let codeStart: number | null = null
+  let codeDelimiter = ''
+
+  while (index < line.length) {
+    if (line[index] !== '`') {
+      index += 1
+      continue
+    }
+
+    let end = index + 1
+    while (end < line.length && line[end] === '`') end += 1
+    const delimiter = line.slice(index, end)
+
+    if (!codeDelimiter) {
+      codeStart = index
+      codeDelimiter = delimiter
+    } else if (delimiter.length === codeDelimiter.length) {
+      ranges.push({ from: codeStart ?? index, to: end })
+      codeStart = null
+      codeDelimiter = ''
+    }
+    index = end
+  }
+
+  if (codeStart !== null) ranges.push({ from: codeStart, to: line.length })
+  return ranges
+}
+
+function getMarkdownLinkTokenRanges(line: string): TextRange[] {
+  const ranges: TextRange[] = []
+  INLINE_MARKDOWN_LINK_RE.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = INLINE_MARKDOWN_LINK_RE.exec(line)) !== null) {
+    ranges.push({ from: match.index, to: match.index + match[0].length })
+  }
+  return ranges
+}
+
+function positionIsInsideRange(position: number, ranges: TextRange[]): boolean {
+  return ranges.some((range) => position >= range.from && position < range.to)
+}
+
+function isEscapedOrderedListMarker(line: string, slashIndex: number, marker: '.' | ')'): boolean {
+  if (line[slashIndex + 1] !== marker || !/[ \t]/.test(line[slashIndex + 2] ?? '')) return false
+  return /^[ \t]{0,3}\d+$/.test(line.slice(0, slashIndex))
+}
+
+function isEscapedLineStartListMarker(line: string, slashIndex: number, marker: '-' | '+'): boolean {
+  if (line[slashIndex + 1] !== marker || !/[ \t]/.test(line[slashIndex + 2] ?? '')) return false
+  return /^[ \t]{0,3}$/.test(line.slice(0, slashIndex))
+}
+
+function isEscapedLineStartDash(line: string, slashIndex: number): boolean {
+  return line[slashIndex + 1] === '-' && /^[ \t]{0,3}$/.test(line.slice(0, slashIndex))
+}
+
+function isEscapedWordUnderscore(line: string, slashIndex: number): boolean {
+  if (line[slashIndex + 1] !== '_') return false
+  return /[A-Za-z0-9]/.test(line[slashIndex - 1] ?? '') && /[A-Za-z0-9]/.test(line[slashIndex + 2] ?? '')
+}
+
+function isEscapedStandaloneTilde(line: string, slashIndex: number): boolean {
+  if (line[slashIndex + 1] !== '~') return false
+  return line[slashIndex - 1] !== '~' && line[slashIndex + 2] !== '~'
+}
+
+function shouldRemoveEscapedPunctuation(line: string, slashIndex: number): boolean {
+  const escaped = line[slashIndex + 1] ?? ''
+  if (REDUNDANT_ESCAPED_PUNCTUATION.has(escaped)) {
+    if ((escaped === '.' || escaped === ')') && isEscapedOrderedListMarker(line, slashIndex, escaped)) return false
+    return true
+  }
+
+  if (escaped === '-') {
+    if (isEscapedLineStartDash(line, slashIndex)) return false
+    return true
+  }
+
+  if (escaped === '+') return !isEscapedLineStartListMarker(line, slashIndex, escaped)
+  if (escaped === '_') return isEscapedWordUnderscore(line, slashIndex)
+  if (escaped === '~') return isEscapedStandaloneTilde(line, slashIndex)
+  if (escaped === '!') return line[slashIndex + 2] !== '['
+
+  return false
+}
+
+function normalizeRedundantMarkdownEscapesInLine(line: string): string {
+  const protectedRanges = [
+    ...getInlineCodeRanges(line),
+    ...getMarkdownLinkTokenRanges(line),
+  ]
+  let output = ''
+  let index = 0
+
+  while (index < line.length) {
+    const character = line[index]
+    if (
+      character === '\\' &&
+      index + 1 < line.length &&
+      !positionIsInsideRange(index, protectedRanges) &&
+      shouldRemoveEscapedPunctuation(line, index)
+    ) {
+      output += line[index + 1]
+      index += 2
+      continue
+    }
+
+    output += character
+    index += 1
+  }
+
+  return output
+}
+
+// Explicit import-repair helper only; do not wire this into normal persistence.
+export function normalizeRedundantMarkdownEscapes(markdown: string): string {
+  return transformOutsideFencedCode(String(markdown ?? ''), normalizeRedundantMarkdownEscapesInLine)
 }
 
 function escapeHtmlText(value: string): string {

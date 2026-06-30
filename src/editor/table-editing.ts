@@ -460,7 +460,7 @@ export function getTableControlsOverlayPlacement(
   viewportWidth: number,
   viewportHeight: number,
 ): TableControlsOverlayState {
-  const preferredColumnTop = tableRect.top - TABLE_CONTROL_GAP - TABLE_CONTROL_BUTTON_SIZE
+  const preferredColumnTop = rectBottom(tableRect) + TABLE_CONTROL_GAP
   const preferredRowLeft = rectRight(tableRect) + TABLE_CONTROL_GAP
   const columnLeft = clamp(
     rectRight(tableRect) - TABLE_COLUMN_CONTROL_WIDTH,
@@ -468,7 +468,9 @@ export function getTableControlsOverlayPlacement(
     viewportWidth - TABLE_CONTROL_VIEWPORT_PADDING - TABLE_COLUMN_CONTROL_WIDTH,
   )
   const columnTop = clamp(
-    preferredColumnTop >= TABLE_CONTROL_VIEWPORT_PADDING ? preferredColumnTop : rectBottom(tableRect) + TABLE_CONTROL_GAP,
+    preferredColumnTop + TABLE_CONTROL_BUTTON_SIZE <= viewportHeight - TABLE_CONTROL_VIEWPORT_PADDING
+      ? preferredColumnTop
+      : tableRect.top - TABLE_CONTROL_GAP - TABLE_CONTROL_BUTTON_SIZE,
     TABLE_CONTROL_VIEWPORT_PADDING,
     viewportHeight - TABLE_CONTROL_VIEWPORT_PADDING - TABLE_CONTROL_BUTTON_SIZE,
   )
@@ -480,7 +482,7 @@ export function getTableControlsOverlayPlacement(
     viewportWidth - TABLE_CONTROL_VIEWPORT_PADDING - TABLE_CONTROL_BUTTON_SIZE,
   )
   const rowTop = clamp(
-    rectBottom(tableRect) - TABLE_ROW_CONTROL_HEIGHT,
+    tableRect.top,
     TABLE_CONTROL_VIEWPORT_PADDING,
     viewportHeight - TABLE_CONTROL_VIEWPORT_PADDING - TABLE_ROW_CONTROL_HEIGHT,
   )

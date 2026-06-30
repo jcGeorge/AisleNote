@@ -128,6 +128,17 @@ const newlineOperationSchema = new Schema({
       },
       toDOM: () => ['ol', 0],
     },
+    blockQuote: {
+      group: 'block',
+      content: 'block+',
+      toDOM: () => ['blockquote', 0],
+    },
+    codeBlock: {
+      group: 'block',
+      content: 'text*',
+      code: true,
+      toDOM: () => ['pre', ['code', 0]],
+    },
     listItem: {
       content: 'paragraph block*',
       attrs: {
@@ -178,6 +189,14 @@ function orderedListNode(texts: string[]) {
     { order: 1 },
     texts.map((text) => listItemNode(text)),
   )
+}
+
+function blockQuoteNode(texts: string[]) {
+  return newlineOperationSchema.nodes.blockQuote.create(null, texts.map((text) => paragraphNode(text)))
+}
+
+function codeBlockNode(text: string) {
+  return newlineOperationSchema.nodes.codeBlock.create(null, text ? newlineOperationSchema.text(text) : undefined)
 }
 
 function createEditorForDoc(doc: any, selectionFrom: number, selectionTo: number) {
@@ -505,6 +524,39 @@ describe('editor newline operations', () => {
     expect(listTexts(view.state.doc.child(1))).toEqual([''])
     expect(view.state.doc.child(1).child(0).attrs).toMatchObject({ task: true, checked: false })
     expect(listTexts(view.state.doc.child(2))).toEqual(['three'])
+  })
+
+  it('converts a selected code block row to a blockquote without deleting rows below it', () => {
+    const doc = newlineOperationSchema.nodes.doc.create(null, [
+      codeBlockNode('keep\ntarget\nbelow'),
+      paragraphNode('after'),
+    ])
+    const ranges = getEditorTextLineRanges({ state: { doc } })
+    const { editor, view } = createEditorForDoc(doc, ranges[1].start, ranges[1].end)
+
+    expect(applyEditorNewlineOperation(editor as any, 'blockQuote')).toEqual({ handled: true })
+
+    expect(docChildTypes(view.state.doc)).toEqual(['codeBlock', 'blockQuote', 'codeBlock', 'paragraph'])
+    expect(view.state.doc.child(0).textContent).toBe('keep')
+    expect(view.state.doc.child(1).textContent).toBe('target')
+    expect(view.state.doc.child(2).textContent).toBe('below')
+    expect(view.state.doc.child(3).textContent).toBe('after')
+  })
+
+  it('removes blockquote formatting from a selected quoted row without deleting quoted rows below it', () => {
+    const doc = newlineOperationSchema.nodes.doc.create(null, [
+      blockQuoteNode(['target', 'below']),
+      paragraphNode('after'),
+    ])
+    const ranges = getEditorTextLineRanges({ state: { doc } })
+    const { editor, view } = createEditorForDoc(doc, ranges[0].start, ranges[0].end)
+
+    expect(applyEditorNewlineOperation(editor as any, 'blockQuote')).toEqual({ handled: true })
+
+    expect(docChildTypes(view.state.doc)).toEqual(['paragraph', 'blockQuote', 'paragraph'])
+    expect(view.state.doc.child(0).textContent).toBe('target')
+    expect(view.state.doc.child(1).textContent).toBe('below')
+    expect(view.state.doc.child(2).textContent).toBe('after')
   })
 
   it('does not replace a non-empty paragraph', () => {

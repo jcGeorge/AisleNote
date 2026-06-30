@@ -526,14 +526,14 @@ describe('table editing controls', () => {
     expect(getCellAlign(table, 0, 0)).toBeNull()
   })
 
-  it('places row and column controls on the table edge', () => {
+  it('places row controls top-right and column controls bottom-right', () => {
     const tableRect = { top: 80, left: 120, width: 220, height: 72 }
 
     expect(getTableControlsOverlayPlacement(tableRect, 1000, 800)).toMatchObject({
       visible: true,
-      columnTop: 50,
+      columnTop: 156,
       columnLeft: 284,
-      rowTop: 96,
+      rowTop: 80,
       rowLeft: 344,
     })
   })
@@ -557,12 +557,13 @@ describe('table editing controls', () => {
     )
   })
 
-  it('keeps controls outside the table when there is no room above or right', () => {
+  it('keeps controls outside the table when there is no room right', () => {
     const tableRect = { top: 18, left: 60, width: 72, height: 72 }
 
     expect(getTableControlsOverlayPlacement(tableRect, 150, 240)).toMatchObject({
       visible: true,
       columnTop: 94,
+      rowTop: 18,
       rowLeft: 30,
     })
   })

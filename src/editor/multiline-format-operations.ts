@@ -1053,6 +1053,10 @@ export function buildSelectionBlockQuoteOperationPlan(view: any): SelectionOpera
   return buildSelectionBlockFormatOperationPlan(view, 'blockQuote')
 }
 
+export function buildSelectionCodeBlockOperationPlan(view: any): SelectionOperationPlan | null {
+  return buildSelectionBlockFormatOperationPlan(view, 'codeBlock')
+}
+
 export function buildSelectionRemoveBlockQuoteOperationPlan(view: any): SelectionOperationPlan | null {
   const context = getBlockFormatContextsForSelection(view)
   if (!context) return null

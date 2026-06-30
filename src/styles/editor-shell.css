@@ -2623,12 +2623,6 @@
   cursor: grabbing;
 }
 
-.table-reorder-pending .table-tools,
-.table-reorder-active .table-tools {
-  opacity: 0;
-  pointer-events: none;
-}
-
 .list-reorder-handle {
   position: fixed;
   z-index: 2140;
@@ -2687,14 +2681,6 @@
 .table-tool-btn:hover,
 .table-tool-btn:focus-visible {
   background: var(--image-tool-btn-hover-bg);
-}
-
-.table-controls-overlay-layer:has(.table-selector-column-segment:hover) .table-tools-columns,
-.table-controls-overlay-layer:has(.table-selector-column-segment:focus-visible) .table-tools-columns,
-.table-controls-overlay-layer:has(.table-selector-row-segment:hover) .table-tools-rows,
-.table-controls-overlay-layer:has(.table-selector-row-segment:focus-visible) .table-tools-rows {
-  opacity: 0;
-  pointer-events: none;
 }
 
 .image-resize-handle {
