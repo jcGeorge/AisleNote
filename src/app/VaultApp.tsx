@@ -4074,7 +4074,8 @@ export function VaultApp() {
     if (!targetNoteId) return
     setFrontmatterModalSessions((currentSessions) => {
       if (!currentSessions[targetNoteId]) return currentSessions
-      const { [targetNoteId]: _removedSession, ...nextSessions } = currentSessions
+      const nextSessions = { ...currentSessions }
+      delete nextSessions[targetNoteId]
       return nextSessions
     })
   }, [activeModel])
@@ -7471,6 +7472,7 @@ export function VaultApp() {
   const copyFrontmatterFromModal = useCallback(
     async (modal: VaultFrontmatterModalState): Promise<string | null> => {
       const startedAt = getVaultAppPerfNow()
+      /* eslint-disable no-useless-assignment -- resultStatus is recorded from finally after early returns. */
       let resultStatus = 'copied'
       let warningCount = 0
       try {
@@ -7530,6 +7532,7 @@ export function VaultApp() {
           0,
         )
       }
+      /* eslint-enable no-useless-assignment */
     },
     [stateRef, updateFrontmatterModalSession],
   )
@@ -7537,6 +7540,7 @@ export function VaultApp() {
   const importFrontmatterTextToModal = useCallback(
     (modal: VaultFrontmatterModalState, raw: string): VaultFrontmatterModalImportResult | string => {
       const startedAt = getVaultAppPerfNow()
+      /* eslint-disable no-useless-assignment -- resultStatus is recorded from finally after early returns. */
       let resultStatus = 'empty'
       let importedRowCount = 0
       try {
@@ -7592,6 +7596,7 @@ export function VaultApp() {
           0,
         )
       }
+      /* eslint-enable no-useless-assignment */
     },
     [stateRef],
   )

@@ -30,6 +30,24 @@ function textBlock(typeName: string, textContent = '', extra: Record<string, unk
   }
 }
 
+function parentBlock(typeName: string, children: any[], extra: Record<string, unknown> = {}) {
+  return {
+    type: { name: typeName },
+    textContent: children.map((child) => child.textContent ?? '').join(''),
+    childCount: children.length,
+    nodeSize: children.length + 2,
+    child: (index: number) => children[index],
+    forEach: (visitor: (node: any, offset: number) => void) => {
+      let offset = 0
+      children.forEach((child) => {
+        visitor(child, offset)
+        offset += typeof child.nodeSize === 'number' ? child.nodeSize : 1
+      })
+    },
+    ...extra,
+  }
+}
+
 function fakeEditorWithBlocks(blocks: any[]) {
   const deleteRange = vi.fn(function deleteRange(from: number, to: number) {
     tr.deletedRanges.push([from, to])
@@ -163,6 +181,28 @@ describe('editor markdown display helpers', () => {
     } as unknown as Editor
 
     expect(getEditorMarkdownForPersistence(editor)).toBe('==text==\n\nplain\u2060\u2003\u2003indent')
+  })
+
+  it('preserves live blockquote paragraph spacing when Toast serializes quoted text compactly', () => {
+    const quotedText = '5    The altar was also split apart, and the ashes poured out from the altar.'
+    const { editor } = fakeEditorWithBlocks([
+      parentBlock('blockQuote', [textBlock('paragraph', quotedText)]),
+      textBlock('paragraph'),
+      textBlock('paragraph', '-- 1 Kings 13:1-10'),
+    ])
+    Object.assign(editor, {
+      getMarkdown: vi.fn(() => [
+        '> 5 The altar was also split apart, and the ashes poured out from the altar.',
+        '',
+        String.raw`\-\- 1 Kings 13:1\-10`,
+      ].join('\n')),
+    })
+
+    expect(getEditorMarkdownForPersistence(editor)).toBe([
+      `> ${quotedText}`,
+      '',
+      '-- 1 Kings 13:1-10',
+    ].join('\n'))
   })
 
   it('uses tab-block wrappers for persisted block indents and internal tokens for display', () => {

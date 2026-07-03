@@ -93,7 +93,7 @@ function serializeCell(cell: any | null): TableSelectionClipboardCell {
   try {
     node = typeof cell.toJSON === 'function' ? cell.toJSON() : null
   } catch {
-    node = null
+    // Leave node null when ProseMirror serialization fails.
   }
   return {
     node,

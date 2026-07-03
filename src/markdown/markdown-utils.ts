@@ -398,7 +398,8 @@ export function normalizeMarkdownForPersistence(markdown: string): string {
   const internalBlockIndents = decodeBlockIndentHtmlForInternalMarkdown(spansUnwrapped)
   const escapedLinksNormalized = normalizeEscapedMarkdownLinks(internalBlockIndents)
   const annotationMarkersNormalized = normalizeEscapedAnnotationLineMarkers(escapedLinksNormalized)
-  const blankNormalized = normalizeBlankLineRuns(annotationMarkersNormalized)
+  const redundantEscapesNormalized = normalizeRedundantMarkdownEscapes(annotationMarkersNormalized)
+  const blankNormalized = normalizeBlankLineRuns(redundantEscapesNormalized)
   const repaired = repairBrokenMarkdownTables(repairBrokenDataImageMarkdown(blankNormalized))
   const highlighted = normalizeHighlightMarkdownForPersistence(repaired)
   const normalizedInternalIndents = normalizeBlankLineRuns(
@@ -479,6 +480,16 @@ function isEscapedLineStartDash(line: string, slashIndex: number): boolean {
   return line[slashIndex + 1] === '-' && /^[ \t]{0,3}$/.test(line.slice(0, slashIndex))
 }
 
+function isEscapedAnnotationDashPrefix(line: string, slashIndex: number): boolean {
+  return (
+    line[slashIndex + 1] === '-' &&
+    line[slashIndex + 2] === '\\' &&
+    line[slashIndex + 3] === '-' &&
+    /[ \t]/.test(line[slashIndex + 4] ?? '') &&
+    /^[ \t]{0,3}$/.test(line.slice(0, slashIndex))
+  )
+}
+
 function isEscapedWordUnderscore(line: string, slashIndex: number): boolean {
   if (line[slashIndex + 1] !== '_') return false
   return /[A-Za-z0-9]/.test(line[slashIndex - 1] ?? '') && /[A-Za-z0-9]/.test(line[slashIndex + 2] ?? '')
@@ -497,6 +508,7 @@ function shouldRemoveEscapedPunctuation(line: string, slashIndex: number): boole
   }
 
   if (escaped === '-') {
+    if (isEscapedAnnotationDashPrefix(line, slashIndex)) return true
     if (isEscapedLineStartDash(line, slashIndex)) return false
     return true
   }

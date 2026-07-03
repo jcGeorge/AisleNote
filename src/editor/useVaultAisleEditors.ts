@@ -778,7 +778,7 @@ export function useVaultAisleEditors({
       !meta.displayRestoreReady
     const shouldReadLiveMarkdown =
       !useCachedProgrammaticMarkdown &&
-      (meta.aisleId === activeEditorAisleIdRef.current || meta.userEditedSinceProgrammaticUpdate)
+      meta.userEditedSinceProgrammaticUpdate
     const previousMarkdown = meta.markdown
     const markdown = shouldReadLiveMarkdown ? getEditorMarkdownForPersistence(meta.editor) : meta.markdown
     let revision = meta.revision
@@ -954,6 +954,7 @@ export function useVaultAisleEditors({
     ) => {
       const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
       const useCachedMarkdown =
+        (source !== 'user' && !meta.userEditedSinceProgrammaticUpdate) ||
         (source === 'lifecycle' && !meta.displayRestoreReady) ||
         (
           source === 'programmatic' &&
@@ -1603,11 +1604,13 @@ export function useVaultAisleEditors({
             change: () => {
               const meta = editorMetaRef.current.get(editorKey)
               if (!meta || !editor) return
-              const source =
-                meta.programmaticMarkdownUpdatePending && !meta.userEditedSinceProgrammaticUpdate
-                  ? 'programmatic'
-                  : 'user'
-              commitEditorMarkdown(meta, editor, source)
+              if (!meta.userEditedSinceProgrammaticUpdate) {
+                scheduleToolbarFormatStateSync()
+                notifyNoteMentionQueryChange(editor)
+                onTagAutocompleteQueryChangeRef.current?.()
+                return
+              }
+              commitEditorMarkdown(meta, editor, 'user')
               scheduleToolbarFormatStateSync()
               notifyNoteMentionQueryChange(editor)
               onTagAutocompleteQueryChangeRef.current?.()

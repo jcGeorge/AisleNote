@@ -228,12 +228,10 @@ export const clearAisleFrontmatterInState = (previous: AppState, aisleBodyIds: I
     }
 
     changed = true
-    const {
-      frontmatterMeta: _frontmatterMeta,
-      frontmatterParseError: _frontmatterParseError,
-      frontmatterRaw: _frontmatterRaw,
-      ...bodyWithoutFrontmatterParseFields
-    } = body
+    const bodyWithoutFrontmatterParseFields = { ...body }
+    delete bodyWithoutFrontmatterParseFields.frontmatterMeta
+    delete bodyWithoutFrontmatterParseFields.frontmatterParseError
+    delete bodyWithoutFrontmatterParseFields.frontmatterRaw
     return {
       ...bodyWithoutFrontmatterParseFields,
       frontmatter: null,

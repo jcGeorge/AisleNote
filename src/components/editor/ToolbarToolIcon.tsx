@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import * as React from 'react'
 import type { ToolbarToolId } from '../../types/app'
 import type { GeneralIconId } from '../../icons/app-icons'

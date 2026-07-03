@@ -438,22 +438,24 @@ describe('markdown WYSIWYG blank line preservation', () => {
     expect(normalizeMarkdownForPersistence(markdown)).toBe(normalized)
   })
 
-  it('can remove redundant imported Toast punctuation escapes outside persistence', () => {
+  it('removes redundant Toast punctuation escapes during persistence', () => {
     const escaped = [
       String.raw`-- Philipp Jakob Spener\, Pia Desideria`,
+      String.raw`\-\- 1 Kings 13:1\-10`,
       String.raw`At [13:02](https://www.youtube.com/watch?v=WwL2VD2GVFk&t=782s) \- 20 with \(Theodorus Frelinghuysen\)\.`,
       String.raw`https://example.com/pastor\_steven\_anderson/soulwinning/getting\_started\.mp3`,
       String.raw`The estimate was \~three years later\.`,
     ].join('\n')
     const normalized = [
       '-- Philipp Jakob Spener, Pia Desideria',
+      '-- 1 Kings 13:1-10',
       'At [13:02](https://www.youtube.com/watch?v=WwL2VD2GVFk&t=782s) - 20 with (Theodorus Frelinghuysen).',
       'https://example.com/pastor_steven_anderson/soulwinning/getting_started.mp3',
       'The estimate was ~three years later.',
     ].join('\n')
 
     expect(normalizeRedundantMarkdownEscapes(escaped)).toBe(normalized)
-    expect(normalizeMarkdownForPersistence(escaped)).toBe(escaped)
+    expect(normalizeMarkdownForPersistence(escaped)).toBe(normalized)
   })
 
   it('keeps escapes that protect real Markdown structure', () => {
