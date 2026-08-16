@@ -5,7 +5,8 @@
   "type": "module",
   "main": "electron/main.mjs",
   "scripts": {
-    "dev": "kill-port 5173 && vite --port 5173 --strictPort",
+    "dev": "kill-port 5173 && npm run dev:vite",
+    "dev:vite": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "vitest run src/state/vault.test.ts src/state/default-app-state.test.ts src/theme/vault-themes.test.ts src/filters/sidebar-search.test.ts src/app/vault-editor-persistence.test.ts src/app/VaultApp-source.test.ts src/storage/usePersistentAppState-source.test.ts src/storage/local-preferences.test.ts src/editor/useVaultAisleEditors-source.test.ts electron/storage-watcher.test.mjs electron/vault-library.test.mjs electron/ipc-storage.test.mjs electron/app-state-storage.schema2.test.mjs",
@@ -13,7 +14,7 @@
     "electron": "node scripts/start-electron.mjs",
     "electron:mac": "node scripts/start-electron.mjs",
     "electron:windows": "node scripts/start-electron.mjs",
-    "electron:dev": "concurrently -k \"npm:dev\" \"wait-on http://127.0.0.1:5173 && node scripts/start-electron.mjs --dev\"",
+    "electron:dev": "kill-port 5173 && concurrently -k \"npm:dev:vite\" \"wait-on http://127.0.0.1:5173 && node scripts/start-electron.mjs --dev\"",
     "electron:dev:mac": "npm run electron:dev",
     "electron:dev:windows": "npm run electron:dev",
     "electron:build": "npm run build:electron",
@@ -36,6 +37,7 @@
     "start:mac": "npm run build:electron:mac",
     "start:windows": "npm run build:electron:windows",
     "dev:electron": "npm run electron:dev",
+    "dev:windows": "npm run electron:dev:windows",
     "dev:electron:mac": "npm run electron:dev:mac",
     "dev:electron:windows": "npm run electron:dev:windows",
     "editor:benchmark": "node scripts/run-editor-benchmark.mjs",
@@ -129,7 +131,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "concurrently": "^9.2.1",
-    "electron": "^38.7.1",
+    "electron": "^43.4.0",
     "electron-builder": "^26.15.0",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -142,5 +144,10 @@
     "vite": "^8.0.10",
     "vitest": "^3.2.4",
     "wait-on": "^9.0.3"
+  },
+  "overrides": {
+    "@toast-ui/editor": {
+      "dompurify": "3.4.13"
+    }
   }
 }

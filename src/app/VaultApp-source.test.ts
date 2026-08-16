@@ -1,10 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-const source = readFileSync(new URL('./VaultApp.tsx', import.meta.url), 'utf8')
-const appCss = readFileSync(new URL('../App.css', import.meta.url), 'utf8')
-const baseCss = readFileSync(new URL('../styles/base.css', import.meta.url), 'utf8')
-const toastsCss = readFileSync(new URL('../styles/toasts.css', import.meta.url), 'utf8')
+function readSourceFile(path: string) {
+  return readFileSync(new URL(path, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+}
+
+const source = readSourceFile('./VaultApp.tsx')
+const appCss = readSourceFile('../App.css')
+const baseCss = readSourceFile('../styles/base.css')
+const toastsCss = readSourceFile('../styles/toasts.css')
 
 describe('VaultApp editable asset tools', () => {
   it('closes editable asset tool overlays only when the active note changes', () => {

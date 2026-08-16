@@ -37,7 +37,8 @@ When changing storage behavior, add or update a round-trip test before editing s
 
 ```sh
 npm run dev
-npm run electron:dev
+npm run dev:electron
+npm run dev:windows
 npm run start:mac
 npm run start:windows
 npm run package:win
@@ -49,7 +50,7 @@ npm test
 npm run build
 ```
 
-`npm run start:mac` and `npm run start:windows` both build the app and launch Electron through the cross-platform Node launcher in `scripts/start-electron.mjs`.
+`npm run dev:electron` starts both Vite and Electron and is the recommended development command on every platform. `npm run dev:windows` is a Windows-friendly alias for the same workflow. `npm run start:mac` and `npm run start:windows` build the app before launching Electron through the cross-platform Node launcher in `scripts/start-electron.mjs`.
 
 ## Windows Portable Build
 

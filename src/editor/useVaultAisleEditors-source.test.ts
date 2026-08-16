@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-const source = readFileSync(new URL('./useVaultAisleEditors.ts', import.meta.url), 'utf8')
+const source = readFileSync(new URL('./useVaultAisleEditors.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 
 describe('vault aisle editor task checkbox wiring', () => {
   it('keeps raw inline spans out of the Toast UI editor setup', () => {

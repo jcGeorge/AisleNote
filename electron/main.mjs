@@ -478,7 +478,6 @@ function createWindow(storageSession) {
 
   if (devServerUrl) {
     window.loadURL(devServerUrl)
-    window.webContents.openDevTools({ mode: 'detach' })
   } else {
     window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   }
