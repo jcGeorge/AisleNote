@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "kill-port 5173 && npm run dev:vite",
     "dev:vite": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev:linux": "toolbox run bash -lc 'cd \"$PWD\" && npm run electron:dev'",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "vitest run src/state/vault.test.ts src/state/default-app-state.test.ts src/theme/vault-themes.test.ts src/filters/sidebar-search.test.ts src/app/vault-editor-persistence.test.ts src/app/VaultApp-source.test.ts src/storage/usePersistentAppState-source.test.ts src/storage/local-preferences.test.ts src/editor/useVaultAisleEditors-source.test.ts electron/storage-watcher.test.mjs electron/vault-library.test.mjs electron/ipc-storage.test.mjs electron/app-state-storage.schema2.test.mjs",
