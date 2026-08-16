@@ -195,13 +195,36 @@ function createParagraphNode(schema: any, text: string): ProseMirrorNode | null 
   return paragraph.create(null, text ? schema.text(text) : undefined)
 }
 
+function isSelectionInsideCodeBlock(view: any): boolean {
+  const selection = view?.state?.selection
+  if (selection?.node?.type?.name === 'codeBlock') return true
+  const $from = selection?.$from
+  if (!$from) return false
+  for (let depth = $from.depth; depth >= 0; depth -= 1) {
+    if ($from.node(depth)?.type?.name === 'codeBlock') return true
+  }
+  return false
+}
+
 export function insertVisualClipboardTextIntoView(view: any | null, text: string): boolean {
   const normalized = normalizeVisualClipboardText(text)
   if (!view?.state?.schema || !view?.dispatch || !view.state?.tr) return false
   if (normalized.length === 0) return false
 
   try {
-    if (!normalized.includes('\n')) {
+    // A code block can contain newlines directly. Replacing its selection with
+    // paragraph nodes instead splits the paste out below the block.
+    if (view.state.selection?.node?.type?.name === 'codeBlock') {
+      const codeBlock = view.state.schema.nodes.codeBlock
+      if (!codeBlock) return false
+      view.dispatch(view.state.tr.replaceSelectionWith(codeBlock.create(
+        view.state.selection.node.attrs,
+        view.state.schema.text(normalized),
+      )).scrollIntoView())
+      view.focus?.()
+      return true
+    }
+    if (!normalized.includes('\n') || isSelectionInsideCodeBlock(view)) {
       view.dispatch(view.state.tr.insertText(normalized).scrollIntoView())
       view.focus?.()
       return true
@@ -586,11 +609,16 @@ export function insertClipboardHtmlIntoView(view: any | null, html: string): boo
 }
 
 export function insertClipboardDataIntoView(view: any | null, dataTransfer: DataTransferReadLike): boolean {
+  // Code blocks are literal text. Do this before processing app-private
+  // Markdown, HTML, or table clipboard formats, all of which can otherwise
+  // replace the surrounding code block with ordinary document blocks.
+  const text = dataTransfer?.getData('text/plain') ?? ''
+  if (isSelectionInsideCodeBlock(view) && text && insertVisualClipboardTextIntoView(view, text)) return true
+
   const tablePayload = readTableSelectionClipboardPayloadFromDataTransfer(dataTransfer)
   if (tablePayload && insertTableSelectionClipboardPayloadIntoView(view, tablePayload)) return true
   const tabsMarkdown = readAisleNoteMarkdownFromDataTransfer(dataTransfer)
   if (tabsMarkdown) return insertVisualClipboardMarkdownIntoView(view, tabsMarkdown)
-  const text = dataTransfer?.getData('text/plain') ?? ''
   const singleLineText = getSingleLinePlainClipboardText(text)
   if (singleLineText !== null && insertVisualClipboardTextIntoView(view, singleLineText)) return true
   if (isLayoutSensitiveClipboardText(text) && insertVisualClipboardTextIntoView(view, text)) return true

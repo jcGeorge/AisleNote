@@ -1,5 +1,5 @@
 import { Schema } from 'prosemirror-model'
-import { EditorState, TextSelection } from 'prosemirror-state'
+import { EditorState, NodeSelection, TextSelection } from 'prosemirror-state'
 import { describe, expect, it, vi } from 'vitest'
 import {
   insertClipboardDataIntoView,
@@ -24,6 +24,12 @@ const schema = new Schema({
       attrs: { level: { default: 1 } },
       toDOM: (node) => [`h${node.attrs.level}`, 0],
     },
+    codeBlock: {
+      group: 'block',
+      content: 'text*',
+      code: true,
+      toDOM: () => ['pre', ['code', 0]],
+    },
     image: {
       inline: true,
       group: 'inline',
@@ -45,6 +51,10 @@ const schema = new Schema({
 
 function paragraph(text = '') {
   return schema.nodes.paragraph.create(null, text ? schema.text(text) : undefined)
+}
+
+function codeBlock(text = '') {
+  return schema.nodes.codeBlock.create(null, text ? schema.text(text) : undefined)
 }
 
 function createView(blocks: any[], anchor = 1, head = anchor) {
@@ -208,6 +218,56 @@ describe('visual clipboard helpers', () => {
     expect(insertClipboardDataIntoView(view, data)).toBe(true)
     expect(view.state.doc.childCount).toBe(1)
     expect(view.state.doc.child(0).textContent).toBe('Hello world')
+  })
+
+  it('pastes multiline plain text inside the current code block', () => {
+    const view = createView([codeBlock('const value = 1;')], 1 + 'const '.length)
+    const data = {
+      getData: (type: string) => type === 'text/plain' ? 'answer = 42;\nconsole.log(answer);' : '',
+    }
+
+    expect(insertClipboardDataIntoView(view, data)).toBe(true)
+    expect(view.state.doc.childCount).toBe(1)
+    expect(view.state.doc.child(0).type.name).toBe('codeBlock')
+    expect(view.state.doc.child(0).textContent).toBe('const answer = 42;\nconsole.log(answer);value = 1;')
+  })
+
+  it('treats app-private clipboard content as literal text inside a code block', () => {
+    const view = createView([codeBlock('')])
+    const data = {
+      getData: (type: string) => {
+        if (type === 'text/plain') return 'const answer = 42;\nconsole.log(answer);'
+        if (type === AISLENOTE_MARKDOWN_CLIPBOARD_MIME) return '```\nconst answer = 42;\nconsole.log(answer);\n```'
+        return ''
+      },
+    }
+
+    expect(insertClipboardDataIntoView(view, data)).toBe(true)
+    expect(view.state.doc.childCount).toBe(1)
+    expect(view.state.doc.child(0).type.name).toBe('codeBlock')
+    expect(view.state.doc.child(0).textContent).toBe('const answer = 42;\nconsole.log(answer);')
+  })
+
+  it('preserves a selected code block when pasting text', () => {
+    const doc = schema.nodes.doc.create(null, [codeBlock('old')])
+    let state = EditorState.create({ doc, selection: NodeSelection.create(doc, 0) })
+    const view = {
+      get state() {
+        return state
+      },
+      dispatch: vi.fn((transaction) => {
+        state = state.apply(transaction)
+      }),
+      focus: vi.fn(),
+    }
+    const data = {
+      getData: (type: string) => type === 'text/plain' ? 'new\ncode' : '',
+    }
+
+    expect(insertClipboardDataIntoView(view, data)).toBe(true)
+    expect(view.state.doc.childCount).toBe(1)
+    expect(view.state.doc.child(0).type.name).toBe('codeBlock')
+    expect(view.state.doc.child(0).textContent).toBe('new\ncode')
   })
 
   it('detects plain text that needs exact layout preservation', () => {
