@@ -170,6 +170,10 @@ function hasFrontmatterData(frontmatter: FrontmatterData | null | undefined): bo
   return Boolean(frontmatter && Object.keys(frontmatter).length > 0)
 }
 
+export function hasFrontmatterDataForAisle(state: AppState, noteBodyId: string, aisleBodyId: string): boolean {
+  return hasFrontmatterData(getTargetFrontmatter(state, noteBodyId, aisleBodyId))
+}
+
 function inferFrontmatterFieldType(value: unknown): FrontmatterFieldType {
   if (typeof value === 'number') return 'number'
   if (typeof value === 'boolean') return 'boolean'

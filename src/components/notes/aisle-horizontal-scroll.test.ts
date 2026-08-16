@@ -69,6 +69,48 @@ describe('horizontal aisle reveal geometry', () => {
     ).toBe(120)
   })
 
+  it('keeps a fully visible pane steady when focused alignment would otherwise move right', () => {
+    expect(
+      getScrollLeftToRevealHorizontalPane({
+        currentScrollLeft: 120,
+        viewportWidth: 500,
+        scrollWidth: 1000,
+        paneLeft: 180,
+        paneRight: 420,
+        alignmentMargin: 24,
+        alignWhenVisible: true,
+      }),
+    ).toBe(120)
+  })
+
+  it('keeps a fully visible pane steady when focused alignment would otherwise move left', () => {
+    expect(
+      getScrollLeftToRevealHorizontalPane({
+        currentScrollLeft: 156,
+        viewportWidth: 500,
+        scrollWidth: 1000,
+        paneLeft: 300,
+        paneRight: 540,
+        alignmentMargin: 24,
+        alignWhenVisible: true,
+      }),
+    ).toBe(156)
+  })
+
+  it('treats subpixel pane clipping within tolerance as fully visible', () => {
+    expect(
+      getScrollLeftToRevealHorizontalPane({
+        currentScrollLeft: 120,
+        viewportWidth: 500,
+        scrollWidth: 1000,
+        paneLeft: 119.75,
+        paneRight: 620.25,
+        alignmentMargin: 24,
+        alignWhenVisible: true,
+      }),
+    ).toBe(120)
+  })
+
   it('scrolls left when the pane starts before the viewport', () => {
     expect(
       getScrollLeftToRevealHorizontalPane({
@@ -116,7 +158,7 @@ describe('horizontal aisle reveal geometry', () => {
     ).toBe(0)
   })
 
-  it('moves a visible right-side pane to its padded focused alignment', () => {
+  it('scrolls a right-clipped pane to include its padded trailing edge', () => {
     expect(
       getScrollLeftToRevealHorizontalPane({
         currentScrollLeft: 0,
@@ -143,6 +185,32 @@ describe('horizontal aisle pane scroll reveal', () => {
     expect(scrollAislePaneIntoHorizontalView(scrollNode, 'target')).toBe(true)
 
     expect(scrollNode.scrollLeft).toBe(120)
+  })
+
+  it('keeps a fully visible target aisle steady with a focused alignment margin', () => {
+    const scrollNode = createHorizontalScrollFixture({
+      scrollLeft: 120,
+      viewportWidth: 500,
+      paneLeftInViewport: 60,
+      paneWidth: 240,
+    })
+
+    expect(scrollAislePaneIntoHorizontalView(scrollNode, 'target', { alignmentMargin: 24 })).toBe(true)
+
+    expect(scrollNode.scrollLeft).toBe(120)
+  })
+
+  it('keeps a fully visible target aisle steady when returning from the opposite direction', () => {
+    const scrollNode = createHorizontalScrollFixture({
+      scrollLeft: 156,
+      viewportWidth: 500,
+      paneLeftInViewport: 144,
+      paneWidth: 240,
+    })
+
+    expect(scrollAislePaneIntoHorizontalView(scrollNode, 'target', { alignmentMargin: 24 })).toBe(true)
+
+    expect(scrollNode.scrollLeft).toBe(156)
   })
 
   it('scrolls a right-clipped aisle only enough to reveal its right edge', () => {
@@ -184,7 +252,7 @@ describe('horizontal aisle pane scroll reveal', () => {
     expect(scrollNode.scrollLeft).toBe(0)
   })
 
-  it('scrolls a visible right aisle to its padded focused alignment', () => {
+  it('scrolls a right-clipped aisle to include its padded trailing edge', () => {
     const scrollNode = createHorizontalScrollFixture({
       scrollLeft: 0,
       viewportWidth: 900,
@@ -197,7 +265,7 @@ describe('horizontal aisle pane scroll reveal', () => {
     expect(scrollNode.scrollLeft).toBe(108)
   })
 
-  it('uses scroll padding for focused alignment without layout padding', () => {
+  it('uses scroll padding to reveal a right-clipped aisle without layout padding', () => {
     const scrollNode = createHorizontalScrollFixture({
       scrollLeft: 0,
       viewportWidth: 900,

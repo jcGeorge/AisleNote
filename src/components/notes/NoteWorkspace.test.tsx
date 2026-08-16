@@ -92,6 +92,11 @@ function renderWorkspace(
     renamingNoteTabId?: string
     noteTabRenameDraft?: string
     noteContentOverlay?: React.ReactNode
+    bottomAisleControls?: {
+      maxAisles: number
+      onAddAisle: (side: 'left' | 'right', aisleId: string) => void
+      onDeleteAisle: (aisleId: string) => void
+    }
   } = {},
 ) {
   return renderToStaticMarkup(
@@ -127,6 +132,7 @@ function renderWorkspace(
       noteTabs={options.noteTabs}
       renamingNoteTabId={options.renamingNoteTabId}
       noteTabRenameDraft={options.noteTabRenameDraft}
+      bottomAisleControls={options.bottomAisleControls}
     />,
   )
 }
@@ -635,10 +641,10 @@ describe('NoteWorkspace aisle mounting', () => {
     )
     const hoverRule = editorShellCss.slice(
       editorShellCss.indexOf('.note-aisle-action-btn:hover {'),
-      editorShellCss.indexOf('.note-aisle-action-btn:focus,'),
+      editorShellCss.indexOf('.note-aisle-action-btn:focus-visible,'),
     )
     const primaryRule = editorShellCss.slice(
-      editorShellCss.indexOf('.note-aisle-action-btn:focus,'),
+      editorShellCss.indexOf('.note-aisle-action-btn:focus-visible,'),
       editorShellCss.indexOf('.note-aisle-action-wrap {'),
     )
 
@@ -652,7 +658,7 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(hoverRule).toContain('background: var(--rail-control-hover-bg);')
     expect(hoverRule).toContain('color: var(--rail-control-hover-text);')
     expect(primaryRule).not.toContain('.note-aisle-pane.is-active .note-aisle-action-btn')
-    expect(primaryRule).toContain('.note-aisle-action-btn:focus')
+    expect(primaryRule).toContain('.note-aisle-action-btn:focus-visible')
     expect(primaryRule).toContain('.note-aisle-action-btn:active')
     expect(primaryRule).toContain('.note-aisle-action-btn[aria-pressed="true"]')
     expect(primaryRule).toContain('.note-aisle-action-btn[aria-expanded="true"]')
@@ -855,20 +861,31 @@ describe('NoteWorkspace aisle mounting', () => {
     expect(html).not.toContain('has-bottom-aisle-controls')
   })
 
-  it('does not expose retired bottom aisle controls', () => {
-    const html = renderWorkspace(new Set(['b']), { activeAisleId: 'b' })
+  it('renders bottom aisle controls only when enabled', () => {
+    const html = renderWorkspace(new Set(['b']), {
+      activeAisleId: 'b',
+      bottomAisleControls: {
+        maxAisles: 100,
+        onAddAisle: () => undefined,
+        onDeleteAisle: () => undefined,
+      },
+    })
 
-    expect(html).not.toContain('note-scratchpad-aisle-controls')
-    expect(html).not.toContain('note-scratchpad-aisle-add-btn')
-    expect(html).not.toContain('note-scratchpad-aisle-delete-btn')
-    expect(html).not.toContain('has-bottom-aisle-controls')
-    expect(noteWorkspaceSource).not.toContain('scratchpadAisleControls')
-    expect(noteWorkspaceSource).not.toContain('regularNoteAisleControls')
+    expect(html).toContain('note-scratchpad-aisle-controls')
+    expect(html.match(/note-scratchpad-aisle-add-btn/g) ?? []).toHaveLength(6)
+    expect(html.match(/note-scratchpad-aisle-delete-btn/g) ?? []).toHaveLength(3)
+    expect(html).toContain('has-bottom-aisle-controls')
+    expect(html).toContain('Add aisle to the left of aisle 2')
+    expect(html).toContain('Add aisle to the right of aisle 2')
+    expect(html).toContain('Delete aisle 2')
+    expect(html).toContain('data-app-icon="aisleRight"')
+    expect(html).toContain('data-app-icon="trash"')
+    expect(noteWorkspaceSource).toContain('bottomAisleControls')
     expect(noteWorkspaceSource).not.toContain('onAddAisleLeft')
     expect(noteWorkspaceSource).not.toContain('onDeleteActiveAisle')
-    expect(editorShellCss).not.toContain('note-scratchpad-aisle-controls')
-    expect(editorShellCss).not.toContain('note-bottom-aisle')
-    expect(editorShellCss).not.toContain('has-bottom-aisle-controls')
+    expect(editorShellCss).toContain('note-scratchpad-aisle-controls')
+    expect(editorShellCss).toContain('note-bottom-aisle')
+    expect(editorShellCss).toContain('has-bottom-aisle-controls')
   })
 
   it('renders fm only for aisles with valid frontmatter', () => {

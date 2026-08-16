@@ -90,9 +90,68 @@ export function normalizeEditorNoteLinkDestinationsForPersistence(markdown: stri
   })
 }
 
+function getNodeTypeName(node: any): string {
+  return String(node?.type?.name ?? '')
+}
+
+function getComparableInlineSpacingText(value: string): string {
+  return String(value ?? '')
+    .replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, '')
+    .replace(/[ \t]+/g, ' ')
+    .trim()
+}
+
+function collectBlockQuoteParagraphTexts(node: any, texts: string[]): void {
+  if (!node || typeof node.forEach !== 'function') return
+
+  node.forEach((child: any) => {
+    if (getNodeTypeName(child) === 'paragraph') {
+      texts.push(String(child.textContent ?? '').replaceAll(EDITOR_BLANK_LINE_PLACEHOLDER, ''))
+      return
+    }
+    collectBlockQuoteParagraphTexts(child, texts)
+  })
+}
+
+function getBlockQuoteParagraphTextsFromWysiwyg(editor: Editor | null): string[] {
+  const doc = (editor as any)?.wwEditor?.view?.state?.doc
+  if (!doc || typeof doc.descendants !== 'function') return []
+
+  const texts: string[] = []
+  doc.descendants((node: any) => {
+    if (getNodeTypeName(node) !== 'blockQuote') return true
+    collectBlockQuoteParagraphTexts(node, texts)
+    return false
+  })
+  return texts
+}
+
+function mergeBlockQuoteParagraphSpacingFromWysiwyg(editor: Editor | null, markdown: string): string {
+  const quotedTexts = getBlockQuoteParagraphTextsFromWysiwyg(editor)
+    .map((text) => ({ text, comparable: getComparableInlineSpacingText(text) }))
+    .filter((entry) => entry.comparable.length > 0)
+  if (quotedTexts.length === 0 || !markdown.includes('>')) return markdown
+
+  let searchStart = 0
+  return transformOutsideFencedCode(markdown, (line) => {
+    const match = line.match(/^((?:[ \t]{0,3}>[ \t]?)+)(.*)$/)
+    if (!match) return line
+
+    const comparableLine = getComparableInlineSpacingText(match[2] ?? '')
+    if (!comparableLine) return line
+
+    const textIndex = quotedTexts.findIndex((entry, index) => index >= searchStart && entry.comparable === comparableLine)
+    if (textIndex < 0) return line
+
+    searchStart = textIndex + 1
+    return `${match[1]}${quotedTexts[textIndex].text}`
+  })
+}
+
 export function getEditorMarkdownForPersistence(editor: Editor): string {
   const editorMarkdown = mergeLeadingIndentsFromWysiwyg(editor, editor.getMarkdown())
-  const blankPreservedMarkdown = preserveBlankParagraphsFromWysiwyg(editor, editorMarkdown)
+  const quoteSpacingPreservedMarkdown = mergeBlockQuoteParagraphSpacingFromWysiwyg(editor, editorMarkdown)
+  const blankPreservedMarkdown = preserveBlankParagraphsFromWysiwyg(editor, quoteSpacingPreservedMarkdown)
   return normalizeMarkdownImageSourcesForPersistence(
     normalizeEditorNoteLinkDestinationsForPersistence(
       normalizeEmptyHeadingMarkersFromWysiwyg(

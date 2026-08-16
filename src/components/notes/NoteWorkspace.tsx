@@ -23,6 +23,7 @@ import { recordDiagnosticEvent } from '../../diagnostics/diagnostic-logger'
 import { resolveAssetDisplayUrl } from '../../markdown/image-asset-registry'
 import type { AppState, NoteLocation, ResolvedNoteAisle, TabColorIndicatorPlacement } from '../../types/app'
 import { ToolbarToolIcon } from '../editor/ToolbarToolIcon'
+import { AppIcon } from '../icons/AppIcon'
 import { getAislePreviewSegments } from './aisle-markdown-preview-segments'
 import { NotePreviewContent } from './NotePreviewContent'
 import { AisleHorizontalScrollbar } from './AisleHorizontalScrollbar'
@@ -190,6 +191,11 @@ type NoteWorkspaceProps = {
   onSelectTableOfContentsLink?: (aisleId: string, linkKey: string) => void
   onOpenAisleFrontmatter?: (aisleId: string) => void
   onOpenAisleLink?: (aisleId: string) => void
+  bottomAisleControls?: {
+    maxAisles: number
+    onAddAisle: (side: 'left' | 'right', aisleId: string) => void
+    onDeleteAisle: (aisleId: string) => void
+  }
   appState?: AppState | null
   onOpenNoteReference?: (target: NoteLocation) => void
   onOpenTagFilter?: (tag: string) => void
@@ -400,6 +406,7 @@ export function NoteWorkspace({
   onSelectTableOfContentsLink = () => undefined,
   onOpenAisleFrontmatter = () => undefined,
   onOpenAisleLink = () => undefined,
+  bottomAisleControls,
   appState = null,
   onOpenNoteReference,
   onOpenTagFilter = () => undefined,
@@ -650,6 +657,9 @@ export function NoteWorkspace({
               (tableOfContentsHeadings.length > 0 || tableOfContentsLinks.length > 0)
             const showLinkButton = wholeNoteLinked || linkedAisleIds.has(aisle.id)
             const showFrontmatterButton = frontmatterAisleIds.has(aisle.id)
+            const showBottomAisleControls = Boolean(bottomAisleControls) && !editorReadOnly
+            const canDeleteAisle = aisles.length > 1
+            const canAddAisle = !bottomAisleControls || aisles.length < bottomAisleControls.maxAisles
             const customAisleWidth = isSplitWorkspace ? aisleWidths[aisle.id] : undefined
             const aislePaneStyle =
               typeof customAisleWidth === 'number'
@@ -659,6 +669,7 @@ export function NoteWorkspace({
               'note-aisle-pane',
               aisle.id === activeAisleId ? 'is-active' : '',
               customAisleWidth ? 'has-custom-width' : '',
+              showBottomAisleControls ? 'has-bottom-aisle-controls' : '',
             ].filter(Boolean).join(' ')
             return (
               <section
@@ -785,6 +796,67 @@ export function NoteWorkspace({
                   onSelectLink={onSelectTableOfContentsLink}
                 />
               )}
+              {showBottomAisleControls && bottomAisleControls ? (
+                <div
+                  className="note-bottom-aisle-controls note-scratchpad-aisle-controls"
+                  aria-label={`Aisle ${index + 1} controls`}
+                  data-note-workspace-skip-aisle-activation="true"
+                >
+                  <button
+                    type="button"
+                    className={`note-bottom-aisle-btn note-scratchpad-aisle-add-btn ${
+                      canAddAisle ? '' : 'is-limit-reached'
+                    }`}
+                    aria-label={`Add aisle to the left of aisle ${index + 1}`}
+                    data-app-tooltip={canAddAisle ? 'Add aisle left' : `Limit: ${bottomAisleControls.maxAisles} aisles`}
+                    onPointerDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      bottomAisleControls.onAddAisle('left', aisle.id)
+                    }}
+                  >
+                    <AppIcon iconId="aisleRight" className="note-bottom-aisle-icon" flipHorizontal />
+                  </button>
+                  <button
+                    type="button"
+                    className={`note-bottom-aisle-btn note-scratchpad-aisle-add-btn ${
+                      canAddAisle ? '' : 'is-limit-reached'
+                    }`}
+                    aria-label={`Add aisle to the right of aisle ${index + 1}`}
+                    data-app-tooltip={canAddAisle ? 'Add aisle right' : `Limit: ${bottomAisleControls.maxAisles} aisles`}
+                    onPointerDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      bottomAisleControls.onAddAisle('right', aisle.id)
+                    }}
+                  >
+                    <AppIcon iconId="aisleRight" className="note-bottom-aisle-icon" />
+                  </button>
+                  <button
+                    type="button"
+                    className="note-bottom-aisle-btn note-scratchpad-aisle-delete-btn"
+                    aria-label={`Delete aisle ${index + 1}`}
+                    data-app-tooltip={canDeleteAisle ? 'Delete aisle' : 'Keep at least one aisle'}
+                    disabled={!canDeleteAisle}
+                    onPointerDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      if (canDeleteAisle) bottomAisleControls.onDeleteAisle(aisle.id)
+                    }}
+                  >
+                    <AppIcon iconId="trash" className="note-bottom-aisle-icon" />
+                  </button>
+                </div>
+              ) : null}
               </section>
             )
           })}

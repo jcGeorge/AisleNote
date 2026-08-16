@@ -87,7 +87,7 @@ describe('TableControlsOverlay', () => {
     expect(html).not.toContain('Move selected columns')
   })
 
-  it('routes selector rails through one click-or-drag gesture callback and hides rails until hover or selection', () => {
+  it('routes selector rails through one click-or-drag gesture callback while table tools persist', () => {
     expect(overlaySource).toContain("onBeginSelectorGesture('row', row.index, tableSelectionOverlay.tableStart, nextEvent)")
     expect(overlaySource).toContain("onBeginSelectorGesture('column', column.index, tableSelectionOverlay.tableStart, nextEvent)")
     expect(overlaySource).not.toContain('onMoveRows')
@@ -96,8 +96,8 @@ describe('TableControlsOverlay', () => {
     expect(editorShellCss).toContain('.table-selector-segment.is-selected')
     expect(editorShellCss).toContain('opacity: 0;')
     expect(editorShellCss).toContain('.table-reorder-pending .table-selector-segment.is-selected')
-    expect(editorShellCss).toContain('.table-reorder-pending .table-tools')
-    expect(editorShellCss).toContain(':has(.table-selector-column-segment:hover) .table-tools-columns')
+    expect(editorShellCss).not.toContain('.table-reorder-pending .table-tools')
+    expect(editorShellCss).not.toContain(':has(.table-selector-column-segment:hover) .table-tools-columns')
     expect(editorShellCss).not.toContain('.table-selection-handle {')
   })
 

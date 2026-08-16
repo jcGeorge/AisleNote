@@ -73,7 +73,8 @@ describe('vault aisle editor task checkbox wiring', () => {
     expect(snapshotBody).toContain('reconcileMountedEditorsFromExternalState()')
     expect(source).toContain('const getMarkdownSnapshotForMeta = useCallback')
     expect(source).toContain('const shouldReadLiveMarkdown =')
-    expect(source).toContain('meta.aisleId === activeEditorAisleIdRef.current || meta.userEditedSinceProgrammaticUpdate')
+    expect(source).toContain('!useCachedProgrammaticMarkdown &&\n      meta.userEditedSinceProgrammaticUpdate')
+    expect(source).not.toContain('meta.aisleId === activeEditorAisleIdRef.current || meta.userEditedSinceProgrammaticUpdate')
     expect(source).toContain('const markdown = shouldReadLiveMarkdown ? getEditorMarkdownForPersistence(meta.editor) : meta.markdown')
     expect(snapshotBody).toContain('const snapshotMarkdown = getMarkdownSnapshotForMeta(meta)')
     expect(snapshotBody).toContain('revision: snapshotMarkdown.revision')
@@ -152,7 +153,9 @@ describe('vault aisle editor task checkbox wiring', () => {
     expect(source).toContain('meta.userEditedSinceProgrammaticUpdate = true')
     expect(source).toContain('const markEditorUserEditIntentForEditor = useCallback')
     expect(source).toContain('markEditorUserEditIntent(editorKey)')
-    expect(source).toContain("meta.programmaticMarkdownUpdatePending && !meta.userEditedSinceProgrammaticUpdate\n                  ? 'programmatic'\n                  : 'user'")
+    expect(source).toContain('if (!meta.userEditedSinceProgrammaticUpdate) {')
+    expect(source).toContain("commitEditorMarkdown(meta, editor, 'user')")
+    expect(source).not.toContain("meta.programmaticMarkdownUpdatePending && !meta.userEditedSinceProgrammaticUpdate\n                  ? 'programmatic'\n                  : 'user'")
     expect(source).toContain('markEditorUserEditIntentForEditor(editor)')
     expect(source).toContain('meta.userEditedSinceProgrammaticUpdate = false')
   })
@@ -234,6 +237,35 @@ describe('vault aisle editor task checkbox wiring', () => {
     expect(undoBranch).not.toContain('runEditorCommandOperation')
   })
 
+  it('routes Tab editing before Enter shortcuts with table, code, list, then block indent priority', () => {
+    expect(source).toContain("import { applyListToolbarCommand, applyStructuralListIndent")
+    expect(source).toContain('buildCollapsedParagraphTabIndentOperationPlan')
+    expect(source).toContain('buildSelectionCodeBlockTabIndentOperationPlan')
+    expect(source).toContain('moveTableCellSelectionByTab')
+
+    const tabBranchStart = source.indexOf("if (event.key === 'Tab'")
+    const enterBranchStart = source.indexOf("if (event.key !== 'Enter') return", tabBranchStart)
+    const tabBranch = source.slice(tabBranchStart, enterBranchStart)
+
+    expect(tabBranchStart).toBeGreaterThan(-1)
+    expect(enterBranchStart).toBeGreaterThan(tabBranchStart)
+    expect(tabBranch.indexOf('moveTableCellSelectionByTab')).toBeLessThan(
+      tabBranch.indexOf('runSelectionCodeBlockTabIndent'),
+    )
+    expect(tabBranch.indexOf('runSelectionCodeBlockTabIndent')).toBeLessThan(
+      tabBranch.indexOf('applyStructuralListIndent'),
+    )
+    expect(tabBranch.indexOf('applyStructuralListIndent')).toBeLessThan(
+      tabBranch.indexOf('runCollapsedParagraphTabIndent'),
+    )
+    expect(tabBranch.indexOf('runCollapsedParagraphTabIndent')).toBeLessThan(
+      tabBranch.indexOf('runSelectionTabBlockIndent'),
+    )
+    expect(tabBranch).toContain("beforeChange: () => markEditorUserEditIntent(editorKey)")
+    expect(tabBranch).toContain('beforeDispatch: beforeEditorTabMutation')
+    expect(tabBranch).toContain('beforeExecute: beforeEditorTabMutation')
+  })
+
   it('refreshes tag autocomplete when editor query state can change', () => {
     expect(source).toContain('onTagAutocompleteQueryChange?: () => void')
     expect(source).toContain('const onTagAutocompleteQueryChangeRef = useRef(onTagAutocompleteQueryChange)')
@@ -244,7 +276,7 @@ describe('vault aisle editor task checkbox wiring', () => {
     expect(source).toContain("root.addEventListener('mouseup', handleEditorQueryProbe)")
     expect(source).toContain("root.removeEventListener('keyup', handleEditorQueryProbe)")
     expect(source).toContain("root.removeEventListener('mouseup', handleEditorQueryProbe)")
-    expect(source.match(/onTagAutocompleteQueryChangeRef\.current\?\.\(\)/g) ?? []).toHaveLength(2)
+    expect(source.match(/onTagAutocompleteQueryChangeRef\.current\?\.\(\)/g) ?? []).toHaveLength(3)
   })
 
   it('exposes range scrolling for find result navigation', () => {
@@ -276,23 +308,19 @@ describe('vault aisle editor task checkbox wiring', () => {
     expect(clickHandler.indexOf('resolveEditorInternalNoteLinkTarget')).toBeLessThan(clickHandler.indexOf('openExternalWebUrl(href)'))
   })
 
-  it('handles frontmatter clipboard paste before normal editor content paste', () => {
-    expect(source).toContain("from '../frontmatter/frontmatter-clipboard'")
-    expect(source).toContain('onFrontmatterPaste?: (payload: FrontmatterClipboardPayload, aisleId: string) => boolean')
-    expect(source).toContain('const onFrontmatterPasteRef = useRef(onFrontmatterPaste)')
-    expect(source).toContain('onFrontmatterPasteRef.current = onFrontmatterPaste')
-    expect(source).toContain('readFrontmatterClipboardPayloadFromDataTransfer(event.clipboardData, {')
-    expect(source).toContain('allowYamlFallback: false')
-    expect(source).toContain('onFrontmatterPasteRef.current?.(frontmatterPayload, aisle.id)')
-    expect(source).toContain('readFrontmatterClipboardPayloadFromNavigator(undefined, {')
-    expect(source).toContain('onFrontmatterPasteRef.current?.(frontmatterPayload, targetAisleId)')
+  it('does not apply frontmatter clipboard payloads during ordinary editor paste', () => {
+    expect(source).not.toContain("from '../frontmatter/frontmatter-clipboard'")
+    expect(source).not.toContain('onFrontmatterPaste?:')
+    expect(source).not.toContain('onFrontmatterPasteRef')
+    expect(source).not.toContain('readFrontmatterClipboardPayloadFromDataTransfer')
+    expect(source).not.toContain('readFrontmatterClipboardPayloadFromNavigator')
+    expect(source).not.toContain('frontmatterPayload')
 
     const pasteHandlerStart = source.indexOf('const handlePaste = (event: ClipboardEvent) => {')
     const pasteHandlerEnd = source.indexOf('const handleKeyDown = (event: KeyboardEvent) => {', pasteHandlerStart)
     const pasteHandler = source.slice(pasteHandlerStart, pasteHandlerEnd)
-    expect(pasteHandler.indexOf('readFrontmatterClipboardPayloadFromDataTransfer')).toBeLessThan(
-      pasteHandler.indexOf('readVaultStructureClipboardPayloadFromDataTransfer'),
-    )
+    expect(pasteHandler).toContain('readVaultStructureClipboardPayloadFromDataTransfer(event.clipboardData)')
+    expect(pasteHandler).toContain('insertClipboardDataIntoView(view, event.clipboardData)')
   })
 })
 

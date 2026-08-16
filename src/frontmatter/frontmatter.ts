@@ -377,20 +377,27 @@ function getImportedFrontmatterDefaultValue(type: FrontmatterFieldType, value: u
   return getFrontmatterDraftValueForType(type, value)
 }
 
-function parseFrontmatterTemplateImportData(raw: string): ParseFrontmatterYamlResult {
+export function parseFrontmatterImportData(raw: string): ParseFrontmatterYamlResult {
   const trimmed = raw.trim()
-  if (!trimmed) return { ok: true, data: null }
-  if (!getFrontmatterOpenRegex().test(trimmed)) return parseFrontmatterYaml(trimmed)
-
-  const split = splitMarkdownFrontmatter(trimmed)
-  if (split.status === 'invalid') {
-    return { ok: false, message: split.error ?? 'Frontmatter YAML is invalid.' }
+  if (!trimmed) return { ok: false, message: 'No frontmatter fields found.' }
+  const parsed = getFrontmatterOpenRegex().test(trimmed)
+    ? (() => {
+        const split = splitMarkdownFrontmatter(trimmed)
+        if (split.status === 'invalid') {
+          return { ok: false, message: split.error ?? 'Frontmatter YAML is invalid.' } as ParseFrontmatterYamlResult
+        }
+        return { ok: true, data: split.frontmatter } as ParseFrontmatterYamlResult
+      })()
+    : parseFrontmatterYaml(trimmed)
+  if (!parsed.ok) return parsed
+  if (!parsed.data || Object.keys(parsed.data).length === 0) {
+    return { ok: false, message: 'No frontmatter fields found.' }
   }
-  return { ok: true, data: split.frontmatter }
+  return parsed
 }
 
 export function parseFrontmatterTemplateImport(raw: string): FrontmatterTemplateImportResult {
-  const parsed = parseFrontmatterTemplateImportData(raw)
+  const parsed = parseFrontmatterImportData(raw)
   if (!parsed.ok) return { ok: false, message: parsed.message }
   if (!parsed.data || Object.keys(parsed.data).length === 0) {
     return { ok: false, message: 'No frontmatter fields found.' }

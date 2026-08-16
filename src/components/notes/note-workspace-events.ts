@@ -138,7 +138,7 @@ function getElementRect(element: DomElementLike) {
 
 function hasMeaningfulRenderedText(element: DomElementLike | null): boolean {
   return String(element?.textContent ?? '')
-    .replace(/[\u200b\u200c\u200d\ufeff]/g, '')
+    .replace(/\u200b|\u200c|\u200d|\ufeff/g, '')
     .trim().length > 0
 }
 

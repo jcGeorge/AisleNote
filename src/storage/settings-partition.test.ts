@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyPortableAppSettings,
   buildSyncedSettingsFromSplitFiles,
   createDefaultPortableAppSettings,
   parsePortableAppSettingsJson,
@@ -315,5 +316,103 @@ describe('portable app settings parsing', () => {
       'blockQuote',
       'strikethrough',
     ])
+  })
+
+  it('uses editor-state, not portable app settings, for vault-local editor locations', () => {
+    const syncedSettings = buildSyncedSettingsFromSplitFiles({
+      appSettings: {
+        theme: 'light',
+        hotkeys: {},
+        ui: {
+          settingsSection: 'visuals',
+          noteCursorLocations: {
+            rogue: { activeAisleId: 'rogue', aisles: {}, updatedAt: 1 },
+          },
+          headingCollapseState: {
+            rogue: { rogue: ['Rogue'] },
+          },
+          aisleWidths: {
+            rogue: { rogue: 999 },
+          },
+        },
+      },
+      editorState: {
+        noteCursorLocations: {
+          'note-live': { activeAisleId: 'aisle-live', aisles: {}, updatedAt: 20 },
+        },
+        headingCollapseState: {
+          'body-live': { 'aisle-live': ['Heading'] },
+        },
+        aisleWidths: {
+          'note-live': { 'aisle-live': 320 },
+        },
+      },
+    })
+
+    expect(syncedSettings.theme).toBe('light')
+    expect(syncedSettings.ui.settingsSection).toBe('visuals')
+    expect(syncedSettings.ui.noteCursorLocations).toEqual({
+      'note-live': { activeAisleId: 'aisle-live', aisles: {}, updatedAt: 20 },
+    })
+    expect(syncedSettings.ui.headingCollapseState).toEqual({
+      'body-live': { 'aisle-live': ['Heading'] },
+    })
+    expect(syncedSettings.ui.aisleWidths).toEqual({
+      'note-live': { 'aisle-live': 320 },
+    })
+  })
+
+  it('does not overwrite existing vault-local editor locations when applying portable settings', () => {
+    const currentState = {
+      theme: 'dark',
+      hotkeys: {
+        shortcuts: {},
+        newlineShortcuts: { shortcuts: {}, menuOperations: [] },
+      },
+      frontmatter: { templates: [], settingsTemplateId: '', lastAppliedTemplateId: '' },
+      vault: {
+        activeNoteId: 'note-live',
+        items: [{ type: 'note', id: 'note-live', title: 'Live', noteBodyId: 'body-live' }],
+        deletedItems: [],
+        settings: { autoRemoveDeletedDays: 7 },
+      },
+      noteBodies: [{ id: 'body-live', aisles: [{ id: 'aisle-live', aisleBodyId: 'aisle-body-live' }] }],
+      noteAisleBodies: [{ id: 'aisle-body-live', markdown: '', tags: [], frontmatter: null, frontmatterStatus: 'none' }],
+      ui: {
+        noteCursorLocations: {
+          'note-live': { activeAisleId: 'aisle-live', aisles: {}, updatedAt: 20 },
+        },
+        headingCollapseState: {
+          'body-live': { 'aisle-live': ['Heading'] },
+        },
+        aisleWidths: {
+          'note-live': { 'aisle-live': 320 },
+        },
+      },
+    }
+
+    const nextState = applyPortableAppSettings(currentState, {
+      theme: 'custom1',
+      hotkeys: { shortcuts: { openSettings: 'Ctrl+,' } },
+      ui: {
+        settingsSection: 'toolbar',
+        noteCursorLocations: {
+          rogue: { activeAisleId: 'rogue', aisles: {}, updatedAt: 1 },
+        },
+        headingCollapseState: {
+          rogue: { rogue: ['Rogue'] },
+        },
+        aisleWidths: {
+          rogue: { rogue: 999 },
+        },
+      },
+    })
+
+    expect(nextState.theme).toBe('custom1')
+    expect(nextState.hotkeys.shortcuts.openSettings).toBe('Ctrl+,')
+    expect(nextState.ui.settingsSection).toBe('toolbar')
+    expect(nextState.ui.noteCursorLocations).toEqual(currentState.ui.noteCursorLocations)
+    expect(nextState.ui.headingCollapseState).toEqual(currentState.ui.headingCollapseState)
+    expect(nextState.ui.aisleWidths).toEqual(currentState.ui.aisleWidths)
   })
 })

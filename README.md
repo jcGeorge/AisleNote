@@ -41,6 +41,8 @@ npm run electron:dev
 npm run start:mac
 npm run start:windows
 npm run package:win
+npm run release:build
+npm run release:publish -- <version> --dry-run
 npm run lint
 npx tsc -b --pretty false --noEmit
 npm test
@@ -61,6 +63,10 @@ npm run package:win
 The expected output is `release/AisleNote-0.0.0-x64-portable.exe`. Electron Builder also creates an unpacked app folder under `release/win-unpacked/`; smoke test both `release/win-unpacked/AisleNote.exe` and the portable `.exe`.
 
 The MVP smoke test is: open the app, create the default vault, save a note, close and reopen with the data still present, verify file/image dialogs, export a vault, and confirm external links open in the browser. The executable is unsigned, so Windows SmartScreen warnings are expected.
+
+## Manual Releases
+
+Manual desktop releases are documented in `docs/release.md`. The release workflow uses Electron Builder and GitHub CLI, cleans stale `release/` output before full release builds, and publishes draft/prerelease GitHub releases by default. In-app updates are intentionally not configured yet.
 
 `npm run lint` is expected to exit successfully. Existing `react-hooks/exhaustive-deps` warnings mark known ref-heavy areas that should be retired as those controllers are split.
 

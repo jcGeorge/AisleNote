@@ -37,8 +37,8 @@
   color: var(--rail-control-hover-text, var(--rail-control-text, currentColor));
 }
 
-.rail-control:focus,
-.tab-btn:focus {
+.rail-control:focus-visible,
+.tab-btn:focus-visible {
   border-color: var(--rail-control-selected-border, var(--rail-control-border, transparent)) !important;
   background: var(--rail-control-selected-bg, var(--rail-control-bg, transparent)) !important;
   color: var(--rail-control-selected-text, var(--rail-control-text, currentColor)) !important;

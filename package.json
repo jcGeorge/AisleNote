@@ -8,7 +8,7 @@
     "dev": "kill-port 5173 && vite --port 5173 --strictPort",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "test": "vitest run src/state/vault.test.ts src/state/default-app-state.test.ts src/theme/vault-themes.test.ts src/filters/sidebar-search.test.ts src/app/vault-editor-persistence.test.ts src/app/VaultApp-source.test.ts src/storage/usePersistentAppState-source.test.ts src/editor/useVaultAisleEditors-source.test.ts electron/storage-watcher.test.mjs electron/vault-library.test.mjs electron/ipc-storage.test.mjs electron/app-state-storage.schema2.test.mjs",
+    "test": "vitest run src/state/vault.test.ts src/state/default-app-state.test.ts src/theme/vault-themes.test.ts src/filters/sidebar-search.test.ts src/app/vault-editor-persistence.test.ts src/app/VaultApp-source.test.ts src/storage/usePersistentAppState-source.test.ts src/storage/local-preferences.test.ts src/editor/useVaultAisleEditors-source.test.ts electron/storage-watcher.test.mjs electron/vault-library.test.mjs electron/ipc-storage.test.mjs electron/app-state-storage.schema2.test.mjs",
     "preview": "vite preview",
     "electron": "node scripts/start-electron.mjs",
     "electron:mac": "node scripts/start-electron.mjs",
@@ -20,9 +20,19 @@
     "build:electron": "npm run build && npm run electron",
     "build:electron:mac": "npm run build && npm run electron:mac",
     "build:electron:windows": "npm run build && npm run electron:windows",
-    "package:mac": "npm run build && electron-builder --mac",
-    "package:win": "npm run build && electron-builder --win portable --x64",
-    "package:linux": "npm run build && electron-builder --linux --x64",
+    "package:mac": "npm run build && electron-builder --mac zip --publish never -c.mac.identity=null",
+    "package:win": "npm run build && electron-builder --win portable --x64 --publish never",
+    "package:linux": "npm run build && electron-builder --linux AppImage dir --x64 --publish never",
+    "release:clean": "node scripts/release-clean.mjs",
+    "release:check": "npm run lint && npx tsc -b --pretty false --noEmit && npm test && npm run build",
+    "release:package:win": "electron-builder --win portable --x64 --publish never",
+    "release:package:linux": "electron-builder --linux AppImage dir --x64 --publish never",
+    "release:package:mac": "electron-builder --mac zip --publish never -c.mac.identity=null",
+    "release:build:win": "npm run build && npm run release:package:win",
+    "release:build:linux": "npm run build && npm run release:package:linux",
+    "release:build:mac": "npm run build && npm run release:package:mac",
+    "release:build": "npm run release:clean && npm run release:check && npm run release:package:win && npm run release:package:linux && npm run release:package:mac",
+    "release:publish": "node scripts/release-publish.mjs",
     "start:mac": "npm run build:electron:mac",
     "start:windows": "npm run build:electron:windows",
     "dev:electron": "npm run electron:dev",
@@ -70,11 +80,29 @@
       ]
     },
     "linux": {
-      "icon": "build/icons"
+      "icon": "build/icons",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "appImage": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "portable": {
       "artifactName": "${productName}-${version}-${arch}-portable.${ext}"
-    }
+    },
+    "publish": null
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

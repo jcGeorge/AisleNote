@@ -6,6 +6,7 @@ import {
   getFrontmatterDatetimePickerValue,
   getFrontmatterDraftValueForType,
   normalizeFrontmatterFixedListOptions,
+  parseFrontmatterImportData,
   parseFrontmatterTemplateImport,
   parseFrontmatterYaml,
   prependMarkdownFrontmatter,
@@ -70,6 +71,24 @@ describe('frontmatter parsing', () => {
 
   it('rejects non-mapping YAML', () => {
     expect(parseFrontmatterYaml('- item').ok).toBe(false)
+  })
+
+  it('parses shared frontmatter import text from wrapped markdown and bare YAML', () => {
+    expect(parseFrontmatterImportData('status: draft\ntags:\n  - launch')).toEqual({
+      ok: true,
+      data: { status: 'draft', tags: ['launch'] },
+    })
+    expect(parseFrontmatterImportData('---\nstatus: ready\n---\n# Body')).toEqual({
+      ok: true,
+      data: { status: 'ready' },
+    })
+  })
+
+  it('reports empty and invalid shared frontmatter import text', () => {
+    expect(parseFrontmatterImportData('')).toEqual({ ok: false, message: 'No frontmatter fields found.' })
+    expect(parseFrontmatterImportData('{}')).toEqual({ ok: false, message: 'No frontmatter fields found.' })
+    expect(parseFrontmatterImportData('- item').ok).toBe(false)
+    expect(parseFrontmatterImportData('---\nkey: [unterminated\n---\nbody').ok).toBe(false)
   })
 
   it('imports template fields from a full Markdown frontmatter block and ignores the body', () => {

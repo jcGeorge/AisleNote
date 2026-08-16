@@ -29,9 +29,18 @@ export function isLayoutSensitiveClipboardText(value: string | null | undefined)
   return (
     normalized.includes('\n') ||
     normalized.includes('\t') ||
-    /(^|\n)[ \t]+/.test(normalized) ||
-    / {2,}/.test(normalized)
+    /(^|\n)[ \t]+/.test(normalized)
   )
+}
+
+function getSingleLinePlainClipboardText(value: string | null | undefined): string | null {
+  let normalized = normalizeVisualClipboardText(value ?? '')
+  if (!normalized) return null
+  if (normalized.endsWith('\n') && !normalized.slice(0, -1).includes('\n')) {
+    normalized = normalized.slice(0, -1)
+  }
+  if (!normalized || normalized.includes('\n')) return null
+  return normalized
 }
 
 function getNodeTypeName(node: ProseMirrorNode | null | undefined): string {
@@ -582,6 +591,8 @@ export function insertClipboardDataIntoView(view: any | null, dataTransfer: Data
   const tabsMarkdown = readAisleNoteMarkdownFromDataTransfer(dataTransfer)
   if (tabsMarkdown) return insertVisualClipboardMarkdownIntoView(view, tabsMarkdown)
   const text = dataTransfer?.getData('text/plain') ?? ''
+  const singleLineText = getSingleLinePlainClipboardText(text)
+  if (singleLineText !== null && insertVisualClipboardTextIntoView(view, singleLineText)) return true
   if (isLayoutSensitiveClipboardText(text) && insertVisualClipboardTextIntoView(view, text)) return true
   const html = dataTransfer?.getData('text/html') ?? ''
   if (html && insertClipboardHtmlIntoView(view, html)) return true

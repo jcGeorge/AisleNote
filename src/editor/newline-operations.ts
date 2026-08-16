@@ -11,6 +11,11 @@ import {
 import { getEditorTextLineRanges } from './multiline-ranges'
 import { buildMultiLineListOperationPlan, type MultiLineListOperation } from './multiline-list-operations'
 import {
+  buildSelectionBlockQuoteOperationPlan,
+  buildSelectionCodeBlockOperationPlan,
+  buildSelectionRemoveBlockQuoteOperationPlan,
+} from './multiline-format-operations'
+import {
   getCommandCapableEditor,
   getEditorCursorSelection,
   getWysiwygView,
@@ -529,6 +534,19 @@ function replaceEmptyLineWithOperation(view: any, operation: NewlineOperationId,
   return true
 }
 
+function tryApplySelectionBlockFormatOperation(view: any, operation: NewlineOperationId): boolean {
+  if (operation !== 'blockQuote' && operation !== 'codeBlock') return false
+  if (view.state.selection.empty || !isWholeLineSelection(view)) return false
+
+  const plan = operation === 'blockQuote'
+    ? buildSelectionBlockQuoteOperationPlan(view) ?? buildSelectionRemoveBlockQuoteOperationPlan(view)
+    : buildSelectionCodeBlockOperationPlan(view)
+  if (!plan) return false
+
+  view.dispatch(plan.transaction.scrollIntoView())
+  return true
+}
+
 function deleteSelectionAndInsertHorizontalRule(view: any) {
   const { state } = view
   const { from, to } = state.selection
@@ -611,7 +629,10 @@ export function applyEditorNewlineOperation(
 
   const { empty } = view.state.selection
   const text = getCarriedText(view)
-  if (!empty && isWholeLineSelection(view)) {
+  if (!empty && tryApplySelectionBlockFormatOperation(view, operation)) {
+    editor.focus()
+    return { handled: true }
+  } else if (!empty && isWholeLineSelection(view)) {
     replaceSelectedLine(editor, view, operation, text)
   } else if (empty) {
     if (!replaceEmptyLineWithOperation(view, operation)) {
