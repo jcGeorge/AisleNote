@@ -8,8 +8,10 @@ import {
 import type { NoteAisle, ResolvedNoteAisle } from '../types/app'
 
 export const MAX_NOTE_AISLES = 10
+export const MAX_SCRATCHPAD_AISLES = 40
 export const EMPTY_AISLE_PREVIEW_TEXT = 'empty aisle'
 export const MAX_AISLE_WARNING_MESSAGE = 'Only ten aisles are allowed for each note.'
+export const MAX_SCRATCHPAD_AISLE_WARNING_MESSAGE = 'Only forty aisles are allowed in the scratchpad.'
 
 export function createAisleEditDraft(aisles: ResolvedNoteAisle[]): ResolvedNoteAisle[] {
   return aisles.map((aisle) => ({

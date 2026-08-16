@@ -15,6 +15,20 @@ describe('VaultApp editable asset tools', () => {
   })
 })
 
+describe('VaultApp aisle caps', () => {
+  it('guards direct aisle insertion by active editor model', () => {
+    expect(source).toContain('MAX_SCRATCHPAD_AISLES')
+    expect(source).toContain('MAX_SCRATCHPAD_AISLE_WARNING_MESSAGE')
+    expect(source).toContain('function getMaxAislesForEditorModel(model: ActiveEditorModel): number')
+    expect(source).toContain("return model.kind === 'scratchpad' ? MAX_SCRATCHPAD_AISLES : MAX_NOTE_AISLES")
+    expect(source).toContain('const maxAisles = getMaxAislesForEditorModel(activeModel)')
+    expect(source).toContain('if (body.aisles.length >= maxAisles)')
+    expect(source).toContain('window.alert(blockedMessage)')
+    expect(source).toContain('bottomAisleControls=')
+    expect(source).toContain('onDeleteAisle: deleteScratchpadAisle')
+  })
+})
+
 describe('VaultApp frontmatter modal routing', () => {
   it('blocks structured frontmatter editing when stored YAML is invalid', () => {
     expect(source).toContain("body?.frontmatterStatus === 'invalid'")

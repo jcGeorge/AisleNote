@@ -225,7 +225,13 @@ import {
   TABLE_OF_CONTENTS_EMPTY_MESSAGE,
   type TableOfContentsPanelsState,
 } from '../editor/table-of-contents'
-import { MAX_AISLE_WARNING_MESSAGE, MAX_NOTE_AISLES } from '../editor/aisle-edit-draft'
+import {
+  MAX_AISLE_WARNING_MESSAGE,
+  MAX_NOTE_AISLES,
+  MAX_SCRATCHPAD_AISLES,
+  MAX_SCRATCHPAD_AISLE_WARNING_MESSAGE,
+  deleteFocusedAisleFromDraft,
+} from '../editor/aisle-edit-draft'
 import { parseSavedState } from '../state/app-state'
 import { createRandomId, createReservedIdAllocator } from '../state/navigation-ids'
 import { importMarkdownIntoExistingVault } from '../import/markdown-import'
@@ -714,6 +720,14 @@ type ActiveScratchpadModel = {
 }
 
 type ActiveEditorModel = ActiveNoteModel | ActiveScratchpadModel
+
+function getMaxAislesForEditorModel(model: ActiveEditorModel): number {
+  return model.kind === 'scratchpad' ? MAX_SCRATCHPAD_AISLES : MAX_NOTE_AISLES
+}
+
+function getMaxAislesWarningMessageForEditorModel(model: ActiveEditorModel): string {
+  return model.kind === 'scratchpad' ? MAX_SCRATCHPAD_AISLE_WARNING_MESSAGE : MAX_AISLE_WARNING_MESSAGE
+}
 
 type VaultAisleContextMenuState = {
   x: number
@@ -6855,9 +6869,16 @@ export function VaultApp() {
     (side: 'left' | 'right' | 'end', nearAisleId?: string, markdown = '') => {
       if (!activeModel) return
       let createdAisleId = ''
+      let blockedMessage = ''
+      const maxAisles = getMaxAislesForEditorModel(activeModel)
+      const maxAislesWarningMessage = getMaxAislesWarningMessageForEditorModel(activeModel)
       mutateState((previous) => {
         const body = previous.noteBodies.find((candidate) => candidate.id === activeModel.noteBody.id)
         if (!body) return previous
+        if (body.aisles.length >= maxAisles) {
+          blockedMessage = maxAislesWarningMessage
+          return previous
+        }
         const idGenerator = createReservedIdAllocator(collectVaultIds(previous))
         const { aisle, body: aisleBody } = createNewAisleBody(idGenerator, markdown)
         createdAisleId = aisle.id
@@ -6889,6 +6910,10 @@ export function VaultApp() {
           ? setScratchpadActiveAisleId(nextState, createdAisleId)
           : nextState
       })
+      if (blockedMessage) {
+        window.alert(blockedMessage)
+        return
+      }
       if (!createdAisleId) return
       pendingFocusToAisleIdRef.current = createdAisleId
       pendingScrollToAisleIdRef.current = createdAisleId
@@ -6905,6 +6930,46 @@ export function VaultApp() {
     [activeModel, activeNoteLocationKey, mutateState, pendingCursorRestoreRef],
   )
   addAisleFromNewlineRef.current = addAisle
+
+  const deleteScratchpadAisle = useCallback(
+    (aisleId: string) => {
+      if (!activeModel || activeModel.kind !== 'scratchpad' || !aisleId) return
+      if (editorRef.current) vaultEditors.commitActiveEditorMarkdownNow(editorRef.current)
+
+      let deleted = false
+      let nextActiveAisleId = renderedActiveAisleId
+      let shouldFocusNextAisle = false
+      mutateState((previous) => {
+        const body = previous.noteBodies.find((candidate) => candidate.id === activeModel.noteBody.id)
+        const resolved = resolveNoteBody(body, previous.noteAisleBodies)
+        if (!body || !resolved) return previous
+        const deleteResult = deleteFocusedAisleFromDraft(resolved.aisles, aisleId)
+        if (!deleteResult) return previous
+        const activeAisleStillPresent = deleteResult.aisles.some((aisle) => aisle.id === renderedActiveAisleId)
+        nextActiveAisleId = activeAisleStillPresent ? renderedActiveAisleId : deleteResult.activeAisleId
+        shouldFocusNextAisle = !activeAisleStillPresent
+        deleted = true
+        let nextState = syncNoteBodyAisleStructureInState(previous, body.id, deleteResult.aisles)
+        nextState = setScratchpadActiveAisleId(nextState, nextActiveAisleId)
+        return pruneUnreferencedBodies(nextState)
+      })
+      if (!deleted || !nextActiveAisleId) return
+      if (shouldFocusNextAisle) {
+        pendingFocusToAisleIdRef.current = nextActiveAisleId
+        pendingScrollToAisleIdRef.current = nextActiveAisleId
+        pendingNavigationTopAisleIdRef.current = null
+        pendingCursorRestoreRef.current = {
+          noteLocationKey: activeNoteLocationKey,
+          aisleId: nextActiveAisleId,
+          selection: null,
+          focus: true,
+          focusIntent: 'aisle-activation',
+        }
+      }
+      setActiveAisleId(nextActiveAisleId)
+    },
+    [activeModel, activeNoteLocationKey, mutateState, pendingCursorRestoreRef, renderedActiveAisleId, vaultEditors],
+  )
 
   const cycleActiveAisle = useCallback(
     (direction: -1 | 1) => {
@@ -7298,6 +7363,10 @@ export function VaultApp() {
       options: { decoupleAisleIds?: string[]; removeFrontmatterAisleIds?: string[]; activeAisleId?: string } = {},
     ) => {
       if (!activeModel || draftAisles.length === 0) return
+      if (draftAisles.length > getMaxAislesForEditorModel(activeModel)) {
+        window.alert(getMaxAislesWarningMessageForEditorModel(activeModel))
+        return
+      }
       if (editorRef.current) vaultEditors.commitActiveEditorMarkdownNow(editorRef.current)
 
       mutateState((previous) => {
@@ -8144,8 +8213,8 @@ export function VaultApp() {
         aisles={activeModel.resolved.aisles}
         linkedAisleIds={linkedAisleIds}
         frontmatterAisleIds={frontmatterAisleIds}
-        maxAisles={MAX_NOTE_AISLES}
-        maxAislesWarningMessage={MAX_AISLE_WARNING_MESSAGE}
+        maxAisles={getMaxAislesForEditorModel(activeModel)}
+        maxAislesWarningMessage={getMaxAislesWarningMessageForEditorModel(activeModel)}
         onCancel={() => setAisleEditModalOpen(false)}
         onApply={applyAisleEditDraftToActiveNote}
         onWarn={(message) => window.alert(message)}
@@ -10115,6 +10184,15 @@ export function VaultApp() {
                 onSelectTableOfContentsLink={selectTableOfContentsLink}
                 onOpenAisleFrontmatter={openFrontmatterModalForAisle}
                 onOpenAisleLink={openAisleActionMenu}
+                bottomAisleControls={
+                  activeModelIsScratchpad
+                    ? {
+                        maxAisles: MAX_SCRATCHPAD_AISLES,
+                        onAddAisle: addAisle,
+                        onDeleteAisle: deleteScratchpadAisle,
+                      }
+                    : undefined
+                }
                 appState={state}
                 onOpenNoteReference={openNoteReferenceFromEditor}
                 onOpenTagFilter={filterTag}

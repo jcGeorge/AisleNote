@@ -1495,6 +1495,10 @@
   padding-inline: 0;
 }
 
+.note-aisle-pane.has-bottom-aisle-controls .note-aisle-editor-shell {
+  padding-bottom: 2.8rem;
+}
+
 .note-aisle-editor-shell .toastui-editor-toolbar {
   display: none !important;
 }
@@ -1607,6 +1611,68 @@
   width: 1.25rem;
   height: 1.25rem;
   margin: 0 !important;
+}
+
+.note-bottom-aisle-controls,
+.note-scratchpad-aisle-controls {
+  position: absolute;
+  z-index: 34;
+  left: 50%;
+  bottom: 0.55rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.24rem;
+  border: 1px solid color-mix(in srgb, var(--rail-control-border) 82%, transparent);
+  border-radius: var(--rail-control-radius, 0.42rem);
+  background: color-mix(in srgb, var(--rail-control-bg) 94%, transparent);
+  box-shadow: 0 0.18rem 0.5rem color-mix(in srgb, var(--app-bg) 28%, transparent);
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.note-bottom-aisle-btn {
+  --editor-toolbar-icon-primary: currentColor;
+  --editor-toolbar-icon-secondary: currentColor;
+  width: 1.85rem;
+  height: 1.85rem;
+  min-width: 1.85rem;
+  min-height: 1.85rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: calc(var(--rail-control-radius, 0.42rem) - 0.08rem);
+  background: transparent;
+  color: var(--rail-control-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.note-bottom-aisle-btn:hover:not(:disabled) {
+  border-color: var(--rail-control-hover-border);
+  background: var(--rail-control-hover-bg);
+  color: var(--rail-control-hover-text);
+}
+
+.note-bottom-aisle-btn:focus-visible,
+.note-bottom-aisle-btn:active:not(:disabled) {
+  border-color: var(--modal-primary-border);
+  background: var(--modal-primary-bg);
+  color: var(--modal-primary-text);
+}
+
+.note-bottom-aisle-btn:disabled {
+  opacity: 0.44;
+  cursor: not-allowed;
+}
+
+.note-bottom-aisle-btn.is-limit-reached {
+  color: var(--app-muted-text);
+}
+
+.note-bottom-aisle-icon {
+  width: 1.05rem;
+  height: 1.05rem;
 }
 
 .aisle-toc-panel-layer {
